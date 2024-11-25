@@ -1,0 +1,12 @@
+# Ignore all log directories and their contents
+**/logs/
+**/log/
+logs/
+log/
+
+# Ignore log files regardless of location
+*.log
+
+# Existing ignore patterns for other files
+*.pdf
+*.png

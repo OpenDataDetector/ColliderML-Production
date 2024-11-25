@@ -1,0 +1,18 @@
+events: 3
+g4_post_eta:
+- -4.0
+- 4.0
+g4_post_pt: 300
+g4_pre_eta:
+- -3.0
+- 3.0
+g4_pre_pt: 50
+g4_record_neutrals: false
+g4_record_secondaries: false
+geant4: true
+hard_process: Top:qqbar2ttbar
+output: outputs/itk_comparison/odd_output_config_pt50_eta-3.0_3.0_neutralsFalse_secondariesFalse
+output_csv: false
+pileup: 200
+pythia: true
+reco: false
