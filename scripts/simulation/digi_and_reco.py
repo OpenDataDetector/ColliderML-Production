@@ -5,17 +5,26 @@ import acts.examples
 import acts.examples.edm4hep
 from acts.examples import Sequencer
 from acts.examples.odd import getOpenDataDetector, getOpenDataDetectorDirectory
-from acts.examples.simulation import addDigitization
+from acts.examples.simulation import addDigitization, addParticleSelection, ParticleSelectorConfig
 from acts.examples.reconstruction import (
     addSeeding,
     addCKFTracks,
     addVertexFitting,
     addAmbiguityResolution,
-    VertexFinder
+    addAmbiguityResolutionML,
+    addScoreBasedAmbiguityResolution,
+    VertexFinder,
+    TrackSelectorConfig,
+    CkfConfig,
+    AmbiguityResolutionConfig,
+    AmbiguityResolutionMLConfig,
+    ScoreBasedAmbiguityResolutionConfig
 )
 import traceback
 from utils.logging import setup_logging, TimingRecorder
 from utils.config import create_base_parser, load_config
+from contextlib import contextmanager
+import math
 
 u = acts.UnitConstants
 
@@ -24,7 +33,7 @@ def parse_args():
     parser = create_base_parser("Digitization and reconstruction for ACTS")
     parser.add_argument(
         "--input-file",
-        help="Input SLCIO file (default: {output_dir}/ddsim_output.slcio)",
+        help="Input EDM4hep file (default: {output_dir}/edm4hep.root)",
         type=Path,
         default=None
     )
@@ -38,6 +47,35 @@ def parse_args():
         help="Material map configuration file",
         type=Path,
     )
+    parser.add_argument(
+        "--ambi-solver",
+        help="Ambiguity solver to use",
+        choices=["greedy", "scoring", "ML"],
+        default="greedy",
+    )
+    parser.add_argument(
+        "--ambi-config",
+        help="Score Based ambiguity resolution config",
+        type=Path,
+    )
+    parser.add_argument(
+        "--output-root",
+        help="Write ROOT output files",
+        action="store_true",
+        default=True,
+    )
+    parser.add_argument(
+        "--digi",
+        help="Run digitization",
+        action="store_true",
+        default=True,
+    )
+    parser.add_argument(
+        "--reco",
+        help="Run reconstruction",
+        action="store_true",
+        default=True,
+    )
     return parser.parse_args()
 
 def setup_acts_reconstruction(input_path, output_dir, config, logger=None):
@@ -46,7 +84,7 @@ def setup_acts_reconstruction(input_path, output_dir, config, logger=None):
     
     # Create sequencer
     s = Sequencer(numThreads=1, events=config.events)
-    s.config.logLevel = acts.logging.VERBOSE
+    s.config.logLevel = acts.logging.DEBUG
     
     # Get detector and field
     geoDir = getOpenDataDetectorDirectory()
@@ -68,7 +106,7 @@ def setup_acts_reconstruction(input_path, output_dir, config, logger=None):
     
     # Configure EDM4hep reader
     edm4hepReader = acts.examples.edm4hep.EDM4hepReader(
-        level=acts.logging.VERBOSE,
+        level=acts.logging.DEBUG,
         config=acts.examples.edm4hep.EDM4hepReader.Config(
             inputPath=str(input_path),
             inputSimHits=[
@@ -88,41 +126,139 @@ def setup_acts_reconstruction(input_path, output_dir, config, logger=None):
     )
     s.addReader(edm4hepReader)
     
-    # Add digitization if configured
-    if config.digi_config:
+    # Add particle selection
+    addParticleSelection(
+        s,
+        config=ParticleSelectorConfig(
+            rho=(0.0, 24 * u.mm),
+            absZ=(0.0, 1.0 * u.m),
+            eta=(-3.0, 3.0),
+            pt=(1.0 * u.GeV, None),
+            removeNeutral=True,
+        ),
+        inputParticles="particles_input",
+        outputParticles="particles_selected",
+    )
+    
+    # Add digitization if enabled
+    if config.digi:
+        logger.info("Adding digitization")
         addDigitization(
             s,
             trackingGeometry,
             field,
             digiConfigFile=config.digi_config,
-            outputDirRoot=output_dir,
-            outputDirCsv=output_dir,
+            outputDirRoot=output_dir if config.output_root else None,
         )
     
-    # Add reconstruction steps
-    addSeeding(
-        s,
-        trackingGeometry,
-        field,
-        seedingConfig=geoDir / "config/odd-seeding-config.json",
-    )
+    # Add reconstruction components if enabled
+    if config.reco:
+        logger.info("Adding reconstruction chain")
+        # Add seeding
+        addSeeding(
+            s,
+            trackingGeometry,
+            field,
+            seedingConfig=geoDir / "config/odd-seeding-config.json",
+        )
+        
+        # Add CKF tracking
+        addCKFTracks(
+            s,
+            trackingGeometry,
+            field,
+            TrackSelectorConfig(
+                pt=(1.0 * u.GeV, None),
+                absEta=(None, 3.0),
+                loc0=(-4.0 * u.mm, 4.0 * u.mm),
+                nMeasurementsMin=7,
+                maxHoles=2,
+                maxOutliers=2,
+            ),
+            CkfConfig(
+                chi2CutOffMeasurement=15.0,
+                chi2CutOffOutlier=25.0,
+                numMeasurementsCutOff=10,
+                seedDeduplication=True,
+                stayOnSeed=True,
+                pixelVolumes=[16, 17, 18],
+                stripVolumes=[23, 24, 25],
+                maxPixelHoles=1,
+                maxStripHoles=2,
+            ),
+            outputDirRoot=output_dir if config.output_root else None,
+            writeCovMat=True,
+        )
+        
+        # Add ambiguity resolution
+        if config.ambi_solver == "ML":
+            addAmbiguityResolutionML(
+                s,
+                AmbiguityResolutionMLConfig(
+                    maximumSharedHits=3,
+                    maximumIterations=1000000,
+                    nMeasurementsMin=7,
+                ),
+                outputDirRoot=output_dir if config.output_root else None,
+                onnxModelFile=str(config.ambi_config),
+            )
+        elif config.ambi_solver == "scoring":
+            addScoreBasedAmbiguityResolution(
+                s,
+                ScoreBasedAmbiguityResolutionConfig(
+                    minScore=0,
+                    maxShared=2,
+                    maxSharedTracksPerMeasurement=2,
+                    pTMax=1400,
+                    pTMin=0.5,
+                ),
+                outputDirRoot=output_dir if config.output_root else None,
+                ambiVolumeFile=config.ambi_config,
+            )
+        else:
+            addAmbiguityResolution(
+                s,
+                AmbiguityResolutionConfig(
+                    maximumSharedHits=3,
+                    maximumIterations=1000000,
+                    nMeasurementsMin=7,
+                ),
+                outputDirRoot=output_dir if config.output_root else None,
+            )
+        
+        # Add vertex fitting
+        addVertexFitting(
+            s,
+            field,
+            vertexFinder=VertexFinder.ADAPTIVE,
+            outputDirRoot=output_dir if config.output_root else None,
+        )
     
-    addCKFTracks(
-        s,
-        trackingGeometry,
-        field,
-    )
-    
-    addAmbiguityResolution(s)
-    
-    addVertexFitting(
-        s,
-        field,
-        vertexFinder=VertexFinder.ADAPTIVE,
-        outputDirRoot=output_dir,
-    )
+    # Add ROOT writers if enabled
+    if config.output_root:
+        add_root_writers(s, output_dir)
     
     return s
+
+def add_root_writers(s, output_dir):
+    """Add ROOT output writers to the sequencer"""
+    # Write tracking hits
+    s.addWriter(acts.examples.RootSimHitWriter(
+        config=acts.examples.RootSimHitWriter.Config(
+            filePath=str(output_dir / "simhits.root"),
+            inputSimHits="simhits"
+        ),
+        level=acts.logging.INFO
+    ))
+    
+    # Write particles
+    s.addWriter(acts.examples.RootParticleWriter(
+        config=acts.examples.RootParticleWriter.Config(
+            filePath=str(output_dir / "particles.root"),
+            inputParticles="particles_selected"
+        ),
+        level=acts.logging.INFO
+    ))
 
 def main():
     try:
