@@ -1,0 +1,16 @@
+events: 5
+pythia: true
+geant4: true
+hard_process: "Top:qqbar2ttbar"
+pileup: 200
+output_csv: false
+reco: false
+output: "outputs/odd_output_geant_ttbar_1_ptcut150MeV_withneutral"
+
+# Geant4 config
+g4_pre_pt: 150.0
+g4_pre_eta: [-3.0, 3.0]
+g4_post_pt: 1000.0
+g4_post_eta: [-3.0, 3.0]
+g4_record_neutrals: false
+g4_record_secondaries: true

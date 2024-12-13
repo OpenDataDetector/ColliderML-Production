@@ -1,0 +1,14 @@
+output: "outputs/pda_batch_parallel_testing2"
+events: 3
+hard_process: "Top:qqbar2ttbar"
+pileup: 30
+output_csv: false
+reco: false
+output_root: true
+output_csv: false
+
+# Geant4 config
+g4_pre_pt: 0.0
+g4_pre_eta: [-4.0, 4.0]
+g4_post_pt: 0.0
+g4_post_eta: [-4.0, 4.0]

@@ -2,10 +2,10 @@
 
 #SBATCH -A atlas -q regular
 #SBATCH -C cpu
-#SBATCH -t 00:60:00
+#SBATCH -t 02:00:00
 #SBATCH -N 1
-#SBATCH --ntasks-per-node=32
-#SBATCH -c 4
+#SBATCH --ntasks-per-node=16
+#SBATCH -c 8
 #SBATCH -o logs/%x-%j.out
 #SBATCH -J acts_generate
 #SBATCH --module=cvmfs
@@ -18,6 +18,11 @@ fi
 
 CONFIG_FILE=$1
 
+# Print config contents
+echo "Contents of config file $CONFIG_FILE:"
+cat $CONFIG_FILE
+echo "---"
+
 # Run everything in a single srun command to ensure proper container environment
 cd $HOME
 export SLURM_CPU_BIND="cores"
@@ -25,8 +30,8 @@ srun --exact -u shifter --image=registry.cern.ch/atlasadc/atlas-grid-almalinux9 
 cd /cvmfs/atlas.cern.ch/repo/ATLASLocalRootBase && \
 export ATLAS_LOCAL_ROOT_BASE=\$PWD && \
 source \${ATLAS_LOCAL_ROOT_BASE}/user/atlasLocalSetup.sh && \
-lsetup \"views LCG_106 x86_64-el9-gcc13-opt\" && \
 cd /global/cfs/cdirs/m3443/usr/dtmurnane/Side_Work/ACTS && \
+source acts/CI/setup_cvmfs_lcg.sh && \
 source build/python/setup.sh && \
 python acts/Examples/Scripts/Python/full_chain_odd_anyprocess.py \
     --config $CONFIG_FILE \

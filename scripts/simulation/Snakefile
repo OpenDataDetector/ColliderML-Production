@@ -1,0 +1,46 @@
+from pathlib import Path
+
+configfile: "../configs/development/testing_and_validation/PDA_testing.yaml"
+
+# Define output directory structure
+OUTPUT_DIR = Path(config["output_dir"])
+
+rule all:
+    input:
+        OUTPUT_DIR / "merged_events.hepmc3"
+
+rule generate_pythia:
+    output:
+        signal = OUTPUT_DIR / "events.hepmc3",
+        pileup = OUTPUT_DIR / "events_pileup.hepmc3"
+    params:
+        events = config["events"],
+        pileup = config["pileup"],
+        hard_process = config["hard_process"]
+    log:
+        "logs/pythia_gen.log"
+    shell:
+        """
+        python scripts/simulation/pythia_gen.py \
+            --config {configfile} \
+            2>&1 | tee {log}
+        """
+
+rule merge_and_smear:
+    input:
+        signal = rules.generate_pythia.output.signal,
+        pileup = rules.generate_pythia.output.pileup
+    output:
+        merged = OUTPUT_DIR / "merged_events.hepmc3"
+    params:
+        sigma_xy = config["vertex_sigma_xy"],
+        sigma_z = config["vertex_sigma_z"],
+        sigma_t = config["vertex_sigma_t"]
+    log:
+        "logs/merge_smear.log"
+    shell:
+        """
+        python scripts/simulation/merge_and_smear.py \
+            --config {configfile} \
+            2>&1 | tee {log}
+        """

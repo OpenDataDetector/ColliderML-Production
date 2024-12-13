@@ -1,0 +1,21 @@
+output: "/global/cfs/cdirs/m3443/usr/dtmurnane/Side_Work/ACTS/outputs/pda_testing13"
+events: 1
+hard_process: "Top:qqbar2ttbar"
+pileup: 3
+output_csv: false
+selections: true
+digi: false
+reco: false
+seed: 42
+output_root: true
+output_csv: false
+
+run_pythia: true
+run_merge: true
+run_ddsim: false
+run_acts: false
+
+# Geant4 config
+g4_post_pt: 50.0
+g4_post_eta: [-4.0, 4.0]
+

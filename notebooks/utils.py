@@ -56,7 +56,7 @@ def load_single_process(base_dir, proc_num, events_per_process):
     # Load each file type
     hits_df = load_root_file(proc_dir / "hits.root", event_offset)
     particles_df = load_root_file(proc_dir / "particles_simulation.root", event_offset)
-    pythia_df = load_root_file(proc_dir / "pythia8_particles.root", event_offset)
+    pythia_df = load_root_file(proc_dir / "particles.root", event_offset)
     
     return hits_df, particles_df, pythia_df
 
