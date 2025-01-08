@@ -78,7 +78,7 @@ def parse_args():
     )
     return parser.parse_args()
 
-def setup_acts_reconstruction(input_path, output_dir, config, logger=None):
+def setup_acts_reconstruction(input_path, output_dir, config, rnd, logger=None):
     """Configure ACTS reconstruction chain"""
     logger = logger or setup_logging("ACTSReco")
     
@@ -92,10 +92,17 @@ def setup_acts_reconstruction(input_path, output_dir, config, logger=None):
     
     # Load material map
     oddMaterialMap = (
-        config.material_config
+        geoDir / f"data/{config.material_config}"
         if config.material_config
         else geoDir / "data/odd-material-maps.root"
     )
+
+    oddDigiConfig = (
+        geoDir / f"config/{config.digi_config}"
+        if config.digi_config
+        else geoDir / "config/odd-digi-smearing-config.json"
+    )
+
     oddMaterialDeco = acts.IMaterialDecorator.fromFile(oddMaterialMap)
     
     # Get detector
@@ -132,9 +139,9 @@ def setup_acts_reconstruction(input_path, output_dir, config, logger=None):
         config=ParticleSelectorConfig(
             rho=(0.0, 24 * u.mm),
             absZ=(0.0, 1.0 * u.m),
-            eta=(-3.0, 3.0),
-            pt=(1.0 * u.GeV, None),
-            removeNeutral=True,
+            eta=(-4.0, 4.0),
+            pt=(0.0 * u.GeV, None),
+            removeNeutral=False,
         ),
         inputParticles="particles_input",
         outputParticles="particles_selected",
@@ -147,8 +154,11 @@ def setup_acts_reconstruction(input_path, output_dir, config, logger=None):
             s,
             trackingGeometry,
             field,
-            digiConfigFile=config.digi_config,
+            digiConfigFile=oddDigiConfig,
             outputDirRoot=output_dir if config.output_root else None,
+            outputDirCsv=output_dir if config.output_csv else None,
+            rnd=rnd,
+            logLevel=acts.logging.DEBUG,
         )
     
     # Add reconstruction components if enabled
@@ -252,8 +262,8 @@ def add_root_writers(s, output_dir):
     ))
     
     # Write particles
-    s.addWriter(acts.examples.RootParticleWriter(
-        config=acts.examples.RootParticleWriter.Config(
+    s.addWriter(acts.examples.RootParticleFlatWriter(
+        config=acts.examples.RootParticleFlatWriter.Config(
             filePath=str(output_dir / "particles.root"),
             inputParticles="particles_selected"
         ),
@@ -266,6 +276,7 @@ def main():
         args = parse_args()
         config = load_config(args)
         logger = setup_logging()
+        rnd = acts.examples.RandomNumbers(seed=config.seed)
         
         # Create output directory structure
         output_dir = Path(args.output)
@@ -281,7 +292,7 @@ def main():
         
         # Setup and run reconstruction
         with timer.record("ACTS Reconstruction"):
-            s = setup_acts_reconstruction(input_path, output_dir, config, logger)
+            s = setup_acts_reconstruction(input_path, output_dir, config, rnd, logger)
             s.run()
         
         # Write timing report

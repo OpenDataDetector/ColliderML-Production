@@ -1,19 +1,24 @@
-output: "/global/cfs/cdirs/m3443/usr/dtmurnane/Side_Work/ACTS/outputs/pda_testing13"
-events: 1
+output: "/global/cfs/cdirs/m3443/usr/dtmurnane/Side_Work/ACTS/outputs/pda_testing17"
+events: 3
 hard_process: "Top:qqbar2ttbar"
-pileup: 3
+pileup: 200
 output_csv: false
 selections: true
-digi: false
+digi: true
 reco: false
 seed: 42
 output_root: true
 output_csv: false
 
-run_pythia: true
-run_merge: true
-run_ddsim: false
-run_acts: false
+# Pythia8 smearing parameters
+vertex_sigma_xy: 0.0125
+vertex_sigma_z: 55.5
+vertex_sigma_t: 5.0
+
+# DDsim smearing parameters
+# vertex_sigma_xy_ddsim: 0.0125
+# vertex_sigma_z_ddsim: 55.5
+# vertex_sigma_t_ddsim: 5.0
 
 # Geant4 config
 g4_post_pt: 50.0

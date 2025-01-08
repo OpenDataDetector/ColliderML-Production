@@ -30,19 +30,19 @@ def parse_args():
         "--vertex-sigma-xy",
         help="Sigma for vertex smearing in x/y [mm]",
         type=float,
-        default=0.0125
+        default=0.0
     )
     parser.add_argument(
         "--vertex-sigma-z",
         help="Sigma for vertex smearing in z [mm]",
         type=float,
-        default=55.5
+        default=0.0
     )
     parser.add_argument(
         "--vertex-sigma-t",
         help="Sigma for vertex smearing in time [ns]",
         type=float,
-        default=5.0
+        default=0.0
     )
     return parser.parse_args()
 

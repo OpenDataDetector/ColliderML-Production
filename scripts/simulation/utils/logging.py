@@ -41,7 +41,10 @@ class TimingRecorder:
     def write_report(self):
         try:
             total_time = time.time() - self.start_time
-            report = ["Timing Report", "============="]
+            timestamp = time.strftime("%Y%m%d_%H%M%S")
+            
+            # Create report content
+            report = [f"Timing Report ({timestamp})", "============="]
             
             # Add timing entries
             for name, duration in sorted(self.timings.items()):
@@ -57,12 +60,10 @@ class TimingRecorder:
                 for error in self.errors:
                     report.append(error)
             
-            # Ensure output directory exists
-            self.output_dir.mkdir(parents=True, exist_ok=True)
-            
-            # Write to file
-            report_path = self.output_dir / "timing_report.txt"
-            with open(report_path, "w") as f:
+            # Append to summary file
+            summary_path = self.output_dir / "timing_summary.txt"
+            with open(summary_path, "a") as f:
+                f.write("\n\n" + "=" * 80 + "\n")
                 f.write("\n".join(report))
             
             # Print to console

@@ -1,5 +1,6 @@
 import pandas as pd
 import numpy as np
+import uproot
 
 
 # Basic event metadata
@@ -54,115 +55,184 @@ mc_particles = [
 ]
 
 
-def build_tracker_df(event, detector_name):
-    """Build dataframe from tracker hits and their particle links"""
-    hits = event[detector_name].arrays()
-    particle_links = event[f"_{detector_name}_MCParticle"].arrays()
+def load_edm4hep_file(file_path, event_num=None):
+    """Load EDM4hep file and return event data.
     
+    Args:
+        file_path: Path to EDM4hep ROOT file
+        event_num: Optional specific event number to load. If None, loads all events.
+        
+    Returns:
+        If event_num is specified: dict of DataFrames for that event
+        If event_num is None: list of dicts, where each dict contains DataFrames for one event
+    """
+    events = uproot.open(file_path)["events"]
+    num_events = len(events["MCParticles.PDG"].array())
+    
+    if event_num is not None:
+        return _process_event(events, event_num)
+    else:
+        return [_process_event(events, i) for i in range(num_events)]
+
+def _process_event(events, event_idx):
+    """Process a single event and return its dictionary of DataFrames."""
+    return {
+        "tracker_df": build_tracker_df(events, event_idx),
+        "ecal_hits_df": build_calo_df(events, event_idx)[0],
+        "ecal_contrib_df": build_calo_df(events, event_idx)[1],
+        "particles_df": build_particle_df(events, event_idx)[0],
+        "parents_df": build_particle_df(events, event_idx)[1],
+        "daughters_df": build_particle_df(events, event_idx)[2]
+    }
+
+def build_tracker_df(events, event_idx, detector_name=None):
+    """Build dataframe from tracker hits for a single event"""
+    if detector_name is not None:
+        hits = events[detector_name].arrays()
+        particle_links = events[f"_{detector_name}_MCParticle"].arrays()
+        return _process_tracker_hits(hits, particle_links, detector_name, event_idx)
+    
+    all_trackers = pixel_readouts + strip_readouts
+    dfs = []
+    for det in all_trackers:
+        if det not in events:
+            continue
+        hits = events[det].arrays()
+        particle_links = events[f"_{det}_MCParticle"].arrays()
+        df = _process_tracker_hits(hits, particle_links, det, event_idx)
+        df['detector'] = det
+        dfs.append(df)
+    
+    return pd.concat(dfs, ignore_index=True) if dfs else pd.DataFrame()
+
+def _process_tracker_hits(hits, particle_links, detector_name, event_idx):
+    """Process tracker hits for a single event"""
     hit_dict = {
-        'cellID': hits[f"{detector_name}.cellID"][0],
-        'EDep': hits[f"{detector_name}.EDep"][0],
-        'time': hits[f"{detector_name}.time"][0],
-        'pathLength': hits[f"{detector_name}.pathLength"][0],
-        'quality': hits[f"{detector_name}.quality"][0],
-        'x': hits[f"{detector_name}.position.x"][0],
-        'y': hits[f"{detector_name}.position.y"][0],
-        'z': hits[f"{detector_name}.position.z"][0],
-        'px': hits[f"{detector_name}.momentum.x"][0],
-        'py': hits[f"{detector_name}.momentum.y"][0],
-        'pz': hits[f"{detector_name}.momentum.z"][0],
-        'particle_id': particle_links[f"_{detector_name}_MCParticle.index"][0]
+        'cellID': hits[f"{detector_name}.cellID"][event_idx],
+        'EDep': hits[f"{detector_name}.EDep"][event_idx],
+        'time': hits[f"{detector_name}.time"][event_idx],
+        'pathLength': hits[f"{detector_name}.pathLength"][event_idx],
+        'quality': hits[f"{detector_name}.quality"][event_idx],
+        'x': hits[f"{detector_name}.position.x"][event_idx],
+        'y': hits[f"{detector_name}.position.y"][event_idx],
+        'z': hits[f"{detector_name}.position.z"][event_idx],
+        'px': hits[f"{detector_name}.momentum.x"][event_idx],
+        'py': hits[f"{detector_name}.momentum.y"][event_idx],
+        'pz': hits[f"{detector_name}.momentum.z"][event_idx],
+        'particle_id': particle_links[f"_{detector_name}_MCParticle.index"][event_idx]
     }
     
     df = pd.DataFrame(hit_dict)
-    
-    # Add derived quantities
     df['r'] = np.sqrt(df['x']**2 + df['y']**2)
     df['phi'] = np.arctan2(df['y'], df['x'])
     df['pt'] = np.sqrt(df['px']**2 + df['py']**2)
     
     return df
 
-def build_calo_df(event, detector_name):
-    """Build dataframe from calorimeter hits and their particle links"""
-    hits = event[detector_name].arrays()
-    contributions = event[f"{detector_name}Contributions"].arrays()
-    particle_links = event[f"_{detector_name}Contributions_particle"].arrays()
+def build_calo_df(events, event_idx, detector_name=None):
+    """Build dataframe from calorimeter hits for a single event"""
+    if detector_name is not None:
+        hits = events[detector_name].arrays()
+        contributions = events[f"{detector_name}Contributions"].arrays()
+        particle_links = events[f"_{detector_name}Contributions_particle"].arrays()
+        return _process_calo_hits(hits, contributions, particle_links, detector_name, event_idx)
     
-    # Build hits dataframe
+    all_calos = ecal + hcal
+    hits_dfs = []
+    contrib_dfs = []
+    
+    for det in all_calos:
+        if det not in events:
+            continue
+        hits = events[det].arrays()
+        contributions = events[f"{det}Contributions"].arrays()
+        particle_links = events[f"_{det}Contributions_particle"].arrays()
+        hits_df, contrib_df = _process_calo_hits(hits, contributions, particle_links, det, event_idx)
+        
+        hits_df['detector'] = det
+        contrib_df['detector'] = det
+        
+        hits_dfs.append(hits_df)
+        contrib_dfs.append(contrib_df)
+    
+    return (pd.concat(hits_dfs, ignore_index=True) if hits_dfs else pd.DataFrame(),
+            pd.concat(contrib_dfs, ignore_index=True) if contrib_dfs else pd.DataFrame())
+
+def _process_calo_hits(hits, contributions, particle_links, detector_name, event_idx):
+    """Process calorimeter hits for a single event"""
     hit_dict = {
-        'cellID': hits[f"{detector_name}.cellID"][0],
-        'energy': hits[f"{detector_name}.energy"][0],
-        'x': hits[f"{detector_name}.position.x"][0],
-        'y': hits[f"{detector_name}.position.y"][0],
-        'z': hits[f"{detector_name}.position.z"][0],
-        'contribution_begin': hits[f"{detector_name}.contributions_begin"][0],
-        'contribution_end': hits[f"{detector_name}.contributions_end"][0]
+        'cellID': hits[f"{detector_name}.cellID"][event_idx],
+        'energy': hits[f"{detector_name}.energy"][event_idx],
+        'x': hits[f"{detector_name}.position.x"][event_idx],
+        'y': hits[f"{detector_name}.position.y"][event_idx],
+        'z': hits[f"{detector_name}.position.z"][event_idx],
+        'contribution_begin': hits[f"{detector_name}.contributions_begin"][event_idx],
+        'contribution_end': hits[f"{detector_name}.contributions_end"][event_idx]
     }
     
     hits_df = pd.DataFrame(hit_dict)
-    
-    # Add derived quantities
     hits_df['r'] = np.sqrt(hits_df['x']**2 + hits_df['y']**2)
     hits_df['phi'] = np.arctan2(hits_df['y'], hits_df['x'])
+    hits_df['R'] = np.sqrt(hits_df['x']**2 + hits_df['y']**2 + hits_df['z']**2)
+    hits_df['theta'] = np.arctan2(hits_df['r'], hits_df['z'])
+    hits_df['eta'] = -np.log(np.tan(hits_df['theta']/2))
     
-    # Build contributions dataframe
+    
     contrib_dict = {
-        'PDG': contributions[f"{detector_name}Contributions.PDG"][0],
-        'energy': contributions[f"{detector_name}Contributions.energy"][0],
-        'time': contributions[f"{detector_name}Contributions.time"][0],
-        'x': contributions[f"{detector_name}Contributions.stepPosition.x"][0],
-        'y': contributions[f"{detector_name}Contributions.stepPosition.y"][0],
-        'z': contributions[f"{detector_name}Contributions.stepPosition.z"][0],
-        'particle_id': particle_links[f"_{detector_name}Contributions_particle.index"][0]
+        'PDG': contributions[f"{detector_name}Contributions.PDG"][event_idx],
+        'energy': contributions[f"{detector_name}Contributions.energy"][event_idx],
+        'time': contributions[f"{detector_name}Contributions.time"][event_idx],
+        'x': contributions[f"{detector_name}Contributions.stepPosition.x"][event_idx],
+        'y': contributions[f"{detector_name}Contributions.stepPosition.y"][event_idx],
+        'z': contributions[f"{detector_name}Contributions.stepPosition.z"][event_idx],
+        'particle_id': particle_links[f"_{detector_name}Contributions_particle.index"][event_idx]
     }
     
     contrib_df = pd.DataFrame(contrib_dict)
     
     return hits_df, contrib_df
 
-def build_particle_df(event):
-    """Build dataframe from MCParticles collection and return separate parent/daughter dataframes"""
-    # Main particle properties
-    particles = event["MCParticles"].arrays()
+def build_particle_df(events, event_idx):
+    """Build particle dataframes for a single event"""
+    particles = events["MCParticles"].arrays()
     particle_dict = {
-        'PDG': particles["MCParticles.PDG"][0],
-        'generatorStatus': particles["MCParticles.generatorStatus"][0],
-        'simulatorStatus': particles["MCParticles.simulatorStatus"][0],
-        'charge': particles["MCParticles.charge"][0],
-        'time': particles["MCParticles.time"][0],
-        'mass': particles["MCParticles.mass"][0],
-        'vx': particles["MCParticles.vertex.x"][0],
-        'vy': particles["MCParticles.vertex.y"][0],
-        'vz': particles["MCParticles.vertex.z"][0],
-        'px': particles["MCParticles.momentum.x"][0],
-        'py': particles["MCParticles.momentum.y"][0],
-        'pz': particles["MCParticles.momentum.z"][0],
-        'endpoint_x': particles["MCParticles.endpoint.x"][0],
-        'endpoint_y': particles["MCParticles.endpoint.y"][0],
-        'endpoint_z': particles["MCParticles.endpoint.z"][0],
+        'PDG': particles["MCParticles.PDG"][event_idx],
+        'generatorStatus': particles["MCParticles.generatorStatus"][event_idx],
+        'simulatorStatus': particles["MCParticles.simulatorStatus"][event_idx],
+        'charge': particles["MCParticles.charge"][event_idx],
+        'time': particles["MCParticles.time"][event_idx],
+        'mass': particles["MCParticles.mass"][event_idx],
+        'vx': particles["MCParticles.vertex.x"][event_idx],
+        'vy': particles["MCParticles.vertex.y"][event_idx],
+        'vz': particles["MCParticles.vertex.z"][event_idx],
+        'px': particles["MCParticles.momentum.x"][event_idx],
+        'py': particles["MCParticles.momentum.y"][event_idx],
+        'pz': particles["MCParticles.momentum.z"][event_idx],
+        'endpoint_x': particles["MCParticles.endpoint.x"][event_idx],
+        'endpoint_y': particles["MCParticles.endpoint.y"][event_idx],
+        'endpoint_z': particles["MCParticles.endpoint.z"][event_idx],
+        'parents_begin': particles["MCParticles.parents_begin"][event_idx],
+        'parents_end': particles["MCParticles.parents_end"][event_idx],
+        'daughters_begin': particles["MCParticles.daughters_begin"][event_idx],
+        'daughters_end': particles["MCParticles.daughters_end"][event_idx],
     }
     
-    # Parent relationships
-    parents = event["_MCParticles_parents"].arrays()
+    parents = events["_MCParticles_parents"].arrays()
     parent_dict = {
-        'index': parents["_MCParticles_parents.index"][0],
-        'collectionID': parents["_MCParticles_parents.collectionID"][0]
+        'index': parents["_MCParticles_parents.index"][event_idx],
+        'collectionID': parents["_MCParticles_parents.collectionID"][event_idx]
     }
     
-    # Daughter relationships
-    daughters = event["_MCParticles_daughters"].arrays()
+    daughters = events["_MCParticles_daughters"].arrays()
     daughter_dict = {
-        'index': daughters["_MCParticles_daughters.index"][0],
-        'collectionID': daughters["_MCParticles_daughters.collectionID"][0]
+        'index': daughters["_MCParticles_daughters.index"][event_idx],
+        'collectionID': daughters["_MCParticles_daughters.collectionID"][event_idx]
     }
     
-    # Create dataframes
     particles_df = pd.DataFrame(particle_dict)
     parents_df = pd.DataFrame(parent_dict)
     daughters_df = pd.DataFrame(daughter_dict)
     
-    # Add derived quantities to main particle dataframe
     particles_df['pt'] = np.sqrt(particles_df['px']**2 + particles_df['py']**2)
     particles_df['p'] = np.sqrt(particles_df['px']**2 + particles_df['py']**2 + particles_df['pz']**2)
     particles_df['eta'] = np.arcsinh(particles_df['pz']/particles_df['pt'])

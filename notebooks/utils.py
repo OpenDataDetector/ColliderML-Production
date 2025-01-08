@@ -5,6 +5,24 @@ import uproot
 from pathlib import Path
 from tqdm import tqdm
 
+import pyhepmc as hep
+from pyhepmc.io import WriterAscii
+
+def load_hepmc_event(filepath):
+    """Load first event from a HepMC3 file.
+    Handle either single event (hard scatter)
+    or multiple events (pileup)"""
+    events = []
+
+    with hep.open(filepath) as f:
+        for event in f:
+            events.append(event)
+            
+    if len(events) == 1:
+        return events[0]
+    else:
+        return events
+
 
 def load_root_file(file_path, event_offset=0, event_id=None):
     """Load data from a single root file with optional event filtering
@@ -30,8 +48,23 @@ def load_root_file(file_path, event_offset=0, event_id=None):
         cycles = [int(key.split(';')[1]) for key in keys]
         latest_key = keys[cycles.index(max(cycles))]
         data = tree[latest_key].arrays()
-        df = ak.to_dataframe(data)
         
+        # Separate regular and variable length columns
+        regular_columns = []
+        variable_columns = []
+        for field in data.fields:
+            if 'var' in str(data[field].type):
+                variable_columns.append(field)
+            else:
+                regular_columns.append(field)
+        
+        # Warn about dropped columns
+        if variable_columns:
+            print(f"Warning: Dropping variable length columns: {', '.join(variable_columns)}")
+            
+        # Convert to dataframe using only regular columns
+        df = ak.to_dataframe(data[regular_columns])
+            
         # Apply event offset
         if event_offset:
             df['event_id'] += event_offset
