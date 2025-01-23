@@ -4,6 +4,56 @@ The ColliderML dataset is organized into four distinct spaces: **Simulation**, *
 
 ---
 
+## Development Repository
+
+### 1. Simulation Scripts (`scripts/simulation/`)
+All scripts needed for simulation are stored in the `scripts/simulation` directory. They follow the pipeline:
+
+1. **Pythia parton generation** (`pythia_gen.py`): Generates signal and pileup events using Pythia8
+2. **Event merging and smearing** (`merge_and_smear.py`): Combines signal and pileup, applies vertex smearing
+3. **Detector simulation** (`ddsim_run.py`): Simulates detector response using DD4hep
+4. **Digitization and reconstruction** (`digi_and_reco.py`): Performs hit digitization and track reconstruction
+
+**Workflow management** (`Snakefile`): Orchestrates the full pipeline with Snakemake. This runs as (see next section for config details):
+
+```
+snakemake -s scripts/simulation/Snakefile --configfile configs_development/testing_and_validation/snakemake_test.yaml -p --c1
+```
+
+Here `c1` runs the script with one CPU core.
+
+### 2. Configuration Files
+- `configs_development/`: Development and testing configurations
+  - `testing_and_validation/`: Configs for testing pipeline components
+  - `parallel_tests/`: Configs for performance scaling studies
+- `configs_production/`: Production-ready configurations for dataset generation
+
+### 3. Batch Processing (`batch/`)
+- Scripts for running on HPC systems
+- SLURM job submission templates
+- Parallel execution configurations
+
+### 4. Analysis Tools (`scripts/analysis/`)
+- Tools for analyzing simulation outputs
+- Performance measurement utilities
+- Data quality validation scripts
+
+### 5. Utilities (`scripts/simulation/utils/`)
+- Common utilities used across scripts:
+  - Configuration handling
+  - Logging setup
+  - Performance monitoring
+
+### 6. Development Tools (`notebooks/`)
+- Jupyter notebooks for:
+  - Pipeline development and testing
+  - Output visualization and validation
+  - Performance analysis
+
+### 7. Installation
+- `setup.py`: Package installation configuration
+- Dependencies and environment setup
+
 ## Storage Spaces Overview
 
 ### 1. Simulation Space
@@ -41,7 +91,7 @@ The **Public** and **Simulation** spaces follow the same directory structure, or
 1. **SingleParticle**
    - Contains datasets focused on isolated particle studies.
    - Subdirectories for each particle type:
-     - `mu` (single muon)
+     - `single_muon`
      - `single_pion`
      - `single_electron`
      - Other particles as required.
@@ -104,6 +154,3 @@ Each dataset includes accompanying metadata files containing:
 4. **Scalability**: The structure supports adding new datasets and channels without disrupting existing organization.
 
 ---
-
-This structure ensures clarity, reproducibility, and ease of access, enabling efficient use of the ColliderML datasets for both development and research purposes.
-

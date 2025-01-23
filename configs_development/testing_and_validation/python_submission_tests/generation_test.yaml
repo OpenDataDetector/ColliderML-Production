@@ -1,0 +1,25 @@
+# Example configuration
+version: "v2_testing"
+stage: "generation"  # One of: generation, merge_smear, simulation, digitization
+job_config:
+  # Number of nodes will be calculated as n_runs / runs_per_node
+  n_runs: 16  # Number of jobs to submit
+  runs_per_node: 8  # Number of runs per node
+  time_limit: "00:10:00"  # Time limit per job
+  qos: "debug"
+
+validation_config:
+  n_jobs: 1
+  time_limit: "00:10:00"
+  qos: "debug"
+
+# Stage-specific configurations
+events: 2  # Number of events per run, total number of events will be n_runs * events
+pileup: 200
+hard_process: "Top:qqbar2ttbar"
+
+# Common settings
+common:
+  output_base_dir: "/global/cfs/cdirs/m3443/usr/dtmurnane/Side_Work/ACTS/outputs/python_submission_tests/"
+  account: "atlas"
+  container: "registry.cern.ch/atlasadc/atlas-grid-almalinux9"

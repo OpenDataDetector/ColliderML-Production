@@ -1,9 +1,9 @@
-output: "outputs/odd_output_geant_ttbar_prept100MeV_withneutral"
+output: "outputs/pda_tests/pda_testing_susy1"
 events: 1
 pythia: true
 geant4: true
-hard_process: "Top:qqbar2ttbar"
-pileup: 200
+hard_process: "SUSY:qqbar2chi0chi0"
+pileup: 0
 output_csv: false
 reco: false
 

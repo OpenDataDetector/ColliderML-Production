@@ -1,8 +1,7 @@
-# Base parameters from PDA_testing.yaml
-output: "/global/cfs/cdirs/m3443/usr/dtmurnane/Side_Work/ACTS/outputs/snakemake_test"
-events: 3
+output: "/global/cfs/cdirs/m3443/usr/dtmurnane/Side_Work/ACTS/outputs/snakemake_tests/test_128cpu"
+events: 1
 hard_process: "Top:qqbar2ttbar"
-pileup: 10
+pileup: 200
 seed: 42
 output_root: true
 output_csv: false

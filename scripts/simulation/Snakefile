@@ -1,19 +1,20 @@
 from pathlib import Path
 
-configfile: "colliderml_dev/configs_development/testing_and_validation/snakemake_test.yaml"
-
-# Define output directory structure
-OUTPUT_DIR = Path(config["output"])
-if "subdir" in config:
-    OUTPUT_DIR = OUTPUT_DIR / config["subdir"]
+# configfile: "colliderml_dev/configs_development/testing_and_validation/snakemake_test.yaml" # Remove this default
 
 # Get optional parameters with defaults
 seed = config.get("seed", None)
-subdir = config.get("subdir", None)
+output_subdir = config.get("output_subdir", None)
+
+# Define output directory structure
+OUTPUT_DIR = Path(config["output"])
+if output_subdir:
+    OUTPUT_DIR = OUTPUT_DIR / output_subdir
 
 # Get digi/reco flags
 digi_enabled = config.get("digi", True)
 reco_enabled = config.get("reco", False)
+vertexing_enabled = config.get("vertexing", False)
 output_root = config.get("output_root", True)
 
 rule all:
@@ -21,15 +22,17 @@ rule all:
         # Only require digitization outputs if digi=True
         [OUTPUT_DIR / "simhits.root", OUTPUT_DIR / "measurements.root", OUTPUT_DIR / "particles.root"] if digi_enabled and output_root else []
         # Add reconstruction outputs if reco=True
-        + ([OUTPUT_DIR / "tracks.root", OUTPUT_DIR / "vertices.root"] if reco_enabled and output_root else [])
+        + ([OUTPUT_DIR / "tracksummary_ckf.root", OUTPUT_DIR / "tracksummary_ambi.root"] if reco_enabled and output_root else [])
+        + ([OUTPUT_DIR / "vertices.root"] if reco_enabled and vertexing_enabled and output_root else [])
 
 rule generate_pythia:
     output:
         signal = OUTPUT_DIR / "events.hepmc3",
         pileup = OUTPUT_DIR / "events_pileup.hepmc3"
     params:
+        config_path = workflow.configfiles[0],
         seed_arg = lambda wildcards: f"--seed {seed}" if seed is not None else "",
-        subdir_arg = lambda wildcards: f"--output-subdir {subdir}" if subdir is not None else ""
+        subdir_arg = lambda wildcards: f"--output-subdir {output_subdir}" if output_subdir else ""
     benchmark:
         str(OUTPUT_DIR / "benchmarks/generate_pythia.tsv")
     log:
@@ -38,7 +41,7 @@ rule generate_pythia:
         """
         mkdir -p {OUTPUT_DIR}/logs {OUTPUT_DIR}/benchmarks && \
         python colliderml_dev/scripts/simulation/pythia_gen.py \
-            --config colliderml_dev/configs_development/testing_and_validation/snakemake_test.yaml \
+            --config {params.config_path} \
             {params.seed_arg} \
             {params.subdir_arg} \
             2>&1 | tee {log}
@@ -51,8 +54,9 @@ rule merge_and_smear:
     output:
         merged = OUTPUT_DIR / "merged_events.hepmc3"
     params:
+        config_path = workflow.configfiles[0],
         seed_arg = lambda wildcards: f"--seed {seed}" if seed is not None else "",
-        subdir_arg = lambda wildcards: f"--output-subdir {subdir}" if subdir is not None else ""
+        subdir_arg = lambda wildcards: f"--output-subdir {output_subdir}" if output_subdir else ""
     benchmark:
         str(OUTPUT_DIR / "benchmarks/merge_and_smear.tsv")
     log:
@@ -60,7 +64,7 @@ rule merge_and_smear:
     shell:
         """
         python colliderml_dev/scripts/simulation/merge_and_smear.py \
-            --config colliderml_dev/configs_development/testing_and_validation/snakemake_test.yaml \
+            --config {params.config_path} \
             {params.seed_arg} \
             {params.subdir_arg} \
             2>&1 | tee {log}
@@ -72,8 +76,9 @@ rule ddsim:
     output:
         edm4hep = OUTPUT_DIR / "edm4hep.root"
     params:
+        config_path = workflow.configfiles[0],
         seed_arg = lambda wildcards: f"--seed {seed}" if seed is not None else "",
-        subdir_arg = lambda wildcards: f"--output-subdir {subdir}" if subdir is not None else ""
+        subdir_arg = lambda wildcards: f"--output-subdir {output_subdir}" if output_subdir else ""
     benchmark:
         str(OUTPUT_DIR / "benchmarks/ddsim.tsv")
     log:
@@ -81,7 +86,7 @@ rule ddsim:
     shell:
         """
         python colliderml_dev/scripts/simulation/ddsim_run.py \
-            --config colliderml_dev/configs_development/testing_and_validation/snakemake_test.yaml \
+            --config {params.config_path} \
             {params.seed_arg} \
             {params.subdir_arg} \
             2>&1 | tee {log}
@@ -101,8 +106,9 @@ rule digi_and_reco:
         tracks = OUTPUT_DIR / "tracks.root" if reco_enabled and output_root else [],
         vertices = OUTPUT_DIR / "vertices.root" if reco_enabled and output_root else []
     params:
+        config_path = workflow.configfiles[0],
         seed_arg = lambda wildcards: f"--seed {seed}" if seed is not None else "",
-        subdir_arg = lambda wildcards: f"--output-subdir {subdir}" if subdir is not None else ""
+        subdir_arg = lambda wildcards: f"--output-subdir {output_subdir}" if output_subdir else ""
     benchmark:
         str(OUTPUT_DIR / "benchmarks/digi_and_reco.tsv")
     log:
@@ -110,7 +116,7 @@ rule digi_and_reco:
     shell:
         """
         python colliderml_dev/scripts/simulation/digi_and_reco.py \
-            --config colliderml_dev/configs_development/testing_and_validation/snakemake_test.yaml \
+            --config {params.config_path} \
             {params.seed_arg} \
             {params.subdir_arg} \
             2>&1 | tee {log}

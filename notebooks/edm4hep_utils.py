@@ -55,6 +55,21 @@ mc_particles = [
 ]
 
 
+def calculate_R(x, y, z=None):
+    """Calculate R (radial distance) from x,y,z coordinates"""
+    if z is None:
+        return np.sqrt(x**2 + y**2)
+    return np.sqrt(x**2 + y**2 + z**2)
+
+def calculate_theta(r, z):
+    """Calculate theta (polar angle) from r,z coordinates"""
+    return np.arctan2(r, z)
+
+def calculate_eta(theta):
+    """Calculate pseudorapidity from theta"""
+    return -np.log(np.tan(theta/2))
+
+
 def load_edm4hep_file(file_path, event_num=None):
     """Load EDM4hep file and return event data.
     
@@ -78,8 +93,8 @@ def _process_event(events, event_idx):
     """Process a single event and return its dictionary of DataFrames."""
     return {
         "tracker_df": build_tracker_df(events, event_idx),
-        "ecal_hits_df": build_calo_df(events, event_idx)[0],
-        "ecal_contrib_df": build_calo_df(events, event_idx)[1],
+        "calo_hits_df": build_calo_df(events, event_idx)[0],
+        "calo_contrib_df": build_calo_df(events, event_idx)[1],
         "particles_df": build_particle_df(events, event_idx)[0],
         "parents_df": build_particle_df(events, event_idx)[1],
         "daughters_df": build_particle_df(events, event_idx)[2]
@@ -123,8 +138,11 @@ def _process_tracker_hits(hits, particle_links, detector_name, event_idx):
     }
     
     df = pd.DataFrame(hit_dict)
-    df['r'] = np.sqrt(df['x']**2 + df['y']**2)
+    df['r'] = calculate_R(df['x'], df['y'])
+    df['R'] = calculate_R(df['x'], df['y'], df['z'])
     df['phi'] = np.arctan2(df['y'], df['x'])
+    df['theta'] = calculate_theta(df['r'], df['z'])
+    df['eta'] = calculate_eta(df['theta'])
     df['pt'] = np.sqrt(df['px']**2 + df['py']**2)
     
     return df
@@ -160,6 +178,22 @@ def build_calo_df(events, event_idx, detector_name=None):
 
 def _process_calo_hits(hits, contributions, particle_links, detector_name, event_idx):
     """Process calorimeter hits for a single event"""
+
+    """
+
+
+    -------------------- IMPORTANT --------------------
+
+    THIS FUNCTION IS NOT CORRECT YET!
+    WE NEED TO FIX THE INDEXING OF THE CONTRIBUTIONS
+
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    ---------------------------------------------------
+
+
+    
+    """
+
     hit_dict = {
         'cellID': hits[f"{detector_name}.cellID"][event_idx],
         'energy': hits[f"{detector_name}.energy"][event_idx],
@@ -171,12 +205,11 @@ def _process_calo_hits(hits, contributions, particle_links, detector_name, event
     }
     
     hits_df = pd.DataFrame(hit_dict)
-    hits_df['r'] = np.sqrt(hits_df['x']**2 + hits_df['y']**2)
+    hits_df['r'] = calculate_R(hits_df['x'], hits_df['y'])
+    hits_df['R'] = calculate_R(hits_df['x'], hits_df['y'], hits_df['z'])
     hits_df['phi'] = np.arctan2(hits_df['y'], hits_df['x'])
-    hits_df['R'] = np.sqrt(hits_df['x']**2 + hits_df['y']**2 + hits_df['z']**2)
-    hits_df['theta'] = np.arctan2(hits_df['r'], hits_df['z'])
-    hits_df['eta'] = -np.log(np.tan(hits_df['theta']/2))
-    
+    hits_df['theta'] = calculate_theta(hits_df['r'], hits_df['z'])
+    hits_df['eta'] = calculate_eta(hits_df['theta'])
     
     contrib_dict = {
         'PDG': contributions[f"{detector_name}Contributions.PDG"][event_idx],
@@ -219,13 +252,13 @@ def build_particle_df(events, event_idx):
     
     parents = events["_MCParticles_parents"].arrays()
     parent_dict = {
-        'index': parents["_MCParticles_parents.index"][event_idx],
+        'particle_id': parents["_MCParticles_parents.index"][event_idx],
         'collectionID': parents["_MCParticles_parents.collectionID"][event_idx]
     }
     
     daughters = events["_MCParticles_daughters"].arrays()
     daughter_dict = {
-        'index': daughters["_MCParticles_daughters.index"][event_idx],
+        'particle_id': daughters["_MCParticles_daughters.index"][event_idx],
         'collectionID': daughters["_MCParticles_daughters.collectionID"][event_idx]
     }
     
@@ -239,3 +272,83 @@ def build_particle_df(events, event_idx):
     particles_df['phi'] = np.arctan2(particles_df['py'], particles_df['px'])
     
     return particles_df, parents_df, daughters_df
+
+def create_truth_clusters(event, detector='ECalBarrelCollection'):
+    """Create truth-based clustering from EDM4hep event data.
+    
+    Args:
+        event (dict): Dictionary containing EDM4hep event data with keys:
+            - tracker_df
+            - calo_hits_df
+            - particles_df
+            - calo_contrib_df
+            - parents_df
+            - daughters_df
+        detector (str): Name of detector collection to process
+            
+    Returns:
+        pd.DataFrame: DataFrame containing cell information with clustering results:
+            - All original cell information
+            - highest_energy_particle_id: ID of particle contributing most energy
+    """
+    # Extract and filter relevant dataframes
+    cells_df = event["calo_hits_df"]
+    hits_df = event["calo_contrib_df"]
+    
+    # Filter for specific detector
+    cells_df = cells_df[cells_df.detector == detector]
+    hits_df = hits_df[hits_df.detector == detector]
+    
+    # Create hit to cell mapping
+    hit_to_cell = pd.DataFrame({'hit_idx': np.arange(len(hits_df))})
+    cells_df['cellID'] = cells_df['cellID'].astype('uint64')
+    
+    # Map hits to cells
+    cell_starts = cells_df.contribution_begin.values
+    cell_ends = cells_df.contribution_end.values
+    hit_indices = hit_to_cell.hit_idx.values
+    
+    cell_idx = np.searchsorted(cell_starts, hit_indices, side='right') - 1
+    valid_hits = (hit_indices >= cell_starts[cell_idx]) & (hit_indices < cell_ends[cell_idx])
+    hit_to_cell['cell_idx'] = np.where(valid_hits, cell_idx, -1)
+    
+    # Get positions for valid hits
+    valid_hits_df = hit_to_cell[hit_to_cell.cell_idx >= 0]
+    positions = pd.merge(
+        valid_hits_df,
+        cells_df[['x', 'y', 'z', 'r', 'phi', 'eta', 'cellID']],
+        left_on='cell_idx',
+        right_index=True,
+        how='left'
+    )
+    
+    # Update hits with position information
+    hits_df = hits_df.copy()
+    hits_df.loc[valid_hits_df.hit_idx, ['x', 'y', 'z', 'r', 'phi', 'eta']] = \
+        positions[['x', 'y', 'z', 'r', 'phi', 'eta']].values
+    hits_df.loc[valid_hits_df.hit_idx, 'cellID'] = positions['cellID'].astype('uint64')
+    
+    # Aggregate hits by cell and particle
+    particle_total_hits = hits_df.groupby(['cellID', 'particle_id']).agg({
+        'energy': 'sum',
+        'time': 'mean',
+        'x': 'first',
+        'y': 'first',
+        'z': 'first',
+        'detector': 'first'
+    }).reset_index()
+    
+    # Find highest energy particle per cell
+    highest_energy_particle = (particle_total_hits
+        .sort_values(by='energy', ascending=False)
+        .groupby('cellID')
+        .first()[['particle_id']]
+        .reset_index())
+    
+    # Create final dataframe with cluster labels
+    calo_hits_df = cells_df.merge(
+        highest_energy_particle, 
+        on='cellID'
+    ).rename(columns={'particle_id': 'highest_energy_particle_id'})
+    
+    return calo_hits_df

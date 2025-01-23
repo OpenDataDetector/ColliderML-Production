@@ -1,0 +1,25 @@
+# Example configuration
+version: "v1"
+stage: "merge_smear"  # One of: generation, merge_smear, simulation, digitization
+job_config:
+  # Number of nodes will be calculated as n_runs / runs_per_node
+  n_runs: 128  # Number of jobs to submit
+  runs_per_node: 128  # Number of runs per node
+  time_limit: "00:30:00"  # Time limit per job
+  qos: "debug"
+
+validation_config:
+  time_limit: "00:10:00"
+  qos: "debug"
+
+# Stage-specific configurations
+events: 10  # Number of events per run, total number of events will be n_runs * events
+vertex_sigma_xy: 0.0125
+vertex_sigma_z: 55.5
+vertex_sigma_t: 5.0
+
+# Common settings
+common:
+  output_base_dir: "/global/cfs/cdirs/m3443/usr/dtmurnane/Side_Work/ACTS/outputs/low_pileup_pilot/chichi/"
+  account: "atlas"
+  container: "registry.cern.ch/atlasadc/atlas-grid-almalinux9"

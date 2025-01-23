@@ -74,7 +74,14 @@ def parse_args():
         "--reco",
         help="Run reconstruction",
         action="store_true",
-        default=True,
+        default=False,
+    )
+    
+    parser.add_argument(
+        "--vertexing",
+        help="Run vertexing",
+        action="store_true",
+        default=False,
     )
     return parser.parse_args()
 
@@ -103,6 +110,7 @@ def setup_acts_reconstruction(input_path, output_dir, config, rnd, logger=None):
         else geoDir / "config/odd-digi-smearing-config.json"
     )
 
+    oddSeedingSel = geoDir / "config/odd-seeding-config.json"
     oddMaterialDeco = acts.IMaterialDecorator.fromFile(oddMaterialMap)
     
     # Get detector
@@ -132,6 +140,7 @@ def setup_acts_reconstruction(input_path, output_dir, config, rnd, logger=None):
         )
     )
     s.addReader(edm4hepReader)
+    s.addWhiteboardAlias("particles", edm4hepReader.config.outputParticlesGenerator)
     
     # Add particle selection
     addParticleSelection(
@@ -155,8 +164,8 @@ def setup_acts_reconstruction(input_path, output_dir, config, rnd, logger=None):
             trackingGeometry,
             field,
             digiConfigFile=oddDigiConfig,
-            outputDirRoot=output_dir if config.output_root else None,
-            outputDirCsv=output_dir if config.output_csv else None,
+            outputDirRoot=None,  # Disable root output
+            outputDirCsv=None,   # Disable CSV output
             rnd=rnd,
             logLevel=acts.logging.DEBUG,
         )
@@ -169,10 +178,21 @@ def setup_acts_reconstruction(input_path, output_dir, config, rnd, logger=None):
             s,
             trackingGeometry,
             field,
-            seedingConfig=geoDir / "config/odd-seeding-config.json",
+            initialSigmas=[
+                1 * u.mm,
+                1 * u.mm,
+                1 * u.degree,
+                1 * u.degree,
+                0.1 * u.e / u.GeV,
+                1 * u.ns,
+            ],
+            initialSigmaPtRel=0.1,
+            initialVarInflation=[1.0] * 6,
+            geoSelectionConfigFile=oddSeedingSel,
+            outputDirRoot=None  # Disable root output
         )
         
-        # Add CKF tracking
+        # Add CKF tracking with all performance writing disabled
         addCKFTracks(
             s,
             trackingGeometry,
@@ -195,12 +215,33 @@ def setup_acts_reconstruction(input_path, output_dir, config, rnd, logger=None):
                 stripVolumes=[23, 24, 25],
                 maxPixelHoles=1,
                 maxStripHoles=2,
+                constrainToVolumes=[
+                    2,  # beam pipe
+                    32,
+                    4,  # beam pip gap
+                    16,
+                    17,
+                    18,  # pixel
+                    20,  # PST
+                    23,
+                    24,
+                    25,  # short strip
+                    26,
+                    8,  # long strip gap
+                    28,
+                    29,
+                    30,  # long strip
+                ],
             ),
-            outputDirRoot=output_dir if config.output_root else None,
-            writeCovMat=True,
+            outputDirRoot=None,  # Disable root output
+            writeSummary=False,  # Disable track summary
+            writeStates=False,   # Disable track states
+            writeFitterPerformance=False,  # Disable fitter performance
+            writeFinderPerformance=False,  # Disable finder performance
+            writeCovMat=False    # Disable covariance matrix
         )
         
-        # Add ambiguity resolution
+        # Add ambiguity resolution with performance off
         if config.ambi_solver == "ML":
             addAmbiguityResolutionML(
                 s,
@@ -209,8 +250,8 @@ def setup_acts_reconstruction(input_path, output_dir, config, rnd, logger=None):
                     maximumIterations=1000000,
                     nMeasurementsMin=7,
                 ),
-                outputDirRoot=output_dir if config.output_root else None,
-                onnxModelFile=str(config.ambi_config),
+                outputDirRoot=None,  # Disable root output
+                onnxModelFile=str(config.ambi_config)
             )
         elif config.ambi_solver == "scoring":
             addScoreBasedAmbiguityResolution(
@@ -222,8 +263,8 @@ def setup_acts_reconstruction(input_path, output_dir, config, rnd, logger=None):
                     pTMax=1400,
                     pTMin=0.5,
                 ),
-                outputDirRoot=output_dir if config.output_root else None,
-                ambiVolumeFile=config.ambi_config,
+                outputDirRoot=None,  # Disable root output
+                ambiVolumeFile=config.ambi_config
             )
         else:
             addAmbiguityResolution(
@@ -233,20 +274,17 @@ def setup_acts_reconstruction(input_path, output_dir, config, rnd, logger=None):
                     maximumIterations=1000000,
                     nMeasurementsMin=7,
                 ),
-                outputDirRoot=output_dir if config.output_root else None,
+                outputDirRoot=None  # Disable root output
             )
         
-        # Add vertex fitting
-        addVertexFitting(
-            s,
-            field,
-            vertexFinder=VertexFinder.ADAPTIVE,
-            outputDirRoot=output_dir if config.output_root else None,
-        )
-    
-    # Add ROOT writers if enabled
-    if config.output_root:
-        add_root_writers(s, output_dir)
+        # Add vertex fitting with performance off
+        if config.vertexing:
+            addVertexFitting(
+                s,
+                field,
+                vertexFinder=VertexFinder.AMVF,
+                outputDirRoot=None  # Disable root output
+            )
     
     return s
 

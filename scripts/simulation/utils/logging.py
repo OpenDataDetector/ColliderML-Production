@@ -12,7 +12,7 @@ def setup_logging(name="PDA_Chain"):
         '%(asctime)s %(levelname)-8s %(name)-12s %(message)s'
     ))
     logger.addHandler(handler)
-    logger.setLevel(logging.DEBUG)
+    logger.setLevel(logging.INFO)
     return logger
 
 class TimingRecorder:

@@ -1,0 +1,24 @@
+# Base parameters from PDA_testing.yaml
+output: "/global/cfs/cdirs/m3443/usr/dtmurnane/Side_Work/ACTS/outputs/snakemake_tests/test_1"
+events: 1
+hard_process: "Top:qqbar2ttbar"
+pileup: 200
+seed: 42
+output_root: true
+output_csv: false
+
+# Vertex smearing parameters
+vertex_sigma_xy: 0.0125
+vertex_sigma_z: 55.5
+vertex_sigma_t: 5.0
+
+# Geant4 config
+g4_post_pt: 50.0
+g4_post_eta: [-4.0, 4.0]
+
+# Reco & digi config
+digi: True
+reco: False
+
+digi_config: "odd-digi-smearing-config.json"      # For digitization
+ambi_solver: "greedy"                            # For ambiguity resolution 
