@@ -3,6 +3,7 @@ from pathlib import Path
 import argparse
 import hashlib
 import logging
+import time
 
 logging.basicConfig(
     level=logging.INFO,
@@ -65,6 +66,12 @@ def create_base_parser(description):
         type=str,
         default="",
     )
+    parser.add_argument(
+        "--performance-metrics",
+        help="Enable performance metrics collection and output",
+        action="store_true",
+        default=False,
+    )
     return parser
 
 def load_config(args):
@@ -84,6 +91,8 @@ def load_config(args):
         args.seed = hash_seed_string(str(args.seed))
         logger.info(f"Final seed value: {args.seed} (from original input: {original_seed})")
     else:
-        logger.info("No seed provided, will use time-based seed")
+        # Use current time as default seed
+        args.seed = int(time.time())
+        logger.info(f"No seed provided, using time-based seed: {args.seed}")
         
     return args

@@ -1,25 +1,29 @@
 # Example configuration
-version: "v1_testing"
+dataset: "gg2ttbar"
+version: "v1"
 stage: "digitization"  # One of: generation, merge_smear, simulation, digitization
 job_config:
   # Number of nodes will be calculated as n_runs / runs_per_node
-  n_runs: 16  # Number of jobs to submit
-  runs_per_node: 8  # Number of runs per node
-  time_limit: "00:10:00"  # Time limit per job
-  qos: "debug"
+  n_runs: 128  # Number of jobs to submit
+  runs_per_node: 32  # Number of runs per node
+  time_limit: "00:30:00"  # Time limit per job
+  qos: "regular"
 
 validation_config:
-  n_jobs: 1
-  time_limit: "00:20:00"
-  qos: "debug"
+  time_limit: "00:10:00"
+  qos: "regular"
 
 # Stage-specific configurations
-events: 2  # Number of events per run, total number of events will be n_runs * events
+events: 10  # Number of events per run, total number of events will be n_runs * events
 digi: True
-reco: False
+reco: True
+performance_metrics: True
+output_csv: True
+# digi_config: "odd-digi-geometric-config.json"      # For digitization
+ambi_solver: "greedy"                            # For ambiguity resolution 
 
 # Common settings
 common:
-  output_base_dir: "/global/cfs/cdirs/m3443/usr/dtmurnane/Side_Work/ACTS/outputs/python_submission_tests/"
+  output_base_dir: "/global/cfs/cdirs/m3443/usr/dtmurnane/Side_Work/ACTS/outputs/low_pileup_pilot/"
   account: "atlas"
   container: "registry.cern.ch/atlasadc/atlas-grid-almalinux9"

@@ -15,10 +15,11 @@ class JobSubmitter:
     
     VALID_STAGES = ["generation", "merge_smear", "simulation", "digitization"]
     
-    def __init__(self, config_path, dry_run=False):
+    def __init__(self, config_path, dry_run=False, run_range=None):
         """Initialize with YAML config"""
         self.dry_run = dry_run
         self.config_path = config_path
+        self.run_range = run_range
         with open(config_path) as f:
             self.config = yaml.safe_load(f)
             
@@ -31,7 +32,7 @@ class JobSubmitter:
         if self.config["stage"] not in self.VALID_STAGES:
             raise ValueError(f"Invalid stage. Must be one of {self.VALID_STAGES}")
             
-        required_fields = ["job_config", "common", "version"]
+        required_fields = ["job_config", "common", "version", "dataset"]
         for field in required_fields:
             if field not in self.config:
                 raise ValueError(f"Missing required config section: {field}")
@@ -43,14 +44,22 @@ class JobSubmitter:
     
     def calculate_job_distribution(self):
         """Calculate number of nodes needed based on runs"""
-        n_runs = self.config["job_config"]["n_runs"]
-        runs_per_node = self.config["job_config"]["runs_per_node"]
-        self.n_nodes = math.ceil(n_runs / runs_per_node)
+        if self.run_range:
+            start_run, end_run = self.run_range
+            n_runs = end_run - start_run
+            runs_per_node = self.config["job_config"]["runs_per_node"]
+            self.n_nodes = math.ceil(n_runs / runs_per_node)
+            self.start_run = start_run
+        else:
+            n_runs = self.config["job_config"]["n_runs"]
+            runs_per_node = self.config["job_config"]["runs_per_node"]
+            self.n_nodes = math.ceil(n_runs / runs_per_node)
+            self.start_run = 0
         
     def setup_directories(self):
         """Create necessary directories with new structure"""
         base_dir = Path(self.config["common"]["output_base_dir"])
-        self.version_dir = base_dir / self.config["version"]
+        self.version_dir = base_dir / self.config["dataset"] / self.config["version"]
         self.run_dir = self.version_dir / "runs"
         self.log_dir = self.version_dir / "logs" / f"stage_{self.config['stage']}"
         self.validation_dir = self.version_dir / "validation" / f"stage_{self.config['stage']}"
@@ -65,15 +74,20 @@ class JobSubmitter:
     
     def get_run_id(self, node_idx, process_idx):
         """Calculate run ID from node and process indices"""
-        run_id = (node_idx * self.config["job_config"]["runs_per_node"]) + process_idx
-        # Check if this run_id exceeds n_runs
-        if run_id > self.config["job_config"]["n_runs"]:
-            return None
+        if self.run_range:
+            start_run, end_run = self.run_range
+            run_id = start_run + (node_idx * self.config["job_config"]["runs_per_node"]) + process_idx
+            if run_id >= end_run:
+                return None
+        else:
+            run_id = (node_idx * self.config["job_config"]["runs_per_node"]) + process_idx
+            if run_id >= self.config["job_config"]["n_runs"]:
+                return None
         return run_id
         
     def get_run_dir(self, run_id):
         """Get directory for specific run"""
-        return self.run_dir / f"run_{run_id}"
+        return self.run_dir / f"{run_id}"
     
     def create_slurm_job(self, node_idx):
         """Create Slurm job object for given node"""
@@ -109,14 +123,18 @@ class JobSubmitter:
         slurm.add_cmd("source cml_env/bin/activate && \\")
         slurm.add_cmd("source build/python/setup.sh && \\")
 
-        previous_runs = node_idx * self.config["job_config"]["runs_per_node"]
+        # Calculate run offset based on run range or normal distribution
+        if self.run_range:
+            previous_runs = self.run_range[0] + (node_idx * self.config["job_config"]["runs_per_node"])
+        else:
+            previous_runs = node_idx * self.config["job_config"]["runs_per_node"]
         
         # Prepare stage-specific command using bash arithmetic for run calculation
         cmd = (f"python {self.get_stage_script()} "
               f"--config {self.config_path} "
               f"--output {self.run_dir} "
               f"--output-subdir \$(({previous_runs} + SLURM_PROCID)) "  # Bash arithmetic for run calculation
-              f"--seed {self.config['version']}_run\$(({previous_runs} + SLURM_PROCID))")
+              f"--seed {self.config['dataset']}_{self.config['version']}_run\$(({previous_runs} + SLURM_PROCID))")
         
         # Close container command
         cmd += "\""
@@ -223,9 +241,11 @@ def main():
     parser.add_argument("config", type=str, help="Path to YAML config file")
     parser.add_argument("--dry-run", action="store_true", 
                        help="Don't submit jobs, just save batch scripts")
+    parser.add_argument("--run-range", type=int, nargs=2, metavar=('START', 'END'),
+                       help="Range of runs to process (START inclusive, END exclusive)")
     args = parser.parse_args()
     
-    submitter = JobSubmitter(args.config, dry_run=args.dry_run)
+    submitter = JobSubmitter(args.config, dry_run=args.dry_run, run_range=args.run_range)
     job_ids = submitter.submit_jobs()
     validation_ids = submitter.submit_validation_jobs(job_ids)
     

@@ -51,73 +51,22 @@ def run_pythia_stage(output_dir, config, logger=None):
     hard_scatter_path = output_dir / "events.hepmc3"
     pileup_path = output_dir / "events_pileup.hepmc3"
     
-    if "SUSY:" in config.hard_process:
-        logger.info("Detected SUSY process, adding initialization settings...")
-        base_settings = [
-            # 1. Debug output (corrected)
-            "Init:showProcesses = on",
-            "Init:showChangedSettings = on",
-            "Init:showAllSettings = on",
-            "Init:showMultipartonInteractions = on",
-            "Next:numberCount = 0",
-            "Next:numberShowLHA = 1",
-            "Next:numberShowInfo = 1",
-            "Next:numberShowProcess = 1",
-            "Print:quiet = off",
-            
-            # 2. SUSY setup (corrected)
-            "SUSY:all = on",  # Enable all SUSY processes first
-            "SLHA:file = none",  # Don't use an SLHA file
-            "SUSY:model = 2",  # Use internal MSSM model
-            
-            # 3. Beam settings 
-            "Beams:idA = 2212",
-            "Beams:idB = 2212",
-            "Beams:eCM = 13000.",
-            
-            # 4. Particle masses and properties
-            "1000022:m0 = 100.0",  # LSP mass
-            "1000022:tau0 = 0.0",  # LSP stable
-            "1000023:m0 = 200.0",  # NLSP mass
-            "1000023:tau0 = 0.0",  # NLSP stable
-            "1000021:m0 = 800.0",  # Gluino mass
-            "1000001:m0 = 1000.0", # Squark mass
-            "2000001:m0 = 1000.0", # Squark mass
-            
-            # 5. Process selection
-            "SUSY:qqbar2chi0chi0 = on",  # Turn on specific process after model setup
-            
-            # 6. General settings
-            "PartonLevel:ISR = on",
-            "PartonLevel:FSR = on",
-            "PartonLevel:MPI = on",
-            "HadronLevel:all = on",
-            
-            # 7. Additional SUSY settings
-            "SUSY:qq2chi0chi0 = on",  # Additional production channels
-            "SUSY:gg2chi0chi0 = on",
-        ]
-        pythia_settings = base_settings
-    else:
-        pythia_settings = [f"{config.hard_process}=on"]
+    # Initialize settings list from config
+    pythia_settings = []
     
-    # Add any additional user settings, but avoid duplicates
-    if hasattr(config, 'pythia_settings') and config.pythia_settings:
+    # Add all settings from config if present
+    if hasattr(config, 'pythia_settings'):
         if isinstance(config.pythia_settings, str):
             logger.debug("Processing command-line pythia settings")
-            additional_settings = [s.strip() for s in config.pythia_settings.split(',')]
+            pythia_settings.extend([s.strip() for s in config.pythia_settings.split(',')])
         elif isinstance(config.pythia_settings, list):
             logger.debug("Processing YAML list pythia settings")
-            additional_settings = config.pythia_settings
+            pythia_settings.extend(config.pythia_settings)
         else:
             raise ValueError("pythia_settings must be either a comma-separated string or a list")
-        
-        # Only add settings that aren't already present
-        for setting in additional_settings:
-            setting_name = setting.split('=')[0].strip()
-            if not any(s.startswith(setting_name) for s in pythia_settings):
-                pythia_settings.append(setting)
-        logger.info(f"Added user settings: {additional_settings}")
+    
+    # Always append the hard process at the end
+    pythia_settings.append(f"{config.hard_process}=on")
     
     logger.info(f"Generating {config.events} events with {config.pileup} pileup each")
     logger.info(f"Final Pythia8 settings: {pythia_settings}")
@@ -131,7 +80,7 @@ def run_pythia_stage(output_dir, config, logger=None):
             outputHepMC=hard_scatter_path,
             outputHepMCPileup=pileup_path,
             rnd=rnd,
-            logLevel=acts.logging.VERBOSE  # Even more detailed logging
+            logLevel=acts.logging.DEBUG
         )
         logger.debug("Pythia8 generator created successfully")
         
@@ -142,7 +91,6 @@ def run_pythia_stage(output_dir, config, logger=None):
         except Exception as e:
             logger.error(f"Error during sequencer run: {str(e)}")
             logger.error(traceback.format_exc())
-            # Try to get more info about sequencer state
             logger.error(f"Sequencer state at crash:")
             logger.error(f"  Number of events: {s.config.events}")
             logger.error(f"  Current event: {s.currentEvent}")

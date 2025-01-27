@@ -1,4 +1,5 @@
 # Example configuration
+dataset: "gg2ttbar"
 version: "v1"
 stage: "generation"  # One of: generation, merge_smear, simulation, digitization
 job_config:
@@ -19,6 +20,6 @@ hard_process: "Top:gg2ttbar"
 
 # Common settings
 common:
-  output_base_dir: "/global/cfs/cdirs/m3443/usr/dtmurnane/Side_Work/ACTS/outputs/low_pileup_pilot/gg2ttbar/"
+  output_base_dir: "/global/cfs/cdirs/m3443/usr/dtmurnane/Side_Work/ACTS/outputs/low_pileup_pilot/"
   account: "atlas"
   container: "registry.cern.ch/atlasadc/atlas-grid-almalinux9"

@@ -1,4 +1,5 @@
 # Example configuration
+dataset: "gg2ttbar"
 version: "v1"
 stage: "simulation"  # One of: generation, merge_smear, simulation, digitization
 job_config:
@@ -17,6 +18,6 @@ events: 10  # Number of events per run, total number of events will be n_runs * 
 
 # Common settings
 common:
-  output_base_dir: "/global/cfs/cdirs/m3443/usr/dtmurnane/Side_Work/ACTS/outputs/low_pileup_pilot/gg2ttbar/"
+  output_base_dir: "/global/cfs/cdirs/m3443/usr/dtmurnane/Side_Work/ACTS/outputs/low_pileup_pilot/"
   account: "atlas"
   container: "registry.cern.ch/atlasadc/atlas-grid-almalinux9"

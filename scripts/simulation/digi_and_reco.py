@@ -65,6 +65,12 @@ def parse_args():
         default=True,
     )
     parser.add_argument(
+        "--output-csv",
+        help="Write CSV output files",
+        action="store_true",
+        default=False,
+    )
+    parser.add_argument(
         "--digi",
         help="Run digitization",
         action="store_true",
@@ -96,6 +102,9 @@ def setup_acts_reconstruction(input_path, output_dir, config, rnd, logger=None):
     # Get detector and field
     geoDir = getOpenDataDetectorDirectory()
     field = acts.ConstantBField(acts.Vector3(0.0, 0.0, 2.0 * u.T))
+    
+    # Set performance output directory based on flag
+    perf_output = output_dir if config.performance_metrics else None
     
     # Load material map
     oddMaterialMap = (
@@ -148,9 +157,12 @@ def setup_acts_reconstruction(input_path, output_dir, config, rnd, logger=None):
         config=ParticleSelectorConfig(
             rho=(0.0, 24 * u.mm),
             absZ=(0.0, 1.0 * u.m),
-            eta=(-4.0, 4.0),
-            pt=(0.0 * u.GeV, None),
-            removeNeutral=False,
+            eta=(-3.0, 3.0),
+            pt=(1.0 * u.GeV, None),
+            # time=(0.0 * u.ns, 25 * u.ns), # TODO: This removes all particles - understand why!
+            # measurements=(3, None),
+            removeNeutral=True,
+            # removeSecondaries=True,
         ),
         inputParticles="particles_input",
         outputParticles="particles_selected",
@@ -164,8 +176,8 @@ def setup_acts_reconstruction(input_path, output_dir, config, rnd, logger=None):
             trackingGeometry,
             field,
             digiConfigFile=oddDigiConfig,
-            outputDirRoot=None,  # Disable root output
-            outputDirCsv=None,   # Disable CSV output
+            outputDirRoot=perf_output if config.output_root else None,
+            outputDirCsv=None,
             rnd=rnd,
             logLevel=acts.logging.DEBUG,
         )
@@ -189,10 +201,10 @@ def setup_acts_reconstruction(input_path, output_dir, config, rnd, logger=None):
             initialSigmaPtRel=0.1,
             initialVarInflation=[1.0] * 6,
             geoSelectionConfigFile=oddSeedingSel,
-            outputDirRoot=None  # Disable root output
+            outputDirRoot=perf_output if config.output_root else None
         )
         
-        # Add CKF tracking with all performance writing disabled
+        # Add CKF tracking
         addCKFTracks(
             s,
             trackingGeometry,
@@ -233,15 +245,15 @@ def setup_acts_reconstruction(input_path, output_dir, config, rnd, logger=None):
                     30,  # long strip
                 ],
             ),
-            outputDirRoot=None,  # Disable root output
-            writeSummary=False,  # Disable track summary
-            writeStates=False,   # Disable track states
-            writeFitterPerformance=False,  # Disable fitter performance
-            writeFinderPerformance=False,  # Disable finder performance
-            writeCovMat=False    # Disable covariance matrix
+            outputDirRoot=perf_output if config.output_root else None,
+            outputDirCsv=perf_output if config.output_csv else None,
+            writeCovMat=config.performance_metrics,
+            writeTrackStates=config.performance_metrics,
+            writeTrackSummary=config.performance_metrics,
+            writePerformance=config.performance_metrics,
         )
         
-        # Add ambiguity resolution with performance off
+        # Add ambiguity resolution
         if config.ambi_solver == "ML":
             addAmbiguityResolutionML(
                 s,
@@ -250,8 +262,9 @@ def setup_acts_reconstruction(input_path, output_dir, config, rnd, logger=None):
                     maximumIterations=1000000,
                     nMeasurementsMin=7,
                 ),
-                outputDirRoot=None,  # Disable root output
-                onnxModelFile=str(config.ambi_config)
+                outputDirRoot=perf_output if config.output_root else None,
+                outputDirCsv=perf_output if config.output_csv else None,
+                onnxModelFile=str(config.ambi_config),
             )
         elif config.ambi_solver == "scoring":
             addScoreBasedAmbiguityResolution(
@@ -263,8 +276,9 @@ def setup_acts_reconstruction(input_path, output_dir, config, rnd, logger=None):
                     pTMax=1400,
                     pTMin=0.5,
                 ),
-                outputDirRoot=None,  # Disable root output
-                ambiVolumeFile=config.ambi_config
+                outputDirRoot=perf_output if config.output_root else None,
+                outputDirCsv=perf_output if config.output_csv else None,
+                ambiVolumeFile=config.ambi_config,
             )
         else:
             addAmbiguityResolution(
@@ -274,17 +288,27 @@ def setup_acts_reconstruction(input_path, output_dir, config, rnd, logger=None):
                     maximumIterations=1000000,
                     nMeasurementsMin=7,
                 ),
-                outputDirRoot=None  # Disable root output
+                outputDirRoot=perf_output if config.output_root else None,
+                outputDirCsv=perf_output if config.output_csv else None,
+                writeCovMat=config.performance_metrics,
+                writeTrackStates=config.performance_metrics,
+                writeTrackSummary=config.performance_metrics,
+                writePerformance=config.performance_metrics,
             )
         
-        # Add vertex fitting with performance off
+        # Add vertex fitting
         if config.vertexing:
             addVertexFitting(
                 s,
                 field,
                 vertexFinder=VertexFinder.AMVF,
-                outputDirRoot=None  # Disable root output
+                outputDirRoot=perf_output if config.output_root else None,
+                outputDirCsv=perf_output if config.output_csv else None,
             )
+    
+    # Add ROOT writers if enabled and performance metrics are on
+    if config.output_root and config.performance_metrics:
+        add_root_writers(s, output_dir)
     
     return s
 
@@ -303,19 +327,19 @@ def add_root_writers(s, output_dir):
     s.addWriter(acts.examples.RootParticleFlatWriter(
         config=acts.examples.RootParticleFlatWriter.Config(
             filePath=str(output_dir / "particles.root"),
-            inputParticles="particles_selected"
+            inputParticles="particles_selected" # TODO: Decide on whether we write particles_input or particles_selected
         ),
         level=acts.logging.INFO
     ))
 
 def main():
+    logger = setup_logging()
     try:
         # Parse arguments and load config
         args = parse_args()
         config = load_config(args)
-        logger = setup_logging()
         rnd = acts.examples.RandomNumbers(seed=config.seed)
-        
+
         # Create output directory structure
         output_dir = Path(args.output)
         if args.output_subdir:

@@ -16,6 +16,12 @@ def parse_args():
         type=Path,
         default=None
     )
+    parser.add_argument(
+        "--pdg-file",
+        help="Path to particle.tbl file containing PDG data",
+        type=Path,
+        default=None
+    )
     return parser.parse_args()
 
 def run_ddsim(input_path, output_path, config, logger=None):
@@ -37,10 +43,12 @@ def run_ddsim(input_path, output_path, config, logger=None):
     ddsim.outputFile = str(output_path)
     ddsim.numberOfEvents = config.events
     ddsim.random.seed = config.seed or int(time.time())
+    ddsim.physics.pdgfile = str(config.pdg_file) if config.pdg_file else None
     
     logger.info(f"Running DD4hep simulation with {config.events} events")
     logger.info(f"Input: {input_path}")
     logger.info(f"Output: {output_path}")
+    logger.info(f"PDG file: {config.pdg_file}")
     
     ddsim.run()
 
@@ -53,8 +61,8 @@ def main():
         
         # Create output directory structure
         output_dir = Path(args.output)
-        if args.output_subdir:
-            output_dir = output_dir / args.output_subdir
+        if config.output_subdir:
+            output_dir = output_dir / config.output_subdir
         output_dir.mkdir(parents=True, exist_ok=True)
         
         # Set default input path if not specified

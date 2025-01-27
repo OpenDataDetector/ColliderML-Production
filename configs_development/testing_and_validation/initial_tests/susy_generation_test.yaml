@@ -1,16 +1,35 @@
 output: "/global/cfs/cdirs/m3443/usr/dtmurnane/Side_Work/ACTS/outputs/pda_tests/pda_testing_susy1"
 
 # Stage-specific configurations
-events: 1  # Number of events per run, total number of events will be n_runs * events
-pileup: 0
+events: 1  # Number of events per run
+pileup: 1  # Number of pileup events
+
+# Process to generate
 hard_process: "SUSY:qqbar2chi0chi0"
+
+# Pythia settings list - all settings in Pythia8 format
 pythia_settings:
-  # - "SUSY:all=off"
-  # - "1000022:m0=100.0"
-  # - "1000023:m0=200.0"
-# hard_process: "Top:qqbar2ttbar"
-# pythia_settings:
-#   - "PartonLevel:ISR = on"       # Initial state radiation
-#   - "PartonLevel:FSR = on"       # Final state radiation
-#   - "PartonLevel:MPI = on"       # Multiple parton interactions
-#   - "HadronLevel:all = on"       # Hadronization
+  # Debug output
+  - "Init:showProcesses = on"
+  - "Init:showChangedSettings = on"
+  - "Init:showAllSettings = on"
+  - "Next:numberShowInfo = 1"
+  - "Next:numberShowProcess = 1"
+  - "Next:numberShowEvent = 1"
+  - "Print:quiet = off"
+  
+  # SUSY configuration
+  - "SLHA:file = slha2-example.spc"
+  - "SLHA:verbose = 3"
+  - "SLHA:minMassSM = 100."
+  - "SLHA:useDecayTable = off"
+  
+  # QCD settings
+  - "PartonLevel:MPI = on"
+  - "PartonLevel:ISR = on"
+  - "PartonLevel:FSR = on"
+  - "HadronLevel:Hadronize = on"
+  
+  # Standard settings
+  - "Tune:ee = 7"
+  - "PDF:pSet = 13"
