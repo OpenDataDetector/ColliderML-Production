@@ -3,6 +3,29 @@ import matplotlib.pyplot as plt
 import numpy as np
 from scipy.spatial.distance import cdist
 
+from physics.scoring_functions import weighted_v_score
+
+def adjusted_v_score(labels_true, labels_pred, beta=1.0, labels_weight=None):
+    """Adjusted v-score that properly normalizes near-random performance."""
+    # Get original score
+    _, _, v_score = weighted_v_score(labels_true, labels_pred, beta=beta, labels_weight=labels_weight)
+    
+    # Get random baseline (using your existing method)
+    n_clusters = len(np.unique(labels_true))
+    random_labels = np.random.randint(0, n_clusters, size=len(labels_true))
+    _, _, random_v_score = weighted_v_score(labels_true, random_labels, beta=beta, labels_weight=labels_weight)
+    
+    # If we're very close to random performance, return 0
+    if np.abs(v_score - random_v_score) < 1e-10:
+        return 0.0
+        
+    # Calculate adjusted score
+    adjusted = (v_score - random_v_score) / (1 - random_v_score)
+    
+    # Clip to reasonable range
+    return np.clip(adjusted, 0.0, 1.0)
+
+
 def evaluate_clustering(df, label_column='labels_pred', energy_column='energy', 
                         particle_id_column='particle_id', additional_features=None,
                         energy_weighted=False):
@@ -132,7 +155,8 @@ def evaluate_clustering(df, label_column='labels_pred', energy_column='energy',
     overall_metrics = {
         'purity': overall_purity,
         'efficiency': overall_efficiency,
-        'energy_weighted': energy_weighted
+        'energy_weighted': energy_weighted,
+        "num_clusters": len(cluster_metrics)
     }
     
     return cluster_metrics, overall_metrics
