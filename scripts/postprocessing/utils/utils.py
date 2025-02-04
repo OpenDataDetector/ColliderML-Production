@@ -7,18 +7,19 @@ import glob
 from pathlib import Path
 from typing import List, Dict, Any, Tuple
 
-def get_run_paths(base_dir: str) -> List[str]:
+def get_run_paths(base_dir: str | Path) -> List[Path]:
     """
-    Get all run directories in the dataset, properly sorted.
+    Get paths to all run directories.
     
     Args:
-        base_dir: Base directory containing run subdirectories
+        base_dir: Base directory containing run directories
         
     Returns:
-        List of sorted run directory paths
+        List of paths to run directories
     """
-    run_dirs = glob.glob(f"{base_dir}/runs/*/")
-    return sorted(run_dirs, key=lambda x: int(x.rstrip('/').split('/')[-1]))
+    base_dir = Path(base_dir)
+    run_dirs = sorted([d for d in (base_dir / "runs").glob("*") if d.is_dir()])
+    return run_dirs
 
 def ensure_output_dir(output_base_dir: str, dataset_name: str) -> str:
     """
