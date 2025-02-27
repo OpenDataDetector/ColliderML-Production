@@ -2,7 +2,7 @@
 
 ## Quickstart
 
-```
+``` bash
 git clone https://github.com/OpenDataDetector/ColliderML
 cd ColliderML
 pip install -e .
@@ -10,7 +10,7 @@ pip install -e .
 
 Then run the pipeline as follows:
 
-```
+``` bash
 python scripts/simulation/pythia_gen.py --config configs_development/testing_and_validation/quickstart/generation_test.yaml # Wait a minute or two
 python scripts/simulation/merge_and_smear.py --config configs_development/testing_and_validation/quickstart/merge_smear_test.yaml # Wait a few seconds
 python scripts/simulation/ddsim_run.py --config configs_development/testing_and_validation/quickstart/simulation_test.yaml # Wait up to 10 minutes
