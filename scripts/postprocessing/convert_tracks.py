@@ -98,6 +98,14 @@ def process_event_for_tracks(
         "theta": track_fitting_df.eTHETA_fit.values,
         "qop": track_fitting_df.eQOP_fit.values,
         "time": track_fitting_df.eT_fit.values,
+        "d0_truth": track_fitting_df.t_d0.values,
+        "z0_truth": track_fitting_df.t_z0.values,
+        "phi_truth": track_fitting_df.t_phi.values,
+        "theta_truth": track_fitting_df.t_theta.values,
+        "charge_truth": track_fitting_df.t_charge.values,
+        "p_truth": track_fitting_df.t_p.values,
+        "pT_truth": track_fitting_df.t_pT.values,
+        "time_truth": track_fitting_df.t_time.values,
     }
     
     full_track_df = pd.DataFrame(track_finding_data)
@@ -113,29 +121,21 @@ def build_hdf5_tracks(df: pd.DataFrame, output_file: str) -> None:
         df: DataFrame containing track data
         output_file: Path to output HDF5 file
     """
-    print(f"\nBuilding HDF5 file: {output_file}")
-    print(f"Input DataFrame shape: {df.shape}")
-    
     with h5py.File(output_file, 'a') as f:
         if 'events' not in f:
-            print("Creating events group")
             events_group = f.create_group('events')
         else:
-            print("Using existing events group")
             events_group = f['events']
             
         for event_id, event_df in df.groupby('event_id'):
-            print(f"\nProcessing event {event_id}")
             event_group = events_group.create_group(f'event_{event_id}')
             
             # Store track data
             track_data = event_df.drop(columns=['hit_ids', 'event_id'])
-            print(f"Track data shape: {track_data.shape}")
             event_group.create_dataset('tracks', data=track_data.to_records(index=False))
             
             # Store hit arrays
             hit_arrays = event_df['hit_ids'].values
-            print(f"Number of hit arrays: {len(hit_arrays)}")
             event_group.create_dataset(
                 'hit_ids',
                 data=hit_arrays,
@@ -143,7 +143,6 @@ def build_hdf5_tracks(df: pd.DataFrame, output_file: str) -> None:
                 compression="gzip",
                 compression_opts=9
             )
-            print(f"Stored hit arrays for event {event_id}")
 
 def process_run_for_tracks(
     run_dir: str | Path,
@@ -170,17 +169,13 @@ def process_run_for_tracks(
         List of DataFrames, one for each event in the run
     """
     run_dir = Path(run_dir)
-    print(f"\nProcessing run {run_number} at {run_dir}")
     
     # Load track summary data once for the whole run
-    print("\nLoading track summary data")
     tracksummary_arrays = load_track_summary(run_dir / tracksummary_file)
 
     # Load simulated hits and EDM4hep data
-    print(f"\nLoading ROOT file: {run_dir / simhits_file}")
     simhits_df = load_root_file(run_dir / simhits_file)
     
-    print(f"\nLoading EDM4hep file: {run_dir / edm4hep_file}")
     edm4hep_events = uproot.open(run_dir / edm4hep_file)["events"]
     edm4hep_hits_df = get_particle_ids_from_events(edm4hep_events, pixel_readouts + strip_readouts)
     
@@ -189,7 +184,6 @@ def process_run_for_tracks(
         try:
             # Calculate global event number
             global_event_num = run_number * run_size + local_event_num
-            print(f"\nProcessing event {local_event_num} (global event {global_event_num})")
             
             event_df = process_event_for_tracks(
                 run_dir,
@@ -201,13 +195,11 @@ def process_run_for_tracks(
                 edm4hep_hits_df
             )
             run_events.append(event_df)
-            print(f"Added event DataFrame with shape: {event_df.shape}")
             
         except FileNotFoundError as e:
             print(f"Skipping missing event {local_event_num} in {run_dir}: {str(e)}")
             continue
             
-    print(f"Processed {len(run_events)} events in run {run_number}")
     return run_events
 
 def process_chunk_for_tracks(
@@ -229,7 +221,19 @@ def process_chunk_for_tracks(
         dataset_name: Name of dataset
         run_size: Number of events per run
     """
+    # Calculate event range for this chunk
+    start_event = start_run * run_size
     end_run = min(start_run + runs_per_chunk, len(run_dirs))
+    end_event = (end_run * run_size) - 1
+    
+    # Build output filename with event range
+    output_file = output_dir / f"{dataset_name}.events{start_event}-{end_event}.h5"
+    
+    # Skip if file already exists
+    if output_file.exists():
+        print(f"\nSkipping events {start_event}-{end_event} - output file already exists: {output_file}")
+        return
+        
     chunk_run_dirs = run_dirs[start_run:end_run]
     
     # Process each run in chunk
@@ -243,15 +247,12 @@ def process_chunk_for_tracks(
         all_track_data.extend(run_events)
             
     # Save chunk to HDF5
-    chunk_num = start_run // runs_per_chunk
-    output_file = output_dir / f"{dataset_name}.chunk{chunk_num:03d}.h5"
-    
     if all_track_data:
         all_events_df = pd.concat(all_track_data, ignore_index=True)
         build_hdf5_tracks(all_events_df, output_file)
-        print(f"\nSaved chunk {chunk_num} to {output_file}")
+        print(f"\nSaved events {start_event}-{end_event} to {output_file}")
     else:
-        print(f"\nNo data to save for chunk {chunk_num}")
+        print(f"\nNo data to save for events {start_event}-{end_event}")
 
 def convert_tracks(
     base_dir: Path | str,
@@ -273,25 +274,16 @@ def convert_tracks(
     base_dir = Path(base_dir)
     output_base_dir = Path(output_base_dir)
     
-    print(f"\nStarting track conversion")
-    print(f"Base directory: {base_dir}")
-    print(f"Output directory: {output_base_dir}")
-    print(f"Dataset name: {dataset_name}")
-    
     # Get run directories
     run_dirs = get_run_paths(base_dir)
     num_runs = len(run_dirs)
-    print(f"Found {num_runs} runs")
     
     # Calculate chunk information
     num_events, runs_per_chunk, num_chunks = get_chunk_info(num_runs, run_size, chunk_size)
-    print(f"Processing {num_runs} runs with {num_events} total events")
-    print(f"Processing {runs_per_chunk} runs per chunk to get ~{chunk_size} events per file")
     
     # Create output directory
     output_dir = ensure_output_dir(output_base_dir, dataset_name)
     dataset_name = dataset_name.replace("/", ".")
-    print(f"Using output directory: {output_dir}")
     
     # Process chunks of runs
     for start_run in tqdm(range(0, num_runs, runs_per_chunk), desc="Processing chunks"):

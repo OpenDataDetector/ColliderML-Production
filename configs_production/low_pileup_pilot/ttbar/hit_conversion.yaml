@@ -1,0 +1,14 @@
+# Example configuration for track conversion
+# Command line arguments will override these values
+
+# Required paths
+base_dir: /global/cfs/projectdirs/m3443/usr/dtmurnane/Side_Work/ACTS/outputs/low_pileup_pilot/gg2ttbar/v1
+output_dir: /global/cfs/cdirs/m4958/data/ColliderML/staging
+dataset_name: pileup-10/ttbar/v1/truth/hits
+
+# Processing options
+chunk_size: 1000  # Number of events per output file
+run_size: 10      # Number of events per run
+
+# File patterns and names
+edm4hep_file: "edm4hep.root" 
