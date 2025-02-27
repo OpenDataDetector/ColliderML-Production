@@ -15,10 +15,11 @@ def get_run_paths(base_dir: str | Path) -> List[Path]:
         base_dir: Base directory containing run directories
         
     Returns:
-        List of paths to run directories
+        List of paths to run directories, sorted numerically by directory name
     """
     base_dir = Path(base_dir)
-    run_dirs = sorted([d for d in (base_dir / "runs").glob("*") if d.is_dir()])
+    run_dirs = [d for d in (base_dir / "runs").glob("*") if d.is_dir()]
+    run_dirs.sort(key=lambda x: int(x.name))
     return run_dirs
 
 def ensure_output_dir(output_base_dir: str, dataset_name: str) -> str:

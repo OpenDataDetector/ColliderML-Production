@@ -46,12 +46,8 @@ def convert_hit_ids(hit_ids_str: str) -> np.ndarray:
     Returns:
         numpy array of integers
     """
-    print(f"\nConverting hit IDs from string: {hit_ids_str}")
-    # Remove brackets and split by comma
     hit_ids = hit_ids_str.strip('[]').split(',')
-    # Convert to integers
     result = np.array([int(x) for x in hit_ids if x.strip()], dtype=np.int32)
-    print(f"Converted to array: {result}")
     return result
 
 def load_root_file(file_path: str, tree_name: str = None) -> pd.DataFrame:
@@ -65,35 +61,27 @@ def load_root_file(file_path: str, tree_name: str = None) -> pd.DataFrame:
     Returns:
         DataFrame containing ROOT data
     """
-    print(f"\nLoading ROOT file: {file_path}")
     root_file = uproot.open(file_path)
-    print(f"Available keys: {root_file.keys()}")
     
     if tree_name is None:
         # Get the keys and sort them by cycle number
         keys = root_file.keys()
         cycles = [int(key.split(';')[1]) for key in keys]
         tree_name = keys[cycles.index(max(cycles))]
-        print(f"Selected tree: {tree_name}")
     
     # Get arrays from tree
     arrays = root_file[tree_name].arrays()
-    print(f"Array fields: {arrays.fields if hasattr(arrays, 'fields') else 'No fields'}")
     
     # Convert to DataFrame
     df = ak.to_dataframe(arrays)
-    print(f"Initial DataFrame shape: {df.shape}")
     
     if isinstance(df.index, pd.MultiIndex):
         df = df.reset_index()
         # Remove entry/subentry columns if they exist
         drop_cols = [col for col in ['entry', 'subentry'] if col in df.columns]
         if drop_cols:
-            print(f"Dropping columns: {drop_cols}")
             df = df.drop(columns=drop_cols)
     
-    print(f"Final DataFrame shape: {df.shape}")
-    print(f"DataFrame columns: {df.columns.tolist()}")
     return df
 
 def load_track_summary(file_path: str) -> Dict[str, Any]:
@@ -106,11 +94,8 @@ def load_track_summary(file_path: str) -> Dict[str, Any]:
     Returns:
         Dictionary containing track arrays
     """
-    print(f"\nLoading track summary from: {file_path}")
     tracksummary_root = uproot.open(file_path)
-    print(f"Available keys: {tracksummary_root.keys()}")
     arrays = tracksummary_root["tracksummary"].arrays()
-    print(f"Array fields: {arrays.fields if hasattr(arrays, 'fields') else 'No fields'}")
     return arrays
 
 def process_track_summary(arrays: Any, event_num: int) -> pd.DataFrame:
@@ -124,13 +109,10 @@ def process_track_summary(arrays: Any, event_num: int) -> pd.DataFrame:
     Returns:
         DataFrame containing track summary data
     """
-    print(f"\nProcessing track summary for event {event_num}")
     track_data = {}
     if not hasattr(arrays[event_num], 'fields'):
-        print(f"WARNING: No fields found in arrays[{event_num}]")
         return pd.DataFrame()
         
-    print(f"Available fields: {arrays[event_num].fields}")
     for field in arrays[event_num].fields:
         if field == 'event_nr':
             continue
@@ -138,14 +120,11 @@ def process_track_summary(arrays: Any, event_num: int) -> pd.DataFrame:
             array = ak.to_numpy(arrays[event_num][field])
             assert len(array.shape) == 1
             track_data[field] = array
-            print(f"Processed field {field}: shape {array.shape}")
         except Exception as e:
             print(f"Failed to process field {field}: {str(e)}")
             continue
             
     df = pd.DataFrame(track_data).rename(columns={"track_nr": "track_id"})
-    print(f"Created DataFrame with shape: {df.shape}")
-    print(f"DataFrame columns: {df.columns.tolist()}")
     return df
 
 def analyze_coordinate_matches(comparison_df, tolerance=1e-3):
@@ -188,13 +167,16 @@ def create_particle_barcode_map(
     Returns:
         DataFrame: Mapping between particle_barcode and particle_id
     """
-    # First set dtype of x,y,z and tx,ty,tz to float32
-    edm4hep_hits_df[["x", "y", "z"]] = edm4hep_hits_df[["x", "y", "z"]].astype(np.float32)
-    simhits_df[["tx", "ty", "tz"]] = simhits_df[["tx", "ty", "tz"]].astype(np.float32)
+    # Convert coordinate columns to float32 using loc
+    coord_cols = ["x", "y", "z"]
+    edm4hep_hits_df.loc[:, coord_cols] = edm4hep_hits_df[coord_cols].astype(np.float32)
+    
+    sim_cols = ["tx", "ty", "tz"]
+    simhits_df.loc[:, sim_cols] = simhits_df[sim_cols].astype(np.float32)
 
     # Reset indices and sort both DataFrames
-    edm4hep_hits_df_sorted = edm4hep_hits_df.reset_index(drop=True).sort_values(by=["x", "y", "z"])
-    simhits_df_sorted = simhits_df.reset_index(drop=True).sort_values(by=["tx", "ty", "tz"])
+    edm4hep_hits_df_sorted = edm4hep_hits_df.reset_index(drop=True).sort_values(by=coord_cols)
+    simhits_df_sorted = simhits_df.reset_index(drop=True).sort_values(by=sim_cols)
 
     # Rename particle_id to particle_barcode
     edm4hep_hits_df_sorted = edm4hep_hits_df_sorted.rename(columns={"particle_id": "particle_barcode"})
@@ -235,9 +217,4 @@ def get_majority_particle_id(hit_ids, simhits_root_df, particle_barcode_map):
     try:
         return track_hits.particle_id.map(particle_barcode_map).mode()[0]
     except:
-        print(f"No particle ID found for track {hit_ids}")
-        print(track_hits)
-        print(particle_barcode_map)
-        print(track_hits.particle_id.map(particle_barcode_map))
-        print(track_hits.particle_id.map(particle_barcode_map).mode())
         raise

@@ -70,12 +70,13 @@ def calculate_eta(theta):
     return -np.log(np.tan(theta/2))
 
 
-def load_edm4hep_file(file_path, event_num=None):
+def load_edm4hep_file(file_path, event_num=None, collections=None):
     """Load EDM4hep file and return event data.
     
     Args:
         file_path: Path to EDM4hep ROOT file
         event_num: Optional specific event number to load. If None, loads all events.
+        collections: Optional list of collections to load. If None, loads all collections.
         
     Returns:
         If event_num is specified: dict of DataFrames for that event
@@ -85,20 +86,33 @@ def load_edm4hep_file(file_path, event_num=None):
     num_events = len(events["MCParticles.PDG"].array())
     
     if event_num is not None:
-        return _process_event(events, event_num)
+        return _process_event(events, event_num, collections)
     else:
-        return [_process_event(events, i) for i in range(num_events)]
+        return [_process_event(events, i, collections) for i in range(num_events)]
 
-def _process_event(events, event_idx):
+def _process_event(events, event_idx, collections=None):
     """Process a single event and return its dictionary of DataFrames."""
-    return {
-        "tracker_df": build_tracker_df(events, event_idx),
-        "calo_hits_df": build_calo_df(events, event_idx)[0],
-        "calo_contrib_df": build_calo_df(events, event_idx)[1],
-        "particles_df": build_particle_df(events, event_idx)[0],
-        "parents_df": build_particle_df(events, event_idx)[1],
-        "daughters_df": build_particle_df(events, event_idx)[2]
-    }
+    
+    valid_collections = ["tracker", "calo", "mc_particles"]
+
+    if collections is None:
+        collections = valid_collections
+    
+    collection_dfs = {}
+    for collection in collections:
+        if "tracker" in collection:
+            collection_dfs["tracker_df"] = build_tracker_df(events, event_idx)
+        if "calo" in collection:
+            collection_dfs["calo_hits_df"] = build_calo_df(events, event_idx)[0]
+            collection_dfs["calo_contrib_df"] = build_calo_df(events, event_idx)[1]
+        if "mc_particles" in collection:
+            collection_dfs["particles_df"] = build_particle_df(events, event_idx)[0]
+            collection_dfs["parents_df"] = build_particle_df(events, event_idx)[1]
+            collection_dfs["daughters_df"] = build_particle_df(events, event_idx)[2]
+        if collection not in valid_collections:
+            raise ValueError(f"Invalid collection: {collection}")
+    
+    return collection_dfs
 
 def build_tracker_df(events, event_idx, detector_name=None):
     """Build dataframe from tracker hits for a single event"""
