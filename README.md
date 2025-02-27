@@ -1,8 +1,23 @@
-# Dataset Structure for ColliderML
+# ColliderML Development Repository
 
-The ColliderML dataset is organized into four distinct spaces: **Simulation**, **Processing**, **Staging**, and **Public**. This document explains the storage structure, focusing primarily on the **Public** and **Simulation** spaces, which share a consistent directory layout. 
+## Quickstart
 
----
+```
+git clone https://github.com/OpenDataDetector/ColliderML
+cd ColliderML
+pip install -e .
+```
+
+Then run the pipeline as follows:
+
+```
+python scripts/simulation/pythia_gen.py --config configs_development/testing_and_validation/quickstart/generation_test.yaml # Wait a minute or two
+python scripts/simulation/merge_and_smear.py --config configs_development/testing_and_validation/quickstart/merge_smear_test.yaml # Wait a few seconds
+python scripts/simulation/ddsim_run.py --config configs_development/testing_and_validation/quickstart/simulation_test.yaml # Wait up to 10 minutes
+python scripts/simulation/digi_and_reco.py --config configs_development/testing_and_validation/quickstart/digitization_test.yaml # Wait a minute or two
+```
+
+Two low-pileup events will be generated, merged, smeared, simulated, digitized and reconstructed in the `outputs` subdirectory. You can also use these configs in batch, as detailed below.
 
 ## Development Repository
 
@@ -12,15 +27,22 @@ All scripts needed for simulation are stored in the `scripts/simulation` directo
 1. **Pythia parton generation** (`pythia_gen.py`): Generates signal and pileup events using Pythia8
 2. **Event merging and smearing** (`merge_and_smear.py`): Combines signal and pileup, applies vertex smearing
 3. **Detector simulation** (`ddsim_run.py`): Simulates detector response using DD4hep
-4. **Digitization and reconstruction** (`digi_and_reco.py`): Performs hit digitization and track reconstruction
+4. **Digitization and reconstruction** (`digi_and_reco.py`): Performs hit digitization, calo digitization (COMING SOON) and track reconstruction
 
-**Workflow management** (`Snakefile`): Orchestrates the full pipeline with Snakemake. This runs as (see next section for config details):
+Since this is a simple sequence, we avoid complex workflow management tools like Snakemake, and instead run the scripts as follows:
 
+**Interactive mode**
 ```
-snakemake -s scripts/simulation/Snakefile --configfile configs_development/testing_and_validation/snakemake_test.yaml -p --c1
+# For example, to run the Pythia generation script
+python scripts/simulation/pythia_gen.py --config configs_production/ttbar/generation_test.yaml
 ```
 
-Here `c1` runs the script with one CPU core.
+**Batch mode**
+```
+python batch/job_submission.py configs_production/ttbar/generation_test.yaml
+```
+
+Observe that the same config file can be used for interactive and batch modes. Batch mode configs simply have more options set, such as `job_config` options.
 
 ### 2. Configuration Files
 - `configs_development/`: Development and testing configurations
