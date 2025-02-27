@@ -41,7 +41,7 @@ def create_base_parser(description):
         "--output", "-o",
         help="Output directory",
         type=Path,
-        default=Path.cwd() / "pda_output",
+        default=Path.cwd() / "outputs",
     )
     parser.add_argument(
         "--events", "-n",
