@@ -153,12 +153,17 @@ The **Public** and **Simulation** spaces follow the same directory structure, or
 
 ### File Naming Convention
 All files across directories adhere to a structured naming scheme to ensure traceability and reproducibility:
-- **Channel/Process**: Particle type, physics process, or challenge type.
-- **Parameters**: Key configuration values (e.g., `theta`, `phi`, pileup level).
-- **Run Metadata**: Timestamp and git commit hash.
+1. **Storage Space**: `simulation`, `processing`, `staging`, or `public`
+2. **Dataset**: `single_particle`, `pileup_10`, `pileup_200`
+3. **Channel/Process**: Particle type, physics process, or challenge type, e.g. `ttbar`, `susy`
+4. **Version**: `v1`, `v2`, etc.
+5. **Object Type**: `truth`, `reco`, `measurement`
+6. **Object**: `particles`, `tracks`, `caloclusters`, etc.
+
+Then the file name again follows this convention, to absolutely ensure that files are traceable. It finally includes the event range.
 
 Example:  
-`FullDetector/ttbar_theta0.1_phi0.2_githash1234.hdf5`
+`public/pileup-10/ttbar/v1/reco/tracks/pileup-10.ttbar.v1.reco.tracks.events0-999.h5`
 
 ### Metadata
 Each dataset includes accompanying metadata files containing:
