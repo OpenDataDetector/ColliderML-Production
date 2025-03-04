@@ -158,6 +158,7 @@ def build_calo_df(events, event_idx, detector_name=None):
     all_calos = ecal + hcal
     hits_dfs = []
     contrib_dfs = []
+    contrib_offset = 0
     
     for det in all_calos:
         if det not in events:
@@ -165,34 +166,19 @@ def build_calo_df(events, event_idx, detector_name=None):
         hits = events[det].arrays()
         contributions = events[f"{det}Contributions"].arrays()
         particle_links = events[f"_{det}Contributions_particle"].arrays()
-        hits_df, contrib_df = _process_calo_hits(hits, contributions, particle_links, det, event_idx)
+        hits_df, contrib_df = _process_calo_hits(hits, contributions, particle_links, det, event_idx, contrib_offset)
         
         hits_df['detector'] = det
         contrib_df['detector'] = det
         
         hits_dfs.append(hits_df)
         contrib_dfs.append(contrib_df)
-    
+        contrib_offset += len(contrib_df)
     return (pd.concat(hits_dfs, ignore_index=True) if hits_dfs else pd.DataFrame(),
             pd.concat(contrib_dfs, ignore_index=True) if contrib_dfs else pd.DataFrame())
 
-def _process_calo_hits(hits, contributions, particle_links, detector_name, event_idx):
+def _process_calo_hits(hits, contributions, particle_links, detector_name, event_idx, contrib_offset=None):
     """Process calorimeter hits for a single event"""
-
-    """
-
-
-    -------------------- IMPORTANT --------------------
-
-    THIS FUNCTION IS NOT CORRECT YET!
-    WE NEED TO FIX THE INDEXING OF THE CONTRIBUTIONS
-
-    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-    ---------------------------------------------------
-
-
-    
-    """
 
     hit_dict = {
         'cellID': hits[f"{detector_name}.cellID"][event_idx],
@@ -215,15 +201,48 @@ def _process_calo_hits(hits, contributions, particle_links, detector_name, event
         'PDG': contributions[f"{detector_name}Contributions.PDG"][event_idx],
         'energy': contributions[f"{detector_name}Contributions.energy"][event_idx],
         'time': contributions[f"{detector_name}Contributions.time"][event_idx],
-        'x': contributions[f"{detector_name}Contributions.stepPosition.x"][event_idx],
-        'y': contributions[f"{detector_name}Contributions.stepPosition.y"][event_idx],
-        'z': contributions[f"{detector_name}Contributions.stepPosition.z"][event_idx],
+        'step_x': contributions[f"{detector_name}Contributions.stepPosition.x"][event_idx],
+        'step_y': contributions[f"{detector_name}Contributions.stepPosition.y"][event_idx],
+        'step_z': contributions[f"{detector_name}Contributions.stepPosition.z"][event_idx],
         'particle_id': particle_links[f"_{detector_name}Contributions_particle.index"][event_idx]
     }
     
     contrib_df = pd.DataFrame(contrib_dict)
+
+    # Add hit positions to contributions
+    contrib_df = _add_hit_positions_to_contributions(hits_df, contrib_df)
+
+    if contrib_offset is not None:
+        hits_df['contribution_begin'] += contrib_offset
+        hits_df['contribution_end'] += contrib_offset
     
     return hits_df, contrib_df
+
+def _add_hit_positions_to_contributions(hits_df, contrib_df):
+    """Add hit positions (x, y, z) to the contributions dataframe"""
+    # First, create the position columns in the contributions dataframe with float data type
+    contrib_df['x'] = np.nan
+    contrib_df['y'] = np.nan
+    contrib_df['z'] = np.nan
+    
+    # Ensure these columns have float data type
+    contrib_df['x'] = contrib_df['x'].astype(float)
+    contrib_df['y'] = contrib_df['y'].astype(float)
+    contrib_df['z'] = contrib_df['z'].astype(float)
+
+    # set x, y, z for each hit in hits_df
+    for _, hit in hits_df.iterrows():
+        begin = int(hit['contribution_begin'])
+        end = int(hit['contribution_end'])
+        if begin == end:
+            continue
+        
+        # make sure we don't go out of bounds
+        end = min(end, len(contrib_df))
+
+        contrib_df.iloc[begin:end, contrib_df.columns.get_indexer(['x', 'y', 'z'])] = hit[['x', 'y', 'z']].values
+    
+    return contrib_df
 
 def build_particle_df(events, event_idx):
     """Build particle dataframes for a single event"""
