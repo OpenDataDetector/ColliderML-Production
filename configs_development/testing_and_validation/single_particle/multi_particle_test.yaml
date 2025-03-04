@@ -1,0 +1,36 @@
+# Multi-Particle Simulation Configuration
+dataset: "multi_particle_test"
+version: "v1"
+stage: "simulation"
+job_config:
+  n_runs: 10
+  runs_per_node: 5
+  time_limit: "00:30:00"
+  qos: "debug"
+
+validation_config:
+  time_limit: "00:10:00"
+  qos: "debug"
+
+# Stage-specific configurations
+events: 100
+single_particle: true
+
+# Particle gun configuration
+gun_particle: "mu-"  # Particle type
+gun_energy: 20.0  # Energy in GeV
+
+# Direction configuration - fixed direction
+gun_direction: [0, 0, 1]  # Direction vector [x, y, z]
+
+# Position configuration
+gun_position: [0.0, 0.0, 0.0]  # Position vector [x, y, z] in mm
+
+# Multiple particles per event
+gun_multiplicity: 10  # Generate 10 particles per event
+
+# Common settings
+common:
+  output_base_dir: "/global/cfs/cdirs/m3443/usr/dtmurnane/Side_Work/ACTS/outputs/single_particle_tests/"
+  account: "m4958"
+  container: "registry.cern.ch/atlasadc/atlas-grid-almalinux9" 

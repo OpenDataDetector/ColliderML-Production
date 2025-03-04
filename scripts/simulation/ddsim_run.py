@@ -2,6 +2,7 @@ import time
 from pathlib import Path
 import acts
 from DDSim.DD4hepSimulation import DD4hepSimulation
+from g4units import GeV
 import traceback
 from acts.examples.odd import getOpenDataDetectorDirectory
 from utils.logging import setup_logging, TimingRecorder
@@ -22,34 +23,179 @@ def parse_args():
         type=Path,
         default=None
     )
+    parser.add_argument(
+        "--single-particle",
+        help="Enable single particle simulation mode (particle gun)",
+        action="store_true",
+        default=False
+    )
     return parser.parse_args()
 
-def run_ddsim(input_path, output_path, config, logger=None):
-    """Run DD4hep simulation"""
-    logger = logger or setup_logging("DD4hepStage")
+def configure_particle_gun(ddsim, config, logger):
+    """Configure the particle gun based on configuration parameters
     
+    Args:
+        ddsim: DD4hepSimulation instance
+        config: Configuration object
+        logger: Logger instance
+    """
+    logger.info("Configuring particle gun")
+    ddsim.enableGun = True
+    
+    # Configure particle type
+    ddsim.gun.particle = getattr(config, 'gun_particle', 'e-')
+    
+    # Configure energy or momentum
+    if hasattr(config, 'gun_energy'):
+        ddsim.gun.energy = config.gun_energy * GeV
+    else:
+        ddsim.gun.momentumMin = getattr(config, 'gun_momentum_min', 0.0) * GeV
+        ddsim.gun.momentumMax = getattr(config, 'gun_momentum_max', 10.0) * GeV
+    
+    # Configure direction
+    ddsim.gun.direction = getattr(config, 'gun_direction', (0, 0, 1))
+    
+    # Configure position
+    ddsim.gun.position = getattr(config, 'gun_position', (0.0, 0.0, 0.0))
+    
+    # Configure angular distribution if specified
+    if hasattr(config, 'gun_distribution'):
+        ddsim.gun.distribution = config.gun_distribution
+        ddsim.gun.isotrop = True
+        
+        # Configure angular limits
+        if hasattr(config, 'gun_theta_min'):
+            ddsim.gun.thetaMin = config.gun_theta_min
+        if hasattr(config, 'gun_theta_max'):
+            ddsim.gun.thetaMax = config.gun_theta_max
+        if hasattr(config, 'gun_phi_min'):
+            ddsim.gun.phiMin = config.gun_phi_min
+        if hasattr(config, 'gun_phi_max'):
+            ddsim.gun.phiMax = config.gun_phi_max
+    
+    # Configure multiplicity
+    ddsim.gun.multiplicity = getattr(config, 'gun_multiplicity', 1)
+    
+    # Configure vertex smearing
+    if hasattr(config, 'vertexOffset'):
+        ddsim.vertexOffset = config.vertexOffset
+    if hasattr(config, 'vertexSigma'):
+        ddsim.vertexSigma = config.vertexSigma
+    
+    # Log configuration
+    log_particle_gun_config(ddsim, logger)
+    
+    return ddsim
+
+def log_particle_gun_config(ddsim, logger):
+    """Log the particle gun configuration
+    
+    Args:
+        ddsim: DD4hepSimulation instance
+        logger: Logger instance
+    """
+    logger.info(f"Particle gun configuration:")
+    logger.info(f"  Particle: {ddsim.gun.particle}")
+    if ddsim.gun.energy is not None:
+        logger.info(f"  Energy: {ddsim.gun.energy}")
+    else:
+        logger.info(f"  Momentum range: {ddsim.gun.momentumMin} - {ddsim.gun.momentumMax}")
+    logger.info(f"  Direction: {ddsim.gun.direction}")
+    logger.info(f"  Position: {ddsim.gun.position}")
+    logger.info(f"  Distribution: {ddsim.gun.distribution}")
+    logger.info(f"  Multiplicity: {ddsim.gun.multiplicity}")
+    if any(x != 0 for x in ddsim.vertexSigma):
+        logger.info(f"  Vertex smearing: {ddsim.vertexSigma}")
+
+def configure_detector(ddsim):
+    """Configure the detector for simulation
+    
+    Args:
+        ddsim: DD4hepSimulation instance
+        
+    Returns:
+        DD4hepSimulation: Configured DD4hepSimulation instance
+    """
     # Get detector XML
     odd_dir = getOpenDataDetectorDirectory()
     odd_xml = odd_dir / "xml" / "OpenDataDetector.xml"
     
     # Configure DD4hep
-    ddsim = DD4hepSimulation()
     if isinstance(ddsim.compactFile, list):
         ddsim.compactFile = [str(odd_xml)]
     else:
         ddsim.compactFile = str(odd_xml)
     
-    ddsim.inputFiles = [str(input_path)]
+    return ddsim
+
+def configure_physics(ddsim, config):
+    """Configure physics for simulation
+    
+    Args:
+        ddsim: DD4hepSimulation instance
+        config: Configuration object
+        
+    Returns:
+        DD4hepSimulation: Configured DD4hepSimulation instance
+    """
+    # Set PDG file if specified
+    if hasattr(config, 'pdg_file') and config.pdg_file:
+        ddsim.physics.pdgfile = str(config.pdg_file)
+    
+    # Set physics list if specified
+    if hasattr(config, 'physics_list'):
+        ddsim.physics.list = config.physics_list
+    
+    if hasattr(config, 'minimalKineticEnergy'):
+        ddsim.part.minimalKineticEnergy = config.minimalKineticEnergy * GeV
+    else:
+        ddsim.part.minimalKineticEnergy = 1.0 * GeV
+
+    return ddsim
+
+def run_ddsim(input_path, output_path, config, logger=None):
+    """Run DD4hep simulation
+    
+    Args:
+        input_path: Path to input HepMC3 file (or None for particle gun)
+        output_path: Path to output EDM4hep file
+        config: Configuration object
+        logger: Logger instance (optional)
+    """
+    logger = logger or setup_logging("DD4hepStage")
+    
+    # Create and configure DD4hep simulation
+    ddsim = DD4hepSimulation()
+    
+    # Configure detector
+    ddsim = configure_detector(ddsim)
+    
+    # Check if we're using single particle mode
+    use_single_particle = getattr(config, 'single_particle', False)
+    if use_single_particle:
+        logger.info("Using single particle simulation mode (particle gun)")
+        ddsim = configure_particle_gun(ddsim, config, logger)
+    else:
+        # Standard HepMC3 input mode
+        logger.info(f"Using HepMC3 input file: {input_path}")
+        ddsim.inputFiles = [str(input_path)]
+    
+    # Configure common settings
     ddsim.outputFile = str(output_path)
-    ddsim.numberOfEvents = config.events
-    ddsim.random.seed = config.seed or int(time.time())
-    ddsim.physics.pdgfile = str(config.pdg_file) if config.pdg_file else None
+    ddsim.numberOfEvents = getattr(config, 'events', 10)
+    ddsim.random.seed = getattr(config, 'seed', None) or int(time.time())
     
-    logger.info(f"Running DD4hep simulation with {config.events} events")
-    logger.info(f"Input: {input_path}")
+    # Configure physics
+    ddsim = configure_physics(ddsim, config)
+    
+    # Log configuration
+    logger.info(f"Running DD4hep simulation with {ddsim.numberOfEvents} events")
+    if not use_single_particle:
+        logger.info(f"Input: {input_path}")
     logger.info(f"Output: {output_path}")
-    logger.info(f"PDG file: {config.pdg_file}")
+    logger.info(f"Random seed: {ddsim.random.seed}")
     
+    # Run simulation
     ddsim.run()
 
 def main():
@@ -61,12 +207,14 @@ def main():
         
         # Create output directory structure
         output_dir = Path(args.output)
-        if config.output_subdir:
+        if hasattr(config, 'output_subdir') and config.output_subdir:
             output_dir = output_dir / config.output_subdir
         output_dir.mkdir(parents=True, exist_ok=True)
         
-        # Set default input path if not specified
-        input_path = args.input_file or output_dir / "merged_events.hepmc3"
+        # Set default input path if not specified and not in single particle mode
+        input_path = None
+        if not getattr(config, 'single_particle', False):
+            input_path = args.input_file or output_dir / "merged_events.hepmc3"
         output_path = output_dir / "edm4hep.root"
         
         # Initialize timing recorder

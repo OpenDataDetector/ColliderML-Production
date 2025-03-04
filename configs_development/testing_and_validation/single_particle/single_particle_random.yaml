@@ -1,0 +1,45 @@
+# Single Particle Simulation with Random Distributions
+dataset: "single_particle_random"
+version: "v1"
+stage: "simulation"
+job_config:
+  n_runs: 10
+  runs_per_node: 5
+  time_limit: "00:30:00"
+  qos: "debug"
+
+validation_config:
+  time_limit: "00:10:00"
+  qos: "debug"
+
+# Stage-specific configurations
+events: 1000  # More events for better statistics
+single_particle: true
+
+# Particle gun configuration
+gun_particle: "pi+"  # Pions for this example
+gun_momentum_min: 1.0  # Minimum momentum in GeV
+gun_momentum_max: 50.0  # Maximum momentum in GeV
+
+# Random direction distribution
+gun_distribution: "cos(theta)"  # Uniform on unit sphere
+gun_theta_min: "10*deg"  # Minimum theta angle
+gun_theta_max: "170*deg"  # Maximum theta angle
+gun_phi_min: "0*deg"  # Minimum phi angle
+gun_phi_max: "360*deg"  # Maximum phi angle
+
+# Position configuration with vertex smearing
+gun_position: [0.0, 0.0, 0.0]  # Position vector [x, y, z] in mm
+
+# Vertex smearing (using DD4hep's built-in smearing)
+vertexOffset: [0.0, 0.0, 0.0, 0.0]  # Mean offset [x, y, z, t] in mm and ns
+vertexSigma: [0.1, 0.1, 30.0, 0.0]  # Sigma of smearing [x, y, z, t] in mm and ns
+
+# Multiplicity (number of particles per event)
+gun_multiplicity: 1
+
+# Common settings
+common:
+  output_base_dir: "/global/cfs/cdirs/m3443/usr/dtmurnane/Side_Work/ACTS/outputs/single_particle_tests/"
+  account: "m4958"
+  container: "registry.cern.ch/atlasadc/atlas-grid-almalinux9" 
