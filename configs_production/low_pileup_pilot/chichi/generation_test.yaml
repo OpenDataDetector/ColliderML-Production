@@ -1,11 +1,11 @@
 # Example configuration
 dataset: "chichi"
-version: "v1"
+version: "v2"
 stage: "generation"  # One of: generation, merge_smear, simulation, digitization
 job_config:
   # Number of nodes will be calculated as n_runs / runs_per_node
-  n_runs: 128  # Number of runs (where a run produces N events)
-  runs_per_node: 32  # Number of runs per node
+  n_runs: 1280  # Number of runs (where a run produces N events)
+  runs_per_node: 128  # Number of runs per node
   time_limit: "00:30:00"  # Time limit per job
   qos: "regular"
 
@@ -47,6 +47,6 @@ pythia_settings:
 
 # Common settings
 common:
-  output_base_dir: "/global/cfs/cdirs/m3443/usr/dtmurnane/Side_Work/ACTS/outputs/low_pileup_pilot/"
+  output_base_dir: "/global/cfs/projectdirs/m4958/data/ColliderML/outputs/low_pileup_pilot"
   account: "m4958"
   container: "registry.cern.ch/atlasadc/atlas-grid-almalinux9"
