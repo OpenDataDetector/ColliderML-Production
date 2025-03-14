@@ -13,7 +13,10 @@ logger = logging.getLogger(__name__)
 class JobSubmitter:
     """Handles SLURM job submission for ColliderML pipeline stages"""
     
-    VALID_STAGES = ["generation", "merge_smear", "simulation", "digitization"]
+    # Separate stage categories
+    SIMULATION_STAGES = ["generation", "merge_smear", "simulation", "digitization"]
+    POSTPROCESSING_STAGES = ["build_tracks", "build_hits", "build_particles"]
+    VALID_STAGES = SIMULATION_STAGES + POSTPROCESSING_STAGES
     
     def __init__(self, config_path, dry_run=False, run_range=None):
         """Initialize with YAML config"""
@@ -89,11 +92,36 @@ class JobSubmitter:
         """Get directory for specific run"""
         return self.run_dir / f"{run_id}"
     
+    def is_simulation_stage(self):
+        """Check if current stage is a simulation stage"""
+        return self.config["stage"] in self.SIMULATION_STAGES
+    
+    def is_postprocessing_stage(self):
+        """Check if current stage is a postprocessing stage"""
+        return self.config["stage"] in self.POSTPROCESSING_STAGES
+    
+    def get_stage_script(self):
+        """Get the appropriate script for current stage"""
+        stage_scripts = {
+            # Simulation scripts
+            "generation": "simulation/pythia_gen.py",
+            "merge_smear": "simulation/merge_and_smear.py",
+            "simulation": "simulation/ddsim_run.py",
+            "digitization": "simulation/digi_and_reco.py",
+            
+            # Postprocessing scripts
+            "build_tracks": "postprocessing/convert_tracks.py",
+            "build_hits": "postprocessing/convert_hits.py",
+            "build_particles": "postprocessing/convert_particles.py"
+        }
+        return f"colliderml_dev/scripts/{stage_scripts[self.config['stage']]}"
+    
     def create_slurm_job(self, node_idx):
         """Create Slurm job object for given node"""
         job_cfg = self.config["job_config"]
         common_cfg = self.config["common"]
         
+        # Create basic SLURM job configuration (same for both types)
         slurm = Slurm(
             job_name=f"colliderML_{self.config['stage']}_{node_idx}",
             account=common_cfg["account"],
@@ -106,6 +134,24 @@ class JobSubmitter:
             output=str(self.log_dir / f"job_{node_idx}_%j.out"),
             error=str(self.log_dir / f"job_{node_idx}_%j.err")
         )
+        
+        # Calculate run offset based on run range or normal distribution
+        if self.run_range:
+            previous_runs = self.run_range[0] + (node_idx * self.config["job_config"]["runs_per_node"])
+        else:
+            previous_runs = node_idx * self.config["job_config"]["runs_per_node"]
+        
+        # Different setup for simulation vs postprocessing stages
+        if self.is_simulation_stage():
+            self._add_simulation_commands(slurm, previous_runs)
+        else:
+            self._add_postprocessing_commands(slurm, previous_runs)
+        
+        return slurm
+    
+    def _add_simulation_commands(self, slurm, previous_runs):
+        """Add commands for simulation stages"""
+        common_cfg = self.config["common"]
         
         # Add environment setup with container
         slurm.add_cmd(r"cd $HOME")
@@ -122,35 +168,35 @@ class JobSubmitter:
         slurm.add_cmd("source acts/CI/setup_cvmfs_lcg.sh && \\")
         slurm.add_cmd("source cml_env/bin/activate && \\")
         slurm.add_cmd("source build/python/setup.sh && \\")
-
-        # Calculate run offset based on run range or normal distribution
-        if self.run_range:
-            previous_runs = self.run_range[0] + (node_idx * self.config["job_config"]["runs_per_node"])
-        else:
-            previous_runs = node_idx * self.config["job_config"]["runs_per_node"]
         
         # Prepare stage-specific command using bash arithmetic for run calculation
         cmd = (f"python {self.get_stage_script()} "
               f"--config {self.config_path} "
               f"--output {self.run_dir} "
-              f"--output-subdir \$(({previous_runs} + SLURM_PROCID)) "  # Bash arithmetic for run calculation
+              f"--output-subdir \$(({previous_runs} + SLURM_PROCID)) "
               f"--seed {self.config['dataset']}_{self.config['version']}_run\$(({previous_runs} + SLURM_PROCID))")
         
         # Close container command
         cmd += "\""
         slurm.add_cmd(cmd)
-        
-        return slurm
     
-    def get_stage_script(self):
-        """Get the appropriate script for current stage"""
-        stage_scripts = {
-            "generation": "pythia_gen.py",
-            "merge_smear": "merge_and_smear.py",
-            "simulation": "ddsim_run.py",
-            "digitization": "digi_and_reco.py"
-        }
-        return f"colliderml_dev/scripts/simulation/{stage_scripts[self.config['stage']]}"
+    def _add_postprocessing_commands(self, slurm, previous_runs):
+        """Add commands for postprocessing stages"""
+        # Simpler environment setup - just conda
+        slurm.add_cmd("cd /global/cfs/cdirs/m3443/usr/dtmurnane/Side_Work/ACTS")
+        slurm.add_cmd("eval \"$(conda shell.bash hook)\"")
+        slurm.add_cmd("conda activate collider-env")
+        
+        # For postprocessing, we interpret the parameters:
+        # - previous_runs + SLURM_PROCID = chunk index (not run index)
+        # - We need to pass base_dir, output_dir, etc. from config
+        
+        # Prepare command with reinterpreted parameters
+        cmd = (f"python {self.get_stage_script()} "
+              f"--config {self.config_path} "
+              f"--chunk-index \$(({previous_runs} + SLURM_PROCID))")
+        
+        slurm.add_cmd(cmd)
     
     def submit_jobs(self):
         """Submit all jobs for the stage"""
