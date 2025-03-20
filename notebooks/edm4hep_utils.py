@@ -210,7 +210,7 @@ def _process_calo_hits(hits, contributions, particle_links, detector_name, event
     contrib_df = pd.DataFrame(contrib_dict)
 
     # Add hit positions to contributions
-    contrib_df = _add_hit_positions_to_contributions(hits_df, contrib_df)
+    # contrib_df = _add_hit_positions_to_contributions(hits_df, contrib_df)
 
     if contrib_offset is not None:
         hits_df['contribution_begin'] += contrib_offset
@@ -285,6 +285,19 @@ def build_particle_df(events, event_idx):
     parents_df = pd.DataFrame(parent_dict)
     daughters_df = pd.DataFrame(daughter_dict)
     
+    # Ensure index columns have the correct data types
+    particles_df['parents_begin'] = particles_df['parents_begin'].astype(int)
+    particles_df['parents_end'] = particles_df['parents_end'].astype(int)
+    particles_df['daughters_begin'] = particles_df['daughters_begin'].astype(int)
+    particles_df['daughters_end'] = particles_df['daughters_end'].astype(int)
+    
+    parents_df['particle_id'] = parents_df['particle_id'].astype(int)
+    parents_df['collectionID'] = parents_df['collectionID'].astype(int)
+    
+    daughters_df['particle_id'] = daughters_df['particle_id'].astype(int)
+    daughters_df['collectionID'] = daughters_df['collectionID'].astype(int)
+    
+    # Calculate derived quantities
     particles_df['pt'] = np.sqrt(particles_df['px']**2 + particles_df['py']**2)
     particles_df['p'] = np.sqrt(particles_df['px']**2 + particles_df['py']**2 + particles_df['pz']**2)
     particles_df['eta'] = np.arcsinh(particles_df['pz']/particles_df['pt'])
