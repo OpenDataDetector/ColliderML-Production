@@ -191,7 +191,6 @@ class JobSubmitter:
         # - previous_runs + SLURM_PROCID = chunk index (not run index)
         # - We need to pass base_dir, output_dir, etc. from config
         
-        # Prepare command with reinterpreted parameters
         cmd = (f"python {self.get_stage_script()} "
               f"--config {self.config_path} "
               f"--chunk-index \$(({previous_runs} + SLURM_PROCID))")

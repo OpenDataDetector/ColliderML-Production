@@ -55,7 +55,7 @@ def run_pythia_stage(output_dir, config, logger=None):
     pythia_settings = []
     
     # Add all settings from config if present
-    if hasattr(config, 'pythia_settings'):
+    if hasattr(config, 'pythia_settings') and config.pythia_settings is not None:
         if isinstance(config.pythia_settings, str):
             logger.debug("Processing command-line pythia settings")
             pythia_settings.extend([s.strip() for s in config.pythia_settings.split(',')])
