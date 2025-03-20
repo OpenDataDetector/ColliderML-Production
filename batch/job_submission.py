@@ -182,19 +182,21 @@ class JobSubmitter:
     
     def _add_postprocessing_commands(self, slurm, previous_runs):
         """Add commands for postprocessing stages"""
-        # Simpler environment setup - just conda
-        slurm.add_cmd("cd /global/cfs/cdirs/m3443/usr/dtmurnane/Side_Work/ACTS")
-        slurm.add_cmd("eval \"$(conda shell.bash hook)\"")
-        slurm.add_cmd("conda activate collider-env")
+        # Use srun to properly parallelize tasks with all environment setup inside
+        slurm.add_cmd(f"srun --exact bash -c \"")
         
-        # For postprocessing, we interpret the parameters:
-        # - previous_runs + SLURM_PROCID = chunk index (not run index)
-        # - We need to pass base_dir, output_dir, etc. from config
+        # Environment setup inside srun (with escaped variables where needed)
+        slurm.add_cmd("cd /global/cfs/cdirs/m3443/usr/dtmurnane/Side_Work/ACTS && \\")
+        slurm.add_cmd("eval \\\"\\$(conda shell.bash hook)\\\" && \\")
+        slurm.add_cmd("conda activate collider-env && \\")
         
+        # Add the Python command (note the escaped $ for SLURM_PROCID)
         cmd = (f"python {self.get_stage_script()} "
               f"--config {self.config_path} "
               f"--chunk-index \$(({previous_runs} + SLURM_PROCID))")
         
+        # Close the quotation for srun
+        cmd += "\""
         slurm.add_cmd(cmd)
     
     def submit_jobs(self):
@@ -220,8 +222,13 @@ class JobSubmitter:
         
         return job_ids
     
-    def submit_validation_jobs(self, job_ids):
+    def submit_validation_jobs(self, job_ids):        
         """Submit validation jobs dependent on stage jobs"""
+
+        if self.config.get("validation_config", None) is None:
+            logger.info("No validation config found, skipping validation jobs")
+            return []
+
         validation_ids = []
         
         for node_idx, job_id in enumerate(job_ids):
