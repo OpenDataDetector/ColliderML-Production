@@ -187,37 +187,68 @@ def process_run_for_tracks(
     """
     run_dir = Path(run_dir)
     
-    # Load track summary data once for the whole run
-    tracksummary_arrays = load_track_summary(run_dir / file_patterns["tracksummary_file"])
-
-    # Load simulated hits and EDM4hep data
-    simhits_df = load_root_file(run_dir / file_patterns["simhits_file"])
-    
-    edm4hep_events = uproot.open(run_dir / file_patterns["edm4hep_file"])["events"]
-    edm4hep_hits_df = get_particle_ids_from_events(edm4hep_events, pixel_readouts + strip_readouts)
-    
-    run_events = []
-    for local_event_num in range(run_size):
+    try:
+        # Verify files exist before attempting to process
+        tracksummary_path = run_dir / file_patterns["tracksummary_file"]
+        simhits_path = run_dir / file_patterns["simhits_file"]
+        edm4hep_path = run_dir / file_patterns["edm4hep_file"]
+        
+        if not tracksummary_path.exists():
+            raise FileNotFoundError(f"Track summary file not found: {tracksummary_path}")
+        if not simhits_path.exists():
+            raise FileNotFoundError(f"Simhits file not found: {simhits_path}")
+        if not edm4hep_path.exists():
+            raise FileNotFoundError(f"EDM4hep file not found: {edm4hep_path}")
+        
+        # Load track summary data once for the whole run
         try:
-            # Calculate global event number
-            global_event_num = run_number * run_size + local_event_num
-            
-            event_df = process_event_for_tracks(
-                run_dir,
-                local_event_num,
-                global_event_num,
-                tracksummary_arrays,
-                file_patterns["tracks_csv_pattern"],
-                simhits_df,
-                edm4hep_hits_df
-            )
-            run_events.append(event_df)
-            
-        except FileNotFoundError as e:
-            print(f"Skipping missing event {local_event_num} in {run_dir}: {str(e)}")
-            continue
-            
-    return run_events
+            tracksummary_arrays = load_track_summary(tracksummary_path)
+        except Exception as e:
+            raise ValueError(f"Failed to load track summary: {str(e)}")
+
+        # Load simulated hits and EDM4hep data
+        try:
+            simhits_df = load_root_file(simhits_path)
+        except Exception as e:
+            raise ValueError(f"Failed to load simhits: {str(e)}")
+        
+        try:
+            edm4hep_events = uproot.open(edm4hep_path)["events"]
+            edm4hep_hits_df = get_particle_ids_from_events(edm4hep_events, pixel_readouts + strip_readouts)
+        except Exception as e:
+            raise ValueError(f"Failed to load EDM4hep data: {str(e)}")
+        
+        run_events = []
+        for local_event_num in range(run_size):
+            try:
+                # Calculate global event number
+                global_event_num = run_number * run_size + local_event_num
+                
+                # Check for tracks CSV file
+                tracks_csv_path = run_dir / file_patterns["tracks_csv_pattern"].format(local_event_num)
+                if not tracks_csv_path.exists():
+                    print(f"  Skipping missing tracks CSV for event {local_event_num} in run {run_number}")
+                    continue
+                
+                event_df = process_event_for_tracks(
+                    run_dir,
+                    local_event_num,
+                    global_event_num,
+                    tracksummary_arrays,
+                    file_patterns["tracks_csv_pattern"],
+                    simhits_df,
+                    edm4hep_hits_df
+                )
+                run_events.append(event_df)
+                
+            except Exception as e:
+                print(f"  Skipping event {local_event_num} in run {run_number} due to error: {str(e)}")
+                continue
+                
+        return run_events
+    except Exception as e:
+        # Re-raise the exception with run information to be caught by the caller
+        raise type(e)(f"Error processing run {run_number}: {str(e)}")
 
 def process_chunk_for_tracks(
     run_dirs: List[Path],
@@ -258,13 +289,17 @@ def process_chunk_for_tracks(
     # Process each run in chunk
     all_track_data = []
     for run_idx, run_dir in enumerate(tqdm(chunk_run_dirs, desc="Processing runs", leave=False)):
-        run_events = process_run_for_tracks(
-            run_dir,
-            start_run + run_idx,
-            run_size,
-            file_patterns
-        )
-        all_track_data.extend(run_events)
+        try:
+            run_events = process_run_for_tracks(
+                run_dir,
+                start_run + run_idx,
+                run_size,
+                file_patterns
+            )
+            all_track_data.extend(run_events)
+        except Exception as e:
+            print(f"\nSkipping run {start_run + run_idx} due to error: {str(e)}")
+            continue
             
     # Save chunk to HDF5
     if all_track_data:

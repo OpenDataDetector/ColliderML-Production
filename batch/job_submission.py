@@ -18,11 +18,17 @@ class JobSubmitter:
     POSTPROCESSING_STAGES = ["build_tracks", "build_hits", "build_particles"]
     VALID_STAGES = SIMULATION_STAGES + POSTPROCESSING_STAGES
     
-    def __init__(self, config_path, dry_run=False, run_range=None):
+    def __init__(self, config_path, dry_run=False, run_range=None, run_list=None):
         """Initialize with YAML config"""
         self.dry_run = dry_run
         self.config_path = config_path
         self.run_range = run_range
+        self.run_list = run_list
+        
+        # Both run_range and run_list can't be specified simultaneously
+        if run_range and run_list:
+            raise ValueError("Cannot specify both run_range and run_list")
+        
         with open(config_path) as f:
             self.config = yaml.safe_load(f)
             
@@ -47,18 +53,30 @@ class JobSubmitter:
     
     def calculate_job_distribution(self):
         """Calculate number of nodes needed based on runs"""
-        if self.run_range:
+        runs_per_node = self.config["job_config"]["runs_per_node"]
+        
+        if self.run_list:
+            # Using a specific list of runs
+            self.run_ids = sorted(self.run_list)
+            n_runs = len(self.run_ids)
+            self.n_nodes = math.ceil(n_runs / runs_per_node)
+            self.start_run = 0  # Not used with run_list, but set for completeness
+            
+        elif self.run_range:
+            # Using a range of runs
             start_run, end_run = self.run_range
             n_runs = end_run - start_run
-            runs_per_node = self.config["job_config"]["runs_per_node"]
             self.n_nodes = math.ceil(n_runs / runs_per_node)
             self.start_run = start_run
+            self.run_ids = None  # Not using specific run IDs
+            
         else:
+            # Default: process all runs from 0 to n_runs-1
             n_runs = self.config["job_config"]["n_runs"]
-            runs_per_node = self.config["job_config"]["runs_per_node"]
             self.n_nodes = math.ceil(n_runs / runs_per_node)
             self.start_run = 0
-        
+            self.run_ids = None  # Not using specific run IDs
+    
     def setup_directories(self):
         """Create necessary directories with new structure"""
         base_dir = Path(self.config["common"]["output_base_dir"])
@@ -77,12 +95,20 @@ class JobSubmitter:
     
     def get_run_id(self, node_idx, process_idx):
         """Calculate run ID from node and process indices"""
-        if self.run_range:
+        if self.run_list:
+            # Using specific run IDs from list
+            list_idx = (node_idx * self.config["job_config"]["runs_per_node"]) + process_idx
+            if list_idx < len(self.run_ids):
+                return self.run_ids[list_idx]
+            return None
+        elif self.run_range:
+            # Using range of runs
             start_run, end_run = self.run_range
             run_id = start_run + (node_idx * self.config["job_config"]["runs_per_node"]) + process_idx
             if run_id >= end_run:
                 return None
         else:
+            # Default: sequential runs from 0
             run_id = (node_idx * self.config["job_config"]["runs_per_node"]) + process_idx
             if run_id >= self.config["job_config"]["n_runs"]:
                 return None
@@ -295,9 +321,12 @@ def main():
                        help="Don't submit jobs, just save batch scripts")
     parser.add_argument("--run-range", type=int, nargs=2, metavar=('START', 'END'),
                        help="Range of runs to process (START inclusive, END exclusive)")
+    parser.add_argument("--run-list", type=int, nargs='+', metavar='RUN_ID',
+                       help="List of specific run IDs to process")
     args = parser.parse_args()
     
-    submitter = JobSubmitter(args.config, dry_run=args.dry_run, run_range=args.run_range)
+    submitter = JobSubmitter(args.config, dry_run=args.dry_run, 
+                             run_range=args.run_range, run_list=args.run_list)
     job_ids = submitter.submit_jobs()
     validation_ids = submitter.submit_validation_jobs(job_ids)
     

@@ -24,116 +24,26 @@ def build_decay_tree(particles_df, daughters_df):
     
     # Add all particles as nodes first - vectorized approach
     print("Creating nodes...")
+
+    nodes_df = particles_df.copy()
     # Convert DataFrame to dict of dicts for faster node creation
-    node_attrs = particles_df[['p', 'vx', 'vy', 'vz']].to_dict('index')
-    
-    # Add additional attributes to each node
-    for idx, attrs in tqdm(node_attrs.items(), total=len(node_attrs)):
-        attrs['energy'] = attrs.pop('p')  # Rename 'p' to 'energy'
-        attrs['particleID'] = idx
-        attrs['collapsedParticleID'] = -1
-        attrs['incidentParentID'] = -1
+    nodes_df["particleID"] = nodes_df.index
+    nodes_df["collapsedParticleID"] = nodes_df.index
+    nodes_df["incidentParentID"] = nodes_df.index
+    nodes_df.rename(columns={"p": "energy", "vx": "decay_vertex_x", "vy": "decay_vertex_y", "vz": "decay_vertex_z"}, inplace=True)
+    node_attrs = nodes_df[['energy', 'decay_vertex_x', 'decay_vertex_y', 'decay_vertex_z', 'particleID', 'collapsedParticleID', 'incidentParentID']].to_dict('index')
     
     # Add all nodes at once
     G.add_nodes_from(node_attrs.items())
     
-    # Create a dictionary for faster lookups of daughter particles
-    print("Creating particle lookup dictionary...")
-    daughter_dict = {idx: row for idx, row in tqdm(particles_df.iterrows(), total=len(particles_df))}
-    
-    # Filter parents with daughters
-    parents_with_daughters = particles_df[particles_df["daughters_begin"] != particles_df["daughters_end"]].copy()[["daughters_begin", "daughters_end"]]
-
-    # Define function to process each parent row and create edges
-    def process_parent(parent_row):
-        parent_id = parent_row.name
-        edges = []
-        
-        daughters_begin = int(parent_row['daughters_begin'])
-        daughters_end = int(parent_row['daughters_end'])
-        
-        if pd.isna(daughters_begin) or pd.isna(daughters_end) or daughters_begin == daughters_end:
-            return edges
-            
-        # Get all daughter IDs at once
-        daughter_subset = daughters_df.iloc[daughters_begin:daughters_end]
-        daughter_ids = daughter_subset['particle_id'].values
-        
-        # Create edges for all daughters in vectorized way
-        for daughter_id in daughter_ids:
-            daughter_particle = daughter_dict[daughter_id]
-            edges.append((parent_id, daughter_id))
-        
-        return edges
-    
-    # Apply the function to each parent row to create edge lists
-    print("Creating edges for parent-daughter relationships...")
-    tqdm.pandas(desc="Processing parents")
-    edge_lists = parents_with_daughters.progress_apply(process_parent, axis=1)
-    
-    # Flatten the list of edge lists
-    edges = [edge for edge_list in edge_lists for edge in edge_list]
-    print(f"Created {len(edges)} edges")
+    num_daughters = (particles_df["daughters_end"] - particles_df["daughters_begin"]).values
+    daughters_df["parent_id"] = np.repeat(nodes_df.particleID.values, num_daughters)
     
     # Add all edges at once
-    G.add_edges_from(edges)
+    G.add_edges_from(daughters_df[["parent_id", "particle_id"]].values)
+    print(f"Created {G.number_of_edges()} edges")
     
     return G
-
-# def build_decay_tree(particles_df, daughters_df):
-#     """
-#     Build a decay tree graph where:
-#     - Nodes are particles
-#     - Edges represent parent-child relationships
-    
-#     Parameters:
-#     - particles_df: DataFrame containing particle information
-#     - daughters_df: DataFrame containing daughter-parent relationships
-    
-#     Returns:
-#     - G: NetworkX DiGraph representing the decay tree
-#     """
-#     # Create a directed graph
-#     G = nx.DiGraph()
-    
-#     # Add all particles as nodes first
-#     nodes_with_attrs = [(idx, {
-#         'energy': row['p'],
-#         'vx': row['vx'],
-#         'vy': row['vy'],
-#         'vz': row['vz'],
-#         'particleID': idx,
-#         'collapsedParticleID': -1,
-#         'incidentParentID': -1
-#     }) for idx, row in particles_df.iterrows()]
-    
-#     G.add_nodes_from(nodes_with_attrs)
-    
-#     # Add parent-daughter edges
-#     edges = []
-
-#     parents_with_daughters = particles_df[particles_df["daughters_begin"] != particles_df["daughters_end"]]
-    
-#     for idx, particle in tqdm(parents_with_daughters.iterrows(), total=len(parents_with_daughters)):
-#         daughters_begin = int(particle['daughters_begin'])
-#         daughters_end = int(particle['daughters_end'])
-        
-#         # Skip if no daughters
-#         if pd.isna(daughters_begin) or pd.isna(daughters_end) or daughters_begin == daughters_end:
-#             continue
-            
-#         for _, daughter in daughters_df.iloc[daughters_begin:daughters_end].iterrows():
-#             daughter_particle = particles_df.loc[daughter['particle_id']]
-#             edges.append((idx, daughter['particle_id'], {
-#                 'decay_vertex_x': daughter_particle['vx'],
-#                 'decay_vertex_y': daughter_particle['vy'],
-#                 'decay_vertex_z': daughter_particle['vz']
-#             }))
-    
-#     print(f"Created {len(edges)} edges")
-#     G.add_edges_from(edges)
-    
-#     return G
 
 def in_tracking_cylinder(x, y, z, params):
     """
@@ -168,10 +78,6 @@ def process_decay_tree(G, detector_params):
     queue = root_nodes.copy()
     visited_nodes = set()
 
-    for node in root_nodes:
-        G.nodes[node]['collapsedParticleID'] = G.nodes[node]['particleID']
-        G.nodes[node]['incidentParentID'] = G.nodes[node]['particleID']
-    
     print("Processing nodes in topological order...")
     # Process the graph breadth-first
     with tqdm(total=G.number_of_nodes()) as pbar:
@@ -187,9 +93,9 @@ def process_decay_tree(G, detector_params):
             pbar.update(1)
             
             # Get node position
-            x = G.nodes[current_node]['vx']
-            y = G.nodes[current_node]['vy']
-            z = G.nodes[current_node]['vz']
+            x = G.nodes[current_node]['decay_vertex_x']
+            y = G.nodes[current_node]['decay_vertex_y']
+            z = G.nodes[current_node]['decay_vertex_z']
 
             # Get particle ID
             parent_particle_id = G.nodes[current_node]['particleID']
@@ -199,10 +105,10 @@ def process_decay_tree(G, detector_params):
             # print("Parent in tracking: ", parent_in_tracking)
             
             # Process each outgoing edge
-            for _, child_node, data in G.out_edges(current_node, data=True):
-                child_x = data['decay_vertex_x']
-                child_y = data['decay_vertex_y']
-                child_z = data['decay_vertex_z']
+            for _, child_node in G.out_edges(current_node, data=False):
+                child_x = G.nodes[child_node]['decay_vertex_x']
+                child_y = G.nodes[child_node]['decay_vertex_y']
+                child_z = G.nodes[child_node]['decay_vertex_z']
 
                 # Get child particle ID
                 child_particle_id = child_node
@@ -289,14 +195,14 @@ def visualize_decay_tree(G, detector_params, highlight_collapsed=None, show_trac
     # Draw edges (decay relationships)
     for parent, child, data in G.edges(data=True):
         # Parent node position
-        parent_x = G.nodes[parent]['vx']
-        parent_y = G.nodes[parent]['vy']
-        parent_z = G.nodes[parent]['vz']
+        parent_x = G.nodes[parent]['decay_vertex_x']
+        parent_y = G.nodes[parent]['decay_vertex_y']
+        parent_z = G.nodes[parent]['decay_vertex_z']
         
         # Child node position
-        child_x = G.nodes[child]['vx']
-        child_y = G.nodes[child]['vy']
-        child_z = G.nodes[child]['vz']
+        child_x = G.nodes[child]['decay_vertex_x']
+        child_y = G.nodes[child]['decay_vertex_y']
+        child_z = G.nodes[child]['decay_vertex_z']
         
         # Determine detector regions
         parent_in_tracking = in_tracking_cylinder(parent_x, parent_y, parent_z, detector_params)
@@ -335,7 +241,7 @@ def visualize_decay_tree(G, detector_params, highlight_collapsed=None, show_trac
     
     # Draw nodes (particles)
     for node, data in G.nodes(data=True):
-        x, y, z = data['vx'], data['vy'], data['vz']
+        x, y, z = data['decay_vertex_x'], data['decay_vertex_y'], data['decay_vertex_z']
         is_in_tracking = in_tracking_cylinder(x, y, z, detector_params)
         
         # Color based on tracking cylinder location
@@ -431,7 +337,7 @@ def visualize_decay_tree(G, detector_params, highlight_collapsed=None, show_trac
     # Set axis limits based on particle positions
     all_coords = []
     for _, data in G.nodes(data=True):
-        all_coords.append((abs(data['vx']), abs(data['vy']), abs(data['vz'])))
+        all_coords.append((abs(data['decay_vertex_x']), abs(data['decay_vertex_y']), abs(data['decay_vertex_z'])))
     if all_coords:
         max_coord = max([max(x, y, z) for x, y, z in all_coords])
         ax.set_xlim(-max_coord*1.1, max_coord*1.1)
@@ -483,16 +389,16 @@ def analyze_particle_flow(G, particles_df):
             # Find the primary particle node
             if c_id in G.nodes:
                 # Start position
-                start_x = G.nodes[c_id]['vx']
-                start_y = G.nodes[c_id]['vy']
-                start_z = G.nodes[c_id]['vz']
+                start_x = G.nodes[c_id]['decay_vertex_x']
+                start_y = G.nodes[c_id]['decay_vertex_y']
+                start_z = G.nodes[c_id]['decay_vertex_z']
                 
                 # Sum distances to all child particles
                 for node, _ in nodes_with_id:
                     if node != c_id:
-                        end_x = G.nodes[node]['vx']
-                        end_y = G.nodes[node]['vy']
-                        end_z = G.nodes[node]['vz']
+                        end_x = G.nodes[node]['decay_vertex_x']
+                        end_y = G.nodes[node]['decay_vertex_y']
+                        end_z = G.nodes[node]['decay_vertex_z']
                         
                         dx = end_x - start_x
                         dy = end_y - start_y
@@ -606,14 +512,14 @@ def interactive_decay_tree(G, detector_params, highlight_collapsed=None, show_tr
     # Add edges (decay relationships)
     for parent, child, data in G.edges(data=True):
         # Parent node position
-        parent_x = G.nodes[parent]['vx']
-        parent_y = G.nodes[parent]['vy']
-        parent_z = G.nodes[parent]['vz']
+        parent_x = G.nodes[parent]['decay_vertex_x']
+        parent_y = G.nodes[parent]['decay_vertex_y']
+        parent_z = G.nodes[parent]['decay_vertex_z']
         
         # Child node position
-        child_x = G.nodes[child]['vx']
-        child_y = G.nodes[child]['vy']
-        child_z = G.nodes[child]['vz']
+        child_x = G.nodes[child]['decay_vertex_x']
+        child_y = G.nodes[child]['decay_vertex_y']
+        child_z = G.nodes[child]['decay_vertex_z']
         
         # Determine detector regions
         parent_in_tracking = in_tracking_cylinder(parent_x, parent_y, parent_z, detector_params)
@@ -675,7 +581,7 @@ def interactive_decay_tree(G, detector_params, highlight_collapsed=None, show_tr
     
     # Group nodes by detector region for cleaner plotting
     for node, data in G.nodes(data=True):
-        x, y, z = data['vx'], data['vy'], data['vz']
+        x, y, z = data['decay_vertex_x'], data['decay_vertex_y'], data['decay_vertex_z']
         is_in_tracking = in_tracking_cylinder(x, y, z, detector_params)
         
         # Size based on energy (optional)
@@ -786,7 +692,7 @@ def interactive_decay_tree(G, detector_params, highlight_collapsed=None, show_tr
     # Set layout
     max_coord = 0
     for _, data in G.nodes(data=True):
-        max_coord = max(max_coord, abs(data['vx']), abs(data['vy']), abs(data['vz']))
+        max_coord = max(max_coord, abs(data['decay_vertex_x']), abs(data['decay_vertex_y']), abs(data['decay_vertex_z']))
     
     max_coord = max_coord * 1.2  # Add some margin
     
