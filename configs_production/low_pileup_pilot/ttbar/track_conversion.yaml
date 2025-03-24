@@ -5,8 +5,8 @@ stage: "build_tracks"
 
 # Job submission configuration
 job_config:
-  n_runs: 1  # Number of chunks to process
-  runs_per_node: 1  # Number of chunks processed per node
+  n_runs: 13  # Number of chunks to process
+  runs_per_node: 13  # Number of chunks processed per node
   time_limit: "00:30:00"
   qos: "debug"
   max_cores: 128  # Total cores per node
