@@ -1,0 +1,51 @@
+# Single Particle Simulation Configuration
+output: "/global/cfs/projectdirs/m4958/data/ColliderML/outputs/single_particle_tests/single_run_test_TV_low_threshold"
+dataset: "single_particle_pion_10GeV"
+version: "v2"
+seed: 42
+stage: "simulation"  # Only simulation stage is needed for single particle
+job_config:
+  n_runs: 1  # Number of jobs to submit
+  runs_per_node: 1  # Number of runs per node
+  time_limit: "00:30:00"  # Time limit per job
+  qos: "debug"
+
+validation_config:
+  time_limit: "00:10:00"
+  qos: "debug"
+
+# Stage-specific configurations
+events: 10  # Number of events per run
+single_particle: true  # Enable single particle mode
+minimalKineticEnergy: 0.001  # Minimum kinetic energy in GeV to register in truth
+truth_particle_handler: "Geant4TVUserParticleHandler"
+# Particle gun configuration
+gun_particle: "pi+"  # Particle type (e-, e+, mu-, mu+, pi+, pi-, etc.)
+gun_energy: 10.0  # Energy in GeV (if specified, overrides momentum range)
+
+# Alternative momentum configuration (uncomment to use instead of energy)
+# gun_momentum_min: 1.0  # Minimum momentum in GeV
+# gun_momentum_max: 10.0  # Maximum momentum in GeV
+
+# Direction configuration
+# Fixed direction (default is along z-axis)
+# gun_direction: [0, 0, 1]  # Direction vector [x, y, z]
+
+# Random direction distribution (uncomment to use)
+gun_distribution: "cos(theta)"  # Options: "uniform", "cos(theta)", "eta", "ffbar"
+gun_theta_min: "10*deg"  # Minimum theta angle
+gun_theta_max: "170*deg"  # Maximum theta angle
+gun_phi_min: "0*deg"  # Minimum phi angle
+gun_phi_max: "360*deg"  # Maximum phi angle
+
+# Position configuration (default is at origin)
+gun_position: [0.0, 0.0, 0.0]  # Position vector [x, y, z] in mm
+
+# Multiplicity (number of particles per event)
+gun_multiplicity: 1
+
+# Common settings
+common:
+  output_base_dir: "/global/cfs/cdirs/m3443/usr/dtmurnane/Side_Work/ACTS/outputs/single_particle_tests/"
+  account: "m4958"
+  container: "registry.cern.ch/atlasadc/atlas-grid-almalinux9" 

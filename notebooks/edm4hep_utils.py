@@ -113,7 +113,10 @@ def build_tracker_df(events, event_idx, detector_name=None):
         if det not in events:
             continue
         hits = events[det].arrays()
-        particle_links = events[f"_{det}_MCParticle"].arrays()
+        try:
+            particle_links = events[f"_{det}_MCParticle"].arrays()
+        except:
+            particle_links = events[f"_{det}_particle"].arrays()
         df = _process_tracker_hits(hits, particle_links, det, event_idx)
         df['detector'] = det
         dfs.append(df)
@@ -124,7 +127,6 @@ def _process_tracker_hits(hits, particle_links, detector_name, event_idx):
     """Process tracker hits for a single event"""
     hit_dict = {
         'cellID': hits[f"{detector_name}.cellID"][event_idx],
-        'EDep': hits[f"{detector_name}.EDep"][event_idx],
         'time': hits[f"{detector_name}.time"][event_idx],
         'pathLength': hits[f"{detector_name}.pathLength"][event_idx],
         'quality': hits[f"{detector_name}.quality"][event_idx],
@@ -134,8 +136,19 @@ def _process_tracker_hits(hits, particle_links, detector_name, event_idx):
         'px': hits[f"{detector_name}.momentum.x"][event_idx],
         'py': hits[f"{detector_name}.momentum.y"][event_idx],
         'pz': hits[f"{detector_name}.momentum.z"][event_idx],
-        'particle_id': particle_links[f"_{detector_name}_MCParticle.index"][event_idx]
     }
+    
+    # Try both energy deposition formats
+    try:
+        hit_dict['EDep'] = hits[f"{detector_name}.EDep"][event_idx]
+    except:
+        hit_dict['EDep'] = hits[f"{detector_name}.eDep"][event_idx]
+    
+    # Try both particle link formats
+    try:
+        hit_dict['particle_id'] = particle_links[f"_{detector_name}_particle.index"][event_idx]
+    except:
+        hit_dict['particle_id'] = particle_links[f"_{detector_name}_MCParticle.index"][event_idx]
     
     df = pd.DataFrame(hit_dict)
     df['r'] = calculate_R(df['x'], df['y'])
@@ -210,7 +223,7 @@ def _process_calo_hits(hits, contributions, particle_links, detector_name, event
     contrib_df = pd.DataFrame(contrib_dict)
 
     # Add hit positions to contributions
-    # contrib_df = _add_hit_positions_to_contributions(hits_df, contrib_df)
+    contrib_df = _add_hit_positions_to_contributions(hits_df, contrib_df)
 
     if contrib_offset is not None:
         hits_df['contribution_begin'] += contrib_offset
@@ -220,28 +233,11 @@ def _process_calo_hits(hits, contributions, particle_links, detector_name, event
 
 def _add_hit_positions_to_contributions(hits_df, contrib_df):
     """Add hit positions (x, y, z) to the contributions dataframe"""
-    # First, create the position columns in the contributions dataframe with float data type
-    contrib_df['x'] = np.nan
-    contrib_df['y'] = np.nan
-    contrib_df['z'] = np.nan
-    
-    # Ensure these columns have float data type
-    contrib_df['x'] = contrib_df['x'].astype(float)
-    contrib_df['y'] = contrib_df['y'].astype(float)
-    contrib_df['z'] = contrib_df['z'].astype(float)
+    num_contribs = hits_df.contribution_end - hits_df.contribution_begin
+    contrib_df["cellID"] = np.repeat(hits_df.index.values, num_contribs)
 
-    # set x, y, z for each hit in hits_df
-    for _, hit in hits_df.iterrows():
-        begin = int(hit['contribution_begin'])
-        end = int(hit['contribution_end'])
-        if begin == end:
-            continue
-        
-        # make sure we don't go out of bounds
-        end = min(end, len(contrib_df))
-
-        contrib_df.iloc[begin:end, contrib_df.columns.get_indexer(['x', 'y', 'z'])] = hit[['x', 'y', 'z']].values
-    
+    # merge the contrib_df with hits_df to get the [x,y,z] of the hit
+    contrib_df = contrib_df.merge(hits_df[["x", "y", "z"]], left_on="cellID", right_index=True, how="left")
     return contrib_df
 
 def build_particle_df(events, event_idx):
@@ -384,3 +380,40 @@ def create_truth_clusters(event, detector='ECalBarrelCollection'):
     ).rename(columns={'particle_id': 'highest_energy_particle_id'})
     
     return calo_hits_df
+
+def get_simulator_status_bits(float_val):
+
+    """
+    This function takes in a float and returns a dictionary with the simulator status bits
+    The binary string is padded to 32 bits, and we use this code from edm4hep.yaml as the guide:
+    // define the bit positions for the simulation flag\n
+      static const int BITCreatedInSimulation = 30;\n
+      static const int BITBackscatter = 29 ;\n
+      static const int BITVertexIsNotEndpointOfParent = 28 ;  \n
+      static const int BITDecayedInTracker = 27 ; \n
+      static const int BITDecayedInCalorimeter = 26 ;   \n
+      static const int BITLeftDetector = 25 ;     \n
+      static const int BITStopped = 24 ;    \n
+      static const int BITOverlay = 23 ;    \n
+
+    Therefore, the bit positions are:
+    created_in_simulation: 30
+    backscatter: 29
+    vertex_not_endpoint: 28
+    decayed_in_tracker: 27
+    decayed_in_calorimeter: 26
+    has_left_detector: 25
+
+    and thus we need to skip the first bit (bit 31)
+    """
+    bin_str = bin(int(float_val))[2:].zfill(32)
+    return {
+        'created_in_simulation': bin_str[1],  # Bit 30
+        'backscatter': bin_str[2],            # Bit 29
+        'vertex_not_endpoint': bin_str[3],    # Bit 28
+        'decayed_in_tracker': bin_str[4],     # Bit 27
+        'decayed_in_calorimeter': bin_str[5], # Bit 26
+        'has_left_detector': bin_str[6],      # Bit 25
+        'stopped': bin_str[7],                # Bit 24
+        'overlay': bin_str[8]                 # Bit 23
+    }

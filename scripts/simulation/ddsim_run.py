@@ -128,7 +128,7 @@ def configure_detector(ddsim):
     
     return ddsim
 
-def configure_physics(ddsim, config):
+def configure_physics(ddsim, config, logger):
     """Configure physics for simulation
     
     Args:
@@ -146,10 +146,23 @@ def configure_physics(ddsim, config):
     if hasattr(config, 'physics_list'):
         ddsim.physics.list = config.physics_list
     
+    # Set truth particle handler
+    if hasattr(config, 'truthParticleHandler'):
+        logger.info(f"Setting truth particle handler to {config.truthParticleHandler}")
+        ddsim.part.userParticleHandler = config.truthParticleHandler
+    else:
+        logger.info("Setting truth particle handler to default Geant4TCUserParticleHandler")
+        ddsim.part.userParticleHandler = "Geant4TCUserParticleHandler"
+
     if hasattr(config, 'minimalKineticEnergy'):
         ddsim.part.minimalKineticEnergy = config.minimalKineticEnergy * GeV
     else:
         ddsim.part.minimalKineticEnergy = 1.0 * GeV
+
+    if hasattr(config, 'keepAllParticles'):
+        ddsim.part.keepAllParticles = config.keepAllParticles
+    else:
+        ddsim.part.keepAllParticles = False
 
     return ddsim
 
@@ -186,7 +199,7 @@ def run_ddsim(input_path, output_path, config, logger=None):
     ddsim.random.seed = getattr(config, 'seed', None) or int(time.time())
     
     # Configure physics
-    ddsim = configure_physics(ddsim, config)
+    ddsim = configure_physics(ddsim, config, logger)
     
     # Log configuration
     logger.info(f"Running DD4hep simulation with {ddsim.numberOfEvents} events")
