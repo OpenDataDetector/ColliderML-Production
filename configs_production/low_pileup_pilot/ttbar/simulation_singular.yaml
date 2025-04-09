@@ -1,0 +1,29 @@
+# Example configuration
+output: "/global/cfs/cdirs/m4958/data/ColliderML/outputs/decay_testing/low_pileup/low_threshold_tv"
+dataset: "gg2ttbar"
+version: "v1"
+seed: 42 
+stage: "simulation"  # One of: generation, merge_smear, simulation, digitization
+job_config:
+  # Number of nodes will be calculated as n_runs / runs_per_node
+  n_runs: 1280  # Number of jobs to submit
+  runs_per_node: 32  # Number of runs per node
+  time_limit: "02:00:00"  # Time limit per job
+  qos: "regular"
+
+validation_config:
+  time_limit: "00:10:00"
+  qos: "regular"
+
+# Stage-specific configurations
+events: 1  # Number of events per run, total number of events will be n_runs * events
+# minimalKineticEnergy: 0.001  # Minimum kinetic energy of 1MeV
+truthParticleHandler: Geant4TVUserParticleHandler
+# keepAllParticles: True
+
+
+# Common settings
+common:
+  output_base_dir: "/global/cfs/projectdirs/m4958/data/ColliderML/outputs/low_pileup_pilot"
+  account: "m4958"
+  container: "registry.cern.ch/atlasadc/atlas-grid-almalinux9"

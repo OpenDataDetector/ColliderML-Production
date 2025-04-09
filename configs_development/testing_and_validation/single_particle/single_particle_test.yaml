@@ -1,7 +1,8 @@
 # Single Particle Simulation Configuration
-output: "/global/cfs/cdirs/m4958/data/ColliderML/simulation/single_particle_pion_10GeV/single_run_test_medium_threshold"
+output: "/global/cfs/projectdirs/m4958/data/ColliderML/outputs/single_particle_tests/single_run_test_TC_low_threshold"
 dataset: "single_particle_pion_10GeV"
-version: "v1"
+version: "v2"
+seed: 42
 stage: "simulation"  # Only simulation stage is needed for single particle
 job_config:
   n_runs: 1  # Number of jobs to submit
@@ -16,7 +17,7 @@ validation_config:
 # Stage-specific configurations
 events: 10  # Number of events per run
 single_particle: true  # Enable single particle mode
-minimalKineticEnergy: 1.0  # Minimum kinetic energy in GeV to register in truth
+minimalKineticEnergy: 0.001  # Minimum kinetic energy in GeV to register in truth
 
 # Particle gun configuration
 gun_particle: "pi+"  # Particle type (e-, e+, mu-, mu+, pi+, pi-, etc.)
