@@ -137,7 +137,7 @@ def git_commit_and_log_config(config, config_path, software_repo_path, force_com
             return False
 
         # --- 1. Branch Check ---
-        expected_branch_name = f"campaign:{config['campaign']}-dataset:{config['dataset']}"
+        expected_branch_name = f"campaign/{config['campaign']}/dataset/{config['dataset']}"
         try:
             current_branch_cmd = ["git", "-C", str(software_repo_path), "rev-parse", "--abbrev-ref", "HEAD"]
             current_branch_name = subprocess.check_output(current_branch_cmd, text=True, cwd=software_repo_path).strip()
@@ -147,7 +147,7 @@ def git_commit_and_log_config(config, config_path, software_repo_path, force_com
 
         if current_branch_name != expected_branch_name:
             logger.error(f"Incorrect Git branch. Expected: '{expected_branch_name}', but currently on: '{current_branch_name}'.")
-            logger.error(f"Please switch to branch '{expected_branch_name}' or create it and push your changes there before running.")
+            logger.error(f"Please switch to branch '{expected_branch_name}' or create it (e.g., git checkout -b {expected_branch_name}) and push your changes there before running.")
             return False
         logger.info(f"Git branch check passed. Currently on expected branch: {current_branch_name}")
 
@@ -183,10 +183,6 @@ def git_commit_and_log_config(config, config_path, software_repo_path, force_com
             add_cmd = ["git", "-C", str(software_repo_path), "add", "."]
             subprocess.run(add_cmd, check=True, capture_output=True) # Use check=True for auto error on fail
             
-            # Even if force_commit is true, only make a commit if there are actual changes
-            # or if the user *really* wants an empty commit (usually not, git commit --allow-empty).
-            # Forcing here means forcing through the "already processed" check, not forcing an empty commit.
-            # So, we still check status *after* add.
             process_after_add = subprocess.run(status_cmd, capture_output=True, text=True)
             if process_after_add.stdout.strip(): # If there are still changes staged
                 commit_message = (f"Auto-commit for campaign '{config['campaign']}', "
@@ -195,9 +191,9 @@ def git_commit_and_log_config(config, config_path, software_repo_path, force_com
                 subprocess.run(commit_cmd, check=True, capture_output=True)
                 logger.info(f"Git commit successful in {software_repo_path}.")
                 committed_this_run = True
-            elif process.stdout.strip(): # Changes existed before 'add', but 'add' + 'status' shows nothing new (e.g. only mode changes that were ignored)
+            elif process.stdout.strip(): 
                  logger.info("No effective changes to commit after 'git add'.")
-            else: # No changes before 'add' and force_commit was true
+            else: 
                  logger.info("No changes to commit, and force_commit did not find new changes to force through.")
 
 
@@ -206,7 +202,7 @@ def git_commit_and_log_config(config, config_path, software_repo_path, force_com
         logger.info(f"Current Git HEAD for {software_repo_path}: {current_git_hash}")
 
         # --- 4. Git Tagging Logic ---
-        tag_name = f"version:{config['version']}"
+        tag_name = f"version:{config['version']}" # Colons are generally fine in tag names
         tag_message = (f"Tag for campaign: {config['campaign']}, dataset: {config['dataset']}, "
                        f"version: {config['version']}")
         
@@ -225,16 +221,9 @@ def git_commit_and_log_config(config, config_path, software_repo_path, force_com
                 logger.info(f"Tag '{tag_name}' already exists. Deleting and re-creating due to force_commit=True.")
                 delete_tag_cmd = ["git", "-C", str(software_repo_path), "tag", "-d", tag_name]
                 subprocess.run(delete_tag_cmd, check=True, capture_output=True)
-            else: # Tag exists but points to a different commit, and not forcing
-                logger.warning(f"Tag '{tag_name}' already exists but points to a different commit ({existing_tag_hash}) "
-                               f"than current HEAD ({current_git_hash}). Not forcing, so an error might occur if we try to re-tag "
-                               f"the same version name to a new commit. Manual intervention might be needed if this version tag is supposed to move.")
-                # Depending on policy, this could be an error or we just don't tag.
-                # For now, let's try to create, git will error if tag points to different commit.
-                # A better approach might be to error out here.
-                # Let's choose to error if tag exists and points elsewhere and not force_commit
-                logger.error(f"Tag '{tag_name}' exists on a different commit. Use --force-commit to retag, or resolve manually.")
-                return False # Make it an error to prevent ambiguous state
+            else: 
+                logger.error(f"Tag '{tag_name}' exists on a different commit ({existing_tag_hash} vs HEAD {current_git_hash}). Use --force-commit to retag, or resolve manually.")
+                return False
 
 
         if should_create_tag:
@@ -244,9 +233,7 @@ def git_commit_and_log_config(config, config_path, software_repo_path, force_com
                 subprocess.run(create_tag_cmd, check=True, capture_output=True)
                 logger.info(f"Successfully created/updated tag '{tag_name}'.")
             except subprocess.CalledProcessError as e_tag:
-                logger.error(f"Failed to create tag '{tag_name}': {e_tag.stderr}")
-                # If commit succeeded but tagging failed, this is a partial success.
-                # The GIT_COMMIT_SUCCESS_FILE should perhaps not be written.
+                logger.error(f"Failed to create tag '{tag_name}': {e_tag.stderr.decode() if isinstance(e_tag.stderr, bytes) else e_tag.stderr}")
                 return False
 
 
@@ -266,10 +253,9 @@ def git_commit_and_log_config(config, config_path, software_repo_path, force_com
         return True
         
     except subprocess.CalledProcessError as e:
-        logger.error(f"Git operation failed during script execution: {e}")
-        # Attempt to provide more context from the error object
-        stderr_output = e.stderr.decode('utf-8').strip() if isinstance(e.stderr, bytes) else e.stderr.strip()
-        stdout_output = e.stdout.decode('utf-8').strip() if isinstance(e.stdout, bytes) else e.stdout.strip()
+        logger.error(f"Git operation failed during script execution: {e.cmd}")
+        stderr_output = e.stderr.decode('utf-8').strip() if isinstance(e.stderr, bytes) else e.stderr.strip() if e.stderr else ""
+        stdout_output = e.stdout.decode('utf-8').strip() if isinstance(e.stdout, bytes) else e.stdout.strip() if e.stdout else ""
         if stdout_output:
             logger.error(f"Stdout: {stdout_output}")
         if stderr_output:
@@ -294,7 +280,6 @@ def create_necessary_directories(config):
     """
     version_dir = get_version_directory(config) # This will now include campaign
     run_dir = version_dir / "runs"
-    # Log dir should also be under the campaign structure
     log_dir = version_dir / "logs" / f"stage_{config['stage']}"
     validation_dir = version_dir / "validation" / f"stage_{config['stage']}"
     
