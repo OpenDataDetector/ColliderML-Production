@@ -52,5 +52,10 @@ card_customizations:
     # e.g., settings for top decays, different tunes, etc.
     # "Top:all ": "on" # Example if Pythia8 needs to be told to decay tops (usually does by default)
 
+common:
+  output_base_dir: "/global/cfs/projectdirs/m4958/data/ColliderML/simulation/"
+  account: "m4958"
+  container: "registry.cern.ch/atlasadc/atlas-grid-almalinux9"
+
 # --- Logging ---
 log_level: "INFO" 

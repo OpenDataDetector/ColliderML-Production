@@ -80,8 +80,20 @@ def get_version_directory(config):
         Path to the version directory
     """
     if "campaign" not in config:
-        raise ValueError("Configuration missing 'campaign' field.")
-    base_dir = Path(config["common"]["output_base_dir"])
+        raise ValueError("Configuration missing 'campaign' field for version directory construction.")
+    if "dataset" not in config:
+        raise ValueError("Configuration missing 'dataset' field for version directory construction.")
+    if "version" not in config:
+        raise ValueError("Configuration missing 'version' field for version directory construction.")
+    
+    common_config = config.get("common")
+    if not isinstance(common_config, dict):
+        raise ValueError("Configuration missing 'common' section or 'common' is not a dictionary; required for 'output_base_dir'.")
+    
+    if "output_base_dir" not in common_config:
+        raise ValueError("Configuration missing 'output_base_dir' in 'common' section.")
+        
+    base_dir = Path(common_config["output_base_dir"])
     version_dir = base_dir / config["campaign"] / config["dataset"] / config["version"]
     return version_dir
 
