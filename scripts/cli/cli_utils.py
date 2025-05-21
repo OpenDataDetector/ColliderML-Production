@@ -214,7 +214,7 @@ def git_commit_and_log_config(config, config_path, software_repo_path, force_com
         logger.info(f"Current Git HEAD for {software_repo_path}: {current_git_hash}")
 
         # --- 4. Git Tagging Logic ---
-        tag_name = f"version:{config['version']}" # Colons are generally fine in tag names
+        tag_name = f"version-{config['version']}" # Colons are generally fine in tag names
         tag_message = (f"Tag for campaign: {config['campaign']}, dataset: {config['dataset']}, "
                        f"version: {config['version']}")
         
