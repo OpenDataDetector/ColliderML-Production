@@ -169,11 +169,17 @@ def git_commit_and_log_config(config, config_path, software_repo_path, force_com
         
         output_version_dir.mkdir(parents=True, exist_ok=True) # Ensure it exists early
 
+        # Determine original config filename and new paths
+        original_config_filename = Path(config_path).name
+        config_snapshot_dir = output_version_dir / "configs"
+        logged_config_path = config_snapshot_dir / original_config_filename
+
         if not force_commit and commit_success_file.exists():
             logger.info(f"Success marker file {commit_success_file} exists. Skipping git commit and tag for this version.")
-            logged_config_path = output_version_dir / CONFIG_FILE_NAME
+            # Check for the config in the new location
             if not logged_config_path.exists():
                  logger.warning(f"Git commit marker exists, but config snapshot {logged_config_path} not found. Re-logging config.")
+                 config_snapshot_dir.mkdir(parents=True, exist_ok=True) # Ensure 'configs' subdir exists
                  with open(logged_config_path, 'w') as f_out:
                     yaml.dump(config, f_out, default_flow_style=False, sort_keys=False)
                  logger.info(f"Config snapshot saved to {logged_config_path}")
@@ -250,17 +256,18 @@ def git_commit_and_log_config(config, config_path, software_repo_path, force_com
 
 
         # --- 5. Save Config Snapshot and Success Marker ---
-        logged_config_path = output_version_dir / CONFIG_FILE_NAME
+        config_snapshot_dir.mkdir(parents=True, exist_ok=True) # Ensure 'configs' subdir exists before writing
         with open(logged_config_path, 'w') as f_out:
             yaml.dump(config, f_out, default_flow_style=False, sort_keys=False)
         logger.info(f"Full configuration snapshot saved to {logged_config_path}")
         
+        relative_config_path_for_marker = Path("configs") / original_config_filename
         with open(commit_success_file, 'w') as f_marker:
             f_marker.write(f"Commit successful at {datetime.datetime.now()}\n"
                            f"Git Branch: {current_branch_name}\n"
                            f"Git Hash: {current_git_hash}\n"
                            f"Git Tag: {tag_name if should_create_tag or (tag_exists and existing_tag_hash == current_git_hash) else 'skipped or failed'}\n"
-                           f"Config: {logged_config_path.name}\n")
+                           f"Config: {relative_config_path_for_marker}\n") # Use relative path here
         logger.info(f"Git commit and tag success marker created at {commit_success_file}")
         return True
         
