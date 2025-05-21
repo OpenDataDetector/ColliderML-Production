@@ -35,24 +35,25 @@ def hash_seed_string(seed_str: str) -> int:
         return seed
 
 def create_base_parser(description):
-    """Create parser with common arguments"""
+    """Create parser with common arguments, no defaults"""
     parser = argparse.ArgumentParser(description=description)
     parser.add_argument(
         "--output", "-o",
         help="Output directory",
         type=Path,
-        default=Path.cwd() / "outputs",
+        default=None,
     )
     parser.add_argument(
         "--events", "-n",
         help="Number of events",
         type=int,
-        default=100,
+        default=None,
     )
     parser.add_argument(
         "--config",
         help="YAML configuration file",
         type=Path,
+        default=None,
     )
     parser.add_argument(
         "--seed",
@@ -64,26 +65,31 @@ def create_base_parser(description):
         "--output-subdir",
         help="Output subdirectory (useful for parallel processing)",
         type=str,
-        default="",
+        default=None,
     )
     parser.add_argument(
         "--performance-metrics",
         help="Enable performance metrics collection and output",
         action="store_true",
-        default=False,
+        default=None,
     )
     return parser
 
 def load_config(args):
-    """Load and merge configuration from YAML file"""
+    """Load and merge configuration from YAML file, with CLI args taking precedence"""
     if args.config is not None:
         with open(args.config) as f:
             config = yaml.safe_load(f)
             logger.info(f"Loaded configuration from {args.config}")
-        
-        # Update args with config values
+        # Flatten nested YAML keys if needed
+        for k, v in list(config.items()):
+            if isinstance(v, dict):
+                for subk, subv in v.items():
+                    config[subk] = subv
+        # Only set values from config if the arg is None
         for key, value in config.items():
-            setattr(args, key, value)
+            if getattr(args, key, None) is None:
+                setattr(args, key, value)
             
     # Convert seed if it's a string pattern
     if args.seed is not None:

@@ -1,4 +1,4 @@
-# colliderml_dev/batch/job_submission.py
+# colliderml_dev/scripts/cli/job_submission.py
 import os
 import math
 from pathlib import Path
@@ -7,6 +7,9 @@ from simple_slurm import Slurm
 import datetime
 import logging
 
+# Import common utilities
+import cli_utils
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -14,7 +17,7 @@ class JobSubmitter:
     """Handles SLURM job submission for ColliderML pipeline stages"""
     
     # Separate stage categories
-    SIMULATION_STAGES = ["generation", "merge_smear", "simulation", "digitization"]
+    SIMULATION_STAGES = ["new_generation", "generation", "merge_smear", "simulation", "digitization"]
     POSTPROCESSING_STAGES = ["build_tracks", "build_hits", "build_particles"]
     VALID_STAGES = SIMULATION_STAGES + POSTPROCESSING_STAGES
     
@@ -79,19 +82,21 @@ class JobSubmitter:
     
     def setup_directories(self):
         """Create necessary directories with new structure"""
-        base_dir = Path(self.config["common"]["output_base_dir"])
-        self.version_dir = base_dir / self.config["dataset"] / self.config["version"]
-        self.run_dir = self.version_dir / "runs"
-        self.log_dir = self.version_dir / "logs" / f"stage_{self.config['stage']}"
-        self.validation_dir = self.version_dir / "validation" / f"stage_{self.config['stage']}"
-        self.dry_run_dir = self.version_dir / "dry_run" if self.dry_run else None
+        # Use cli_utils to get and create directories
+        directories = cli_utils.create_necessary_directories(self.config)
         
-        dirs_to_create = [self.version_dir, self.run_dir, self.log_dir, self.validation_dir]
+        # Store directories for later use
+        self.version_dir = directories["version_dir"]
+        self.run_dir = directories["run_dir"]
+        self.log_dir = directories["log_dir"]
+        self.validation_dir = directories["validation_dir"]
+        
+        # Setup dry run directory if needed
         if self.dry_run:
-            dirs_to_create.append(self.dry_run_dir)
-            
-        for d in dirs_to_create:
-            d.mkdir(parents=True, exist_ok=True)
+            self.dry_run_dir = self.version_dir / "dry_run"
+            self.dry_run_dir.mkdir(parents=True, exist_ok=True)
+        else:
+            self.dry_run_dir = None
     
     def get_run_id(self, node_idx, process_idx):
         """Calculate run ID from node and process indices"""
@@ -127,35 +132,40 @@ class JobSubmitter:
         return self.config["stage"] in self.POSTPROCESSING_STAGES
     
     def get_stage_script(self):
-        """Get the appropriate script for current stage"""
-        stage_scripts = {
-            # Simulation scripts
-            "generation": "simulation/pythia_gen.py",
-            "merge_smear": "simulation/merge_and_smear.py",
-            "simulation": "simulation/ddsim_run.py",
-            "digitization": "simulation/digi_and_reco.py",
-            
-            # Postprocessing scripts
-            "build_tracks": "postprocessing/convert_tracks.py",
-            "build_hits": "postprocessing/convert_hits.py",
-            "build_particles": "postprocessing/convert_particles.py"
-        }
-        return f"colliderml_dev/scripts/{stage_scripts[self.config['stage']]}"
+        """Get the appropriate script for current stage using cli_utils"""
+        try:
+            return str(cli_utils.get_stage_script_path(self.config))
+        except (ValueError, FileNotFoundError) as e:
+            logger.error(f"Error finding script path for stage {self.config['stage']}: {e}")
+            raise
+    
+    def get_env_setup(self):
+        """Get the environment setup commands for the current stage from config."""
+        env_setup = self.config.get("env_setup", [])
+        if isinstance(env_setup, list):
+            return env_setup
+        elif isinstance(env_setup, dict):
+            return env_setup.get(self.config["stage"], env_setup.get("default", []))
+        else:
+            return []
     
     def create_slurm_job(self, node_idx):
         """Create Slurm job object for given node"""
         job_cfg = self.config["job_config"]
         common_cfg = self.config["common"]
         
-        # Create basic SLURM job configuration (same for both types)
+        # Determine if this is a monolithic job from execution_mode
+        is_monolithic = job_cfg.get("execution_mode") == "monolithic_slurm"
+        
+        # Create basic SLURM job configuration
         slurm = Slurm(
             job_name=f"colliderML_{self.config['stage']}_{node_idx}",
             account=common_cfg["account"],
             qos=job_cfg["qos"],
             time=job_cfg["time_limit"],
             nodes=1,
-            ntasks_per_node=job_cfg["runs_per_node"],
-            cpus_per_task=job_cfg.get("max_cores", 128)//job_cfg["runs_per_node"],
+            ntasks_per_node=1 if is_monolithic else job_cfg["runs_per_node"],
+            cpus_per_task=job_cfg.get("max_cores", 128) if is_monolithic else job_cfg.get("max_cores", 128)//job_cfg["runs_per_node"],
             constraint="cpu",
             output=str(self.log_dir / f"job_{node_idx}_%j.out"),
             error=str(self.log_dir / f"job_{node_idx}_%j.err")
@@ -169,14 +179,14 @@ class JobSubmitter:
         
         # Different setup for simulation vs postprocessing stages
         if self.is_simulation_stage():
-            self._add_simulation_commands(slurm, previous_runs)
+            self._add_simulation_commands(slurm, previous_runs, is_monolithic)
         else:
-            self._add_postprocessing_commands(slurm, previous_runs)
+            self._add_postprocessing_commands(slurm, previous_runs, is_monolithic)
         
         return slurm
     
-    def _add_simulation_commands(self, slurm, previous_runs):
-        """Add commands for simulation stages"""
+    def _add_simulation_commands(self, slurm, previous_runs, is_monolithic=False):
+        """Add commands for simulation stages, using env_setup from config if present."""
         common_cfg = self.config["common"]
         
         # Add environment setup with container
@@ -184,42 +194,83 @@ class JobSubmitter:
         slurm.add_cmd("export SLURM_CPU_BIND=\"cores\"")
         
         # Start srun command with container
-        slurm.add_cmd(f"srun --exact -u shifter --image={common_cfg['container']} --module=cvmfs bash -c \"")
+        srun_options = "--exact"
+        if not is_monolithic:
+            # If distributed, we need to preserve SLURM_PROCID for run calculation
+            pass
         
-        # Environment setup inside container
-        slurm.add_cmd("cd /cvmfs/atlas.cern.ch/repo/ATLASLocalRootBase && \\")
-        slurm.add_cmd("export ATLAS_LOCAL_ROOT_BASE=\$PWD && \\")
-        slurm.add_cmd("source \${ATLAS_LOCAL_ROOT_BASE}/user/atlasLocalSetup.sh && \\")
-        slurm.add_cmd("cd /global/cfs/cdirs/m3443/usr/dtmurnane/Side_Work/ACTS && \\")
-        slurm.add_cmd("source acts/CI/setup_cvmfs_lcg.sh && \\")
-        slurm.add_cmd("source cml_env/bin/activate && \\")
-        slurm.add_cmd("source build/python/setup.sh && \\")
+        slurm.add_cmd(f"srun {srun_options} -u shifter --image={common_cfg['container']} --module=cvmfs bash -c \"")
         
-        # Prepare stage-specific command using bash arithmetic for run calculation
-        cmd = (f"python {self.get_stage_script()} "
-              f"--config {self.config_path} "
-              f"--output {self.run_dir} "
-              f"--output-subdir \$(({previous_runs} + SLURM_PROCID)) "
-              f"--seed {self.config['dataset']}_{self.config['version']}_run\$(({previous_runs} + SLURM_PROCID))")
+        # Use env_setup from config, or fallback to legacy hardcoded setup if not present
+        env_setup_cmds = self.get_env_setup()
+        if env_setup_cmds:
+            for cmd in env_setup_cmds:
+                slurm.add_cmd(cmd + " && \\")
+        else:
+            # Fallback: legacy hardcoded setup (for backward compatibility)
+            slurm.add_cmd("cd /cvmfs/atlas.cern.ch/repo/ATLASLocalRootBase && \\")
+            slurm.add_cmd("export ATLAS_LOCAL_ROOT_BASE=\$PWD && \\")
+            slurm.add_cmd("source \${ATLAS_LOCAL_ROOT_BASE}/user/atlasLocalSetup.sh && \\")
+            slurm.add_cmd("cd /global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software && \\")
+            slurm.add_cmd(f"source /cvmfs/sft.cern.ch/lcg/views/setupViews.sh LCG_107 x86_64-el9-gcc13-opt && \\")
+            slurm.add_cmd("source OtherLibraries/dd4hep-custom/bin/thisdd4hep.sh && \\")
+            slurm.add_cmd(f"source acts/build/python/setup.sh && \\")
+            slurm.add_cmd("source colliderml_env/bin/activate && \\")
+        
+        # Prepare stage-specific command 
+        if is_monolithic:
+            # For monolithic mode, don't use SLURM_PROCID, provide version_dir instead
+            version_dir = cli_utils.get_version_directory(self.config)
+            cmd = (f"python {self.get_stage_script()} "
+                  f"--config {self.config_path} "
+                  f"--output-base-dir {version_dir}")
+            
+            # If stage requires specific monolithic arguments, add them
+            if self.config["stage"] == "new_generation":
+                # For madgraph generation, we might pass additional parameters 
+                # specific to that monolithic process
+                pass
+        else:
+            # For distributed mode, use SLURM_PROCID
+            cmd = (f"python {self.get_stage_script()} "
+                  f"--config {self.config_path} "
+                  f"--output {self.run_dir} "
+                  f"--output-subdir \$(({previous_runs} + SLURM_PROCID)) "
+                  f"--seed {self.config['dataset']}_{self.config['version']}_run\$(({previous_runs} + SLURM_PROCID))")
         
         # Close container command
         cmd += "\""
         slurm.add_cmd(cmd)
     
-    def _add_postprocessing_commands(self, slurm, previous_runs):
-        """Add commands for postprocessing stages"""
+    def _add_postprocessing_commands(self, slurm, previous_runs, is_monolithic=False):
+        """Add commands for postprocessing stages, using env_setup from config if present."""
         # Use srun to properly parallelize tasks with all environment setup inside
-        slurm.add_cmd(f"srun --exact bash -c \"")
+        srun_options = "--exact"
+        slurm.add_cmd(f"srun {srun_options} bash -c \"")
         
-        # Environment setup inside srun (with escaped variables where needed)
-        slurm.add_cmd("cd /global/cfs/cdirs/m3443/usr/dtmurnane/Side_Work/ACTS && \\")
-        slurm.add_cmd("eval \\\"\\$(conda shell.bash hook)\\\" && \\")
-        slurm.add_cmd("conda activate collider-env && \\")
+        # Use env_setup from config, or fallback to legacy hardcoded setup if not present
+        env_setup_cmds = self.get_env_setup()
+        if env_setup_cmds:
+            for cmd in env_setup_cmds:
+                slurm.add_cmd(cmd + " && \\")
+        else:
+            # Fallback: legacy hardcoded setup (for backward compatibility)
+            slurm.add_cmd("cd /global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software && \\")
+            slurm.add_cmd("eval \\\"\\$(conda shell.bash hook)\\\" && \\")
+            slurm.add_cmd("conda activate collider-env && \\")
         
-        # Add the Python command (note the escaped $ for SLURM_PROCID)
-        cmd = (f"python {self.get_stage_script()} "
-              f"--config {self.config_path} "
-              f"--chunk-index \$(({previous_runs} + SLURM_PROCID))")
+        # Add the Python command based on mode
+        if is_monolithic:
+            # For monolithic mode, we pass the whole version directory
+            version_dir = cli_utils.get_version_directory(self.config)
+            cmd = (f"python {self.get_stage_script()} "
+                  f"--config {self.config_path} "
+                  f"--output-base-dir {version_dir}")
+        else:
+            # For distributed mode, use SLURM_PROCID
+            cmd = (f"python {self.get_stage_script()} "
+                  f"--config {self.config_path} "
+                  f"--chunk-index \$(({previous_runs} + SLURM_PROCID))")
         
         # Close the quotation for srun
         cmd += "\""
@@ -271,12 +322,26 @@ class JobSubmitter:
                 ntasks=1
             )
             
-            slurm.add_cmd("cd /global/cfs/cdirs/m3443/usr/dtmurnane/Side_Work/ACTS")
+            slurm.add_cmd("cd /global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software")
             slurm.add_cmd("eval \"$(conda shell.bash hook)\"")
             slurm.add_cmd("conda activate collider-env")
 
-            # Add validation command with additional parameters
-            cmd = (f"python colliderml_dev/scripts/validation/validate_{self.config['stage']}.py "
+            # Get validation script path
+            try:
+                # Check if validation script might be in a standard location
+                base_script_path = Path(__file__).parent.parent
+                validation_script_name = f"validation/validate_{self.config['stage']}.py"
+                validation_script_full_path = str(base_script_path / validation_script_name)
+                
+                # Verify the script exists
+                if not Path(validation_script_full_path).is_file():
+                    raise FileNotFoundError(f"Validation script not found at {validation_script_full_path}")
+            except Exception as e:
+                logger.warning(f"Failed to locate validation script automatically: {e}")
+                # Fall back to assuming standard location
+                validation_script_full_path = f"colliderml_dev/scripts/validation/validate_{self.config['stage']}.py"
+
+            cmd = (f"python {validation_script_full_path} "
                   f"--stage {self.config['stage']} "
                   f"--run-dir {self.run_dir} "
                   f"--node-idx {node_idx} "
@@ -315,7 +380,7 @@ class JobSubmitter:
 
 def main():
     import argparse
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(description="Submit ColliderML pipeline jobs to SLURM.")
     parser.add_argument("config", type=str, help="Path to YAML config file")
     parser.add_argument("--dry-run", action="store_true", 
                        help="Don't submit jobs, just save batch scripts")
@@ -324,6 +389,8 @@ def main():
     parser.add_argument("--run-list", type=int, nargs='+', metavar='RUN_ID',
                        help="List of specific run IDs to process")
     args = parser.parse_args()
+    
+    logger.info("Note: job_submission.py is being used directly. For most cases, consider using run_stage.py instead.")
     
     submitter = JobSubmitter(args.config, dry_run=args.dry_run, 
                              run_range=args.run_range, run_list=args.run_list)
@@ -337,4 +404,4 @@ def main():
         logger.info(f"Submitted {len(validation_ids)} validation jobs with IDs: {validation_ids}")
 
 if __name__ == "__main__":
-    main()
+    main() 

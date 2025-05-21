@@ -4,6 +4,9 @@ import acts
 import acts.examples
 from acts.examples import Sequencer
 from acts.examples.simulation import addPythia8
+from acts.examples.hepmc3 import (
+        HepMC3AsciiWriter,
+    )
 import traceback
 
 from utils.app_logging import setup_logging, TimingRecorder
@@ -32,6 +35,25 @@ def parse_args():
         type=str,
         default=None,
     )
+    # Vertex smearing parameters 
+    parser.add_argument(
+        "--vertex-sigma-xy",
+        help="Sigma for vertex smearing in x/y [mm]",
+        type=float,
+        default=None,
+    )
+    parser.add_argument(
+        "--vertex-sigma-z",
+        help="Sigma for vertex smearing in z [mm]",
+        type=float,
+        default=None,
+    )
+    parser.add_argument(
+        "--vertex-sigma-t",
+        help="Sigma for vertex smearing in time [ns]",
+        type=float,
+        default=None,
+    )
     return parser.parse_args()
 
 def run_pythia_stage(output_dir, config, logger=None):
@@ -47,18 +69,33 @@ def run_pythia_stage(output_dir, config, logger=None):
     logger.info(f"Using random seed: {seed}")
     rnd = acts.examples.RandomNumbers(seed=seed)
     
-    # Use simple base names for files
-    hard_scatter_path = output_dir / "events.hepmc3"
-    pileup_path = output_dir / "events_pileup.hepmc3"
+    # Add vertex generator using config values
+    logger.info(f"Configuring vertex smearing with sigma_xy={config.vertex_sigma_xy} mm, sigma_z={config.vertex_sigma_z} mm, sigma_t={config.vertex_sigma_t} ns")
+    vtxGen = None
+    if any(sigma is not None and sigma != 0 for sigma in [
+        config.vertex_sigma_xy,
+        config.vertex_sigma_z,
+        config.vertex_sigma_t
+    ]):
+        vtxGen = acts.examples.GaussianVertexGenerator(
+            stddev=acts.Vector4(
+                config.vertex_sigma_xy * u.mm,
+                config.vertex_sigma_xy * u.mm,
+                config.vertex_sigma_z * u.mm,
+                config.vertex_sigma_t * u.ns
+            ),
+            mean=acts.Vector4(0, 0, 0, 0),
+        )
+
     
     # Initialize settings list from config
     pythia_settings = []
     
     # Add all settings from config if present
-    if hasattr(config, 'pythia_settings') and config.pythia_settings is not None:
+    if getattr(config, 'pythia_settings', None):
         if isinstance(config.pythia_settings, str):
             logger.debug("Processing command-line pythia settings")
-            pythia_settings.extend([s.strip() for s in config.pythia_settings.split(',')])
+            pythia_settings.extend([s.strip() for s in config.pythia_settings.split(',') if s.strip()])
         elif isinstance(config.pythia_settings, list):
             logger.debug("Processing YAML list pythia settings")
             pythia_settings.extend(config.pythia_settings)
@@ -66,24 +103,46 @@ def run_pythia_stage(output_dir, config, logger=None):
             raise ValueError("pythia_settings must be either a comma-separated string or a list")
     
     # Always append the hard process at the end
-    pythia_settings.append(f"{config.hard_process}=on")
+    hard_process = getattr(config, 'hard_process', None)
+    if isinstance(hard_process, str) and hard_process.strip():
+        pythia_settings.append(f"{hard_process.strip()}=on")
+
+    if not pythia_settings:
+        pythia_settings = None
     
     logger.info(f"Generating {config.events} events with {config.pileup} pileup each")
     logger.info(f"Final Pythia8 settings: {pythia_settings}")
     
+    if pythia_settings is not None:
+        output_path = output_dir / "merged_events.hepmc3" # This is the final product
+    else:
+        output_path = output_dir / "events_pileup.hepmc3" # This is pileup only, and needs to be merged with signal events
+
     try:
         logger.debug("Creating Pythia8 generator...")
         generator = addPythia8(
             s,
             npileup=config.pileup,
             hardProcess=pythia_settings,
-            outputHepMC=hard_scatter_path,
-            outputHepMCPileup=pileup_path,
+            outputDirCsv=None,
+            outputDirRoot=None,
+            outputEvent="events",
             rnd=rnd,
-            logLevel=acts.logging.DEBUG
+            logLevel=acts.logging.DEBUG,
+            vtxGen=vtxGen,
         )
         logger.debug("Pythia8 generator created successfully")
-        
+
+        s.addWriter(
+            HepMC3AsciiWriter(
+                acts.logging.VERBOSE,
+                inputEvent="events",
+                outputPath=output_path,
+            )
+        )
+
+        logger.debug(f"Writing HepMC3 events to {output_path}")
+
         logger.debug("About to start sequencer run...")
         try:
             s.run()
@@ -102,10 +161,10 @@ def run_pythia_stage(output_dir, config, logger=None):
         raise
     
     # Verify output files exist
-    if not hard_scatter_path.exists() or not pileup_path.exists():
+    if not output_path.exists():
         raise FileNotFoundError("Pythia8 failed to generate output files")
     
-    return hard_scatter_path, pileup_path
+    return output_path
 
 def main():
     try:
@@ -125,7 +184,7 @@ def main():
         
         # Run Pythia8 generation
         with timer.record("Pythia8 Generation"):
-            hard_scatter_path, pileup_path = run_pythia_stage(
+            output_path = run_pythia_stage(
                 output_dir, config, logger
             )
         
@@ -133,9 +192,8 @@ def main():
         timer.write_report()
         
         logger.info("Pythia8 generation completed successfully")
-        logger.info(f"Output files:")
-        logger.info(f"  Hard scatter: {hard_scatter_path}")
-        logger.info(f"  Pileup: {pileup_path}")
+        logger.info(f"Output file:")
+        logger.info(f"  {output_path}")
         
     except Exception as e:
         logger.error(f"Fatal error in main: {str(e)}")

@@ -15,7 +15,7 @@ def parse_args():
     parser = create_base_parser("Merge and smear HepMC3 events")
     parser.add_argument(
         "--signal-file",
-        help="Input signal HepMC3 file (default: {output_dir}/events.hepmc3)",
+        help="Input signal HepMC3 file (default: {output_dir}/events_PYTHIA8_0.hepmc.gz)",
         type=Path,
         default=None
     )
@@ -68,7 +68,7 @@ def smear_vertex_position(event, vertex_sigmas):
     
     return event
 
-def merge_events(signal_event, pileup_events, vertex_sigmas, logger):
+def merge_events(signal_event, pileup_event, vertex_sigmas, logger):
     """Merge signal and multiple pileup events into a single event with vertex smearing"""
     # Create new event with same units as input
     merged = hep.GenEvent(hep.Units.GEV, hep.Units.MM)
@@ -109,42 +109,41 @@ def merge_events(signal_event, pileup_events, vertex_sigmas, logger):
         merged.add_vertex(vertex)
     
     # Now add pileup events with smearing
-    for pileup_event in pileup_events:
-        pileup_event = smear_vertex_position(pileup_event, vertex_sigmas)
+    pileup_event = smear_vertex_position(pileup_event, vertex_sigmas)
+    
+    # Create new pileup vertices
+    pileup_vertices = []
+    for vertex in pileup_event.vertices:
+        v1 = hep.GenVertex(vertex.position)
+        pileup_vertices.append(v1)
+    
+    # Add pileup particles and connect them to vertices
+    for particle in pileup_event.particles:
+        p1 = hep.GenParticle(
+            particle.momentum,
+            particle.pid,
+            particle.status
+        )
+        p1.generated_mass = particle.generated_mass
         
-        # Create new pileup vertices
-        pileup_vertices = []
-        for vertex in pileup_event.vertices:
-            v1 = hep.GenVertex(vertex.position)
-            pileup_vertices.append(v1)
+        if particle.production_vertex.id < 0:
+            production_vertex = particle.production_vertex.id
+            pileup_vertices[abs(production_vertex)-1].add_particle_out(p1)
+            merged.add_particle(p1)
+        else:
+            merged.add_particle(p1)
         
-        # Add pileup particles and connect them to vertices
-        for particle in pileup_event.particles:
-            p1 = hep.GenParticle(
-                particle.momentum,
-                particle.pid,
-                particle.status
-            )
-            p1.generated_mass = particle.generated_mass
-            
-            if particle.production_vertex.id < 0:
-                production_vertex = particle.production_vertex.id
-                pileup_vertices[abs(production_vertex)-1].add_particle_out(p1)
-                merged.add_particle(p1)
-            else:
-                merged.add_particle(p1)
-            
-            if particle.end_vertex:
-                end_vertex = particle.end_vertex.id
-                pileup_vertices[abs(end_vertex)-1].add_particle_in(p1)
-        
-        # Add all pileup vertices
-        for vertex in pileup_vertices:
-            merged.add_vertex(vertex)
+        if particle.end_vertex:
+            end_vertex = particle.end_vertex.id
+            pileup_vertices[abs(end_vertex)-1].add_particle_in(p1)
+    
+    # Add all pileup vertices
+    for vertex in pileup_vertices:
+        merged.add_vertex(vertex)
     
     return merged
 
-def merge_hepmc_files(signal_path, pileup_path, output_path, vertex_sigmas, logger=None):
+def merge_hepmc_files(signal_path, pileup_path, num_events, output_path, vertex_sigmas, logger=None):
     """Merge signal and pileup HepMC3 files into a single file with vertex smearing"""
     logger = logger or setup_logging("MergeHepMC")
     logger.info(f"Merging HepMC3 files:")
@@ -155,14 +154,24 @@ def merge_hepmc_files(signal_path, pileup_path, output_path, vertex_sigmas, logg
     # Load all signal events
     signal_events = []
     with hep.open(signal_path) as f:
-        for event in f:
+        for i, event in enumerate(f):
+            if i >= num_events:
+                break
             signal_events.append(event)
     
     # Load all pileup events
     pileup_events = []
     with hep.open(pileup_path) as f:
-        for event in f:
+        for i, event in enumerate(f):
+            if i >= num_events:
+                break
             pileup_events.append(event)
+
+    if len(signal_events) != len(pileup_events):
+        print(f"Warning: Number of signal events ({len(signal_events)}) does not match number of pileup events ({len(pileup_events)})")
+        print(f"Truncating to min of {min(len(signal_events), len(pileup_events))}")
+        signal_events = signal_events[:min(len(signal_events), len(pileup_events))]
+        pileup_events = pileup_events[:min(len(signal_events), len(pileup_events))]
     
     # Calculate pileup events per signal event
     n_pileup_per_signal = len(pileup_events) // len(signal_events)
@@ -170,14 +179,9 @@ def merge_hepmc_files(signal_path, pileup_path, output_path, vertex_sigmas, logg
     
     # Write merged events
     with WriterAscii(str(output_path)) as f:
-        for i, signal_event in enumerate(signal_events):
-            # Get corresponding pileup events for this signal event
-            start_idx = i * n_pileup_per_signal
-            end_idx = start_idx + n_pileup_per_signal
-            event_pileup = pileup_events[start_idx:end_idx]
-            
+        for i, (signal_event, pileup_event) in enumerate(zip(signal_events, pileup_events)):
             # Merge events with vertex smearing
-            merged_event = merge_events(signal_event, event_pileup, vertex_sigmas, logger)
+            merged_event = merge_events(signal_event, pileup_event, vertex_sigmas, logger)
             merged_event.event_number = i
             
             # Write merged event
@@ -199,8 +203,9 @@ def main():
         output_dir.mkdir(parents=True, exist_ok=True)
         
         # Set default input paths if not specified
-        signal_path = args.signal_file or output_dir / "events.hepmc3"
+        signal_path = args.signal_file or output_dir / "events_PYTHIA8_0.hepmc.gz"
         pileup_path = args.pileup_file or output_dir / "events_pileup.hepmc3"
+        num_events = config.events or 1
         
         # Initialize timing recorder
         timer = TimingRecorder(output_dir)
@@ -218,6 +223,7 @@ def main():
             merge_hepmc_files(
                 signal_path,
                 pileup_path,
+                num_events,
                 merged_path,
                 vertex_sigmas,
                 logger

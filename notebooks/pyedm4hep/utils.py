@@ -157,10 +157,14 @@ def _build_particle_df(events_tree, event_idx):
 def _process_single_tracker(events_tree, event_idx, detector_name):
     """Process hits and links for a single tracker detector."""
     hits = events_tree[detector_name].arrays(entry_start=event_idx, entry_stop=event_idx+1)
+    try:
+        particle_links = events_tree[f"_{detector_name}_MCParticle"].arrays(entry_start=event_idx, entry_stop=event_idx+1)
+    except:
+        particle_links = events_tree[f"_{detector_name}_particle"].arrays(entry_start=event_idx, entry_stop=event_idx+1)
 
     # Check if event exists / has hits for this detector
-    if len(hits[f"{detector_name}.cellID"]) == 0 or len(hits[f"{detector_name}.cellID"][0]) == 0:
-        return pd.DataFrame(), pd.DataFrame()
+    if len(hits[f"{detector_name}.cellID"]) == 0:
+        return pd.DataFrame()
 
     hit_dict = {
         'cellID': hits[f"{detector_name}.cellID"][0],
@@ -183,68 +187,31 @@ def _process_single_tracker(events_tree, event_idx, detector_name):
     else:
         hit_dict['EDep'] = np.nan # Or some default value
 
+    # Try both particle link formats
+    try:
+        hit_dict['particle_id'] = particle_links[f"_{detector_name}_MCParticle.index"][0]
+    except:
+        hit_dict['particle_id'] = particle_links[f"_{detector_name}_particle.index"][0]
+
     hits_df = pd.DataFrame(hit_dict)
 
-    # Process links
-    link_df = pd.DataFrame()
-    link_branch_found = False
-    # Try potential link branch names
-    for link_suffix in ["_MCParticle", "_particle"]:
-        link_branch_name = f"_{detector_name}{link_suffix}"
-        if link_branch_name in events_tree:
-            try:
-                particle_links = events_tree[link_branch_name].arrays(entry_start=event_idx, entry_stop=event_idx+1)
-                # Link DataFrame needs original hit index and particle index
-                # Assuming the link array corresponds 1:1 with the hits array
-                link_data = {
-                    'hit_index': hits_df.index, # Index relative to *this detector's* hits_df
-                    'particle_id': particle_links[f"{link_branch_name}.index"][0],
-                    # 'collectionID': particle_links[f"{link_branch_name}.collectionID"][0] # Optional
-                }
-                link_df = pd.DataFrame(link_data)
-                link_branch_found = True
-                break # Found the link branch
-            except KeyError as e:
-                print(f"Warning: Issue reading link branch {link_branch_name}: {e}")
-            except Exception as e:
-                 print(f"Warning: Unexpected error reading link branch {link_branch_name}: {e}")
-
-
-    if not link_branch_found:
-         print(f"Warning: Could not find or process link branch for tracker {detector_name}")
-         # Create empty link_df with expected columns if needed elsewhere
-         link_df = pd.DataFrame(columns=['hit_index', 'particle_id'])
-
-    return hits_df, link_df
+    return hits_df
 
 
 def _build_tracker_df(events_tree, event_idx):
-    """Build combined dataframe for tracker hits and their particle links for a single event"""
+    """Build combined dataframe for tracker hits for a single event"""
     all_hits_dfs = []
-    all_links_dfs = []
-    global_hit_offset = 0
 
     for det in all_trackers:
         if det not in events_tree:
             continue
 
-        hits_df, links_df = _process_single_tracker(events_tree, event_idx, det)
-
-        if not hits_df.empty:
-            hits_df['detector'] = det
-            hits_df['global_hit_index'] = hits_df.index + global_hit_offset
-            all_hits_dfs.append(hits_df)
-
-            if not links_df.empty:
-                links_df['global_hit_index'] = links_df['hit_index'] + global_hit_offset
-                links_df = links_df.drop(columns=['hit_index']) # Use global index now
-                all_links_dfs.append(links_df)
-
-            global_hit_offset += len(hits_df)
+        hits_df = _process_single_tracker(events_tree, event_idx, det)
+        hits_df['detector'] = det
+        all_hits_dfs.append(hits_df)
 
     # Concatenate all hits and links
     combined_hits_df = pd.concat(all_hits_dfs, ignore_index=True) if all_hits_dfs else pd.DataFrame()
-    combined_links_df = pd.concat(all_links_dfs, ignore_index=True) if all_links_dfs else pd.DataFrame()
 
     # Calculate derived geometric quantities on the combined dataframe
     if not combined_hits_df.empty:
@@ -254,24 +221,19 @@ def _build_tracker_df(events_tree, event_idx):
         combined_hits_df['theta'] = _calculate_theta(combined_hits_df['r'], combined_hits_df['z'])
         combined_hits_df['eta'] = _calculate_eta(combined_hits_df['theta'])
         combined_hits_df['pt'] = np.sqrt(combined_hits_df['px']**2 + combined_hits_df['py']**2)
-        combined_hits_df.set_index('global_hit_index', inplace=True, drop=False) # Keep global_hit_index as column too
 
-    if not combined_links_df.empty:
-        # Ensure correct types for merging/lookup
-        combined_links_df['global_hit_index'] = combined_links_df['global_hit_index'].astype(combined_hits_df.index.dtype if not combined_hits_df.empty else int)
-        combined_links_df['particle_id'] = combined_links_df['particle_id'].astype(int)
+    return combined_hits_df
 
 
-    return combined_hits_df, combined_links_df
-
-
-def _process_single_calo(events_tree, event_idx, detector_name):
+def _process_single_calo(events_tree, event_idx, detector_name, contrib_offset=None):
     """Process hits, contributions, and links for a single calorimeter detector."""
     hits = events_tree[detector_name].arrays(entry_start=event_idx, entry_stop=event_idx+1)
+    contributions = events_tree[f"{detector_name}Contributions"].arrays(entry_start=event_idx, entry_stop=event_idx+1)
+    particle_links = events_tree[f"_{detector_name}Contributions_particle"].arrays(entry_start=event_idx, entry_stop=event_idx+1)
 
      # Check if event exists / has hits for this detector
-    if len(hits[f"{detector_name}.cellID"]) == 0 or len(hits[f"{detector_name}.cellID"][0]) == 0:
-        return pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
+    if len(hits[f"{detector_name}.cellID"]) == 0:
+        return pd.DataFrame(), pd.DataFrame()
 
     hit_dict = {
         'cellID': hits[f"{detector_name}.cellID"][0],
@@ -283,151 +245,68 @@ def _process_single_calo(events_tree, event_idx, detector_name):
         'contribution_end': hits[f"{detector_name}.contributions_end"][0]
     }
     hits_df = pd.DataFrame(hit_dict)
-    hits_df['hit_local_index'] = hits_df.index # Index relative to this detector's hits
 
-    # Process contributions
-    contrib_branch_name = f"{detector_name}Contributions"
-    contrib_df = pd.DataFrame()
-    if contrib_branch_name in events_tree:
-        contributions = events_tree[contrib_branch_name].arrays(entry_start=event_idx, entry_stop=event_idx+1)
-        # Check if contributions exist for this event
-        if len(contributions[f"{contrib_branch_name}.PDG"]) > 0 and len(contributions[f"{contrib_branch_name}.PDG"][0]) > 0:
-            contrib_dict = {
-                'PDG': contributions[f"{contrib_branch_name}.PDG"][0],
-                'energy': contributions[f"{contrib_branch_name}.energy"][0],
-                'time': contributions[f"{contrib_branch_name}.time"][0],
-                'step_x': contributions[f"{contrib_branch_name}.stepPosition.x"][0],
-                'step_y': contributions[f"{contrib_branch_name}.stepPosition.y"][0],
-                'step_z': contributions[f"{contrib_branch_name}.stepPosition.z"][0],
-                # Index relative to this detector's contributions
-                'contrib_local_index': np.arange(len(contributions[f"{contrib_branch_name}.PDG"][0]))
-            }
-            contrib_df = pd.DataFrame(contrib_dict)
-        else:
-             contrib_df = pd.DataFrame(columns=['PDG', 'energy', 'time', 'step_x', 'step_y', 'step_z', 'contrib_local_index'])
-    else:
-        print(f"Warning: Contribution branch {contrib_branch_name} not found.")
-        contrib_df = pd.DataFrame(columns=['PDG', 'energy', 'time', 'step_x', 'step_y', 'step_z', 'contrib_local_index'])
+    contrib_dict = {
+        'PDG': contributions[f"{detector_name}Contributions.PDG"][0],
+        'energy': contributions[f"{detector_name}Contributions.energy"][0],
+        'time': contributions[f"{detector_name}Contributions.time"][0],
+        'step_x': contributions[f"{detector_name}Contributions.stepPosition.x"][0],
+        'step_y': contributions[f"{detector_name}Contributions.stepPosition.y"][0],
+        'step_z': contributions[f"{detector_name}Contributions.stepPosition.z"][0],
+        'particle_id': particle_links[f"_{detector_name}Contributions_particle.index"][0]
+    }
+    contrib_df = pd.DataFrame(contrib_dict)
 
+    # Add hit positions to contributions
+    contrib_df = _add_hit_positions_to_contributions(hits_df, contrib_df)
 
-    # Process contribution links
-    link_df = pd.DataFrame()
-    link_branch_name = f"_{contrib_branch_name}_particle"
-    if link_branch_name in events_tree and not contrib_df.empty:
-         try:
-            particle_links = events_tree[link_branch_name].arrays(entry_start=event_idx, entry_stop=event_idx+1)
-            if len(particle_links[f"{link_branch_name}.index"]) > 0 and len(particle_links[f"{link_branch_name}.index"][0]) > 0 :
-                link_data = {
-                    # Index relative to *this detector's* contributions
-                    'contrib_local_index': contrib_df['contrib_local_index'],
-                    'particle_id': particle_links[f"{link_branch_name}.index"][0],
-                    # 'collectionID': particle_links[f"{link_branch_name}.collectionID"][0] # Optional
-                }
-                link_df = pd.DataFrame(link_data)
-            else: # No links in this event
-                 link_df = pd.DataFrame(columns=['contrib_local_index', 'particle_id'])
-
-         except KeyError as e:
-            print(f"Warning: Issue reading link branch {link_branch_name}: {e}. Creating empty links.")
-            link_df = pd.DataFrame(columns=['contrib_local_index', 'particle_id'])
-         except Exception as e:
-            print(f"Warning: Unexpected error reading link branch {link_branch_name}: {e}. Creating empty links.")
-            link_df = pd.DataFrame(columns=['contrib_local_index', 'particle_id'])
-
-    elif not contrib_df.empty:
-         print(f"Warning: Link branch {link_branch_name} not found, but contributions exist. Creating empty links.")
-         link_df = pd.DataFrame(columns=['contrib_local_index', 'particle_id'])
-    else: # No contributions, so no links needed
-        link_df = pd.DataFrame(columns=['contrib_local_index', 'particle_id'])
-
-
-    return hits_df, contrib_df, link_df
-
+    if contrib_offset is not None:
+        hits_df['contribution_begin'] += contrib_offset
+        hits_df['contribution_end'] += contrib_offset
+    
+    return hits_df, contrib_df
 
 def _build_calo_df(events_tree, event_idx):
     """Build combined dataframes for calo hits, contributions, and particle links for a single event"""
     all_hits_dfs = []
     all_contrib_dfs = []
-    all_links_dfs = []
-    global_hit_offset = 0
     global_contrib_offset = 0
 
     for det in all_calos:
         if det not in events_tree:
             continue
 
-        hits_df, contrib_df, links_df = _process_single_calo(events_tree, event_idx, det)
+        hits_df, contrib_df = _process_single_calo(events_tree, event_idx, det, global_contrib_offset)
 
-        if not hits_df.empty:
-            # Adjust contribution indices to be global
-            hits_df['global_contribution_begin'] = hits_df['contribution_begin'] + global_contrib_offset
-            hits_df['global_contribution_end'] = hits_df['contribution_end'] + global_contrib_offset
-            hits_df['detector'] = det
-            hits_df['global_hit_index'] = hits_df['hit_local_index'] + global_hit_offset
-            all_hits_dfs.append(hits_df.drop(columns=['contribution_begin', 'contribution_end', 'hit_local_index']))
+        # Add detector info
+        contrib_df['detector'] = det
+        all_contrib_dfs.append(contrib_df)
+        all_hits_dfs.append(hits_df)
 
-            if not contrib_df.empty:
-                contrib_df['global_contrib_index'] = contrib_df['contrib_local_index'] + global_contrib_offset
-                # We need to map contributions back to their global hit index
-                # Create mapping from local hit index to global hit index for this detector
-                hit_idx_map = hits_df.set_index(['global_contribution_begin', 'global_contribution_end'])['global_hit_index']
-
-                # Find which hit each contribution belongs to
-                contrib_indices = contrib_df['global_contrib_index'].values
-                hit_starts = hits_df['global_contribution_begin'].values
-                # Find the index of the interval (hit) each contribution falls into
-                hit_mapping_indices = np.searchsorted(hit_starts, contrib_indices, side='right') - 1
-                contrib_df['global_hit_index'] = hits_df['global_hit_index'].iloc[hit_mapping_indices].values
-
-                # Add detector info
-                contrib_df['detector'] = det
-                all_contrib_dfs.append(contrib_df.drop(columns=['contrib_local_index']))
-
-
-                if not links_df.empty:
-                    # Merge links with contrib_df to get global_contrib_index
-                    links_df = pd.merge(links_df, contrib_df[['contrib_local_index', 'global_contrib_index']], on='contrib_local_index')
-                    all_links_dfs.append(links_df.drop(columns=['contrib_local_index']))
-
-
-            # Update offsets for the next detector
-            global_hit_offset += len(hits_df)
-            global_contrib_offset += len(contrib_df) # Use length of contributions DF
+        # Update offsets for the next detector
+        global_contrib_offset += len(contrib_df) # Use length of contributions DF
 
     # Concatenate all dataframes
     combined_hits_df = pd.concat(all_hits_dfs, ignore_index=True) if all_hits_dfs else pd.DataFrame()
     combined_contrib_df = pd.concat(all_contrib_dfs, ignore_index=True) if all_contrib_dfs else pd.DataFrame()
-    combined_links_df = pd.concat(all_links_dfs, ignore_index=True) if all_links_dfs else pd.DataFrame()
 
     # Calculate derived geometric quantities on the combined hits dataframe
-    if not combined_hits_df.empty:
-        combined_hits_df['r'] = _calculate_R(combined_hits_df['x'], combined_hits_df['y'])
-        combined_hits_df['R'] = _calculate_R(combined_hits_df['x'], combined_hits_df['y'], combined_hits_df['z'])
-        combined_hits_df['phi'] = np.arctan2(combined_hits_df['y'], combined_hits_df['x'])
-        combined_hits_df['theta'] = _calculate_theta(combined_hits_df['r'], combined_hits_df['z'])
-        combined_hits_df['eta'] = _calculate_eta(combined_hits_df['theta'])
-        combined_hits_df.set_index('global_hit_index', inplace=True, drop=False) # Keep global_hit_index as column too
+    combined_hits_df['r'] = _calculate_R(combined_hits_df['x'], combined_hits_df['y'])
+    combined_hits_df['R'] = _calculate_R(combined_hits_df['x'], combined_hits_df['y'], combined_hits_df['z'])
+    combined_hits_df['phi'] = np.arctan2(combined_hits_df['y'], combined_hits_df['x'])
+    combined_hits_df['theta'] = _calculate_theta(combined_hits_df['r'], combined_hits_df['z'])
+    combined_hits_df['eta'] = _calculate_eta(combined_hits_df['theta'])
 
-    # Set indices and types for contributions and links
-    if not combined_contrib_df.empty:
-        combined_contrib_df.set_index('global_contrib_index', inplace=True, drop=False)
-        combined_contrib_df['global_hit_index'] = combined_contrib_df['global_hit_index'].astype(combined_hits_df.index.dtype if not combined_hits_df.empty else int)
+    return combined_hits_df, combined_contrib_df
 
-    if not combined_links_df.empty:
-        combined_links_df['global_contrib_index'] = combined_links_df['global_contrib_index'].astype(combined_contrib_df.index.dtype if not combined_contrib_df.empty else int)
-        combined_links_df['particle_id'] = combined_links_df['particle_id'].astype(int)
-        # Maybe set index? Primary key is (global_contrib_index, particle_id) potentially
-        # For now, keep default index.
+def _add_hit_positions_to_contributions(hits_df, contrib_df):
+    """Add hit positions (x, y, z) to the contributions dataframe"""
+    num_contribs = hits_df.contribution_end - hits_df.contribution_begin
+    contrib_df["cellID"] = np.repeat(hits_df.index.values, num_contribs)
 
-    # Add hit positions to contributions DF (optional, but useful)
-    if not combined_contrib_df.empty and not combined_hits_df.empty:
-         contrib_hit_positions = combined_hits_df.loc[combined_contrib_df['global_hit_index'], ['x', 'y', 'z', 'r', 'phi', 'eta', 'cellID']].reset_index(drop=True)
-         combined_contrib_df = pd.concat([combined_contrib_df.reset_index(drop=True), contrib_hit_positions], axis=1)
-         # Set index back
-         combined_contrib_df.set_index('global_contrib_index', inplace=True, drop=False)
-
-
-    return combined_hits_df, combined_contrib_df, combined_links_df
+    # merge the contrib_df with hits_df to get the [x,y,z] of the hit
+    contrib_df = contrib_df.merge(hits_df[["x", "y", "z"]], left_on="cellID", right_index=True, how="left")
+    return contrib_df
 
 
 # --- Main Loading Function ---
@@ -481,10 +360,10 @@ def load_event_data(file_path, event_idx):
     particles_df, parents_df, daughters_df = _build_particle_df(events_tree, event_idx)
     print(f"  Loaded {len(particles_df)} particles.")
 
-    tracker_hits_df, tracker_links_df = _build_tracker_df(events_tree, event_idx)
+    tracker_hits_df = _build_tracker_df(events_tree, event_idx)
     print(f"  Loaded {len(tracker_hits_df)} tracker hits.")
 
-    calo_hits_df, calo_contrib_df, calo_links_df = _build_calo_df(events_tree, event_idx)
+    calo_hits_df, calo_contrib_df = _build_calo_df(events_tree, event_idx)
     print(f"  Loaded {len(calo_hits_df)} calo hits and {len(calo_contrib_df)} contributions.")
 
     # Load basic event header info
@@ -512,9 +391,7 @@ def load_event_data(file_path, event_idx):
         "parents": parents_df,
         "daughters": daughters_df,
         "tracker_hits": tracker_hits_df,
-        "tracker_links": tracker_links_df,
         "calo_hits": calo_hits_df,
         "calo_contributions": calo_contrib_df,
-        "calo_links": calo_links_df,
         "event_header": header_data
     }

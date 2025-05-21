@@ -10,3 +10,26 @@ log/
 # Existing ignore patterns for other files
 *.pdf
 *.png
+
+# Environments
+**/*_env/
+
+# Data files
+**/*.root
+**/*.csv
+**/*.txt
+**/*.hepmc3
+**/*.hepmc
+**/*.lhe
+**/*.lhe.gz
+**/*.lhe.bz2
+**/*.lhe.xz
+**/*.lhe.lzma
+
+# Pycache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.pyw
+*.pyz

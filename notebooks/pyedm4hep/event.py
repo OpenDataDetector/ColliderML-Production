@@ -26,79 +26,94 @@ class EDM4hepEvent:
             file_path (str): Path to the EDM4hep ROOT file.
             event_index (int): The 0-based index of the event to load.
             detector_params (Optional[Dict[str, float]]): Dictionary with detector geometry
-                 (e.g., {'tracking_radius': float, 'tracking_z_max': float}). 
-                 If provided, geometry-dependent flags will be calculated.
+                 (e.g., {'tracking_radius': float, 'tracking_z_max': float}).
+                 If provided, geometry-dependent flags will be calculated. 
 
         Raises:
             ValueError: If the event index is invalid or the file/event cannot be loaded.
         """
         self.file_path = file_path
         self.event_index = event_index
-        self.detector_params = detector_params # Store detector params
-        self._data = load_event_data(file_path, event_index)
+        self.detector_params = detector_params
 
+        # Load data and assign to internal attributes
+        self._load_and_assign_data()
+
+        # Pre-calculate derived properties if particles exist
+        if not self._particles_df.empty:
+            self._calculate_derived_particle_properties()
+            self._calculate_geometry_flags()
+
+        # Placeholder for lazily-loaded handlers and graph
+        self._decay_graph: Optional[nx.DiGraph] = None
+        self._decay_handler: Optional['DecayGraphHandler'] = None
+        self._plotting_handler: Optional['PlottingHandler'] = None
+
+    def _load_and_assign_data(self):
+        """Loads event data and assigns it to internal DataFrame attributes."""
+        self._data = load_event_data(self.file_path, self.event_index)
         if self._data is None:
-            raise ValueError(f"Failed to load event {event_index} from {file_path}.")
+            raise ValueError(f"Failed to load event {self.event_index} from {self.file_path}.")
 
-        # Store dataframes directly as attributes for easier internal access
+        # Store dataframes directly as attributes
         self._particles_df: pd.DataFrame = self._data['particles']
         self._parents_df: pd.DataFrame = self._data['parents']
         self._daughters_df: pd.DataFrame = self._data['daughters']
         self._tracker_hits_df: pd.DataFrame = self._data['tracker_hits']
-        self._tracker_links_df: pd.DataFrame = self._data['tracker_links']
         self._calo_hits_df: pd.DataFrame = self._data['calo_hits']
         self._calo_contributions_df: pd.DataFrame = self._data['calo_contributions']
-        self._calo_links_df: pd.DataFrame = self._data['calo_links']
         self.event_header: dict = self._data['event_header']
 
-        # --- Pre-calculate derived particle properties ---
-        if not self._particles_df.empty:
-            # Calculate vertex and endpoint r coordinates
-            self._particles_df["vr"] = np.sqrt(self._particles_df.vx**2 + self._particles_df.vy**2)
-            self._particles_df["endpoint_r"] = np.sqrt(self._particles_df.endpoint_x**2 + self._particles_df.endpoint_y**2)
-            
-            # Calculate simulation status flags
-            status_bits_series = self._particles_df['simulatorStatus'].apply(get_simulator_status_bits)
-            self._particles_df['created_in_simulation'] = status_bits_series.apply(lambda bits: bits.get('created_in_simulation', False))
-            self._particles_df['backscatter'] = status_bits_series.apply(lambda bits: bits.get('backscatter', False))
-            # Add other flags if needed, e.g.:
-            # self._particles_df['decayed_in_tracker'] = status_bits_series.apply(lambda bits: bits.get('decayed_in_tracker', False))
-            
-            # Calculate geometry-dependent flags if detector_params are provided
-            if self.detector_params:
-                tracking_radius = self.detector_params.get('tracking_radius')
-                tracking_z_max = self.detector_params.get('tracking_z_max')
-                
-                if tracking_radius is not None and tracking_z_max is not None:
-                    self._particles_df["created_inside_tracker"] = (
-                        (self._particles_df.vr < tracking_radius) & 
-                        (self._particles_df.vz.abs() < tracking_z_max)
-                    ).astype(bool) # Use boolean directly
-                    
-                    self._particles_df["ended_inside_tracker"] = (
-                        (self._particles_df.endpoint_r < tracking_radius) & 
-                        (self._particles_df.endpoint_z.abs() < tracking_z_max)
-                    ).astype(bool)
-                    
-                    # Update backscatter based on these flags
-                    # Note: The previous definition in plotting was slightly different (using 0/1 int flags)
-                    self._particles_df["backscatter"] = (
-                        (self._particles_df["created_inside_tracker"] == False) & 
-                        (self._particles_df["ended_inside_tracker"] == True)
-                    )
-                else:
-                    print("Warning: detector_params provided but missing 'tracking_radius' or 'tracking_z_max'. Geometry flags not calculated.")
+    def _calculate_derived_particle_properties(self):
+        """Calculates basic derived properties and simulation status flags for particles."""
+        # Calculate vertex and endpoint r coordinates
+        self._particles_df["vr"] = np.sqrt(self._particles_df.vx**2 + self._particles_df.vy**2)
+        self._particles_df["endpoint_r"] = np.sqrt(self._particles_df.endpoint_x**2 + self._particles_df.endpoint_y**2)
+        self._particles_df["energy"] = np.sqrt(self._particles_df.px**2 + self._particles_df.py**2 + self._particles_df.pz**2 + self._particles_df.mass**2)
+        self._particles_df["kinetic_energy"] = self._particles_df["energy"] - self._particles_df["mass"]
+
+        # Calculate number of hits per particle
+        all_hits = pd.concat([self._tracker_hits_df[["particle_id"]], self._calo_contributions_df[["particle_id"]]])
+        self._particles_df["num_hits"] = all_hits.groupby("particle_id").size().reindex(self._particles_df.index, fill_value=0)
+
+        # Calculate simulation status flags
+        status_bits_series = self._particles_df['simulatorStatus'].apply(get_simulator_status_bits)
+        self._particles_df['created_in_simulation'] = status_bits_series.apply(lambda bits: bits.get('created_in_simulation', False))
+
+    def _calculate_geometry_flags(self):
+        """Calculates geometry-dependent flags based on detector_params."""
+        if self.detector_params:
+            tracking_radius = self.detector_params.get('tracking_radius')
+            tracking_z_max = self.detector_params.get('tracking_z_max')
+
+            if tracking_radius is not None and tracking_z_max is not None:
+                self._particles_df["created_inside_tracker"] = (
+                    (self._particles_df.vr < tracking_radius) &
+                    (self._particles_df.vz.abs() < tracking_z_max)
+                ).astype(bool)
+
+                self._particles_df["ended_inside_tracker"] = (
+                    (self._particles_df.endpoint_r < tracking_radius) &
+                    (self._particles_df.endpoint_z.abs() < tracking_z_max)
+                ).astype(bool)
+
+                # Update backscatter based on these flags
+                # Overwrites the one from simulatorStatus if geometry is defined
+                self._particles_df["backscatter"] = (
+                    (self._particles_df["created_inside_tracker"] == False) &
+                    (self._particles_df["ended_inside_tracker"] == True)
+                )
             else:
-                 # Add placeholder columns if no geometry defined?
-                 self._particles_df["created_inside_tracker"] = False
-                 self._particles_df["ended_inside_tracker"] = False
-                 # Ensure backscatter column from status bits is used if geometry not defined
-                 # self._particles_df["backscatter"] = status_bits_series.apply(lambda bits: bits.get('backscatter', False)) # Already done above
-        
-        # Placeholder for lazily-loaded decay graph
-        self._decay_graph: Optional[nx.DiGraph] = None
-        self._decay_handler: Optional['DecayGraphHandler'] = None
-        self._plotting_handler: Optional['PlottingHandler'] = None
+                print("Warning: detector_params provided but missing 'tracking_radius' or 'tracking_z_max'. Geometry flags not calculated.")
+                # Add placeholder columns if calculation failed due to missing params
+                self._particles_df["created_inside_tracker"] = False
+                self._particles_df["ended_inside_tracker"] = False
+                # Keep the backscatter flag derived from simulatorStatus (calculated in _calculate_derived_particle_properties)
+        else:
+             # Add placeholder columns if no geometry defined
+             self._particles_df["created_inside_tracker"] = False
+             self._particles_df["ended_inside_tracker"] = False
+             # Keep the backscatter flag derived from simulatorStatus
 
     # --- DataFrame Accessors ---
 
@@ -118,10 +133,6 @@ class EDM4hepEvent:
         """Returns the combined DataFrame for all tracker hits."""
         return self._tracker_hits_df.copy()
 
-    def get_tracker_links_df(self) -> pd.DataFrame:
-        """Returns the DataFrame linking tracker hits to particles."""
-        return self._tracker_links_df.copy()
-
     def get_calo_hits_df(self) -> pd.DataFrame:
         """Returns the combined DataFrame for all calorimeter hits."""
         return self._calo_hits_df.copy()
@@ -129,10 +140,6 @@ class EDM4hepEvent:
     def get_calo_contributions_df(self) -> pd.DataFrame:
         """Returns the combined DataFrame for all calorimeter contributions."""
         return self._calo_contributions_df.copy()
-
-    def get_calo_links_df(self) -> pd.DataFrame:
-        """Returns the DataFrame linking calo contributions to particles."""
-        return self._calo_links_df.copy()
 
     # --- Object Accessors ---
 

@@ -38,6 +38,8 @@ from .particle import Particle
 from .hits import TrackerHit, CaloHit, CaloContribution
 from .decay import DecayGraphHandler
 from .plotting import PlottingHandler
+# Add new imports for dataset handling and comparison
+from .dataset import EDM4hepDataset
 
 # Version info
-__version__ = '0.1.0'
+__version__ = '0.1.1'
