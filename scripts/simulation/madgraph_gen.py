@@ -6,6 +6,7 @@ import argparse
 import yaml
 import re # Import regex module
 from pathlib import Path
+from utils.config import create_base_parser, load_config
 
 def run_command(command, cwd=None, env=None, shell=False):
     process = subprocess.Popen(
@@ -22,10 +23,6 @@ def run_command(command, cwd=None, env=None, shell=False):
         print(f"Error running command: {command}\nSTDOUT:\n{stdout}\nSTDERR:\n{stderr}")
         sys.exit(1)
     return stdout, stderr
-
-def load_config(config_path):
-    with open(config_path, 'r') as f:
-        return yaml.safe_load(f)
 
 def customize_placeholder_card(template_path, output_path, customizations):
     """Customizes a card by replacing {{PLACEHOLDERS}}."""
@@ -72,11 +69,10 @@ def customize_run_card_with_regex(card_path, run_card_settings, global_nevents, 
 def split_hepmc_file(input_hepmc_path: Path,
                      final_output_base_dir: Path,
                      events_per_file: int,
-                     max_events_to_process: int = None,
                      output_filename: str = "events.hepmc"):
     """
     Splits a single (potentially gzipped) HEPMC file into multiple smaller HEPMC files,
-    each in its own subdirectory (run_0, run_1, etc.) under final_output_base_dir.
+    each in its own subdirectory (0, 1, 2, etc.) under final_output_base_dir.
     """
     try:
         import pyhepmc as hep
@@ -99,8 +95,6 @@ def split_hepmc_file(input_hepmc_path: Path,
     print(f"--- Splitting HEPMC file: {input_hepmc_path} ---")
     print(f"--- Output base directory for splits: {final_output_base_dir} ---")
     print(f"--- Events per split file: {events_per_file} ---")
-    if max_events_to_process is not None:
-        print(f"--- Max events to process from this file: {max_events_to_process} ---")
 
     current_f_out = None
     files_created = []
@@ -110,25 +104,16 @@ def split_hepmc_file(input_hepmc_path: Path,
     try:
         with hep.open(str(input_hepmc_path)) as f_in:
             desc = f"Splitting {input_hepmc_path.name}"
-            
-            iterator = enumerate(f_in)
-            if max_events_to_process is not None:
-                 iterator = tqdm_actual(enumerate(f_in), total=max_events_to_process, desc=desc)
-            else:
-                 # If total is unknown, tqdm shows iteration rate without percentage
-                 iterator = tqdm_actual(enumerate(f_in), desc=desc)
+            iterator = tqdm_actual(enumerate(f_in), desc=desc)
 
-            for i, event in iterator:
-                if max_events_to_process is not None and i >= max_events_to_process:
-                    print(f"Reached max_events_to_process ({max_events_to_process}). Stopping split for this file.")
-                    break
-                
+            for i, event in iterator:                
                 if i % events_per_file == 0:
                     if current_f_out:
                         current_f_out.close()
                     
                     file_idx = i // events_per_file
-                    current_split_output_dir = final_output_base_dir / f"run_{file_idx}"
+                    # Use just the run number as the directory name
+                    current_split_output_dir = final_output_base_dir / str(file_idx)
                     os.makedirs(current_split_output_dir, exist_ok=True)
                     
                     split_file_path = current_split_output_dir / output_filename
@@ -162,22 +147,43 @@ def split_hepmc_file(input_hepmc_path: Path,
         return []
 
 def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--config', required=True)
+    parser = create_base_parser("MadGraph event generation for ColliderML")
     args = parser.parse_args()
+    config = load_config(args)
 
-    config = load_config(args.config)
-    process_name = f"{config['dataset']}_{config['version']}"
-    mg_base_path = Path(config['mg_base_path'])
-    scratch_dir = Path(config['generation_scratch_dir'])
-    output_dir = Path(config['output'])
-    output_dir.mkdir(parents=True, exist_ok=True)
+    process_name = f"{config.dataset}_{config.version}"
+    mg_base_path = Path(config.mg_base_path)
+    scratch_dir = Path(config.generation_scratch_dir)
+
+    # Determine the effective output directory (matches pythia_gen.py logic)
+    effective_output_dir = Path(config.output)
+    
+    # When splitting is enabled, we create run_X directories directly under config.output
+    # When splitting is disabled, we use config.output/config.output_subdir as in pythia_gen.py
+    splitting_config = getattr(config, 'hepmc_splitting', {})
+    splitting_enabled = splitting_config.get('enable', False)
+    
+    if splitting_enabled:
+        # For splitting, use the base output dir without subdir
+        # This ensures run X dirs are created directly at the base level
+        print(f"--- Splitting enabled: Files will be placed in {effective_output_dir}/[0,1,2,...]/ ---")
+    else:
+        # For non-splitting case, use normal output/subdir structure
+        if config.output_subdir:
+            effective_output_dir = effective_output_dir / config.output_subdir
+            print(f"--- Splitting disabled: Files will be placed in {effective_output_dir}/ ---")
+    
+    effective_output_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Get other splitting config after determining the enabled state
+    split_events_per_file = splitting_config.get('events_per_file', 1000)
+    split_output_filename = splitting_config.get('output_filename', 'events.hepmc')
 
     mg5_exe = mg_base_path / "bin" / "mg5_aMC"
 
-    mg_model_cmd = f"import model {config.get('mg_model', 'sm')}"
-    mg_define_cmds = config.get('mg_definitions', [])
-    mg_generate_cmd = config['mg_generate_command']
+    mg_model_cmd = f"import model {config.mg_model}"
+    mg_define_cmds = config.mg_definitions
+    mg_generate_cmd = config.mg_generate_command
 
     temp_run_dir = scratch_dir / f"mg5_run_{process_name}"
     temp_run_dir.mkdir(parents=True, exist_ok=True)
@@ -212,24 +218,24 @@ def main():
 
     # --- Step 2a: Customize run_card.dat using Regex ---
     run_card_path = cards_dir / "run_card.dat"
-    run_card_settings_from_config = config.get('card_customizations', {}).get('run_card', {})
+    run_card_settings_from_config = config.card_customizations.get('run_card', {})
     print(f"--- Customizing run_card.dat at {run_card_path} using regex... ---")
     customize_run_card_with_regex(run_card_path, 
                                   run_card_settings_from_config, 
-                                  config['events'], 
-                                  config['seed'])
+                                  config.events, 
+                                  config.seed)
 
     # --- Step 2b: Customize pythia8_card_default.dat using Placeholders ---
-    if 'pythia8_card' in config.get('card_templates', {}):
-        pythia8_template_name = config['card_templates']['pythia8_card']
+    if 'pythia8_card' in config.card_templates:
+        pythia8_template_name = config.card_templates['pythia8_card']
         pythia8_template_path = Path(__file__).parent / "card_templates" / pythia8_template_name
         pythia8_output_path = cards_dir / "pythia8_card_default.dat"
-        pythia8_customizations = config.get('card_customizations', {}).get('pythia8_card', {})
+        pythia8_customizations = config.card_customizations.get('pythia8_card', {})
         
         # Add global settings to pythia8 customizations if they use generic placeholders
         # For example, if pythia8_card template uses {{NEVENTS}} or {{ISEED}}
         # Note: current yaml has {{PYTHIA_SEED}} not {{ISEED}}
-        # pythia8_customizations['{{NEVENTS}}'] = config['events'] 
+        # pythia8_customizations['{{NEVENTS}}'] = config.events 
 
         if pythia8_template_path.exists():
             print(f"--- Customizing pythia8_card_default.dat from template {pythia8_template_name}... ---")
@@ -268,20 +274,13 @@ def main():
 
     files_processed_count = 0
     
-    splitting_config = config.get('hepmc_splitting', {})
-    splitting_enabled = splitting_config.get('enable', False)
-    split_events_per_file = splitting_config.get('events_per_file', 1000)
-    split_max_events = splitting_config.get('max_events_to_process', None) # Max events from *each* source HEPMC file
-    split_output_filename = splitting_config.get('output_filename', 'events.hepmc')
-
     for events_subdir_path in actual_events_subdirs:
         if events_subdir_path.is_dir():
             # Process LHE files: move them directly
             for pattern in ["*.lhe", "*.lhe.gz"]:
                 for event_file_path in events_subdir_path.glob(pattern):
                     try:
-                        output_dir.mkdir(parents=True, exist_ok=True)
-                        destination_path = output_dir / event_file_path.name
+                        destination_path = effective_output_dir / event_file_path.name
                         shutil.move(str(event_file_path), str(destination_path))
                         print(f"Moved LHE file {event_file_path.name} to {destination_path}")
                         files_processed_count += 1
@@ -293,11 +292,11 @@ def main():
                 for event_file_path in events_subdir_path.glob(pattern):
                     if splitting_enabled:
                         print(f"Processing HEPMC file for splitting: {event_file_path}")
+                        # Create run_X subdirs inside effective_output_dir
                         created_split_files = split_hepmc_file(
                             input_hepmc_path=event_file_path,
-                            final_output_base_dir=output_dir,
+                            final_output_base_dir=effective_output_dir, # run_X subdirs will be created here
                             events_per_file=split_events_per_file,
-                            max_events_to_process=split_max_events,
                             output_filename=split_output_filename
                         )
                         if created_split_files:
@@ -310,8 +309,7 @@ def main():
                         else:
                             print(f"HEPMC splitting produced no files for {event_file_path} or was skipped. Attempting to move original.")
                             try:
-                                output_dir.mkdir(parents=True, exist_ok=True)
-                                destination_path = output_dir / event_file_path.name
+                                destination_path = effective_output_dir / event_file_path.name
                                 shutil.move(str(event_file_path), str(destination_path))
                                 print(f"Moved original HEPMC file {event_file_path.name} to {destination_path} (splitting failed/skipped).")
                                 files_processed_count += 1
@@ -320,8 +318,7 @@ def main():
                     else:
                         # Splitting not enabled, move the HEPMC file directly
                         try:
-                            output_dir.mkdir(parents=True, exist_ok=True)
-                            destination_path = output_dir / event_file_path.name
+                            destination_path = effective_output_dir / event_file_path.name
                             shutil.move(str(event_file_path), str(destination_path))
                             print(f"Moved HEPMC file {event_file_path.name} to {destination_path} (splitting disabled).")
                             files_processed_count += 1
