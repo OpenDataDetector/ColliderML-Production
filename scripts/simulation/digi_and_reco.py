@@ -21,7 +21,7 @@ from acts.examples.reconstruction import (
     ScoreBasedAmbiguityResolutionConfig
 )
 import traceback
-from utils.logging import setup_logging, TimingRecorder
+from utils.app_logging import setup_logging, TimingRecorder
 from utils.config import create_base_parser, load_config
 from contextlib import contextmanager
 import math

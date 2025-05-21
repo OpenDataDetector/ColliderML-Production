@@ -5,7 +5,7 @@ from DDSim.DD4hepSimulation import DD4hepSimulation
 from g4units import GeV
 import traceback
 from acts.examples.odd import getOpenDataDetectorDirectory
-from utils.logging import setup_logging, TimingRecorder
+from utils.app_logging import setup_logging, TimingRecorder
 from utils.config import create_base_parser, load_config
 
 def parse_args():
@@ -27,7 +27,7 @@ def parse_args():
         "--single-particle",
         help="Enable single particle simulation mode (particle gun)",
         action="store_true",
-        default=False
+        default=None
     )
     return parser.parse_args()
 
@@ -196,6 +196,7 @@ def run_ddsim(input_path, output_path, config, logger=None):
     # Configure common settings
     ddsim.outputFile = str(output_path)
     ddsim.numberOfEvents = getattr(config, 'events', 10)
+    ddsim.numberOfThreads = getattr(config, 'threads', 1)
     ddsim.random.seed = getattr(config, 'seed', None) or int(time.time())
     
     # Configure physics
@@ -212,12 +213,13 @@ def run_ddsim(input_path, output_path, config, logger=None):
     ddsim.run()
 
 def main():
+    timer = None  # Initialize timer to None
+    logger = setup_logging() # Setup logger early
     try:
         # Parse arguments and load config
         args = parse_args()
         config = load_config(args)
-        logger = setup_logging()
-        
+
         # Create output directory structure
         output_dir = Path(args.output)
         if hasattr(config, 'output_subdir') and config.output_subdir:
@@ -231,22 +233,26 @@ def main():
         output_path = output_dir / "edm4hep.root"
         
         # Initialize timing recorder
-        timer = TimingRecorder(output_dir)
-        
+        timer = TimingRecorder(output_dir) # Assign here
+
         # Run DD4hep simulation
         with timer.record("DD4hep Simulation"):
             run_ddsim(input_path, output_path, config, logger)
-        
-        # Write timing report
-        timer.write_report()
-        
+
         logger.info("DD4hep simulation completed successfully")
         logger.info(f"Output file: {output_path}")
-        
+
     except Exception as e:
         logger.error(f"Fatal error in main: {str(e)}")
         logger.error(traceback.format_exc())
-        raise
+    finally:
+        # Ensure the report is written even if errors occur
+        if timer:
+            try:
+                timer.write_report()
+            except Exception as report_e:
+                logger.error(f"Error writing timing report: {str(report_e)}")
+                logger.error(traceback.format_exc())
 
 if __name__ == "__main__":
     main()

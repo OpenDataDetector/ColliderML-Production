@@ -21,6 +21,7 @@ class TimingRecorder:
         self.output_dir = Path(output_dir)
         self.start_time = time.time()
         self.errors = []
+        self.error_occurred = False  # Flag to track if any error occurred
         self.logger = logging.getLogger("TimingRecorder")
 
     @contextmanager
@@ -31,6 +32,7 @@ class TimingRecorder:
             yield
         except Exception as e:
             self.errors.append(f"Error in {name}: {str(e)}")
+            self.error_occurred = True  # Set the flag when an error occurs
             raise  # Re-raise the exception after logging
         finally:
             end = time.time()
@@ -45,6 +47,10 @@ class TimingRecorder:
             
             # Create report content
             report = [f"Timing Report ({timestamp})", "============="]
+            
+            # Indicate if errors occurred
+            if self.error_occurred:
+                report.append("*** Errors occurred during execution ***")
             
             # Add timing entries
             for name, duration in sorted(self.timings.items()):

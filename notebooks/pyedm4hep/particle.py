@@ -1,4 +1,5 @@
 import numpy as np
+import pandas as pd
 from typing import TYPE_CHECKING, List, Tuple, Optional, Dict
 import networkx as nx
 
@@ -36,8 +37,10 @@ class Particle:
         """The unique ID (index) of this particle within the event."""
         return self._id
 
-    def _get_data(self, column: str):
+    def _get_data(self, column: str = None):
         """Helper to safely get data from the particles dataframe."""
+        if column is None:
+            return self._event._particles_df.loc[self._id]
         try:
             return self._event._particles_df.loc[self._id, column]
         except KeyError:
@@ -102,6 +105,11 @@ class Particle:
         return (self.px, self.py, self.pz)
 
     @property
+    def kinetic_energy(self) -> float:
+        """Kinetic energy."""
+        return float(self._get_data('kinetic_energy'))
+
+    @property
     def pt(self) -> float:
         """Transverse momentum."""
         return float(self._get_data('pt'))
@@ -114,11 +122,8 @@ class Particle:
     @property
     def energy(self) -> float:
         """Energy (calculated as sqrt(p^2 + m^2)).
-           Note: EDM4hep MCParticle typically stores mass, not energy directly.
         """
-        p_val = self.p
-        m_val = self.mass
-        return np.sqrt(p_val**2 + m_val**2)
+        return float(self._get_data('energy'))
 
     @property
     def eta(self) -> float:
@@ -295,25 +300,58 @@ class Particle:
 
     def get_tracker_hits(self) -> List['TrackerHit']:
         """Returns a list of associated TrackerHit objects."""
-        links_df = self._event._tracker_links_df
-        if links_df.empty or 'particle_id' not in links_df.columns:
+        tracker_hits_df = self._event._tracker_hits_df
+        if tracker_hits_df.empty or 'particle_id' not in tracker_hits_df.columns:
             return []
 
-        hit_indices = links_df[links_df['particle_id'] == self._id]['global_hit_index'].tolist()
+        hit_indices = tracker_hits_df[tracker_hits_df['particle_id'] == self._id]['global_hit_index'].tolist()
         # Need to import here to avoid circular dependency at module level
         from .hits import TrackerHit
         return [TrackerHit(idx, self._event) for idx in hit_indices if idx in self._event._tracker_hits_df.index]
 
-    def get_calo_contributions(self) -> List['CaloContribution']:
+    def get_tracker_hits_df(self) -> pd.DataFrame:
+        """Returns a dataframe of associated TrackerHit objects."""
+        tracker_hits_df = self._event._tracker_hits_df
+        if tracker_hits_df.empty or 'particle_id' not in tracker_hits_df.columns:
+            return pd.DataFrame()
+
+        return tracker_hits_df[tracker_hits_df['particle_id'] == self._id]
+
+    def get_num_hits(self) -> int:
+        """Returns the number of tracker AND calorimeter hits associated with the particle."""
+        tracker_hits = self.get_tracker_hits_df()
+        calo_contributions = self.get_calo_contributions_df()
+        return len(tracker_hits) + len(calo_contributions)
+
+
+    def get_num_tracker_hits(self) -> int:
+        """Returns the number of tracker hits associated with the particle."""
+        tracker_hits = self.get_tracker_hits_df()
+        return len(tracker_hits)
+
+    def get_num_calo_hits(self) -> int:
+        """Returns the number of calorimeter hits associated with the particle."""
+        calo_hits = self.get_calo_hits_df()
+        return len(calo_hits)
+
+    def get_calo_hits(self) -> List['CaloContribution']:
         """Returns a list of associated CaloContribution objects."""
-        links_df = self._event._calo_links_df
-        if links_df.empty or 'particle_id' not in links_df.columns:
+        calo_contributions_df = self._event._calo_contributions_df
+        if calo_contributions_df.empty or 'particle_id' not in calo_contributions_df.columns:
             return []
 
-        contrib_indices = links_df[links_df['particle_id'] == self._id]['global_contrib_index'].tolist()
+        contrib_indices = calo_contributions_df[calo_contributions_df['particle_id'] == self._id]['global_contrib_index'].tolist()
         # Need to import here to avoid circular dependency at module level
         from .hits import CaloContribution
         return [CaloContribution(idx, self._event) for idx in contrib_indices if idx in self._event._calo_contributions_df.index]
+
+    def get_calo_hits_df(self) -> pd.DataFrame:
+        """Returns a dataframe of associated CaloContribution objects."""
+        calo_contributions_df = self._event._calo_contributions_df
+        if calo_contributions_df.empty or 'particle_id' not in calo_contributions_df.columns:
+            return pd.DataFrame()
+
+        return calo_contributions_df[calo_contributions_df['particle_id'] == self._id]
 
     # --- Decay Tree Methods (require graph to be built) ---
 
@@ -346,7 +384,7 @@ class Particle:
     # --- Representation ---
 
     def __repr__(self) -> str:
-        return f"<Particle id={self._id} pdg={self.pdg} pT={self.pt:.2f} eta={self.eta:.2f}>"
+        return f"<Particle id={self._id} pdg={self.pdg} p={self.p:.2f} pT={self.pt:.2f} eta={self.eta:.2f}>"
 
     def __eq__(self, other) -> bool:
         if not isinstance(other, Particle):
