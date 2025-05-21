@@ -155,21 +155,11 @@ def run_interactive(config, config_path_arg, stage_script_path):
 
     logger.info(f"Executing command: {' '.join(command)}")
     try:
-        # Run the script with check=True to raise CalledProcessError on non-zero exit
-        process = subprocess.run(command, check=True, text=True, capture_output=True)
+        # Run the script without capturing output to show it in real-time
+        process = subprocess.run(command, check=True)
         logger.info(f"Interactive stage '{config['stage']}' completed successfully.")
-        logger.info("STDOUT:")
-        print(process.stdout)
-        if process.stderr:
-            logger.warning("STDERR:")
-            print(process.stderr)
     except subprocess.CalledProcessError as e:
-        logger.error(f"Interactive stage '{config['stage']}' failed.")
-        logger.error(f"Return code: {e.returncode}")
-        logger.error("STDOUT:")
-        print(e.stdout)
-        logger.error("STDERR:")
-        print(e.stderr)
+        logger.error(f"Interactive stage '{config['stage']}' failed with return code: {e.returncode}")
         sys.exit(1)
     except FileNotFoundError:
         logger.error(f"Error: Stage script {stage_script_path} not found.")
