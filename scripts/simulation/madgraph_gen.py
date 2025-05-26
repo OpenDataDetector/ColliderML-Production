@@ -5,8 +5,11 @@ import shutil
 import argparse
 import yaml
 import re # Import regex module
+import logging
 from pathlib import Path
 from utils.config import create_base_parser, load_config
+
+logger = logging.getLogger(__name__)
 
 def run_command(command, cwd=None, env=None, shell=False):
     process = subprocess.Popen(
@@ -121,6 +124,7 @@ def split_hepmc_file(input_hepmc_path: Path,
                     files_created.append(split_file_path)
                 
                 if current_f_out:
+                    event.event_number = i % events_per_file
                     current_f_out.write_event(event)
                 event_count_total = i + 1
         
@@ -151,6 +155,22 @@ def main():
     args = parser.parse_args()
     config = load_config(args)
 
+    # Debug the config structure
+    print("=== Config Structure Debugging ===")
+    print(f"Config type: {type(config)}")
+    print(f"Config dir contents: {dir(config)}")
+    if hasattr(config, 'splitting_config'):
+        print(f"splitting_config: {config.splitting_config}")
+        print(f"splitting_config.enable: {config.splitting_config.get('enable')}")
+    else:
+        print("No 'splitting_config' attribute found in config!")
+        try:
+            # Try accessing as dict (old behavior)
+            print(f"Trying dict access - splitting_config: {config.get('splitting_config')}")
+        except:
+            print("Dict access also failed")
+    print("=================================")
+
     process_name = f"{config.dataset}_{config.version}"
     mg_base_path = Path(config.mg_base_path)
     scratch_dir = Path(config.generation_scratch_dir)
@@ -160,8 +180,27 @@ def main():
     
     # When splitting is enabled, we create run_X directories directly under config.output
     # When splitting is disabled, we use config.output/config.output_subdir as in pythia_gen.py
-    splitting_config = getattr(config, 'hepmc_splitting', {})
-    splitting_enabled = splitting_config.get('enable', False)
+    try:
+        # First try attribute access (for utils.config style)
+        if hasattr(config, 'splitting_config'):
+            splitting_config = config.splitting_config
+            print(f"Got splitting_config via attribute: {splitting_config}")
+        else:
+            # Fall back to dict access
+            splitting_config = getattr(config, 'splitting_config', {})
+            print(f"Got splitting_config via getattr: {splitting_config}")
+        
+        if isinstance(splitting_config, dict):
+            splitting_enabled = splitting_config.get('enable', False)
+            print(f"splitting_enabled = {splitting_enabled} (via dict access)")
+        else:
+            # Handle case where it might be an object with attributes
+            splitting_enabled = getattr(splitting_config, 'enable', False)
+            print(f"splitting_enabled = {splitting_enabled} (via attr access)")
+    except Exception as e:
+        print(f"Error accessing splitting config: {e}")
+        print("Defaulting to splitting_enabled = False")
+        splitting_enabled = False
     
     if splitting_enabled:
         # For splitting, use the base output dir without subdir
@@ -176,8 +215,16 @@ def main():
     effective_output_dir.mkdir(parents=True, exist_ok=True)
     
     # Get other splitting config after determining the enabled state
-    split_events_per_file = splitting_config.get('events_per_file', 1000)
-    split_output_filename = splitting_config.get('output_filename', 'events.hepmc')
+    try:
+        split_events_per_file = splitting_config.get('events_per_file', 1000)
+        split_output_filename = splitting_config.get('output_filename', 'events.hepmc')
+        print(f"Split events per file: {split_events_per_file}")
+        print(f"Split output filename: {split_output_filename}")
+    except Exception as e:
+        print(f"Error accessing splitting config details: {e}")
+        print("Using default values")
+        split_events_per_file = 1000
+        split_output_filename = 'events.hepmc'
 
     mg5_exe = mg_base_path / "bin" / "mg5_aMC"
 
