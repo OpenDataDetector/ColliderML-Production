@@ -120,9 +120,11 @@ def run_pythia_stage(output_dir, config, logger=None):
 
     try:
         logger.debug("Creating Pythia8 generator...")
+        nhardProcess = 1 if pythia_settings is not None else 0
         generator = addPythia8(
             s,
             npileup=config.pileup,
+            nhard=nhardProcess,
             hardProcess=pythia_settings,
             outputDirCsv=None,
             outputDirRoot=None,
