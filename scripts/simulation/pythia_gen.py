@@ -8,9 +8,13 @@ from acts.examples.hepmc3 import (
         HepMC3AsciiWriter,
     )
 import traceback
+# Removed pyhepmc, numpy imports as they will be handled by the imported module
 
 from utils.app_logging import setup_logging, TimingRecorder
 from utils.config import create_base_parser, load_config
+
+# Import merging and smearing functions
+from merge_and_smear_madgraph import merge_hepmc_files as merge_external_signal_with_pileup
 
 u = acts.UnitConstants
 
@@ -33,6 +37,13 @@ def parse_args():
         "--pythia-settings",
         help="Additional Pythia8 settings (comma-separated)",
         type=str,
+        default=None,
+    )
+    # Merge signal flag
+    parser.add_argument(
+        "--merge-signal",
+        help="Merge with existing signal file (events_PYTHIA8_0.hepmc.gz) in output directory",
+        action="store_true",
         default=None,
     )
     # Vertex smearing parameters 
@@ -62,111 +73,187 @@ def run_pythia_stage(output_dir, config, logger=None):
     
     logger.info("Initializing Pythia8 generation...")
     
-    # Create sequencer for Pythia8
-    s = Sequencer(numThreads=1, events=config.events)
-    s.config.logLevel = acts.logging.DEBUG
-    seed = config.seed or int(time.time())
-    logger.info(f"Using random seed: {seed}")
-    rnd = acts.examples.RandomNumbers(seed=seed)
+    # Check if we're doing signal file merging
+    merge_signal = getattr(config, 'merge_signal', False)
     
-    # Add vertex generator using config values
-    logger.info(f"Configuring vertex smearing with sigma_xy={config.vertex_sigma_xy} mm, sigma_z={config.vertex_sigma_z} mm, sigma_t={config.vertex_sigma_t} ns")
-    vtxGen = None
-    if any(sigma is not None and sigma != 0 for sigma in [
-        config.vertex_sigma_xy,
-        config.vertex_sigma_z,
-        config.vertex_sigma_t
-    ]):
-        vtxGen = acts.examples.GaussianVertexGenerator(
-            stddev=acts.Vector4(
-                config.vertex_sigma_xy * u.mm,
-                config.vertex_sigma_xy * u.mm,
-                config.vertex_sigma_z * u.mm,
-                config.vertex_sigma_t * u.ns
-            ),
-            mean=acts.Vector4(0, 0, 0, 0),
-        )
-
-    
-    # Initialize settings list from config
-    pythia_settings = []
-    
-    # Add all settings from config if present
-    if getattr(config, 'pythia_settings', None):
-        if isinstance(config.pythia_settings, str):
-            logger.debug("Processing command-line pythia settings")
-            pythia_settings.extend([s.strip() for s in config.pythia_settings.split(',') if s.strip()])
-        elif isinstance(config.pythia_settings, list):
-            logger.debug("Processing YAML list pythia settings")
-            pythia_settings.extend(config.pythia_settings)
-        else:
-            raise ValueError("pythia_settings must be either a comma-separated string or a list")
-    
-    # Always append the hard process at the end
-    hard_process = getattr(config, 'hard_process', None)
-    if isinstance(hard_process, str) and hard_process.strip():
-        pythia_settings.append(f"{hard_process.strip()}=on")
-
-    if not pythia_settings:
-        pythia_settings = None
-    
-    logger.info(f"Generating {config.events} events with {config.pileup} pileup each")
-    logger.info(f"Final Pythia8 settings: {pythia_settings}")
-    
-    if pythia_settings is not None:
-        output_path = output_dir / "merged_events.hepmc3" # This is the final product
-    else:
-        output_path = output_dir / "events_pileup.hepmc3" # This is pileup only, and needs to be merged with signal events
-
-    try:
-        logger.debug("Creating Pythia8 generator...")
-        nhardProcess = 1 if pythia_settings is not None else 0
-        generator = addPythia8(
-            s,
+    if merge_signal:
+        # Mode: Merge with existing signal file and generate pileup
+        signal_file_path = output_dir / "events_PYTHIA8_0.hepmc.gz"
+        logger.info(f"Signal file merging mode with: {signal_file_path}")
+        
+        if not signal_file_path.exists():
+            raise FileNotFoundError(f"Signal file not found: {signal_file_path}")
+        
+        logger.info(f"Generating {config.events} pileup events for merging.")
+        
+        s_pileup = Sequencer(numThreads=1, events=config.events)
+        s_pileup.config.logLevel = acts.logging.DEBUG
+        seed_pileup = config.seed or int(time.time())
+        logger.info(f"Using random seed for pileup: {seed_pileup}")
+        rnd_pileup = acts.examples.RandomNumbers(seed=seed_pileup)
+        
+        # Keep pileup events as events_pileup.hepmc3
+        pileup_path = output_dir / "events_pileup.hepmc3"
+        
+        logger.debug("Creating Pythia8 pileup-only generator...")
+        addPythia8(
+            s_pileup,
             npileup=config.pileup,
-            nhard=nhardProcess,
-            hardProcess=pythia_settings,
+            nhard=0,
+            hardProcess=None,
             outputDirCsv=None,
             outputDirRoot=None,
-            outputEvent="events",
-            rnd=rnd,
+            outputEvent="pileup_events",
+            rnd=rnd_pileup,
             logLevel=acts.logging.DEBUG,
-            vtxGen=vtxGen,
+            vtxGen=None, # Smearing is handled by the merge function
         )
-        logger.debug("Pythia8 generator created successfully")
+        logger.debug("Pythia8 pileup-only generator created successfully.")
 
-        s.addWriter(
+        s_pileup.addWriter(
             HepMC3AsciiWriter(
-                acts.logging.VERBOSE,
-                inputEvent="events",
-                outputPath=output_path,
+                acts.logging.INFO,
+                inputEvent="pileup_events",
+                outputPath=pileup_path,
             )
         )
 
-        logger.debug(f"Writing HepMC3 events to {output_path}")
+        logger.info(f"Writing pileup events to {pileup_path}")
+        s_pileup.run()
+        logger.info("Pileup generation completed.")
 
-        logger.debug("About to start sequencer run...")
+        
+        vertex_sigmas_for_merge_mm_ns = {
+            'xy': getattr(config, 'vertex_sigma_xy', 0.0),
+            'z': getattr(config, 'vertex_sigma_z', 0.0),
+            't': getattr(config, 'vertex_sigma_t', 0.0)  # Pass as ns
+        }
+        
+        final_merged_path = output_dir / "merged_events.hepmc3"
+        logger.info(f"Calling merge function for signal {signal_file_path} and pileup {pileup_path}")
+        
+        merge_external_signal_with_pileup(
+            signal_path=signal_file_path,
+            pileup_path=pileup_path,
+            num_events=config.events,
+            output_path=final_merged_path,
+            vertex_sigmas_mm_ns=vertex_sigmas_for_merge_mm_ns,
+            config=None,
+            logger=logger
+        )
+        
+        logger.info(f"Signal-pileup merge completed. Output: {final_merged_path}")
+        
+        return final_merged_path
+        
+    else:
+        logger.info("Standard Pythia8 generation mode (no signal file merging).")
+        # Original mode: Generate signal+pileup together OR pileup-only
+        # Create sequencer for Pythia8
+        s = Sequencer(numThreads=1, events=config.events)
+        s.config.logLevel = acts.logging.DEBUG
+        seed = config.seed or int(time.time())
+        logger.info(f"Using random seed: {seed}")
+        rnd = acts.examples.RandomNumbers(seed=seed)
+        
+        # Add vertex generator using config values
+        logger.info(f"Configuring vertex smearing with sigma_xy={config.vertex_sigma_xy} mm, sigma_z={config.vertex_sigma_z} mm, sigma_t={config.vertex_sigma_t} ns")
+        vtxGen = None
+        if any(sigma is not None and sigma != 0 for sigma in [
+            config.vertex_sigma_xy,
+            config.vertex_sigma_z,
+            config.vertex_sigma_t
+        ]):
+            vtxGen = acts.examples.GaussianVertexGenerator(
+                stddev=acts.Vector4(
+                    config.vertex_sigma_xy * u.mm,
+                    config.vertex_sigma_xy * u.mm,
+                    config.vertex_sigma_z * u.mm,
+                    config.vertex_sigma_t * u.ns
+                ),
+                mean=acts.Vector4(0, 0, 0, 0),
+            )
+
+        
+        # Initialize settings list from config
+        pythia_settings = []
+        
+        # Add all settings from config if present
+        if getattr(config, 'pythia_settings', None):
+            if isinstance(config.pythia_settings, str):
+                logger.debug("Processing command-line pythia settings")
+                pythia_settings.extend([s.strip() for s in config.pythia_settings.split(',') if s.strip()])
+            elif isinstance(config.pythia_settings, list):
+                logger.debug("Processing YAML list pythia settings")
+                pythia_settings.extend(config.pythia_settings)
+            else:
+                raise ValueError("pythia_settings must be either a comma-separated string or a list")
+        
+        # Always append the hard process at the end
+        hard_process = getattr(config, 'hard_process', None)
+        if isinstance(hard_process, str) and hard_process.strip():
+            pythia_settings.append(f"{hard_process.strip()}=on")
+
+        if not pythia_settings:
+            pythia_settings = None
+        
+        logger.info(f"Generating {config.events} events with {config.pileup} pileup each")
+        logger.info(f"Final Pythia8 settings: {pythia_settings}")
+        
+        if pythia_settings is not None:
+            output_path = output_dir / "merged_events.hepmc3" # This is the final product
+        else:
+            output_path = output_dir / "events_pileup.hepmc3" # This is pileup only, and needs to be merged with signal events
+
         try:
-            s.run()
-            logger.debug("Sequencer run completed")
+            logger.debug("Creating Pythia8 generator...")
+            nhardProcess = 1 if pythia_settings is not None else 0
+            generator = addPythia8(
+                s,
+                npileup=config.pileup,
+                nhard=nhardProcess,
+                hardProcess=pythia_settings,
+                outputDirCsv=None,
+                outputDirRoot=None,
+                outputEvent="events",
+                rnd=rnd,
+                logLevel=acts.logging.DEBUG,
+                vtxGen=vtxGen,
+            )
+            logger.debug("Pythia8 generator created successfully")
+
+            s.addWriter(
+                HepMC3AsciiWriter(
+                    acts.logging.VERBOSE,
+                    inputEvent="events",
+                    outputPath=output_path,
+                )
+            )
+
+            logger.debug(f"Writing HepMC3 events to {output_path}")
+
+            logger.debug("About to start sequencer run...")
+            try:
+                s.run()
+                logger.debug("Sequencer run completed")
+            except Exception as e:
+                logger.error(f"Error during sequencer run: {str(e)}")
+                logger.error(traceback.format_exc())
+                logger.error(f"Sequencer state at crash:")
+                logger.error(f"  Number of events: {s.config.events}")
+                logger.error(f"  Current event: {s.currentEvent}")
+                raise
+                
         except Exception as e:
-            logger.error(f"Error during sequencer run: {str(e)}")
+            logger.error(f"Error during Pythia8 generation: {str(e)}")
             logger.error(traceback.format_exc())
-            logger.error(f"Sequencer state at crash:")
-            logger.error(f"  Number of events: {s.config.events}")
-            logger.error(f"  Current event: {s.currentEvent}")
             raise
-            
-    except Exception as e:
-        logger.error(f"Error during Pythia8 generation: {str(e)}")
-        logger.error(traceback.format_exc())
-        raise
-    
-    # Verify output files exist
-    if not output_path.exists():
-        raise FileNotFoundError("Pythia8 failed to generate output files")
-    
-    return output_path
+        
+        # Verify output files exist
+        if not output_path.exists():
+            raise FileNotFoundError("Pythia8 failed to generate output files")
+        
+        return output_path
 
 def main():
     try:

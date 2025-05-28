@@ -1,6 +1,7 @@
 # Example configuration
-dataset: "gg2ttbar"
-version: "v1"
+campaign: "full_pileup_pilot"
+dataset: "ttbar"
+version: "v2"
 stage: "simulation"  # One of: generation, merge_smear, simulation, digitization
 job_config:
   # Number of nodes will be calculated as n_runs / runs_per_node
@@ -8,18 +9,20 @@ job_config:
   runs_per_node: 32  # Number of runs per node
   time_limit: "04:00:00"  # Time limit per job
   qos: "regular"
+  execution_mode: "interactive"
 
 validation_config:
   time_limit: "00:10:00"
   qos: "regular"
 
 # Stage-specific configurations
-events: 10  # Number of events per run, total number of events will be n_runs * events
+events: 64  # Number of events per run, total number of events will be n_runs * events
+threads: 8
+minimalKineticEnergy: 0.001  # Minimum kinetic energy in GeV to register in truth
+truthParticleHandler: "Geant4FullTruthParticleHandler"
 
 # Common settings
 common:
-  output_base_dir: "/global/cfs/projectdirs/m4958/data/ColliderML/outputs/madgraph_merge_testing/run_0"
+  output_base_dir: "/global/cfs/projectdirs/m4958/data/ColliderML/simulation/"
   account: "m4958"
   container: "registry.cern.ch/atlasadc/atlas-grid-almalinux9"
-
-output: "/global/cfs/projectdirs/m4958/data/ColliderML/outputs/madgraph_merge_testing/run_0"
