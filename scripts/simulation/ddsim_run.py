@@ -29,6 +29,12 @@ def parse_args():
         action="store_true",
         default=None
     )
+    parser.add_argument(
+        "--threads",
+        help="Number of threads to use",
+        type=int,
+        default=None
+    )
     return parser.parse_args()
 
 def configure_particle_gun(ddsim, config, logger):
