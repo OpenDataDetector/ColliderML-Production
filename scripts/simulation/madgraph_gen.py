@@ -365,9 +365,10 @@ def main():
                     else:
                         # Splitting not enabled, move the HEPMC file directly
                         try:
-                            destination_path = effective_output_dir / event_file_path.name
+                            # Use clean filename consistent with splitting naming pattern
+                            destination_path = effective_output_dir / "events.hepmc.gz"
                             shutil.move(str(event_file_path), str(destination_path))
-                            print(f"Moved HEPMC file {event_file_path.name} to {destination_path} (splitting disabled).")
+                            print(f"Moved HEPMC file {event_file_path.name} to {destination_path} (splitting disabled, clean name).")
                             files_processed_count += 1
                         except Exception as e:
                             print(f"Error moving HEPMC file {event_file_path.name}: {e}")
