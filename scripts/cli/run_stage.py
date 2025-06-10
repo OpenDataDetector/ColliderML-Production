@@ -122,28 +122,39 @@ def get_stage_script_path(config, job_submitter_instance):
     return Path(relative_script_path)
 
 def run_interactive(config, config_path_arg, stage_script_path):
-    """Runs the stage script directly as a subprocess."""
+    """Runs the stage script directly as a subprocess after setting up the environment."""
     logger.info(f"Running stage '{config['stage']}' interactively.")
     logger.info(f"Using script: {stage_script_path}")
 
-    # Basic command structure
-    command = [
-        sys.executable,  # Path to current python interpreter
+    # 1. Get environment setup commands from the centralized utility
+    env_setup_cmds = cli_utils.get_env_setup_cmds(config)
+    if not env_setup_cmds:
+        logger.warning("No environment setup commands found. Running script in current environment.")
+
+    # 2. Construct the basic python command.
+    # We use 'python' instead of sys.executable to ensure the shell finds the
+    # interpreter from the PATH, which should be modified by the env_setup commands.
+    python_command = [
+        "python",
         str(stage_script_path),
         "--config", str(config_path_arg)
     ]
 
-    # Create necessary output directories first
+    # 3. Create necessary output directories and add to command
     logger.info("Creating output directories for interactive run...")
     directories = cli_utils.create_necessary_directories(config)
     run_dir = directories["run_dir"]
-    command.extend(["--output", str(run_dir)])
-    command.extend(["--output-subdir", "all"])
+    python_command.extend(["--output", str(run_dir)])
+    python_command.extend(["--output-subdir", "all"])
 
-    logger.info(f"Executing command: {' '.join(command)}")
+    # 4. Combine environment setup and python execution into a single command string
+    full_command_list = env_setup_cmds + [" ".join(python_command)]
+    final_command_str = " && ".join(full_command_list)
+
+    logger.info(f"Executing command string: {final_command_str}")
     try:
-        # Run the script without capturing output to show it in real-time
-        process = subprocess.run(command, check=True)
+        # Use shell=True to correctly process the command string with '&&' and environment sourcing
+        process = subprocess.run(final_command_str, shell=True, check=True)
         logger.info(f"Interactive stage '{config['stage']}' completed successfully.")
     except subprocess.CalledProcessError as e:
         logger.error(f"Interactive stage '{config['stage']}' failed with return code: {e.returncode}")
@@ -177,29 +188,41 @@ def main():
         logger.error(f"Error parsing YAML configuration file: {e}")
         sys.exit(1)
 
-    # --- 1. Determine Software Repo Path and Perform Git Commit ---
-    software_repo_path = cli_utils.get_git_root(Path(__file__).resolve())
-    if not software_repo_path:
+    # --- 1. Load env_setup.yaml and merge into config ---
+    env_config_path = Path(__file__).resolve().parent / "env_setup.yaml"
+    if env_config_path.exists():
+        logger.info(f"Loading environment setup from {env_config_path}")
+        with open(env_config_path, 'r') as f_env:
+            env_config = yaml.safe_load(f_env)
+        # We store the env_config under an "env_setup" key in the main config
+        config["env_setup"] = env_config
+    else:
+        logger.warning(f"{env_config_path} not found. Ensure environment is configured if needed.")
+
+    # --- 2. Determine Software Repo Path and Perform Git Commit ---
+    git_repo_path = cli_utils.get_git_root(Path(__file__).resolve())
+    if not git_repo_path:
         logger.warning("Could not find .git directory. Skipping git commit and software snapshot.")
     else:
-        logger.info(f"Identified software repository for commit: {software_repo_path}")
-        if not cli_utils.git_commit_and_log_config(config, args.config, software_repo_path, args.force_commit):
+        logger.info(f"Identified software repository for commit: {git_repo_path}")
+        # Pass the full config, which now includes env_setup, to the git function
+        if not cli_utils.git_commit_and_log_config(config, args.config, git_repo_path, args.force_commit):
             logger.error("Failed to perform git commit and log configuration. Exiting.")
             sys.exit(1)
         logger.info("Git commit and config logging successful.")
 
-    # --- 2. Determine Execution Mode --- 
+    # --- 3. Determine Execution Mode --- 
     # Priority: CLI arg > config file > default (e.g., distributed_slurm)
     execution_mode = args.execution_mode
     if not execution_mode:
         execution_mode = config.get("job_config", {}).get("execution_mode", "distributed_slurm")
     logger.info(f"Effective execution mode: {execution_mode}")
 
-    # --- 3. Execute based on mode ---
+    # --- 4. Execute based on mode ---
     if execution_mode == "interactive":
         # For interactive mode, we don't need JobSubmitter at all
         try:
-            stage_script_path = cli_utils.get_stage_script_path(config, software_repo_path)
+            stage_script_path = cli_utils.get_stage_script_path(config, git_repo_path)
             run_interactive(config, args.config, stage_script_path)
         except (ValueError, FileNotFoundError) as e:
             logger.error(f"Failed to locate script for interactive execution: {e}")
@@ -239,6 +262,7 @@ def main():
             # Initialize JobSubmitter
             job_submitter = JobSubmitter(
                 config_path=config_path_for_submitter,
+                git_repo_path=git_repo_path,
                 dry_run=args.dry_run,
                 run_range=submitter_run_range,
                 run_list=submitter_run_list

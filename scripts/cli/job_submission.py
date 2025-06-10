@@ -6,6 +6,7 @@ import yaml
 from simple_slurm import Slurm
 import datetime
 import logging
+import sys
 
 # Import common utilities
 import cli_utils
@@ -21,10 +22,11 @@ class JobSubmitter:
     POSTPROCESSING_STAGES = ["build_tracks", "build_hits", "build_particles"]
     VALID_STAGES = SIMULATION_STAGES + POSTPROCESSING_STAGES
     
-    def __init__(self, config_path, dry_run=False, run_range=None, run_list=None):
+    def __init__(self, config_path, git_repo_path, dry_run=False, run_range=None, run_list=None):
         """Initialize with YAML config"""
         self.dry_run = dry_run
         self.config_path = config_path
+        self.git_repo_path = git_repo_path
         self.run_range = run_range
         self.run_list = run_list
         
@@ -41,8 +43,8 @@ class JobSubmitter:
         
     def validate_config(self):
         """Validate configuration"""
-        if self.config["stage"] not in self.VALID_STAGES:
-            raise ValueError(f"Invalid stage. Must be one of {self.VALID_STAGES}")
+        if self.config["stage"] not in cli_utils.VALID_STAGES:
+            raise ValueError(f"Invalid stage. Must be one of {cli_utils.VALID_STAGES}")
             
         required_fields = ["job_config", "common", "version", "dataset"]
         for field in required_fields:
@@ -125,16 +127,16 @@ class JobSubmitter:
     
     def is_simulation_stage(self):
         """Check if current stage is a simulation stage"""
-        return self.config["stage"] in self.SIMULATION_STAGES
+        return self.config["stage"] in cli_utils.SIMULATION_STAGES
     
     def is_postprocessing_stage(self):
         """Check if current stage is a postprocessing stage"""
-        return self.config["stage"] in self.POSTPROCESSING_STAGES
+        return self.config["stage"] in cli_utils.POSTPROCESSING_STAGES
     
     def get_stage_script(self):
         """Get the appropriate script for current stage using cli_utils"""
         try:
-            return str(cli_utils.get_stage_script_path(self.config))
+            return str(cli_utils.get_stage_script_path(self.config, self.git_repo_path))
         except (ValueError, FileNotFoundError) as e:
             logger.error(f"Error finding script path for stage {self.config['stage']}: {e}")
             raise
@@ -201,21 +203,10 @@ class JobSubmitter:
         
         slurm.add_cmd(f"srun {srun_options} -u shifter --image={common_cfg['container']} --module=cvmfs bash -c \"")
         
-        # Use env_setup from config, or fallback to legacy hardcoded setup if not present
-        env_setup_cmds = self.get_env_setup()
-        if env_setup_cmds:
-            for cmd in env_setup_cmds:
-                slurm.add_cmd(cmd + " && \\")
-        else:
-            # Fallback: legacy hardcoded setup (for backward compatibility)
-            slurm.add_cmd("cd /cvmfs/atlas.cern.ch/repo/ATLASLocalRootBase && \\")
-            slurm.add_cmd("export ATLAS_LOCAL_ROOT_BASE=\$PWD && \\")
-            slurm.add_cmd("source \${ATLAS_LOCAL_ROOT_BASE}/user/atlasLocalSetup.sh && \\")
-            slurm.add_cmd("cd /global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml_dev/scripts/simulation && \\")
-            slurm.add_cmd(f"source /cvmfs/sft.cern.ch/lcg/views/setupViews.sh LCG_107 x86_64-el9-gcc13-opt && \\")
-            slurm.add_cmd("source /global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/OtherLibraries/dd4hep-colliderml/bin/thisdd4hep.sh && \\")
-            slurm.add_cmd(f"source /global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/new_acts/build/python/setup.sh && \\")
-            slurm.add_cmd("source /global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml_env/bin/activate && \\")
+        # Use centralized and configurable env_setup
+        env_setup_cmds = cli_utils.get_env_setup_cmds(self.config)
+        for cmd in env_setup_cmds:
+            slurm.add_cmd(cmd + " && \\")
         
         # Prepare stage-specific command 
         if is_monolithic:
@@ -248,16 +239,10 @@ class JobSubmitter:
         srun_options = "--exact"
         slurm.add_cmd(f"srun {srun_options} bash -c \"")
         
-        # Use env_setup from config, or fallback to legacy hardcoded setup if not present
-        env_setup_cmds = self.get_env_setup()
-        if env_setup_cmds:
-            for cmd in env_setup_cmds:
-                slurm.add_cmd(cmd + " && \\")
-        else:
-            # Fallback: legacy hardcoded setup (for backward compatibility)
-            slurm.add_cmd("cd /global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software && \\")
-            slurm.add_cmd("eval \\\"\\$(conda shell.bash hook)\\\" && \\")
-            slurm.add_cmd("conda activate collider-env && \\")
+        # Use centralized and configurable env_setup
+        env_setup_cmds = cli_utils.get_env_setup_cmds(self.config)
+        for cmd in env_setup_cmds:
+            slurm.add_cmd(cmd + " && \\")
         
         # Add the Python command based on mode
         if is_monolithic:
@@ -392,10 +377,36 @@ def main():
     
     logger.info("Note: job_submission.py is being used directly. For most cases, consider using run_stage.py instead.")
     
-    submitter = JobSubmitter(args.config, dry_run=args.dry_run, 
-                             run_range=args.run_range, run_list=args.run_list)
+    # When run directly, we must find the git repo and load all configs
+    # to pass a complete config object to the submitter.
+    git_repo_path = cli_utils.get_git_root(Path(__file__).resolve())
+    if not git_repo_path:
+        logger.error("Could not find git repository root. Exiting.")
+        sys.exit(1)
+
+    with open(args.config, 'r') as f_main:
+        config = yaml.safe_load(f_main)
+
+    env_config_path = Path(__file__).resolve().parent / "env_setup.yaml"
+    if env_config_path.exists():
+        with open(env_config_path, 'r') as f_env:
+            config["env_setup"] = yaml.safe_load(f_env)
+
+    # Write a temporary merged config to pass to the submitter.
+    # This is necessary because JobSubmitter reads its config from a file path.
+    temp_config_path = Path(args.config).with_suffix('.temp_merged_for_job_submission.yaml')
+    with open(temp_config_path, 'w') as f_temp:
+        yaml.dump(config, f_temp)
+    
+    submitter = JobSubmitter(str(temp_config_path), 
+                             git_repo_path=git_repo_path,
+                             dry_run=args.dry_run, run_range=args.run_range, 
+                             run_list=args.run_list)
     job_ids = submitter.submit_jobs()
     validation_ids = submitter.submit_validation_jobs(job_ids)
+
+    # Clean up the temporary file
+    os.remove(temp_config_path)
     
     if args.dry_run:
         logger.info(f"Dry run completed. Batch scripts saved in: {submitter.dry_run_dir}")
