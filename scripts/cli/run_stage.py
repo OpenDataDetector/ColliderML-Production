@@ -130,28 +130,15 @@ def run_interactive(config, config_path_arg, stage_script_path):
     command = [
         sys.executable,  # Path to current python interpreter
         str(stage_script_path),
-        "--config", str(config_path_arg)  # Pass the original config path to the script
+        "--config", str(config_path_arg)
     ]
 
     # Create necessary output directories first
     logger.info("Creating output directories for interactive run...")
     directories = cli_utils.create_necessary_directories(config)
-    
-    # Add additional script-specific arguments if needed based on stage
-    # For example, if stage scripts need output_dir or similar
-    stage = config["stage"]
-    if stage in cli_utils.STAGE_SCRIPT_MAP:
-        # Check if we need any additional args based on stage
-        # For example, simulation stages might need --output and --output-subdir
-        if stage in ["generation", "merge_smear", "simulation", "digitization"]:
-            run_dir = directories["run_dir"]
-            # For interactive mode, we use run_all by default
-            command.extend(["--output", str(run_dir)])
-            command.extend(["--output-subdir", "all"])  # Default to all for interactive
-            
-            # Add seed if required
-            seed = f"{config['dataset']}_{config['version']}_runall"
-            command.extend(["--seed", seed])
+    run_dir = directories["run_dir"]
+    command.extend(["--output", str(run_dir)])
+    command.extend(["--output-subdir", "all"])
 
     logger.info(f"Executing command: {' '.join(command)}")
     try:

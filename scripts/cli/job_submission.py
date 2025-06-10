@@ -17,7 +17,7 @@ class JobSubmitter:
     """Handles SLURM job submission for ColliderML pipeline stages"""
     
     # Separate stage categories
-    SIMULATION_STAGES = ["new_generation", "generation", "merge_smear", "simulation", "digitization"]
+    SIMULATION_STAGES = ["madgraph_generation", "pythia_generation", "merge_smear", "simulation", "digitization"]
     POSTPROCESSING_STAGES = ["build_tracks", "build_hits", "build_particles"]
     VALID_STAGES = SIMULATION_STAGES + POSTPROCESSING_STAGES
     
@@ -211,11 +211,11 @@ class JobSubmitter:
             slurm.add_cmd("cd /cvmfs/atlas.cern.ch/repo/ATLASLocalRootBase && \\")
             slurm.add_cmd("export ATLAS_LOCAL_ROOT_BASE=\$PWD && \\")
             slurm.add_cmd("source \${ATLAS_LOCAL_ROOT_BASE}/user/atlasLocalSetup.sh && \\")
-            slurm.add_cmd("cd /global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software && \\")
+            slurm.add_cmd("cd /global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml_dev/scripts/simulation && \\")
             slurm.add_cmd(f"source /cvmfs/sft.cern.ch/lcg/views/setupViews.sh LCG_107 x86_64-el9-gcc13-opt && \\")
-            slurm.add_cmd("source OtherLibraries/dd4hep-custom/bin/thisdd4hep.sh && \\")
-            slurm.add_cmd(f"source acts/build/python/setup.sh && \\")
-            slurm.add_cmd("source colliderml_env/bin/activate && \\")
+            slurm.add_cmd("source /global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/OtherLibraries/dd4hep-colliderml/bin/thisdd4hep.sh && \\")
+            slurm.add_cmd(f"source /global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/new_acts/build/python/setup.sh && \\")
+            slurm.add_cmd("source /global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml_env/bin/activate && \\")
         
         # Prepare stage-specific command 
         if is_monolithic:
