@@ -18,6 +18,11 @@ logger = logging.getLogger(__name__)
 CONFIG_FILE_NAME = "expanded_config.yaml"
 GIT_COMMIT_SUCCESS_FILE = ".git_commit_success"
 
+# Define stage categories
+SIMULATION_STAGES = ["madgraph_generation", "pythia_generation", "merge_smear", "simulation", "digitization"]
+POSTPROCESSING_STAGES = ["build_tracks", "build_hits", "build_particles"]
+VALID_STAGES = SIMULATION_STAGES + POSTPROCESSING_STAGES
+
 # Stage to script mappings
 STAGE_SCRIPT_MAP = {
     # Simulation scripts
@@ -32,6 +37,79 @@ STAGE_SCRIPT_MAP = {
     "build_hits": "postprocessing/convert_hits.py",
     "build_particles": "postprocessing/convert_particles.py"
 }
+
+def get_env_setup_cmds(config):
+    """
+    Gets and processes environment setup commands from the configuration.
+
+    It reads placeholder values from the `env_setup.placeholders` section
+    and searches for commands using a hierarchical approach:
+    1. Look for a key matching the specific stage name (e.g., 'madgraph_generation').
+    2. If not found, fall back to the stage category (e.g., 'simulation').
+
+    It then substitutes all {PLACEHOLDER} occurrences in the found commands.
+
+    Args:
+        config (dict): The main configuration dictionary, which must include
+                       the 'env_setup' section.
+
+    Returns:
+        list: A list of processed environment setup commands.
+    """
+    env_setup_config = config.get("env_setup", {})
+    if not env_setup_config:
+        logger.warning("`env_setup` section not found in configuration. Cannot process environment.")
+        return []
+
+    # Get the placeholder dictionary.
+    placeholder_config = env_setup_config.get("placeholders", {})
+
+    # Dynamically create a dictionary for formatting placeholders.
+    # Keys are uppercased to match conventions like {SOFTWARE_DIR}.
+    format_dict = {key.upper(): value for key, value in placeholder_config.items() if isinstance(value, str)}
+
+    # Ensure SOFTWARE_DIR is present, as it's fundamental.
+    if "SOFTWARE_DIR" not in format_dict or not format_dict["SOFTWARE_DIR"]:
+        logger.error("`software_dir` not defined or is empty in the `env_setup.placeholders` section of your config.")
+        raise ValueError("Missing essential configuration: software_dir")
+
+    stage = config.get("stage")
+    if not stage:
+        logger.warning("Cannot determine environment setup: 'stage' not in config.")
+        return []
+
+    # Hierarchical search for command list: stage-specific first, then category.
+    stage_cmds = []
+    if stage in env_setup_config:
+        logger.info(f"Using specific environment setup for stage '{stage}'.")
+        stage_cmds = env_setup_config.get(stage, [])
+    else:
+        # Determine category and fall back to it
+        category = None
+        if stage in SIMULATION_STAGES:
+            category = "simulation"
+        elif stage in POSTPROCESSING_STAGES:
+            category = "postprocessing"
+
+        if category and category in env_setup_config:
+            logger.info(f"No specific setup for '{stage}', falling back to category '{category}'.")
+            stage_cmds = env_setup_config.get(category, [])
+        else:
+            logger.warning(f"No environment setup found for stage '{stage}' or category '{category}'.")
+
+    if not stage_cmds:
+        return []
+
+    # Substitute placeholders
+    processed_cmds = []
+    for cmd in stage_cmds:
+        try:
+            processed_cmds.append(cmd.format(**format_dict))
+        except KeyError as e:
+            logger.error(f"Placeholder {e} is used in a command but not defined in env_setup.placeholders.")
+            raise ValueError(f"Undefined placeholder in command: {cmd}")
+
+    return processed_cmds
 
 def get_stage_script_path(config, software_repo_path=None):
     """
