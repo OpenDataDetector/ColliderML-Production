@@ -11,9 +11,9 @@ job_config:
   execution_mode: "interactive"
 
 # --- MadGraph Process Definition ---
-mg_model: "heft"  # Use HEFT model for loop-induced Higgs production
+mg_model: "loop_sm"  # Use loop_sm model for NLO loop-induced processes
 mg_definitions: [] 
-mg_generate_command: "generate g g > h [QCD]"  # Gluon-gluon fusion Higgs production
+mg_generate_command: "generate g g > h QED<=1 [QCD]"  # GGF Higgs at NLO, specifying explicit coupling order
 
 # --- Essential Paths & Environment ---
 mg_base_path: "/global/cfs/projectdirs/m4958/usr/danieltm/ColliderML/software/OtherLibraries/MG5_aMC_v3_5_8"
