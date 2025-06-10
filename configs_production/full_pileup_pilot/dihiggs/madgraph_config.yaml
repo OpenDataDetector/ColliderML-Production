@@ -1,0 +1,57 @@
+#========================================================================
+# YAML Configuration for MadGraph NLO Di-Higgs (gg → HH) Generation
+#========================================================================
+
+# --- Dataset & Version ---
+campaign: "full_pileup_pilot"
+dataset: "dihiggs"
+version: "v1"
+stage: "madgraph_generation"  # One of: madgraph_generation, pythia_generation, merge_smear, simulation, digitization
+job_config:
+  execution_mode: "interactive"
+
+# --- MadGraph Process Definition ---
+mg_model: "heft"  # Use HEFT model for loop-induced process
+mg_definitions: [] 
+mg_generate_command: "generate g g > h h [QCD]"  # Gluon-gluon fusion di-Higgs
+
+# --- Essential Paths & Environment ---
+mg_base_path: "/global/cfs/projectdirs/m4958/usr/danieltm/ColliderML/software/OtherLibraries/MG5_aMC_v3_5_8"
+generation_scratch_dir: "/pscratch/sd/d/danieltm/ColliderML/mg_scratch" 
+output: "/global/cfs/projectdirs/m4958/data/ColliderML/simulation/"
+
+# --- MadGraph Event Settings ---
+events: 1024               
+seed: 42                   
+
+# --- Card Templates ---
+card_templates:
+  pythia8_card: "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml_dev/configs_development/testing_and_validation/pipeline_testing/pythia8_card_fxfx_template.dat"
+
+# --- Card Customizations ---
+card_customizations:
+  run_card:
+    "xqcut": 10.0          # Lower xqcut for di-Higgs (similar to single H)
+    "parton_shower": "PYTHIA8"
+
+  pythia8_card: 
+    "{{XQCUT}}": 10.0        # MUST be IDENTICAL to the run_card xqcut value
+    "{{PYTHIA_SEED}}": 42 
+    "{{NEVENTS}}": 10000 
+    "{{N_JET_MAX_MATCH}}": 2 # For HH + 0,1,2 jet matching
+    "{{PYTHIA_TUNE}}": 14    # Monash 2013 tune
+    "{{JET_MATCH_CONE_R}}": 1.0
+    "{{JET_MATCH_ETA_MAX}}": 5.0
+
+splitting_config:
+  enable: true
+  events_per_file: 32
+  output_filename: "events.hepmc3"
+
+common:
+  output_base_dir: "/global/cfs/projectdirs/m4958/data/ColliderML/simulation/"
+  account: "m4958"
+  container: "registry.cern.ch/atlasadc/atlas-grid-almalinux9"
+
+# --- Logging ---
+log_level: "INFO" 
