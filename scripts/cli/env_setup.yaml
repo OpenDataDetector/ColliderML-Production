@@ -1,0 +1,36 @@
+# Default environment setup for ColliderML stages.
+# This file provides a centralized place to define environment setup commands.
+# These commands are used by run_stage.py across all execution modes
+# (interactive, monolithic_slurm, distributed_slurm).
+
+# Define all placeholders here. These can be used in the command lists below.
+placeholders:
+  software_dir: "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software"
+  atlas_local_root_base: "/cvmfs/atlas.cern.ch/repo/ATLASLocalRootBase"
+  lcg_view: "LCG_107 x86_64-el9-gcc13-opt"
+
+# You can use placeholders like {SOFTWARE_DIR}, which will be replaced by the
+# value of `software_dir` above at runtime.
+
+# The 'simulation' key contains the general setup for most simulation stages
+# (pythia, ddsim, digi, etc.). This is used if a more specific stage setup isn't found.
+simulation:
+  - 'export ATLAS_LOCAL_ROOT_BASE={ATLAS_LOCAL_ROOT_BASE}'
+  - 'source {ATLAS_LOCAL_ROOT_BASE}/user/atlasLocalSetup.sh'
+  - 'cd {SOFTWARE_DIR}'
+  - 'source /cvmfs/sft.cern.ch/lcg/views/setupViews.sh {LCG_VIEW}'
+  - 'source {SOFTWARE_DIR}/OtherLibraries/dd4hep-colliderml/bin/thisdd4hep.sh'
+  - 'source {SOFTWARE_DIR}/new_acts/build/python/setup.sh'
+  - 'source {SOFTWARE_DIR}/colliderml_env/bin/activate'
+
+# Specific setup for 'madgraph_generation' stage, which overrides the general 'simulation' setup.
+madgraph_generation:
+  - 'source /cvmfs/sft.cern.ch/lcg/views/setupViews.sh LCG_107 x86_64-el8-gcc11-opt'
+  - 'source {SOFTWARE_DIR}/colliderml_dev/scripts/cli/madgraph_env/bin/activate'
+  - 'cd {SOFTWARE_DIR}'
+
+# The 'postprocessing' key contains setup for track/hit building, etc.
+postprocessing:
+  - 'cd {SOFTWARE_DIR}'
+  - 'eval "$(conda shell.bash hook)"'
+  - 'conda activate collider-env' 
