@@ -321,6 +321,10 @@ def main():
 
     files_processed_count = 0
     
+    # Print contents of effective_output_dir
+    print(f"Contents of effective_output_dir: {effective_output_dir}")
+    print(f"Contents of effective_output_dir: {os.listdir(effective_output_dir)}")
+
     for events_subdir_path in actual_events_subdirs:
         if events_subdir_path.is_dir():
             # Process LHE files: move them directly
