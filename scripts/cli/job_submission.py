@@ -408,6 +408,9 @@ def main():
     # Clean up the temporary file
     os.remove(temp_config_path)
     
+    # Clean up temporary file
+    os.remove(temp_config_path)
+
     if args.dry_run:
         logger.info(f"Dry run completed. Batch scripts saved in: {submitter.dry_run_dir}")
     else:

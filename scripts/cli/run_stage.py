@@ -43,7 +43,7 @@ def get_software_version_dir(config):
     version_specific_software_dir = software_snapshot_base / "current"
     return version_specific_software_dir
 
-def git_commit_and_log_config(config, config_path, software_repo_path, force_commit=False):
+def git_commit_and_log_config(config, config_path, git_repo_path, force_commit=False):
     """Commits the software state and logs the config. Returns True on success."""
     try:
         # Determine the output directory for this specific run based on config
@@ -67,30 +67,30 @@ def git_commit_and_log_config(config, config_path, software_repo_path, force_com
                  logger.info(f"Config snapshot saved to {logged_config_path}")
             return True
 
-        logger.info(f"Attempting to git commit changes in {software_repo_path}")
+        logger.info(f"Attempting to git commit changes in {git_repo_path}")
         
         # Check for uncommitted changes
-        status_cmd = ["git", "-C", str(software_repo_path), "status", "--porcelain"]
+        status_cmd = ["git", "-C", str(git_repo_path), "status", "--porcelain"]
         process = subprocess.run(status_cmd, capture_output=True, text=True)
         if process.returncode != 0:
-            logger.error(f"Git status check failed in {software_repo_path}: {process.stderr}")
+            logger.error(f"Git status check failed in {git_repo_path}: {process.stderr}")
             return False
         
         if not process.stdout.strip() and not force_commit:
-            logger.info(f"No changes to commit in {software_repo_path}.")
+            logger.info(f"No changes to commit in {git_repo_path}.")
         else:
-            add_cmd = ["git", "-C", str(software_repo_path), "add", "."]
+            add_cmd = ["git", "-C", str(git_repo_path), "add", "."]
             subprocess.run(add_cmd, check=True)
             
             commit_message = f"Automatic commit for stage: {config['stage']}, dataset: {config['dataset']}, version: {config['version']}"
-            commit_cmd = ["git", "-C", str(software_repo_path), "commit", "-m", commit_message]
+            commit_cmd = ["git", "-C", str(git_repo_path), "commit", "-m", commit_message]
             subprocess.run(commit_cmd, check=True)
-            logger.info(f"Git commit successful in {software_repo_path}.")
+            logger.info(f"Git commit successful in {git_repo_path}.")
 
         # Log the commit hash
-        hash_cmd = ["git", "-C", str(software_repo_path), "rev-parse", "HEAD"]
-        git_hash = subprocess.check_output(hash_cmd, text=True, cwd=software_repo_path).strip()
-        logger.info(f"Current Git HEAD for {software_repo_path}: {git_hash}")
+        hash_cmd = ["git", "-C", str(git_repo_path), "rev-parse", "HEAD"]
+        git_hash = subprocess.check_output(hash_cmd, text=True, cwd=git_repo_path).strip()
+        logger.info(f"Current Git HEAD for {git_repo_path}: {git_hash}")
 
         # Save the expanded config to the run's output directory
         output_version_dir.mkdir(parents=True, exist_ok=True)
@@ -114,10 +114,10 @@ def git_commit_and_log_config(config, config_path, software_repo_path, force_com
         logger.error(f"An unexpected error occurred during git commit and log: {e}")
         return False
 
-def get_stage_script_path(config, job_submitter_instance):
+def get_stage_script_path(config, git_repo_path):
     """Gets the absolute path to the stage script."""
     # This uses the JobSubmitter's method, which should be robust
-    relative_script_path = job_submitter_instance.get_stage_script() 
+    relative_script_path = JobSubmitter(config_path=config["config_path"], git_repo_path=git_repo_path).get_stage_script() 
     # job_submitter.get_stage_script() now returns an absolute path
     return Path(relative_script_path)
 
