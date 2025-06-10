@@ -33,3 +33,6 @@ __pycache__/
 *.pyd
 *.pyw
 *.pyz
+
+# Test directories
+**/*_tests/

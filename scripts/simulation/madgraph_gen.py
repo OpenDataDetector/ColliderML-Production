@@ -294,12 +294,27 @@ def main():
 
     # --- Step 3: Launch MadGraph event generation ---
     temp_launch_script_path = temp_run_dir / "launch_script.mg5"
-    with open(temp_launch_script_path, 'w') as f:
-        f.write(f"launch {generated_process_dir} -f\n")
-        f.write("set automatic_html_opening False\n")
-        f.write("exit\n") 
     
-    print(f"--- Running MadGraph for event generation (script: {temp_launch_script_path}) ---")
+    # Check if parton showering is requested for a loop-induced process.
+    # The standard 'parton_shower=PYTHIA8' in run_card is ignored by 'launch -f' for these processes.
+    # We must construct a script that mimics the interactive command sequence.
+    parton_shower_mode = run_card_settings_from_config.get('parton_shower', 'OFF').upper()
+    is_loop_induced = "noborn" in stdout_proc.lower() # Check the log from process generation
+
+    with open(temp_launch_script_path, 'w') as f:
+        if is_loop_induced and parton_shower_mode == 'PYTHIA8':
+            logger.info("Loop-induced process with parton showering detected. Generating multi-step launch script.")
+            f.write(f"launch {generated_process_dir}\n")
+            f.write("shower=Pythia8\n")
+            f.write("0\n") # Skips card editing prompt, starts event generation
+        else:
+            logger.info("Standard or no-shower process detected. Generating simple launch script.")
+            f.write(f"launch {generated_process_dir} -f\n")
+            f.write("set automatic_html_opening False\n")
+            f.write("exit\n")
+
+    logger.info(f"Executing MadGraph with script: {temp_launch_script_path}")
+    # The cwd for this command is crucial. It must be the directory *containing* the generated process folder.
     stdout_event, stderr_event = run_command([str(mg5_exe), str(temp_launch_script_path)], cwd=generated_process_dir)
     print("--- MadGraph event generation STDOUT: ---")
     print(stdout_event)
@@ -321,6 +336,10 @@ def main():
 
     files_processed_count = 0
     
+    # Print contents of effective_output_dir
+    print(f"Contents of effective_output_dir: {effective_output_dir}")
+    print(f"Contents of effective_output_dir: {os.listdir(effective_output_dir)}")
+
     for events_subdir_path in actual_events_subdirs:
         if events_subdir_path.is_dir():
             # Process LHE files: move them directly
