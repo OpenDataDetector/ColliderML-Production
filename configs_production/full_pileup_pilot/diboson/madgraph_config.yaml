@@ -5,13 +5,13 @@
 # --- Dataset & Version ---
 campaign: "full_pileup_pilot"
 dataset: "diboson"
-version: "v3"
+version: "v1"
 stage: "madgraph_generation"  # One of: madgraph_generation, pythia_generation, merge_smear, simulation, digitization
 job_config:
   execution_mode: "interactive"
 
 # --- MadGraph Process Definition ---
-mg_model: "loop_sm"  # Use loop_sm model for NLO loop-induced processes
+mg_model: "sm"  # Use loop_sm model for NLO loop-induced processes
 mg_definitions: [] 
 mg_generate_command: "generate p p > a a QED<=2 [QCD]"  # Diphoton at NLO, specifying explicit coupling order
 
@@ -26,22 +26,19 @@ seed: 42
 
 # --- Card Templates ---
 card_templates:
-  pythia8_card: "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml_dev/configs_development/testing_and_validation/pipeline_testing/pythia8_card_fxfx_template.dat"
+  pythia8_card: "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/OtherLibraries/MG5_aMC_v3_5_8/Template/LO/Cards/pythia8_card_default.dat"
 
 # --- Card Customizations ---
 card_customizations:
   run_card:
-    "xqcut": 10.0          # Lower xqcut for electroweak diphoton process
+    "xqcut": 0.0          # Lower xqcut for electroweak diphoton process
     "parton_shower": "PYTHIA8"
 
   pythia8_card: 
-    "{{XQCUT}}": 10.0        # MUST be IDENTICAL to the run_card xqcut value
+    "{{XQCUT}}": 0.0        # MUST be IDENTICAL to the run_card xqcut value
     "{{PYTHIA_SEED}}": 42 
     "{{NEVENTS}}": 10000 
-    "{{N_JET_MAX_MATCH}}": 2 # For γγ + 0,1,2 jet matching
     "{{PYTHIA_TUNE}}": 14    # Monash 2013 tune
-    "{{JET_MATCH_CONE_R}}": 1.0
-    "{{JET_MATCH_ETA_MAX}}": 5.0
 
 splitting_config:
   enable: true
