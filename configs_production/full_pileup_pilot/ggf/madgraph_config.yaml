@@ -26,7 +26,8 @@ seed: 42
 
 # --- Card Templates ---
 card_templates:
-  pythia8_card: "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml_dev/configs_development/testing_and_validation/pipeline_testing/pythia8_card_fxfx_template.dat"
+  # For loop-induced processes, we must use a standard Pythia8 card, not one designed for FxFx.
+  pythia8_card: "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/OtherLibraries/MG5_aMC_v3_5_8/Template/LO/Cards/pythia8_card_default.dat"
 
 # --- Card Customizations ---
 card_customizations:
@@ -35,13 +36,11 @@ card_customizations:
     "parton_shower": "PYTHIA8"
 
   pythia8_card: 
+    # These customizations apply to the standard pythia8_card_default.dat
     "{{XQCUT}}": 0.0        # MUST be IDENTICAL to the run_card xqcut value
     "{{PYTHIA_SEED}}": 42 
     "{{NEVENTS}}": 10000 
-    "{{N_JET_MAX_MATCH}}": 2 # For H + 0,1,2 jets matching
     "{{PYTHIA_TUNE}}": 14    # Monash 2013 tune
-    "{{JET_MATCH_CONE_R}}": 1.0
-    "{{JET_MATCH_ETA_MAX}}": 5.0
 
 splitting_config:
   enable: true
