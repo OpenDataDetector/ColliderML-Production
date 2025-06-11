@@ -393,7 +393,37 @@ def main():
                             print(f"Error moving HEPMC file {event_file_path.name}: {e}")
     
     if files_processed_count == 0:
-        print("Warning: No event files were found, moved, or split from the MadGraph run.")
+        logger.warning("No event files were found, moved, or split from the MadGraph run.")
+
+    # --- Step 4.5: Copy final cards to dataset version directory ---
+    logger.info("Copying final run cards to dataset version directory...")
+    try:
+        # The dataset version directory is the parent of the stage-specific output directory
+        # which is passed via --output.
+        dataset_version_dir = Path(config.output).parent 
+        final_cards_storage_dir = dataset_version_dir / "final_cards"
+        final_cards_storage_dir.mkdir(exist_ok=True)
+
+        final_run_card_path = cards_dir / "run_card.dat"
+        final_pythia8_card_path = cards_dir / "pythia8_card_default.dat"
+
+        # Copy run card
+        if final_run_card_path.exists():
+            destination = final_cards_storage_dir / f"{process_name}_run_card.dat"
+            shutil.copy(final_run_card_path, destination)
+            logger.info(f"Copied final run_card to {destination}")
+        else:
+            logger.warning(f"Final run_card.dat not found at {final_run_card_path}. Cannot copy.")
+
+        # Copy Pythia8 card if it exists
+        if final_pythia8_card_path.exists():
+            destination = final_cards_storage_dir / f"{process_name}_pythia8_card.dat"
+            shutil.copy(final_pythia8_card_path, destination)
+            logger.info(f"Copied final pythia8_card_default.dat to {destination}")
+        else:
+            logger.info(f"Final pythia8_card_default.dat not found at {final_pythia8_card_path}, skipping copy (normal if no pythia template was specified).")
+    except Exception as e:
+        logger.warning(f"Could not copy final MadGraph cards to output directory: {e}")
 
     # --- Step 5: Cleanup ---
     print(f"--- Cleaning up temporary directory: {temp_run_dir}... ---")

@@ -13,7 +13,7 @@ job_config:
 # --- MadGraph Process Definition ---
 mg_model: "heft"  # Use loop_sm model for NLO loop-induced processes
 mg_definitions: [] 
-mg_generate_command: "generate g g > h h [QCD]"  # Di-Higgs at NLO, specifying explicit coupling order
+mg_generate_command: "generate g g > h h QED<=2 [QCD]"  # Di-Higgs at NLO, specifying explicit coupling order
 
 # --- Essential Paths & Environment ---
 mg_base_path: "/global/cfs/projectdirs/m4958/usr/danieltm/ColliderML/software/OtherLibraries/MG5_aMC_v3_5_8"
@@ -38,10 +38,10 @@ card_customizations:
     "{{XQCUT}}": 0.0 # PREVIOUSLY 10.0        # MUST be IDENTICAL to the run_card xqcut value
     "{{PYTHIA_SEED}}": 42 
     "{{NEVENTS}}": 10000 
-    "{{N_JET_MAX_MATCH}}": 2 # For HH + 0,1,2 jet matching
+    # "{{N_JET_MAX_MATCH}}": 2 # For HH + 0,1,2 jet matching
     "{{PYTHIA_TUNE}}": 14    # Monash 2013 tune
-    "{{JET_MATCH_CONE_R}}": 1.0
-    "{{JET_MATCH_ETA_MAX}}": 5.0
+    # "{{JET_MATCH_CONE_R}}": 1.0
+    # "{{JET_MATCH_ETA_MAX}}": 5.0
 
 splitting_config:
   enable: true
