@@ -5,7 +5,7 @@
 # --- Dataset & Version ---
 campaign: "full_pileup_pilot"
 dataset: "pileup"
-version: "v3"
+version: "v1"
 stage: "madgraph_generation"  # One of: madgraph_generation, pythia_generation, merge_smear, simulation, digitization
 job_config:
   execution_mode: "interactive"
@@ -32,11 +32,11 @@ card_templates:
 # --- Card Customizations ---
 card_customizations:
   run_card:
-    "xqcut": 30.0          # Higher xqcut for pure QCD processes
+    "xqcut": 0.0          # Higher xqcut for pure QCD processes
     "parton_shower": "PYTHIA8"
 
   pythia8_card: 
-    "{{XQCUT}}": 30.0        # MUST be IDENTICAL to the run_card xqcut value
+    "{{XQCUT}}": 0.0        # MUST be IDENTICAL to the run_card xqcut value
     "{{PYTHIA_SEED}}": 42 
     "{{NEVENTS}}": 10000 
     "{{N_JET_MAX_MATCH}}": 3 # For jj + 0,1,2,3 additional jets (QCD needs higher multiplicity)
