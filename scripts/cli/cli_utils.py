@@ -42,7 +42,7 @@ def get_env_setup_cmds(config):
     """
     Gets and processes environment setup commands from the configuration.
 
-    It reads variable values from the `env_setup.variables` section
+    It reads variable values from the `env_setup.env_variables` section
     and searches for commands using a hierarchical approach:
     1. Look for a key matching the specific stage name (e.g., 'madgraph_generation').
     2. If not found, fall back to the stage category (e.g., 'simulation').
@@ -61,12 +61,12 @@ def get_env_setup_cmds(config):
         logger.warning("`env_setup` section not found in configuration. Cannot process environment.")
         return []
 
-    # Get the variables dictionary, with fallback to old "placeholders" name for compatibility
-    variables_config = env_setup_config.get("variables", env_setup_config.get("placeholders", {}))
+    # Get the env_variables dictionary, with fallback to old "variables" name for compatibility
+    env_variables_config = env_setup_config.get("env_variables", env_setup_config.get("variables", {}))
 
     # Dynamically create a dictionary for formatting variables.
     # Keys are uppercased to match conventions like {SOFTWARE_DIR}.
-    format_dict = {key.upper(): value for key, value in variables_config.items() if isinstance(value, str)}
+    format_dict = {key.upper(): value for key, value in env_variables_config.items() if isinstance(value, str)}
     
     # Resolve nested variable references (e.g., variables that reference other variables)
     # We need multiple passes to handle chained references
@@ -90,7 +90,7 @@ def get_env_setup_cmds(config):
 
     # Ensure SOFTWARE_DIR is present, as it's fundamental.
     if "SOFTWARE_DIR" not in format_dict or not format_dict["SOFTWARE_DIR"]:
-        logger.error("`software_dir` not defined or is empty in the `env_setup.variables` section of your config.")
+        logger.error("`software_dir` not defined or is empty in the `env_setup.env_variables` section of your config.")
         raise ValueError("Missing essential configuration: software_dir")
 
     stage = config.get("stage")
@@ -126,10 +126,105 @@ def get_env_setup_cmds(config):
         try:
             processed_cmds.append(cmd.format(**format_dict))
         except KeyError as e:
-            logger.error(f"Variable {e} is used in a command but not defined in env_setup.variables.")
+            logger.error(f"Variable {e} is used in a command but not defined in env_setup.env_variables.")
             raise ValueError(f"Undefined variable in command: {cmd}")
 
     return processed_cmds
+
+def apply_config_defaults(config):
+    """
+    Apply config defaults from env_setup.config_defaults to the main config.
+    
+    This function recursively merges defaults into the config, but only for
+    keys that are not already present (config values take precedence).
+    
+    Args:
+        config (dict): The main configuration dictionary
+        
+    Returns:
+        dict: The updated configuration with defaults applied
+    """
+    env_setup_config = config.get("env_setup", {})
+    config_defaults = env_setup_config.get("config_defaults", {})
+    
+    if not config_defaults:
+        logger.debug("No config_defaults found in env_setup. Skipping default application.")
+        return config
+    
+    # Create a copy to avoid modifying the original
+    updated_config = config.copy()
+    
+    # Apply defaults recursively
+    def merge_defaults(target_dict, defaults_dict):
+        """Recursively merge defaults into target, with target taking precedence."""
+        for key, default_value in defaults_dict.items():
+            if key not in target_dict:
+                # Key doesn't exist in target, use default
+                target_dict[key] = default_value
+                logger.debug(f"Applied default for '{key}': {default_value}")
+            elif isinstance(default_value, dict) and isinstance(target_dict[key], dict):
+                # Both are dicts, recurse
+                merge_defaults(target_dict[key], default_value)
+            # If key exists and is not a dict, keep the existing value (target precedence)
+    
+    merge_defaults(updated_config, config_defaults)
+    
+    return updated_config
+
+def substitute_config_variables(config):
+    """
+    Substitute variables in config values using patterns like {VAR_NAME}.
+    
+    This function looks for patterns like {directories.software_dir} or {common.account}
+    and substitutes them with values from the same config.
+    
+    Args:
+        config (dict): The configuration dictionary
+        
+    Returns:
+        dict: The configuration with variables substituted
+    """
+    import re
+    import json
+    
+    # Convert to JSON string for easier processing
+    config_str = json.dumps(config)
+    
+    # Find all variable references like {section.key} or {key}
+    var_pattern = re.compile(r'\{([^}]+)\}')
+    
+    def replace_variable(match):
+        var_path = match.group(1)
+        
+        # Split the path (e.g., "directories.software_dir" -> ["directories", "software_dir"])
+        path_parts = var_path.split('.')
+        
+        # Navigate through the config to find the value
+        current = config
+        try:
+            for part in path_parts:
+                current = current[part]
+            return str(current)
+        except (KeyError, TypeError):
+            logger.warning(f"Could not resolve variable reference: {{{var_path}}}")
+            return match.group(0)  # Return the original if we can't resolve it
+    
+    # Apply substitutions with multiple passes to handle chained references
+    max_iterations = 5
+    for iteration in range(max_iterations):
+        old_config_str = config_str
+        config_str = var_pattern.sub(replace_variable, config_str)
+        
+        if config_str == old_config_str:
+            # No more substitutions made
+            break
+        
+        # Update the config for the next iteration
+        config = json.loads(config_str)
+    else:
+        logger.warning("Maximum iterations reached during variable substitution. Some references may be unresolved.")
+    
+    return json.loads(config_str)
 
 def get_stage_script_path(config, software_repo_path=None):
     """
