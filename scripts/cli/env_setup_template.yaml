@@ -1,25 +1,32 @@
-# Default environment setup for ColliderML stages.
+# ColliderML Environment Setup Template
+# Copy this file to 'env_setup.yaml' and customize the paths for your system.
 # This file provides a centralized place to define environment setup commands.
 # These commands are used by run_stage.py across all execution modes
 # (interactive, monolithic_slurm, distributed_slurm).
 
 # Define all variables here. These can be used in the command lists below.
-# Users should customize these paths to match their local environment.
+# CUSTOMIZE THESE PATHS FOR YOUR LOCAL ENVIRONMENT!
 variables:
-  # Base software directory - customize this for your system
-  software_dir: "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software"
+  # Base software directory - CHANGE THIS to your local ColliderML software directory
+  software_dir: "/path/to/your/ColliderML/software"
   
-  # ATLAS/CVMFS setup (usually standard)
+  # ATLAS/CVMFS setup (usually standard across systems)
   atlas_local_root_base: "/cvmfs/atlas.cern.ch/repo/ATLASLocalRootBase"
   lcg_view: "LCG_107 x86_64-el9-gcc13-opt"
   
-  # Tool-specific paths - customize these for your installations
-  dd4hep_setup_script: "{SOFTWARE_DIR}/OtherLibraries/dd4hep-colliderml/bin/thisdd4hep.sh"
-  acts_setup_script: "{SOFTWARE_DIR}/new_acts/build/python/setup.sh"
-  colliderml_env_path: "{SOFTWARE_DIR}/colliderml_env"
+  # Tool-specific paths - CUSTOMIZE these for your installations
+  # Examples of common patterns:
+  dd4hep_setup_script: "{SOFTWARE_DIR}/dd4hep/bin/thisdd4hep.sh"
+  acts_setup_script: "{SOFTWARE_DIR}/acts/build/python/setup.sh"
+  colliderml_env_path: "{SOFTWARE_DIR}/conda_envs/colliderml"
+  
+  # Alternative patterns you might need:
+  # dd4hep_setup_script: "/usr/local/dd4hep/bin/thisdd4hep.sh"  # System install
+  # acts_setup_script: "{SOFTWARE_DIR}/my_acts_build/setup.sh"  # Custom build dir
+  # colliderml_env_path: "/opt/conda/envs/colliderml"          # System conda
   
   # MadGraph-specific environment paths
-  madgraph_env_path: "{SOFTWARE_DIR}/colliderml_dev/scripts/cli/madgraph_env"
+  madgraph_env_path: "{SOFTWARE_DIR}/madgraph_env"
   madgraph_lcg_view: "LCG_107 x86_64-el8-gcc11-opt"
   
   # Postprocessing conda environment name
@@ -49,4 +56,18 @@ madgraph_generation:
 postprocessing:
   - 'cd {SOFTWARE_DIR}'
   - 'eval "$(conda shell.bash hook)"'
-  - 'conda activate {CONDA_ENV_NAME}' 
+  - 'conda activate {CONDA_ENV_NAME}'
+
+# Additional examples for different setups:
+#
+# If you use modules instead of direct sourcing:
+# simulation_with_modules:
+#   - 'module load dd4hep'
+#   - 'module load acts'
+#   - 'conda activate colliderml'
+#
+# If you use a different Python environment manager:
+# simulation_with_venv:
+#   - 'source {SOFTWARE_DIR}/venv/bin/activate'  # virtualenv
+#   - 'source {DD4HEP_SETUP_SCRIPT}'
+#   - 'source {ACTS_SETUP_SCRIPT}' 
