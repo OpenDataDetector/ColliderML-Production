@@ -42,12 +42,12 @@ def get_env_setup_cmds(config):
     """
     Gets and processes environment setup commands from the configuration.
 
-    It reads placeholder values from the `env_setup.placeholders` section
+    It reads variable values from the `env_setup.variables` section
     and searches for commands using a hierarchical approach:
     1. Look for a key matching the specific stage name (e.g., 'madgraph_generation').
     2. If not found, fall back to the stage category (e.g., 'simulation').
 
-    It then substitutes all {PLACEHOLDER} occurrences in the found commands.
+    It then substitutes all {VARIABLE} occurrences in the found commands.
 
     Args:
         config (dict): The main configuration dictionary, which must include
@@ -61,16 +61,36 @@ def get_env_setup_cmds(config):
         logger.warning("`env_setup` section not found in configuration. Cannot process environment.")
         return []
 
-    # Get the placeholder dictionary.
-    placeholder_config = env_setup_config.get("placeholders", {})
+    # Get the variables dictionary, with fallback to old "placeholders" name for compatibility
+    variables_config = env_setup_config.get("variables", env_setup_config.get("placeholders", {}))
 
-    # Dynamically create a dictionary for formatting placeholders.
+    # Dynamically create a dictionary for formatting variables.
     # Keys are uppercased to match conventions like {SOFTWARE_DIR}.
-    format_dict = {key.upper(): value for key, value in placeholder_config.items() if isinstance(value, str)}
+    format_dict = {key.upper(): value for key, value in variables_config.items() if isinstance(value, str)}
+    
+    # Resolve nested variable references (e.g., variables that reference other variables)
+    # We need multiple passes to handle chained references
+    max_iterations = 5  # Prevent infinite loops
+    for iteration in range(max_iterations):
+        substitutions_made = False
+        for key, value in format_dict.items():
+            try:
+                new_value = value.format(**format_dict)
+                if new_value != value:
+                    format_dict[key] = new_value
+                    substitutions_made = True
+            except KeyError:
+                # Some variables may reference others that haven't been resolved yet
+                pass
+        
+        if not substitutions_made:
+            break
+    else:
+        logger.warning("Maximum iterations reached while resolving nested variables. Some may be unresolved.")
 
     # Ensure SOFTWARE_DIR is present, as it's fundamental.
     if "SOFTWARE_DIR" not in format_dict or not format_dict["SOFTWARE_DIR"]:
-        logger.error("`software_dir` not defined or is empty in the `env_setup.placeholders` section of your config.")
+        logger.error("`software_dir` not defined or is empty in the `env_setup.variables` section of your config.")
         raise ValueError("Missing essential configuration: software_dir")
 
     stage = config.get("stage")
@@ -100,14 +120,14 @@ def get_env_setup_cmds(config):
     if not stage_cmds:
         return []
 
-    # Substitute placeholders
+    # Substitute variables
     processed_cmds = []
     for cmd in stage_cmds:
         try:
             processed_cmds.append(cmd.format(**format_dict))
         except KeyError as e:
-            logger.error(f"Placeholder {e} is used in a command but not defined in env_setup.placeholders.")
-            raise ValueError(f"Undefined placeholder in command: {cmd}")
+            logger.error(f"Variable {e} is used in a command but not defined in env_setup.variables.")
+            raise ValueError(f"Undefined variable in command: {cmd}")
 
     return processed_cmds
 

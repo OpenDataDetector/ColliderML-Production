@@ -5,19 +5,45 @@
 ``` bash
 git clone https://github.com/OpenDataDetector/ColliderML
 cd ColliderML
+conda create -n collider-env python=3.10
+conda activate collider-env
 pip install -e .
 ```
+We assume that you have access to `cvmfs` and therefore also LCG views.
+
+Before running the pipeline, you need to point to the correct environment setup directories, in `scripts/cli/env_setup.yaml`. These commands will be called by `run_stage.py`, so make sure `software_dir` points to the path that contains this repository, as well as the other paths for cvmfs, lcg views, dd4hep, acts, etc.
+
 
 Then run the pipeline as follows:
-
-``` bash
-python scripts/simulation/pythia_gen.py --config configs_development/testing_and_validation/quickstart/generation_test.yaml # Wait a minute or two
-python scripts/simulation/merge_and_smear.py --config configs_development/testing_and_validation/quickstart/merge_smear_test.yaml # Wait a few seconds
-python scripts/simulation/ddsim_run.py --config configs_development/testing_and_validation/quickstart/simulation_test.yaml # Wait up to 10 minutes
-python scripts/simulation/digi_and_reco.py --config configs_development/testing_and_validation/quickstart/digitization_test.yaml # Wait a minute or two
+```bash
+python scripts/cli/run_stage.py configs_production/full_pileup_pilot/ttbar/madgraph_config.yaml
 ```
 
-Two low-pileup events will be generated, merged, smeared, simulated, digitized and reconstructed in the `outputs` subdirectory. You can also use these configs in batch, as detailed below.
+You will be prompted to be on the right branch (in this case `git checkout -b campaign/full_pileup_pilot/dataset/ttbar`), since every run is git committed. This stage generates N hard-scatter ttbar events, and splits them across `events_per_file` files (if splitting is enabled).
+
+```bash
+python scripts/cli/run_stage.py configs_production/full_pileup_pilot/ttbar/pythia_config.yaml
+```
+
+This stage runs pythia generation of pileup, using the ACTS examples framework.
+
+```bash
+python scripts/cli/run_stage.py configs_production/full_pileup_pilot/ttbar/simulation_config.yaml
+```
+
+This stage runs DDSim, using the DD4HEP framework.
+
+```bash
+python scripts/cli/run_stage.py configs_production/full_pileup_pilot/ttbar/digitization_config.yaml
+```
+
+This stage runs digitization, using the ACTS examples framework.
+
+
+## Batch mode
+
+Simply changing `execution_mode` to `distributed_slurm` in the config file will run the pipeline in batch mode.
+---
 
 ## Development Repository
 
