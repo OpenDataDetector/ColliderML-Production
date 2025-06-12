@@ -1,0 +1,83 @@
+\
+#***********************************************************************
+#                        MadGraph5_aMC@NLO                           *
+#                       Run Card for NLO Drell-Yan with FxFx merging   *
+#***********************************************************************
+#
+# {{PLACEHOLDER}} values will be replaced by the generation script
+# based on the YAML configuration.
+#
+#***********************************************************************
+# Number of events and random seed                                     *
+#***********************************************************************
+  {{NEVENTS}} = nevents       ! Number of events requested
+  {{ISEED}}   = iseed         ! Initial random seed
+#***********************************************************************
+# LHC Beam Parameters                                                  *
+#***********************************************************************
+  1        = lpp1    ! beam 1 type 
+  1        = lpp2    ! beam 2 type
+  6500.0     = ebeam1  ! beam 1 total energy in GeV
+  6500.0     = ebeam2  ! beam 2 total energy in GeV
+#***********************************************************************
+# PDF choice: this is an example for NNPDF3.0 NLO AS 0118              *
+#***********************************************************************
+  'lhapdf' = pdlabel     ! PDF set
+  260000 = lhaid       ! NNPDF30_nlo_as_0118
+#***********************************************************************
+# Renormalization and factorization scales                             *
+#***********************************************************************
+  False    = fixed_ren_scale  ! if .true. use fixed ren scale
+  False    = fixed_fac_scale  ! if .true. use fixed fac scale
+  91.1876  = scale            ! MUF=MUR=91.1876 (Z mass) for fixed scales
+  1.0      = muRfact          ! Factor for muR scale based on sum Et
+  1.0      = muFfact          ! Factor for muF scale based on sum Et
+  True     = dyn_scale_choice == 3 ! Dynamic scale M_ll, sum Et/2, etc. Check MG5 docs.
+                                 ! 3 corresponds to H_T/2 for 2->N.
+                                 ! For Drell-Yan, M_ll (usually choice 1 or -1) is often preferred.
+                                 ! Let's default to dynamic scale sum(ET)/2 for the partonic system (choice 10)
+                                 ! or -1 (sqrt(m_ll^2 + pt_ll^2)) for Drell-Yan like processes
+  -1       = dyn_ren_scale_choice ! (-1 for sqrt(m_ll^2 + pt_ll^2), 10 for HT'. Defaulting to -1 for DY.
+  -1       = dyn_fac_scale_choice ! (-1 for sqrt(m_ll^2 + pt_ll^2), 10 for HT'. Defaulting to -1 for DY.
+#***********************************************************************
+# Matching/Merging Parameters for FxFx                                 *
+#***********************************************************************
+  1        = ickkw            ! 0 no matching, 1 FxFx, 2 MLM
+  {{XQCUT}}  = xqcut          ! Shower-kT (FxFx) / ETS (MLM) starting scale
+                              ! This MUST be consistent with Pythia8 JetMatching:qCut
+  5        = maxjetflavor     ! Max jet flavor for matching (5 for b-jets)
+  0        = minjetflavor     ! Min jet flavor for matching (0 for all)
+#***********************************************************************
+# Event Generation Strategy & Output                                   *
+#***********************************************************************
+  True     = use_syst         ! Store systematic variations (PDF, scale weights)
+  3.0      = lhe_version      ! LHE file version (3.0 recommended for NLO)
+  .false.  = store_rwgt_info  ! for MLM, not FxFx
+#***********************************************************************
+# Cuts on final state particles (examples, adjust as needed)           *
+#***********************************************************************
+# For inclusive Drell-Yan, usually minimal cuts are applied at this stage,
+# relying on analysis-level cuts later. Some basic pT/eta cuts might be useful.
+#
+#  0.0     = pt_min_lepton     ! Minimum pT for leptons (GeV)
+#  2.5     = eta_max_lepton    ! Maximum |eta| for leptons
+#  0.0     = mll_min           ! Minimum dilepton mass (GeV)
+#  -1.0    = mll_max           ! Maximum dilepton mass (GeV, -1 for no cut)
+#***********************************************************************
+# NLO specific settings                                                *
+#***********************************************************************
+  'Default' = fixed_order_type  ! 'LO', 'NLO', 'Default' (recommended)
+  1.0       = appl_scale_mode  ! Scale choice for AlphaS in PDF for APPLgrid generation
+                               ! 1 for mu_R, 2 for mu_F, 3 for (mu_R+mu_F)/2
+#***********************************************************************
+# Parton shower settings (interfaced to Pythia8)                     *
+#***********************************************************************
+  'PYTHIA8' = shower_card      ! Shower program to be used (PYTHIA8, HERWIG7, etc.)
+  # The path to the Pythia8 card will be specified by the MadGraph process
+  # or by the pipeline script (e.g., pythia8_card_default.dat in Cards/)
+#***********************************************************************
+# Other parameters                                                     *
+#***********************************************************************
+  -1.0     = time_of_flight ! (mm)
+  False    = ptj_mjj_cuts_apply_after_shower ! For MLM, not relevant for FxFx kT-MLM
+  False    = auto_ptj_mjj     ! Generate ptj and mjj if p p > j j, not relevant for DY here 

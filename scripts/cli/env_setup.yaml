@@ -1,11 +1,12 @@
 # Default environment setup for ColliderML stages.
-# This file provides a centralized place to define environment setup commands.
-# These commands are used by run_stage.py across all execution modes
-# (interactive, monolithic_slurm, distributed_slurm).
+# This file provides centralized configuration for both:
+# 1. Environment setup commands (env_variables + stage commands)
+# 2. Config variable substitution (config_defaults)
 
-# Define all variables here. These can be used in the command lists below.
-# Users should customize these paths to match their local environment.
-variables:
+# =====================================================================
+# Environment Variables - Used for shell command substitution
+# =====================================================================
+env_variables:
   # Base software directory - customize this for your system
   software_dir: "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software"
   
@@ -17,7 +18,7 @@ variables:
   dd4hep_setup_script: "{SOFTWARE_DIR}/OtherLibraries/dd4hep-colliderml/bin/thisdd4hep.sh"
   acts_setup_script: "{SOFTWARE_DIR}/new_acts/build/python/setup.sh"
   colliderml_env_path: "{SOFTWARE_DIR}/colliderml_env"
-  
+
   # MadGraph-specific environment paths
   madgraph_env_path: "{SOFTWARE_DIR}/colliderml_dev/scripts/cli/madgraph_env"
   madgraph_lcg_view: "LCG_107 x86_64-el8-gcc11-opt"
@@ -25,8 +26,37 @@ variables:
   # Postprocessing conda environment name
   conda_env_name: "collider-env"
 
-# You can use variables like {SOFTWARE_DIR}, which will be replaced by the
-# value of `software_dir` above at runtime.
+# =====================================================================
+# Config Defaults - Used for stage config substitution
+# =====================================================================
+config_defaults:
+  # Common settings that appear in all stage configs
+  common:
+    account: "m4958"
+    container: "registry.cern.ch/atlasadc/atlas-grid-almalinux9"
+    output_base_dir: "/global/cfs/projectdirs/m4958/data/ColliderML/simulation/"
+  
+  # Base directories
+  directories:
+    software_dir: "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software"
+    data_base_dir: "/global/cfs/projectdirs/m4958/data/ColliderML"
+    scratch_base_dir: "/pscratch/sd/d/danieltm/ColliderML"
+    
+  # MadGraph-specific defaults
+  madgraph:
+    mg_base_path: "/global/cfs/projectdirs/m4958/usr/danieltm/ColliderML/software/OtherLibraries/MG5_aMC_v3_5_8"
+    generation_scratch_dir: "/pscratch/sd/d/danieltm/ColliderML/mg_scratch"
+    output: "/global/cfs/projectdirs/m4958/data/ColliderML/simulation/"
+    
+  # Template paths
+  templates:
+    config_templates_dir: "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml_dev/configs_production/templates"
+    dev_templates_dir: "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml_dev/configs_development/testing_and_validation/pipeline_testing"
+    pythia8_card_fxfx: "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml_dev/configs_development/testing_and_validation/pipeline_testing/pythia8_card_fxfx_template.dat"
+
+# =====================================================================
+# Environment Setup Commands - Using env_variables above
+# =====================================================================
 
 # The 'simulation' key contains the general setup for most simulation stages
 # (pythia, ddsim, digi, etc.). This is used if a more specific stage setup isn't found.

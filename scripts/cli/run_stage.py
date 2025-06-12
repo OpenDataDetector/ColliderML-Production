@@ -188,7 +188,7 @@ def main():
         logger.error(f"Error parsing YAML configuration file: {e}")
         sys.exit(1)
 
-    # --- 1. Load env_setup.yaml and merge into config ---
+    # --- 1. Load env_setup.yaml and apply config processing ---
     env_config_path = Path(__file__).resolve().parent / "env_setup.yaml"
     if env_config_path.exists():
         logger.info(f"Loading environment setup from {env_config_path}")
@@ -196,6 +196,14 @@ def main():
             env_config = yaml.safe_load(f_env)
         # We store the env_config under an "env_setup" key in the main config
         config["env_setup"] = env_config
+        
+        # Apply config defaults (fills in missing values from env_setup.config_defaults)
+        config = cli_utils.apply_config_defaults(config)
+        logger.info("Applied configuration defaults from env_setup.yaml")
+        
+        # Apply variable substitution (resolves {var} references within config)
+        config = cli_utils.substitute_config_variables(config)
+        logger.info("Applied variable substitution to configuration")
     else:
         logger.warning(f"{env_config_path} not found. Ensure environment is configured if needed.")
 
