@@ -53,6 +53,7 @@ config_defaults:
     config_templates_dir: "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml_dev/configs_production/templates"
     dev_templates_dir: "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml_dev/configs_development/testing_and_validation/pipeline_testing"
     pythia8_card_fxfx: "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml_dev/configs_development/testing_and_validation/pipeline_testing/pythia8_card_fxfx_template.dat"
+    pythia8_card_default: "/global/cfs/projectdirs/m4958/usr/danieltm/ColliderML/software/OtherLibraries/MG5_aMC_v3_5_8/Template/LO/Cards/pythia8_card_default.dat"
 
 # =====================================================================
 # Environment Setup Commands - Using env_variables above

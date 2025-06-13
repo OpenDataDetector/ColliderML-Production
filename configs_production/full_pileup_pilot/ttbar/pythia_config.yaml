@@ -25,8 +25,3 @@ vertex_sigma_t: 5.0 # ns
 
 merge_signal: true  # Merge with existing signal file (events.hepmc3 or events.hepmc.gz) in output directory
 
-# Common settings
-common:
-  output_base_dir: "/global/cfs/projectdirs/m4958/data/ColliderML/simulation/"
-  account: "m4958"
-  container: "registry.cern.ch/atlasadc/atlas-grid-almalinux9"
