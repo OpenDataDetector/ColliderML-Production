@@ -176,7 +176,9 @@ def substitute_config_variables(config):
     Substitute variables in config values using patterns like {VAR_NAME}.
     
     This function looks for patterns like {directories.software_dir} or {common.account}
-    and substitutes them with values from the same config.
+    and substitutes them with values from the same config. It avoids interfering with:
+    - Double-brace templates like {{XQCUT}} (left untouched)
+    - JSON structure braces
     
     Args:
         config (dict): The configuration dictionary
@@ -185,46 +187,59 @@ def substitute_config_variables(config):
         dict: The configuration with variables substituted
     """
     import re
-    import json
+    import copy
     
-    # Convert to JSON string for easier processing
-    config_str = json.dumps(config)
+    # Work with a deep copy to avoid modifying the original
+    result_config = copy.deepcopy(config)
     
-    # Find all variable references like {section.key} or {key}
-    var_pattern = re.compile(r'\{([^}]+)\}')
+    # Pattern to match single-brace variables like {section.key} but not {{template}}
+    # This uses negative lookbehind and lookahead to avoid double braces
+    var_pattern = re.compile(r'(?<!\{)\{([a-zA-Z_][a-zA-Z0-9_.]*)\}(?!\})')
     
-    def replace_variable(match):
-        var_path = match.group(1)
-        
-        # Split the path (e.g., "directories.software_dir" -> ["directories", "software_dir"])
-        path_parts = var_path.split('.')
-        
-        # Navigate through the config to find the value
-        current = config
-        try:
-            for part in path_parts:
-                current = current[part]
-            return str(current)
-        except (KeyError, TypeError):
-            logger.warning(f"Could not resolve variable reference: {{{var_path}}}")
-            return match.group(0)  # Return the original if we can't resolve it
+    def substitute_in_value(value, path=""):
+        """Recursively substitute variables in a value."""
+        if isinstance(value, str):
+            # Only process strings that contain single-brace patterns
+            if '{' in value and not value.startswith('{{'):
+                def replace_variable(match):
+                    var_path = match.group(1)
+                    
+                    # Split the path (e.g., "directories.software_dir" -> ["directories", "software_dir"])
+                    path_parts = var_path.split('.')
+                    
+                    # Navigate through the config to find the value
+                    current = result_config
+                    try:
+                        for part in path_parts:
+                            current = current[part]
+                        return str(current)
+                    except (KeyError, TypeError):
+                        logger.debug(f"Could not resolve variable reference: {{{var_path}}} at {path}")
+                        return match.group(0)  # Return the original if we can't resolve it
+                
+                return var_pattern.sub(replace_variable, value)
+            else:
+                return value
+        elif isinstance(value, dict):
+            return {k: substitute_in_value(v, f"{path}.{k}" if path else k) for k, v in value.items()}
+        elif isinstance(value, list):
+            return [substitute_in_value(item, f"{path}[{i}]") for i, item in enumerate(value)]
+        else:
+            return value
     
     # Apply substitutions with multiple passes to handle chained references
-    max_iterations = 5
+    max_iterations = 3  # Reduced iterations since we're being more targeted
     for iteration in range(max_iterations):
-        old_config_str = config_str
-        config_str = var_pattern.sub(replace_variable, config_str)
+        old_result = copy.deepcopy(result_config)
+        result_config = substitute_in_value(result_config)
         
-        if config_str == old_config_str:
+        if result_config == old_result:
             # No more substitutions made
             break
-        
-        # Update the config for the next iteration
-        config = json.loads(config_str)
     else:
         logger.warning("Maximum iterations reached during variable substitution. Some references may be unresolved.")
     
-    return json.loads(config_str)
+    return result_config
 
 def get_stage_script_path(config, software_repo_path=None):
     """
@@ -319,7 +334,7 @@ def get_git_root(start_path):
 
 def git_commit_and_log_config(config, config_path, software_repo_path, force_commit=False):
     """
-    Performs Git branch check, commits changes, tags the version, and logs the config.
+    Ensures git working directory is clean, commits changes if needed, tags the version, and logs the config.
     
     Args:
         config: The configuration dictionary
@@ -341,20 +356,14 @@ def git_commit_and_log_config(config, config_path, software_repo_path, force_com
             logger.error("Configuration missing 'version' field. Cannot proceed with git operations.")
             return False
 
-        # --- 1. Branch Check ---
-        expected_branch_name = f"campaign/{config['campaign']}/dataset/{config['dataset']}"
+        # --- 1. Get current branch name (for logging, not enforcement) ---
         try:
             current_branch_cmd = ["git", "-C", str(software_repo_path), "rev-parse", "--abbrev-ref", "HEAD"]
             current_branch_name = subprocess.check_output(current_branch_cmd, text=True, cwd=software_repo_path).strip()
+            logger.info(f"Currently on git branch: {current_branch_name}")
         except subprocess.CalledProcessError as e:
             logger.error(f"Failed to get current git branch in {software_repo_path}: {e.stderr}")
             return False
-
-        if current_branch_name != expected_branch_name:
-            logger.error(f"Incorrect Git branch. Expected: '{expected_branch_name}', but currently on: '{current_branch_name}'.")
-            logger.error(f"Please switch to branch '{expected_branch_name}' or create it (e.g., git checkout -b {expected_branch_name}) and push your changes there before running.")
-            return False
-        logger.info(f"Git branch check passed. Currently on expected branch: {current_branch_name}")
 
         # --- 2. Determine output directory & skip if already processed (unless forced) ---
         output_version_dir = get_version_directory(config) # Will now include campaign
@@ -378,8 +387,8 @@ def git_commit_and_log_config(config, config_path, software_repo_path, force_com
                  logger.info(f"Config snapshot saved to {logged_config_path}")
             return True
 
-        # --- 3. Git Commit Logic ---
-        logger.info(f"Attempting to git commit changes in {software_repo_path} on branch {current_branch_name}")
+        # --- 3. Git Working Directory Check and Commit Logic ---
+        logger.info(f"Checking git working directory status in {software_repo_path}")
         
         status_cmd = ["git", "-C", str(software_repo_path), "status", "--porcelain"]
         process = subprocess.run(status_cmd, capture_output=True, text=True)
@@ -388,24 +397,49 @@ def git_commit_and_log_config(config, config_path, software_repo_path, force_com
             return False
         
         committed_this_run = False
-        if not process.stdout.strip() and not force_commit: # No changes and not forcing a commit
-            logger.info(f"No new changes to commit in {software_repo_path}.")
-        else: # There are changes, or force_commit is true
-            add_cmd = ["git", "-C", str(software_repo_path), "add", "."]
-            subprocess.run(add_cmd, check=True, capture_output=True) # Use check=True for auto error on fail
-            
-            process_after_add = subprocess.run(status_cmd, capture_output=True, text=True)
-            if process_after_add.stdout.strip(): # If there are still changes staged
-                commit_message = (f"Auto-commit for campaign '{config['campaign']}', "
-                                  f"dataset '{config['dataset']}', version '{config['version']}'")
+        if not process.stdout.strip() and not force_commit: # Working directory is clean
+            logger.info(f"Git working directory is clean. Proceeding with stage execution.")
+        else: # There are uncommitted changes, or force_commit is true
+            if process.stdout.strip():
+                # Show the user what changes exist
+                logger.info("Uncommitted changes detected:")
+                status_verbose_cmd = ["git", "-C", str(software_repo_path), "status", "--short"]
+                status_output = subprocess.run(status_verbose_cmd, capture_output=True, text=True)
+                for line in status_output.stdout.strip().split('\n'):
+                    if line.strip():
+                        logger.info(f"  {line}")
+                
+                # Prompt for commit message
+                try:
+                    commit_message = input("\nEnter commit message (or press Enter for default): ").strip()
+                    if not commit_message:
+                        commit_message = (f"Auto-commit for campaign '{config['campaign']}', "
+                                          f"dataset '{config['dataset']}', version '{config['version']}'")
+                except (EOFError, KeyboardInterrupt):
+                    logger.error("User cancelled commit. Cannot proceed with uncommitted changes.")
+                    return False
+                except Exception:
+                    # Handle non-interactive environments (e.g., SLURM jobs)
+                    logger.warning("Non-interactive environment detected. Using default commit message.")
+                    commit_message = (f"Auto-commit for campaign '{config['campaign']}', "
+                                      f"dataset '{config['dataset']}', version '{config['version']}'")
+                
+                # Add and commit changes
+                add_cmd = ["git", "-C", str(software_repo_path), "add", "."]
+                subprocess.run(add_cmd, check=True, capture_output=True)
+                
                 commit_cmd = ["git", "-C", str(software_repo_path), "commit", "-m", commit_message]
                 subprocess.run(commit_cmd, check=True, capture_output=True)
-                logger.info(f"Git commit successful in {software_repo_path}.")
+                logger.info(f"Git commit successful: '{commit_message}'")
                 committed_this_run = True
-            elif process.stdout.strip(): 
-                 logger.info("No effective changes to commit after 'git add'.")
-            else: 
-                 logger.info("No changes to commit, and force_commit did not find new changes to force through.")
+            elif force_commit:
+                # Force commit case - create an empty commit if needed
+                commit_message = (f"Forced commit for campaign '{config['campaign']}', "
+                                  f"dataset '{config['dataset']}', version '{config['version']}'")
+                commit_cmd = ["git", "-C", str(software_repo_path), "commit", "--allow-empty", "-m", commit_message]
+                subprocess.run(commit_cmd, check=True, capture_output=True)
+                logger.info(f"Forced empty commit successful: '{commit_message}'")
+                committed_this_run = True
 
 
         git_hash_cmd = ["git", "-C", str(software_repo_path), "rev-parse", "HEAD"]
@@ -415,7 +449,7 @@ def git_commit_and_log_config(config, config_path, software_repo_path, force_com
         # --- 4. Git Tagging Logic ---
         tag_name = f"{config['campaign']}/{config['dataset']}/{config['version']}"
         tag_message = (f"Tag for campaign: {config['campaign']}, dataset: {config['dataset']}, "
-                       f"version: {config['version']}")
+                       f"version: {config['version']} (branch: {current_branch_name})")
         
         tag_exists_cmd = ["git", "-C", str(software_repo_path), "rev-parse", "-q", "--verify", f"refs/tags/{tag_name}"]
         tag_check_process = subprocess.run(tag_exists_cmd, capture_output=True, text=True, cwd=software_repo_path)
@@ -435,7 +469,6 @@ def git_commit_and_log_config(config, config_path, software_repo_path, force_com
             else: 
                 logger.error(f"Tag '{tag_name}' exists on a different commit ({existing_tag_hash} vs HEAD {current_git_hash}). Use --force-commit to retag, or resolve manually.")
                 return False
-
 
         if should_create_tag:
             logger.info(f"Attempting to create tag '{tag_name}' pointing to commit {current_git_hash}.")
