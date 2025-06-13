@@ -5,7 +5,7 @@
 # --- Dataset & Version ---
 campaign: "full_pileup_pilot"
 dataset: "ttbar"
-version: "v6"
+version: "v7"
 stage: "madgraph_generation"  # One of: madgraph_generation, pythia_generation, merge_smear, simulation, digitization
 job_config:
   execution_mode: "interactive"
