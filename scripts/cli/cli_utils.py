@@ -450,8 +450,12 @@ def git_commit_and_log_config(config, config_path, software_repo_path, force_com
 
         # --- 5. Save Config Snapshot and Success Marker ---
         config_snapshot_dir.mkdir(parents=True, exist_ok=True) # Ensure 'configs' subdir exists before writing
+        
+        # Create a clean copy of the config without internal env_setup data
+        clean_config = {k: v for k, v in config.items() if k != 'env_setup'}
+        
         with open(logged_config_path, 'w') as f_out:
-            yaml.dump(config, f_out, default_flow_style=False, sort_keys=False)
+            yaml.dump(clean_config, f_out, default_flow_style=False, sort_keys=False)
         logger.info(f"Full configuration snapshot saved to {logged_config_path}")
         
         relative_config_path_for_marker = Path("configs") / original_config_filename
