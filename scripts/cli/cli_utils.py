@@ -343,18 +343,20 @@ def git_commit_and_log_config(config, config_path, software_repo_path, force_com
         force_commit: Whether to force a commit and tag even if no changes or success marker exists.
         
     Returns:
-        bool: True on success, False on failure
+        tuple: (success: bool, processed_config_path: Path or None) 
+               - success: True on success, False on failure
+               - processed_config_path: Path to the saved processed config file
     """
     try:
         if "campaign" not in config:
             logger.error("Configuration missing 'campaign' field. Cannot proceed with git operations.")
-            return False
+            return False, None
         if "dataset" not in config:
             logger.error("Configuration missing 'dataset' field. Cannot proceed with git operations.")
-            return False
+            return False, None
         if "version" not in config:
             logger.error("Configuration missing 'version' field. Cannot proceed with git operations.")
-            return False
+            return False, None
 
         # --- 1. Get current branch name (for logging, not enforcement) ---
         try:
@@ -363,9 +365,9 @@ def git_commit_and_log_config(config, config_path, software_repo_path, force_com
             logger.info(f"Currently on git branch: {current_branch_name}")
         except subprocess.CalledProcessError as e:
             logger.error(f"Failed to get current git branch in {software_repo_path}: {e.stderr}")
-            return False
+            return False, None
 
-        # --- 2. Determine output directory & skip if already processed (unless forced) ---
+        # --- 2. Determine output directory paths ---
         output_version_dir = get_version_directory(config) # Will now include campaign
         commit_success_file = output_version_dir / GIT_COMMIT_SUCCESS_FILE
         
@@ -376,25 +378,14 @@ def git_commit_and_log_config(config, config_path, software_repo_path, force_com
         config_snapshot_dir = output_version_dir / "configs"
         logged_config_path = config_snapshot_dir / original_config_filename
 
-        if not force_commit and commit_success_file.exists():
-            logger.info(f"Success marker file {commit_success_file} exists. Skipping git commit and tag for this version.")
-            # Check for the config in the new location
-            if not logged_config_path.exists():
-                 logger.warning(f"Git commit marker exists, but config snapshot {logged_config_path} not found. Re-logging config.")
-                 config_snapshot_dir.mkdir(parents=True, exist_ok=True) # Ensure 'configs' subdir exists
-                 with open(logged_config_path, 'w') as f_out:
-                    yaml.dump(config, f_out, default_flow_style=False, sort_keys=False)
-                 logger.info(f"Config snapshot saved to {logged_config_path}")
-            return True
-
-        # --- 3. Git Working Directory Check and Commit Logic ---
+        # --- 3. Git Working Directory Check and Commit Logic (ALWAYS check) ---
         logger.info(f"Checking git working directory status in {software_repo_path}")
         
         status_cmd = ["git", "-C", str(software_repo_path), "status", "--porcelain"]
         process = subprocess.run(status_cmd, capture_output=True, text=True)
         if process.returncode != 0:
             logger.error(f"Git status check failed in {software_repo_path}: {process.stderr}")
-            return False
+            return False, None
         
         committed_this_run = False
         if not process.stdout.strip() and not force_commit: # Working directory is clean
@@ -417,7 +408,7 @@ def git_commit_and_log_config(config, config_path, software_repo_path, force_com
                                           f"dataset '{config['dataset']}', version '{config['version']}'")
                 except (EOFError, KeyboardInterrupt):
                     logger.error("User cancelled commit. Cannot proceed with uncommitted changes.")
-                    return False
+                    return False, None
                 except Exception:
                     # Handle non-interactive environments (e.g., SLURM jobs)
                     logger.warning("Non-interactive environment detected. Using default commit message.")
@@ -441,12 +432,23 @@ def git_commit_and_log_config(config, config_path, software_repo_path, force_com
                 logger.info(f"Forced empty commit successful: '{commit_message}'")
                 committed_this_run = True
 
+        # --- 4. Check if version already processed (after git commit) ---
+        if not force_commit and commit_success_file.exists() and not committed_this_run:
+            logger.info(f"Success marker file {commit_success_file} exists and no new commits made. Skipping git tag and config re-save for this version.")
+            # Check for the config in the new location
+            if not logged_config_path.exists():
+                 logger.warning(f"Git commit marker exists, but config snapshot {logged_config_path} not found. Re-logging config.")
+                 config_snapshot_dir.mkdir(parents=True, exist_ok=True) # Ensure 'configs' subdir exists
+                 with open(logged_config_path, 'w') as f_out:
+                    yaml.dump(config, f_out, default_flow_style=False, sort_keys=False)
+                 logger.info(f"Config snapshot saved to {logged_config_path}")
+            return True, logged_config_path
 
         git_hash_cmd = ["git", "-C", str(software_repo_path), "rev-parse", "HEAD"]
         current_git_hash = subprocess.check_output(git_hash_cmd, text=True, cwd=software_repo_path).strip()
         logger.info(f"Current Git HEAD for {software_repo_path}: {current_git_hash}")
 
-        # --- 4. Git Tagging Logic ---
+        # --- 5. Git Tagging Logic ---
         tag_name = f"{config['campaign']}/{config['dataset']}/{config['version']}"
         tag_message = (f"Tag for campaign: {config['campaign']}, dataset: {config['dataset']}, "
                        f"version: {config['version']} (branch: {current_branch_name})")
@@ -468,7 +470,7 @@ def git_commit_and_log_config(config, config_path, software_repo_path, force_com
                 subprocess.run(delete_tag_cmd, check=True, capture_output=True)
             else: 
                 logger.error(f"Tag '{tag_name}' exists on a different commit ({existing_tag_hash} vs HEAD {current_git_hash}). Use --force-commit to retag, or resolve manually.")
-                return False
+                return False, None
 
         if should_create_tag:
             logger.info(f"Attempting to create tag '{tag_name}' pointing to commit {current_git_hash}.")
@@ -478,10 +480,10 @@ def git_commit_and_log_config(config, config_path, software_repo_path, force_com
                 logger.info(f"Successfully created/updated tag '{tag_name}'.")
             except subprocess.CalledProcessError as e_tag:
                 logger.error(f"Failed to create tag '{tag_name}': {e_tag.stderr.decode() if isinstance(e_tag.stderr, bytes) else e_tag.stderr}")
-                return False
+                return False, None
 
 
-        # --- 5. Save Config Snapshot and Success Marker ---
+        # --- 6. Save Config Snapshot and Success Marker ---
         config_snapshot_dir.mkdir(parents=True, exist_ok=True) # Ensure 'configs' subdir exists before writing
         with open(logged_config_path, 'w') as f_out:
             yaml.dump(config, f_out, default_flow_style=False, sort_keys=False)
@@ -495,7 +497,7 @@ def git_commit_and_log_config(config, config_path, software_repo_path, force_com
                            f"Git Tag: {tag_name if should_create_tag or (tag_exists and existing_tag_hash == current_git_hash) else 'skipped or failed'}\n"
                            f"Config: {relative_config_path_for_marker}\n") # Use relative path here
         logger.info(f"Git commit and tag success marker created at {commit_success_file}")
-        return True
+        return True, logged_config_path
         
     except subprocess.CalledProcessError as e:
         logger.error(f"Git operation failed during script execution: {e.cmd}")
@@ -505,12 +507,12 @@ def git_commit_and_log_config(config, config_path, software_repo_path, force_com
             logger.error(f"Stdout: {stdout_output}")
         if stderr_output:
             logger.error(f"Stderr: {stderr_output}")
-        return False
+        return False, None
     except Exception as e:
         logger.error(f"An unexpected error occurred during git_commit_and_log_config: {e}")
         import traceback
         logger.error(traceback.format_exc())
-        return False
+        return False, None
 
 def create_necessary_directories(config):
     """
