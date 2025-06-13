@@ -197,13 +197,22 @@ def main():
         # We store the env_config under an "env_setup" key in the main config
         config["env_setup"] = env_config
         
+        # Debug: Check config before defaults
+        logger.debug(f"Config before defaults - common section: {config.get('common', 'MISSING')}")
+        
         # Apply config defaults (fills in missing values from env_setup.config_defaults)
         config = cli_utils.apply_config_defaults(config)
         logger.info("Applied configuration defaults from env_setup.yaml")
         
+        # Debug: Check config after defaults
+        logger.debug(f"Config after defaults - common section: {config.get('common', 'MISSING')}")
+        
         # Apply variable substitution (resolves {var} references within config)
         config = cli_utils.substitute_config_variables(config)
         logger.info("Applied variable substitution to configuration")
+        
+        # Debug: Check config after substitution
+        logger.debug(f"Config after substitution - common section: {config.get('common', 'MISSING')}")
     else:
         logger.warning(f"{env_config_path} not found. Ensure environment is configured if needed.")
 

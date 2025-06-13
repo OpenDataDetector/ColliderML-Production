@@ -5,7 +5,7 @@
 # --- Dataset & Version ---
 campaign: "full_pileup_pilot"
 dataset: "ttbar"
-version: "v3"
+version: "v6"
 stage: "madgraph_generation"  # One of: madgraph_generation, pythia_generation, merge_smear, simulation, digitization
 job_config:
   execution_mode: "interactive"
@@ -16,9 +16,10 @@ mg_definitions: [] # No specific lepton definitions needed for inclusive ttbar
 mg_generate_command: "generate p p > t t~ [QCD]"
 
 # --- Essential Paths & Environment ---
-mg_base_path: "/global/cfs/projectdirs/m4958/usr/danieltm/ColliderML/software/OtherLibraries/MG5_aMC_v3_5_8"
-generation_scratch_dir: "/pscratch/sd/d/danieltm/ColliderML/mg_scratch" 
-output: "/global/cfs/projectdirs/m4958/data/ColliderML/simulation/"
+# These now use variables from env_setup.yaml config_defaults
+mg_base_path: "{madgraph.mg_base_path}"
+generation_scratch_dir: "{madgraph.generation_scratch_dir}" 
+output: "{madgraph.output}"
 
 # --- MadGraph Event Settings ---
 events: 1024               
@@ -26,7 +27,7 @@ seed: 42
 
 # --- Card Templates ---
 card_templates:
-  pythia8_card: "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml_dev/configs_development/testing_and_validation/pipeline_testing/pythia8_card_fxfx_template.dat" # You might want a specific ttbar pythia8 template later
+  pythia8_card: "{templates.pythia8_card_fxfx}" # Now uses variable from env_setup.yaml
   # param_card: "param_card_ttbar_template.dat" # If you need to set top mass, width, etc.
 
 # --- Card Customizations ---
@@ -56,11 +57,6 @@ splitting_config:
   enable: true
   events_per_file: 32
   output_filename: "events.hepmc3"
-
-common:
-  output_base_dir: "/global/cfs/projectdirs/m4958/data/ColliderML/simulation/"
-  account: "m4958"
-  container: "registry.cern.ch/atlasadc/atlas-grid-almalinux9"
 
 # --- Logging ---
 log_level: "INFO" 
