@@ -20,8 +20,3 @@ vertex_sigma_xy: 0.0125 # mm
 vertex_sigma_z: 55.5 # mm
 vertex_sigma_t: 5.0 # ns
 
-# Common settings
-common:
-  output_base_dir: "/global/cfs/projectdirs/m4958/data/ColliderML/simulation/"
-  account: "m4958"
-  container: "registry.cern.ch/atlasadc/atlas-grid-almalinux9"

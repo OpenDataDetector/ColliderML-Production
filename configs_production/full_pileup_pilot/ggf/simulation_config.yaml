@@ -1,6 +1,6 @@
 # Example configuration
 campaign: "full_pileup_pilot"
-dataset: "ttbar"
+dataset: "ggf"
 version: "v4"
 stage: "simulation"  # One of: generation, merge_smear, simulation, digitization
 job_config:
@@ -21,8 +21,3 @@ threads: 8
 minimalKineticEnergy: 0.001  # Minimum kinetic energy in GeV to register in truth
 truthParticleHandler: "Geant4FullTruthParticleHandler"
 
-# Common settings
-common:
-  output_base_dir: "/global/cfs/projectdirs/m4958/data/ColliderML/simulation/"
-  account: "m4958"
-  container: "registry.cern.ch/atlasadc/atlas-grid-almalinux9"
