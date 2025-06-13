@@ -448,42 +448,7 @@ def git_commit_and_log_config(config, config_path, software_repo_path, force_com
         current_git_hash = subprocess.check_output(git_hash_cmd, text=True, cwd=software_repo_path).strip()
         logger.info(f"Current Git HEAD for {software_repo_path}: {current_git_hash}")
 
-        # --- 5. Git Tagging Logic ---
-        tag_name = f"{config['campaign']}/{config['dataset']}/{config['version']}"
-        tag_message = (f"Tag for campaign: {config['campaign']}, dataset: {config['dataset']}, "
-                       f"version: {config['version']} (branch: {current_branch_name})")
-        
-        tag_exists_cmd = ["git", "-C", str(software_repo_path), "rev-parse", "-q", "--verify", f"refs/tags/{tag_name}"]
-        tag_check_process = subprocess.run(tag_exists_cmd, capture_output=True, text=True, cwd=software_repo_path)
-        
-        tag_exists = tag_check_process.returncode == 0
-        existing_tag_hash = tag_check_process.stdout.strip() if tag_exists else None
-
-        should_create_tag = True
-        if tag_exists:
-            if existing_tag_hash == current_git_hash and not force_commit:
-                logger.info(f"Tag '{tag_name}' already exists and points to the current commit ({current_git_hash}). Skipping tag creation.")
-                should_create_tag = False
-            elif force_commit:
-                logger.info(f"Tag '{tag_name}' already exists. Deleting and re-creating due to force_commit=True.")
-                delete_tag_cmd = ["git", "-C", str(software_repo_path), "tag", "-d", tag_name]
-                subprocess.run(delete_tag_cmd, check=True, capture_output=True)
-            else: 
-                logger.error(f"Tag '{tag_name}' exists on a different commit ({existing_tag_hash} vs HEAD {current_git_hash}). Use --force-commit to retag, or resolve manually.")
-                return False, None
-
-        if should_create_tag:
-            logger.info(f"Attempting to create tag '{tag_name}' pointing to commit {current_git_hash}.")
-            create_tag_cmd = ["git", "-C", str(software_repo_path), "tag", "-a", tag_name, "-m", tag_message, current_git_hash]
-            try:
-                subprocess.run(create_tag_cmd, check=True, capture_output=True)
-                logger.info(f"Successfully created/updated tag '{tag_name}'.")
-            except subprocess.CalledProcessError as e_tag:
-                logger.error(f"Failed to create tag '{tag_name}': {e_tag.stderr.decode() if isinstance(e_tag.stderr, bytes) else e_tag.stderr}")
-                return False, None
-
-
-        # --- 6. Save Config Snapshot and Success Marker ---
+        # --- 5. Save Config Snapshot and Success Marker ---
         config_snapshot_dir.mkdir(parents=True, exist_ok=True) # Ensure 'configs' subdir exists before writing
         with open(logged_config_path, 'w') as f_out:
             yaml.dump(config, f_out, default_flow_style=False, sort_keys=False)
@@ -494,9 +459,8 @@ def git_commit_and_log_config(config, config_path, software_repo_path, force_com
             f_marker.write(f"Commit successful at {datetime.datetime.now()}\n"
                            f"Git Branch: {current_branch_name}\n"
                            f"Git Hash: {current_git_hash}\n"
-                           f"Git Tag: {tag_name if should_create_tag or (tag_exists and existing_tag_hash == current_git_hash) else 'skipped or failed'}\n"
                            f"Config: {relative_config_path_for_marker}\n") # Use relative path here
-        logger.info(f"Git commit and tag success marker created at {commit_success_file}")
+        logger.info(f"Git commit success marker created at {commit_success_file}")
         return True, logged_config_path
         
     except subprocess.CalledProcessError as e:
