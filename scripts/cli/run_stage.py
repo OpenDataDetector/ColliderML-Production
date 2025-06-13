@@ -65,7 +65,7 @@ def git_commit_and_log_config(config, config_path, git_repo_path, force_commit=F
                  with open(logged_config_path, 'w') as f_out:
                     yaml.dump(config, f_out, default_flow_style=False, sort_keys=False)
                  logger.info(f"Config snapshot saved to {logged_config_path}")
-            return True
+            return True, logged_config_path
 
         logger.info(f"Attempting to git commit changes in {git_repo_path}")
         
@@ -74,7 +74,7 @@ def git_commit_and_log_config(config, config_path, git_repo_path, force_commit=F
         process = subprocess.run(status_cmd, capture_output=True, text=True)
         if process.returncode != 0:
             logger.error(f"Git status check failed in {git_repo_path}: {process.stderr}")
-            return False
+            return False, None
         
         if not process.stdout.strip() and not force_commit:
             logger.info(f"No changes to commit in {git_repo_path}.")
@@ -103,16 +103,16 @@ def git_commit_and_log_config(config, config_path, git_repo_path, force_commit=F
         with open(commit_success_file, 'w') as f_marker:
             f_marker.write(f"Commit successful at {datetime.datetime.now()}\nGit Hash: {git_hash}\nConfig: {logged_config_path.name}\n")
         logger.info(f"Git commit success marker created at {commit_success_file}")
-        return True
+        return True, logged_config_path
         
     except subprocess.CalledProcessError as e:
         logger.error(f"Git operation failed: {e}")
         logger.error(f"Stdout: {e.stdout}")
         logger.error(f"Stderr: {e.stderr}")
-        return False
+        return False, None
     except Exception as e:
         logger.error(f"An unexpected error occurred during git commit and log: {e}")
-        return False
+        return False, None
 
 def get_stage_script_path(config, git_repo_path):
     """Gets the absolute path to the stage script."""
@@ -218,15 +218,18 @@ def main():
 
     # --- 2. Determine Software Repo Path and Perform Git Commit ---
     git_repo_path = cli_utils.get_git_root(Path(__file__).resolve())
+    processed_config_path = None
     if not git_repo_path:
         logger.warning("Could not find .git directory. Skipping git commit and software snapshot.")
     else:
         logger.info(f"Identified software repository for commit: {git_repo_path}")
         # Pass the full config, which now includes env_setup, to the git function
-        if not cli_utils.git_commit_and_log_config(config, args.config, git_repo_path, args.force_commit):
+        success, processed_config_path = cli_utils.git_commit_and_log_config(config, args.config, git_repo_path, args.force_commit)
+        if not success:
             logger.error("Failed to perform git commit and log configuration. Exiting.")
             sys.exit(1)
         logger.info("Git commit and config logging successful.")
+        logger.info(f"Processed config saved to: {processed_config_path}")
 
     # --- 3. Determine Execution Mode --- 
     # Priority: CLI arg > config file > default (e.g., distributed_slurm)
@@ -240,7 +243,9 @@ def main():
         # For interactive mode, we don't need JobSubmitter at all
         try:
             stage_script_path = cli_utils.get_stage_script_path(config, git_repo_path)
-            run_interactive(config, args.config, stage_script_path)
+            # Use processed config if available, otherwise fall back to original
+            config_to_use = processed_config_path if processed_config_path else args.config
+            run_interactive(config, config_to_use, stage_script_path)
         except (ValueError, FileNotFoundError) as e:
             logger.error(f"Failed to locate script for interactive execution: {e}")
             sys.exit(1)
