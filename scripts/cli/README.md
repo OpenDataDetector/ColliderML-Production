@@ -14,6 +14,7 @@ The primary entry point is `run_stage.py`. It serves as the main front door for 
 
 2.  **Configurable Environment Setup**:
     *   `run_stage.py` automatically loads environment setup commands from `env_setup.yaml`, located in the same directory.
+    *   **First-time setup**: Copy `env_setup.yaml.template` to `env_setup.yaml` and customize the paths for your system.
     *   This file defines setup commands for different categories of stages (e.g., `simulation`, `postprocessing`).
     *   This allows for a clear separation of pipeline logic from environment setup and ensures consistency across all execution modes.
     *   You can use placeholders like `{SOFTWARE_DIR}` in the YAML file, which are automatically replaced with the path to your software repository.
@@ -35,8 +36,8 @@ The primary entry point is `run_stage.py`. It serves as the main front door for 
 
 ## Workflow Example
 
-1.  The user prepares a YAML configuration file (e.g., `my_config.yaml`) specifying the stage (e.g., `new_generation`), execution parameters, and output locations.
-2.  The user ensures the environment setup is correctly specified in `scripts/cli/env_setup.yaml`.
+1.  **First-time setup**: Copy the environment template: `cp env_setup.yaml.template env_setup.yaml` and customize the paths.
+2.  The user prepares a YAML configuration file (e.g., `my_config.yaml`) specifying the stage (e.g., `new_generation`), execution parameters, and output locations.
 3.  The user runs: `python run_stage.py --config my_config.yaml`
 4.  `run_stage.py`:
     a.  Parses `my_config.yaml`.
