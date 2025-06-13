@@ -42,7 +42,7 @@ def get_env_setup_cmds(config):
     """
     Gets and processes environment setup commands from the configuration.
 
-    It reads variable values from the `env_setup.variables` section
+    It reads variable values from the `env_setup.env_variables` section
     and searches for commands using a hierarchical approach:
     1. Look for a key matching the specific stage name (e.g., 'madgraph_generation').
     2. If not found, fall back to the stage category (e.g., 'simulation').
@@ -61,12 +61,12 @@ def get_env_setup_cmds(config):
         logger.warning("`env_setup` section not found in configuration. Cannot process environment.")
         return []
 
-    # Get the variables dictionary, with fallback to old "placeholders" name for compatibility
-    variables_config = env_setup_config.get("variables", env_setup_config.get("placeholders", {}))
+    # Get the env_variables dictionary, with fallback to old "variables" name for compatibility
+    env_variables_config = env_setup_config.get("env_variables", env_setup_config.get("variables", {}))
 
     # Dynamically create a dictionary for formatting variables.
     # Keys are uppercased to match conventions like {SOFTWARE_DIR}.
-    format_dict = {key.upper(): value for key, value in variables_config.items() if isinstance(value, str)}
+    format_dict = {key.upper(): value for key, value in env_variables_config.items() if isinstance(value, str)}
     
     # Resolve nested variable references (e.g., variables that reference other variables)
     # We need multiple passes to handle chained references
@@ -90,7 +90,7 @@ def get_env_setup_cmds(config):
 
     # Ensure SOFTWARE_DIR is present, as it's fundamental.
     if "SOFTWARE_DIR" not in format_dict or not format_dict["SOFTWARE_DIR"]:
-        logger.error("`software_dir` not defined or is empty in the `env_setup.variables` section of your config.")
+        logger.error("`software_dir` not defined or is empty in the `env_setup.env_variables` section of your config.")
         raise ValueError("Missing essential configuration: software_dir")
 
     stage = config.get("stage")
@@ -126,10 +126,120 @@ def get_env_setup_cmds(config):
         try:
             processed_cmds.append(cmd.format(**format_dict))
         except KeyError as e:
-            logger.error(f"Variable {e} is used in a command but not defined in env_setup.variables.")
+            logger.error(f"Variable {e} is used in a command but not defined in env_setup.env_variables.")
             raise ValueError(f"Undefined variable in command: {cmd}")
 
     return processed_cmds
+
+def apply_config_defaults(config):
+    """
+    Apply config defaults from env_setup.config_defaults to the main config.
+    
+    This function recursively merges defaults into the config, but only for
+    keys that are not already present (config values take precedence).
+    
+    Args:
+        config (dict): The main configuration dictionary
+        
+    Returns:
+        dict: The updated configuration with defaults applied
+    """
+    env_setup_config = config.get("env_setup", {})
+    config_defaults = env_setup_config.get("config_defaults", {})
+    
+    if not config_defaults:
+        logger.debug("No config_defaults found in env_setup. Skipping default application.")
+        return config
+    
+    # Create a copy to avoid modifying the original
+    updated_config = config.copy()
+    
+    # Apply defaults recursively
+    def merge_defaults(target_dict, defaults_dict):
+        """Recursively merge defaults into target, with target taking precedence."""
+        for key, default_value in defaults_dict.items():
+            if key not in target_dict:
+                # Key doesn't exist in target, use default
+                target_dict[key] = default_value
+                logger.debug(f"Applied default for '{key}': {default_value}")
+            elif isinstance(default_value, dict) and isinstance(target_dict[key], dict):
+                # Both are dicts, recurse
+                merge_defaults(target_dict[key], default_value)
+            # If key exists and is not a dict, keep the existing value (target precedence)
+    
+    merge_defaults(updated_config, config_defaults)
+    
+    return updated_config
+
+def substitute_config_variables(config):
+    """
+    Substitute variables in config values using patterns like {VAR_NAME}.
+    
+    This function looks for patterns like {directories.software_dir} or {common.account}
+    and substitutes them with values from the same config. It avoids interfering with:
+    - Double-brace templates like {{XQCUT}} (left untouched)
+    - JSON structure braces
+    
+    Args:
+        config (dict): The configuration dictionary
+        
+    Returns:
+        dict: The configuration with variables substituted
+    """
+    import re
+    import copy
+    
+    # Work with a deep copy to avoid modifying the original
+    result_config = copy.deepcopy(config)
+    
+    # Pattern to match single-brace variables like {section.key} but not {{template}}
+    # This uses negative lookbehind and lookahead to avoid double braces
+    var_pattern = re.compile(r'(?<!\{)\{([a-zA-Z_][a-zA-Z0-9_.]*)\}(?!\})')
+    
+    def substitute_in_value(value, path=""):
+        """Recursively substitute variables in a value."""
+        if isinstance(value, str):
+            # Only process strings that contain single-brace patterns
+            if '{' in value and not value.startswith('{{'):
+                def replace_variable(match):
+                    var_path = match.group(1)
+                    
+                    # Split the path (e.g., "directories.software_dir" -> ["directories", "software_dir"])
+                    path_parts = var_path.split('.')
+                    
+                    # Navigate through the config to find the value
+                    current = result_config
+                    try:
+                        for part in path_parts:
+                            current = current[part]
+                        return str(current)
+                    except (KeyError, TypeError):
+                        logger.debug(f"Could not resolve variable reference: {{{var_path}}} at {path}")
+                        return match.group(0)  # Return the original if we can't resolve it
+                
+                return var_pattern.sub(replace_variable, value)
+            else:
+                return value
+        elif isinstance(value, dict):
+            return {k: substitute_in_value(v, f"{path}.{k}" if path else k) for k, v in value.items()}
+        elif isinstance(value, list):
+            return [substitute_in_value(item, f"{path}[{i}]") for i, item in enumerate(value)]
+        else:
+            return value
+    
+    # Apply substitutions with multiple passes to handle chained references
+    max_iterations = 3  # Reduced iterations since we're being more targeted
+    for iteration in range(max_iterations):
+        old_result = copy.deepcopy(result_config)
+        result_config = substitute_in_value(result_config)
+        
+        if result_config == old_result:
+            # No more substitutions made
+            break
+    else:
+        logger.warning("Maximum iterations reached during variable substitution. Some references may be unresolved.")
+    
+    return result_config
 
 def get_stage_script_path(config, software_repo_path=None):
     """
@@ -224,7 +334,7 @@ def get_git_root(start_path):
 
 def git_commit_and_log_config(config, config_path, software_repo_path, force_commit=False):
     """
-    Performs Git branch check, commits changes, tags the version, and logs the config.
+    Ensures git working directory is clean, commits changes if needed, tags the version, and logs the config.
     
     Args:
         config: The configuration dictionary
@@ -233,35 +343,31 @@ def git_commit_and_log_config(config, config_path, software_repo_path, force_com
         force_commit: Whether to force a commit and tag even if no changes or success marker exists.
         
     Returns:
-        bool: True on success, False on failure
+        tuple: (success: bool, processed_config_path: Path or None) 
+               - success: True on success, False on failure
+               - processed_config_path: Path to the saved processed config file
     """
     try:
         if "campaign" not in config:
             logger.error("Configuration missing 'campaign' field. Cannot proceed with git operations.")
-            return False
+            return False, None
         if "dataset" not in config:
             logger.error("Configuration missing 'dataset' field. Cannot proceed with git operations.")
-            return False
+            return False, None
         if "version" not in config:
             logger.error("Configuration missing 'version' field. Cannot proceed with git operations.")
-            return False
+            return False, None
 
-        # --- 1. Branch Check ---
-        expected_branch_name = f"campaign/{config['campaign']}/dataset/{config['dataset']}"
+        # --- 1. Get current branch name (for logging, not enforcement) ---
         try:
             current_branch_cmd = ["git", "-C", str(software_repo_path), "rev-parse", "--abbrev-ref", "HEAD"]
             current_branch_name = subprocess.check_output(current_branch_cmd, text=True, cwd=software_repo_path).strip()
+            logger.info(f"Currently on git branch: {current_branch_name}")
         except subprocess.CalledProcessError as e:
             logger.error(f"Failed to get current git branch in {software_repo_path}: {e.stderr}")
-            return False
+            return False, None
 
-        if current_branch_name != expected_branch_name:
-            logger.error(f"Incorrect Git branch. Expected: '{expected_branch_name}', but currently on: '{current_branch_name}'.")
-            logger.error(f"Please switch to branch '{expected_branch_name}' or create it (e.g., git checkout -b {expected_branch_name}) and push your changes there before running.")
-            return False
-        logger.info(f"Git branch check passed. Currently on expected branch: {current_branch_name}")
-
-        # --- 2. Determine output directory & skip if already processed (unless forced) ---
+        # --- 2. Determine output directory paths ---
         output_version_dir = get_version_directory(config) # Will now include campaign
         commit_success_file = output_version_dir / GIT_COMMIT_SUCCESS_FILE
         
@@ -272,8 +378,63 @@ def git_commit_and_log_config(config, config_path, software_repo_path, force_com
         config_snapshot_dir = output_version_dir / "configs"
         logged_config_path = config_snapshot_dir / original_config_filename
 
-        if not force_commit and commit_success_file.exists():
-            logger.info(f"Success marker file {commit_success_file} exists. Skipping git commit and tag for this version.")
+        # --- 3. Git Working Directory Check and Commit Logic (ALWAYS check) ---
+        logger.info(f"Checking git working directory status in {software_repo_path}")
+        
+        status_cmd = ["git", "-C", str(software_repo_path), "status", "--porcelain"]
+        process = subprocess.run(status_cmd, capture_output=True, text=True)
+        if process.returncode != 0:
+            logger.error(f"Git status check failed in {software_repo_path}: {process.stderr}")
+            return False, None
+        
+        committed_this_run = False
+        if not process.stdout.strip() and not force_commit: # Working directory is clean
+            logger.info(f"Git working directory is clean. Proceeding with stage execution.")
+        else: # There are uncommitted changes, or force_commit is true
+            if process.stdout.strip():
+                # Show the user what changes exist
+                logger.info("Uncommitted changes detected:")
+                status_verbose_cmd = ["git", "-C", str(software_repo_path), "status", "--short"]
+                status_output = subprocess.run(status_verbose_cmd, capture_output=True, text=True)
+                for line in status_output.stdout.strip().split('\n'):
+                    if line.strip():
+                        logger.info(f"  {line}")
+                
+                # Prompt for commit message
+                try:
+                    commit_message = input("\nEnter commit message (or press Enter for default): ").strip()
+                    if not commit_message:
+                        commit_message = (f"Auto-commit for campaign '{config['campaign']}', "
+                                          f"dataset '{config['dataset']}', version '{config['version']}'")
+                except (EOFError, KeyboardInterrupt):
+                    logger.error("User cancelled commit. Cannot proceed with uncommitted changes.")
+                    return False, None
+                except Exception:
+                    # Handle non-interactive environments (e.g., SLURM jobs)
+                    logger.warning("Non-interactive environment detected. Using default commit message.")
+                    commit_message = (f"Auto-commit for campaign '{config['campaign']}', "
+                                      f"dataset '{config['dataset']}', version '{config['version']}'")
+                
+                # Add and commit changes
+                add_cmd = ["git", "-C", str(software_repo_path), "add", "."]
+                subprocess.run(add_cmd, check=True, capture_output=True)
+                
+                commit_cmd = ["git", "-C", str(software_repo_path), "commit", "-m", commit_message]
+                subprocess.run(commit_cmd, check=True, capture_output=True)
+                logger.info(f"Git commit successful: '{commit_message}'")
+                committed_this_run = True
+            elif force_commit:
+                # Force commit case - create an empty commit if needed
+                commit_message = (f"Forced commit for campaign '{config['campaign']}', "
+                                  f"dataset '{config['dataset']}', version '{config['version']}'")
+                commit_cmd = ["git", "-C", str(software_repo_path), "commit", "--allow-empty", "-m", commit_message]
+                subprocess.run(commit_cmd, check=True, capture_output=True)
+                logger.info(f"Forced empty commit successful: '{commit_message}'")
+                committed_this_run = True
+
+        # --- 4. Check if version already processed (after git commit) ---
+        if not force_commit and commit_success_file.exists() and not committed_this_run:
+            logger.info(f"Success marker file {commit_success_file} exists and no new commits made. Skipping git tag and config re-save for this version.")
             # Check for the config in the new location
             if not logged_config_path.exists():
                  logger.warning(f"Git commit marker exists, but config snapshot {logged_config_path} not found. Re-logging config.")
@@ -281,82 +442,20 @@ def git_commit_and_log_config(config, config_path, software_repo_path, force_com
                  with open(logged_config_path, 'w') as f_out:
                     yaml.dump(config, f_out, default_flow_style=False, sort_keys=False)
                  logger.info(f"Config snapshot saved to {logged_config_path}")
-            return True
-
-        # --- 3. Git Commit Logic ---
-        logger.info(f"Attempting to git commit changes in {software_repo_path} on branch {current_branch_name}")
-        
-        status_cmd = ["git", "-C", str(software_repo_path), "status", "--porcelain"]
-        process = subprocess.run(status_cmd, capture_output=True, text=True)
-        if process.returncode != 0:
-            logger.error(f"Git status check failed in {software_repo_path}: {process.stderr}")
-            return False
-        
-        committed_this_run = False
-        if not process.stdout.strip() and not force_commit: # No changes and not forcing a commit
-            logger.info(f"No new changes to commit in {software_repo_path}.")
-        else: # There are changes, or force_commit is true
-            add_cmd = ["git", "-C", str(software_repo_path), "add", "."]
-            subprocess.run(add_cmd, check=True, capture_output=True) # Use check=True for auto error on fail
-            
-            process_after_add = subprocess.run(status_cmd, capture_output=True, text=True)
-            if process_after_add.stdout.strip(): # If there are still changes staged
-                commit_message = (f"Auto-commit for campaign '{config['campaign']}', "
-                                  f"dataset '{config['dataset']}', version '{config['version']}'")
-                commit_cmd = ["git", "-C", str(software_repo_path), "commit", "-m", commit_message]
-                subprocess.run(commit_cmd, check=True, capture_output=True)
-                logger.info(f"Git commit successful in {software_repo_path}.")
-                committed_this_run = True
-            elif process.stdout.strip(): 
-                 logger.info("No effective changes to commit after 'git add'.")
-            else: 
-                 logger.info("No changes to commit, and force_commit did not find new changes to force through.")
-
+            return True, logged_config_path
 
         git_hash_cmd = ["git", "-C", str(software_repo_path), "rev-parse", "HEAD"]
         current_git_hash = subprocess.check_output(git_hash_cmd, text=True, cwd=software_repo_path).strip()
         logger.info(f"Current Git HEAD for {software_repo_path}: {current_git_hash}")
 
-        # --- 4. Git Tagging Logic ---
-        tag_name = f"{config['campaign']}/{config['dataset']}/{config['version']}"
-        tag_message = (f"Tag for campaign: {config['campaign']}, dataset: {config['dataset']}, "
-                       f"version: {config['version']}")
-        
-        tag_exists_cmd = ["git", "-C", str(software_repo_path), "rev-parse", "-q", "--verify", f"refs/tags/{tag_name}"]
-        tag_check_process = subprocess.run(tag_exists_cmd, capture_output=True, text=True, cwd=software_repo_path)
-        
-        tag_exists = tag_check_process.returncode == 0
-        existing_tag_hash = tag_check_process.stdout.strip() if tag_exists else None
-
-        should_create_tag = True
-        if tag_exists:
-            if existing_tag_hash == current_git_hash and not force_commit:
-                logger.info(f"Tag '{tag_name}' already exists and points to the current commit ({current_git_hash}). Skipping tag creation.")
-                should_create_tag = False
-            elif force_commit:
-                logger.info(f"Tag '{tag_name}' already exists. Deleting and re-creating due to force_commit=True.")
-                delete_tag_cmd = ["git", "-C", str(software_repo_path), "tag", "-d", tag_name]
-                subprocess.run(delete_tag_cmd, check=True, capture_output=True)
-            else: 
-                logger.error(f"Tag '{tag_name}' exists on a different commit ({existing_tag_hash} vs HEAD {current_git_hash}). Use --force-commit to retag, or resolve manually.")
-                return False
-
-
-        if should_create_tag:
-            logger.info(f"Attempting to create tag '{tag_name}' pointing to commit {current_git_hash}.")
-            create_tag_cmd = ["git", "-C", str(software_repo_path), "tag", "-a", tag_name, "-m", tag_message, current_git_hash]
-            try:
-                subprocess.run(create_tag_cmd, check=True, capture_output=True)
-                logger.info(f"Successfully created/updated tag '{tag_name}'.")
-            except subprocess.CalledProcessError as e_tag:
-                logger.error(f"Failed to create tag '{tag_name}': {e_tag.stderr.decode() if isinstance(e_tag.stderr, bytes) else e_tag.stderr}")
-                return False
-
-
         # --- 5. Save Config Snapshot and Success Marker ---
         config_snapshot_dir.mkdir(parents=True, exist_ok=True) # Ensure 'configs' subdir exists before writing
+        
+        # Create a clean copy of the config without internal env_setup data
+        clean_config = {k: v for k, v in config.items() if k != 'env_setup'}
+        
         with open(logged_config_path, 'w') as f_out:
-            yaml.dump(config, f_out, default_flow_style=False, sort_keys=False)
+            yaml.dump(clean_config, f_out, default_flow_style=False, sort_keys=False)
         logger.info(f"Full configuration snapshot saved to {logged_config_path}")
         
         relative_config_path_for_marker = Path("configs") / original_config_filename
@@ -364,10 +463,9 @@ def git_commit_and_log_config(config, config_path, software_repo_path, force_com
             f_marker.write(f"Commit successful at {datetime.datetime.now()}\n"
                            f"Git Branch: {current_branch_name}\n"
                            f"Git Hash: {current_git_hash}\n"
-                           f"Git Tag: {tag_name if should_create_tag or (tag_exists and existing_tag_hash == current_git_hash) else 'skipped or failed'}\n"
                            f"Config: {relative_config_path_for_marker}\n") # Use relative path here
-        logger.info(f"Git commit and tag success marker created at {commit_success_file}")
-        return True
+        logger.info(f"Git commit success marker created at {commit_success_file}")
+        return True, logged_config_path
         
     except subprocess.CalledProcessError as e:
         logger.error(f"Git operation failed during script execution: {e.cmd}")
@@ -377,12 +475,12 @@ def git_commit_and_log_config(config, config_path, software_repo_path, force_com
             logger.error(f"Stdout: {stdout_output}")
         if stderr_output:
             logger.error(f"Stderr: {stderr_output}")
-        return False
+        return False, None
     except Exception as e:
         logger.error(f"An unexpected error occurred during git_commit_and_log_config: {e}")
         import traceback
         logger.error(traceback.format_exc())
-        return False
+        return False, None
 
 def create_necessary_directories(config):
     """

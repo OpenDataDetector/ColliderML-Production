@@ -1,6 +1,6 @@
 # Example configuration
 campaign: "full_pileup_pilot"
-dataset: "ggf"
+dataset: "ttbar"
 version: "v4"
 stage: "simulation"  # One of: generation, merge_smear, simulation, digitization
 job_config:
@@ -20,4 +20,3 @@ events: 32  # Number of events per run, total number of events will be n_runs * 
 threads: 8
 minimalKineticEnergy: 0.001  # Minimum kinetic energy in GeV to register in truth
 truthParticleHandler: "Geant4FullTruthParticleHandler"
-

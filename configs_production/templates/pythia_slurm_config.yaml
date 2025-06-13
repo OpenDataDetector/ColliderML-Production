@@ -1,15 +1,15 @@
 # Example configuration
 campaign: "full_pileup_pilot"
-dataset: "pileup"
-version: "v5"
+dataset: "ttbar"
+version: "v4"
 stage: "pythia_generation"  # One of: generation, merge_smear, simulation, digitization
 job_config:
   # Number of nodes will be calculated as n_runs / runs_per_node
-  n_runs: 128  # Number of runs (where a run produces N events)
-  runs_per_node: 128  # Number of runs per node
+  n_runs: 32  # Number of runs (where a run produces N events)
+  runs_per_node: 16  # Number of runs per node
   time_limit: "00:30:00"  # Time limit per job
   qos: "regular"
-  execution_mode: "interactive"
+  execution_mode: "distributed_slurm"
 
 validation_config:
   time_limit: "00:10:00"
@@ -24,4 +24,3 @@ vertex_sigma_z: 55.5 # mm
 vertex_sigma_t: 5.0 # ns
 
 merge_signal: true  # Merge with existing signal file (events.hepmc3 or events.hepmc.gz) in output directory
-
