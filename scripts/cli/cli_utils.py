@@ -175,10 +175,11 @@ def substitute_config_variables(config):
     """
     Substitute variables in config values using patterns like {VAR_NAME}.
     
-    This function looks for patterns like {directories.software_dir} or {common.account}
-    and substitutes them with values from the same config. It avoids interfering with:
-    - Double-brace templates like {{XQCUT}} (left untouched)
-    - JSON structure braces
+    This function handles two types of variables:
+    1. Environment variables from env_setup.env_variables (e.g., {SOFTWARE_DIR})
+    2. Internal config references (e.g., {common.account})
+    
+    It avoids interfering with double-brace templates like {{XQCUT}}.
     
     Args:
         config (dict): The configuration dictionary
@@ -192,30 +193,55 @@ def substitute_config_variables(config):
     # Work with a deep copy to avoid modifying the original
     result_config = copy.deepcopy(config)
     
-    # Pattern to match single-brace variables like {section.key} but not {{template}}
-    # This uses negative lookbehind and lookahead to avoid double braces
+    # Get environment variables from env_setup section
+    env_setup_config = result_config.get("env_setup", {})
+    env_variables_config = env_setup_config.get("env_variables", env_setup_config.get("variables", {}))
+    
+    # Create format dictionary for environment variables (uppercase keys)
+    env_format_dict = {key.upper(): value for key, value in env_variables_config.items() if isinstance(value, str)}
+    
+    # Resolve nested variable references in environment variables
+    max_env_iterations = 5
+    for iteration in range(max_env_iterations):
+        substitutions_made = False
+        for key, value in env_format_dict.items():
+            try:
+                new_value = value.format(**env_format_dict)
+                if new_value != value:
+                    env_format_dict[key] = new_value
+                    substitutions_made = True
+            except KeyError:
+                pass
+        if not substitutions_made:
+            break
+    
+    # Pattern to match single-brace variables but not {{template}}
     var_pattern = re.compile(r'(?<!\{)\{([a-zA-Z_][a-zA-Z0-9_.]*)\}(?!\})')
     
     def substitute_in_value(value, path=""):
         """Recursively substitute variables in a value."""
         if isinstance(value, str):
-            # Only process strings that contain single-brace patterns
             if '{' in value and not value.startswith('{{'):
                 def replace_variable(match):
                     var_path = match.group(1)
                     
-                    # Split the path (e.g., "directories.software_dir" -> ["directories", "software_dir"])
-                    path_parts = var_path.split('.')
+                    # First try environment variables (uppercase)
+                    if var_path.upper() in env_format_dict:
+                        return env_format_dict[var_path.upper()]
                     
-                    # Navigate through the config to find the value
-                    current = result_config
-                    try:
-                        for part in path_parts:
-                            current = current[part]
-                        return str(current)
-                    except (KeyError, TypeError):
-                        logger.debug(f"Could not resolve variable reference: {{{var_path}}} at {path}")
-                        return match.group(0)  # Return the original if we can't resolve it
+                    # Then try config references with dot notation
+                    if '.' in var_path:
+                        path_parts = var_path.split('.')
+                        current = result_config
+                        try:
+                            for part in path_parts:
+                                current = current[part]
+                            return str(current)
+                        except (KeyError, TypeError):
+                            pass
+                    
+                    logger.debug(f"Could not resolve variable reference: {{{var_path}}} at {path}")
+                    return match.group(0)  # Return the original if we can't resolve it
                 
                 return var_pattern.sub(replace_variable, value)
             else:
@@ -228,13 +254,12 @@ def substitute_config_variables(config):
             return value
     
     # Apply substitutions with multiple passes to handle chained references
-    max_iterations = 3  # Reduced iterations since we're being more targeted
+    max_iterations = 3
     for iteration in range(max_iterations):
         old_result = copy.deepcopy(result_config)
         result_config = substitute_in_value(result_config)
         
         if result_config == old_result:
-            # No more substitutions made
             break
     else:
         logger.warning("Maximum iterations reached during variable substitution. Some references may be unresolved.")
