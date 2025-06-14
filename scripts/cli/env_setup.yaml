@@ -13,23 +13,23 @@
 # =====================================================================
 env_variables:
   # Base software directory - CUSTOMIZE THIS FOR YOUR SYSTEM
-  software_dir: "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software"
+  software_dir: "/afs/cern.ch/user/d/dmurnane/ColliderML"
   
   # ATLAS/CVMFS setup (usually standard)
-  atlas_local_root_base: "/cvmfs/atlas.cern.ch/repo/ATLASLocalRootBase"
+  # atlas_local_root_base: "/cvmfs/atlas.cern.ch/repo/ATLASLocalRootBase"
   lcg_view: "LCG_107 x86_64-el9-gcc13-opt"
   
   # Tool-specific paths - CUSTOMIZE THESE FOR YOUR INSTALLATIONS
-  dd4hep_setup_script: "{SOFTWARE_DIR}/OtherLibraries/dd4hep-colliderml/bin/thisdd4hep.sh"
-  acts_setup_script: "{SOFTWARE_DIR}/new_acts/build/python/setup.sh"
+  dd4hep_setup_script: "{SOFTWARE_DIR}/DD4hep/dd4hep-colliderml/bin/thisdd4hep.sh"
+  acts_setup_script: "{SOFTWARE_DIR}/acts/build/python/setup.sh"
   colliderml_env_path: "{SOFTWARE_DIR}/colliderml_env"
 
   # MadGraph-specific environment paths
-  madgraph_env_path: "{SOFTWARE_DIR}/colliderml_dev/scripts/cli/madgraph_env"
-  madgraph_lcg_view: "LCG_107 x86_64-el8-gcc11-opt"
+  madgraph_env_path: "{SOFTWARE_DIR}/colliderml_env"
+  madgraph_lcg_view: "LCG_107 x86_64-el9-gcc13-opt"
   
   # Postprocessing conda environment name
-  conda_env_name: "collider-env"
+  # conda_env_name: "collider-env"
 
 # =====================================================================
 # Config Defaults - Used for stage config substitution
@@ -37,20 +37,20 @@ env_variables:
 config_defaults:
   # Common settings that appear in all stage configs
   common:
-    account: "m4958"
-    container: "registry.cern.ch/atlasadc/atlas-grid-almalinux9"
-    output_base_dir: "/global/cfs/projectdirs/m4958/data/ColliderML/simulation/"
+    # account: "m4958"
+    # container: "registry.cern.ch/atlasadc/atlas-grid-almalinux9"
+    output_base_dir: "/eos/user/d/dmurnane/ColliderML/simulation"
   
   # MadGraph-specific defaults - CUSTOMIZE PATHS
   madgraph:
-    mg_base_path: "/global/cfs/projectdirs/m4958/usr/danieltm/ColliderML/software/OtherLibraries/MG5_aMC_v3_5_8"
-    generation_scratch_dir: "/pscratch/sd/d/danieltm/ColliderML/mg_scratch"
-    output: "/global/cfs/projectdirs/m4958/data/ColliderML/simulation/"
+    mg_base_path: "{SOFTWARE_DIR}/MG5_aMC_v3_5_8"
+    generation_scratch_dir: "/afs/cern.ch/user/d/dmurnane/ColliderML/mg_scratch"
+    output: "/eos/user/d/dmurnane/ColliderML/simulation"
     
   # Template paths - CUSTOMIZE FOR YOUR SYSTEM
   templates:
-    pythia8_card_fxfx: "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml_dev/configs_development/testing_and_validation/pipeline_testing/pythia8_card_fxfx_template.dat"
-    pythia8_card_default: "/global/cfs/projectdirs/m4958/usr/danieltm/ColliderML/software/OtherLibraries/MG5_aMC_v3_5_8/Template/LO/Cards/pythia8_card_default.dat"
+    pythia8_card_fxfx: "{SOFTWARE_DIR}/colliderml_dev/configs_development/testing_and_validation/pipeline_testing/pythia8_card_fxfx_template.dat"
+    pythia8_card_default: "{SOFTWARE_DIR}/MG5_aMC_v3_5_8/Template/LO/Cards/pythia8_card_default.dat"
 
 # =====================================================================
 # Environment Setup Commands - Using env_variables above
@@ -59,8 +59,6 @@ config_defaults:
 # The 'simulation' key contains the general setup for most simulation stages
 # (pythia, ddsim, digi, etc.). This is used if a more specific stage setup isn't found.
 simulation:
-  - 'export ATLAS_LOCAL_ROOT_BASE={ATLAS_LOCAL_ROOT_BASE}'
-  - 'source {ATLAS_LOCAL_ROOT_BASE}/user/atlasLocalSetup.sh'
   - 'cd {SOFTWARE_DIR}'
   - 'source /cvmfs/sft.cern.ch/lcg/views/setupViews.sh {LCG_VIEW}'
   - 'source {DD4HEP_SETUP_SCRIPT}'
