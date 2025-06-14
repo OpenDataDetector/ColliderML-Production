@@ -17,6 +17,27 @@ log/
 # User-specific environment setup (use env_setup_template.yaml as base)
 scripts/cli/env_setup.yaml
 
+# Config Management (Branch-based strategy)
+# Ignore all config files in development and production directories
+configs_development/**/*.yaml
+configs_development/**/*.yml
+configs_development/**/*.dat
+configs_production/**/*.yaml
+configs_production/**/*.yml
+configs_production/**/*.dat
+
+# BUT allow templates to be tracked (override the above rules)
+!configs_development/templates/
+!configs_development/templates/**
+!configs_production/templates/
+!configs_production/templates/**
+
+# Also ignore README files in config subdirectories (but allow top-level READMEs)
+configs_development/**/README.md
+configs_production/**/README.md
+!configs_development/README.md
+!configs_production/README.md
+
 # Data files
 **/*.root
 **/*.csv
