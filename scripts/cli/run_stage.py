@@ -174,6 +174,7 @@ def main():
                        help="Range of runs to process for distributed modes (START inclusive, END exclusive). Overrides config if set.")
     parser.add_argument("--run-list", type=int, nargs='+', metavar='RUN_ID',
                        help="List of specific run IDs to process for distributed modes. Overrides config if set.")
+    parser.add_argument("--allow-master", action="store_true", help="Allow running on master/main branch.")
     
     args = parser.parse_args()
 
@@ -218,11 +219,22 @@ def main():
 
     # --- 2. Determine Software Repo Path and Perform Git Commit ---
     git_repo_path = cli_utils.get_git_root(Path(__file__).resolve())
+    if git_repo_path:
+        # Check if we're on master/main branch 
+        try:
+            current_branch_cmd = ["git", "-C", str(git_repo_path), "rev-parse", "--abbrev-ref", "HEAD"]
+            current_branch_name = subprocess.check_output(current_branch_cmd, text=True, cwd=git_repo_path).strip()
+            
+            if current_branch_name in ["master", "main"] and not args.allow_master:
+                logger.error(f"Cannot run jobs on '{current_branch_name}' branch. Use a config branch or --allow-master flag.")
+                sys.exit(1)
+                
+        except subprocess.CalledProcessError:
+            logger.warning("Could not determine git branch, continuing...")
+
+    # --- 3. Perform Git Commit (if in git repo) ---
     processed_config_path = None
-    if not git_repo_path:
-        logger.warning("Could not find .git directory. Skipping git commit and software snapshot.")
-    else:
-        logger.info(f"Identified software repository for commit: {git_repo_path}")
+    if git_repo_path:
         # Pass the full config, which now includes env_setup, to the git function
         success, processed_config_path = cli_utils.git_commit_and_log_config(config, args.config, git_repo_path, args.force_commit)
         if not success:
@@ -231,14 +243,14 @@ def main():
         logger.info("Git commit and config logging successful.")
         logger.info(f"Processed config saved to: {processed_config_path}")
 
-    # --- 3. Determine Execution Mode --- 
+    # --- 4. Determine Execution Mode --- 
     # Priority: CLI arg > config file > default (e.g., distributed_slurm)
     execution_mode = args.execution_mode
     if not execution_mode:
         execution_mode = config.get("job_config", {}).get("execution_mode", "distributed_slurm")
     logger.info(f"Effective execution mode: {execution_mode}")
 
-    # --- 4. Execute based on mode ---
+    # --- 5. Execute based on mode ---
     if execution_mode == "interactive":
         # For interactive mode, we don't need JobSubmitter at all
         try:
