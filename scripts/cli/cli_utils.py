@@ -41,67 +41,31 @@ STAGE_SCRIPT_MAP = {
 def get_env_setup_cmds(config):
     """
     Gets and processes environment setup commands from the configuration.
-
-    It reads variable values from the `env_setup.env_variables` section
-    and searches for commands using a hierarchical approach:
-    1. Look for a key matching the specific stage name (e.g., 'madgraph_generation').
-    2. If not found, fall back to the stage category (e.g., 'simulation').
-
-    It then substitutes all {VARIABLE} occurrences in the found commands.
-
+    Simple version: just substitute variables using string.format()
+    
     Args:
-        config (dict): The main configuration dictionary, which must include
-                       the 'env_setup' section.
+        config (dict): The main configuration dictionary with 'env_setup' section.
 
     Returns:
         list: A list of processed environment setup commands.
     """
     env_setup_config = config.get("env_setup", {})
     if not env_setup_config:
-        logger.warning("`env_setup` section not found in configuration. Cannot process environment.")
+        logger.warning("No env_setup section found in configuration.")
         return []
 
-    # Get the env_variables dictionary, with fallback to old "variables" name for compatibility
-    env_variables_config = env_setup_config.get("env_variables", env_setup_config.get("variables", {}))
-
-    # Dynamically create a dictionary for formatting variables.
-    # Keys are uppercased to match conventions like {SOFTWARE_DIR}.
-    format_dict = {key.upper(): value for key, value in env_variables_config.items() if isinstance(value, str)}
-    
-    # Resolve nested variable references (e.g., variables that reference other variables)
-    # We need multiple passes to handle chained references
-    max_iterations = 5  # Prevent infinite loops
-    for iteration in range(max_iterations):
-        substitutions_made = False
-        for key, value in format_dict.items():
-            try:
-                new_value = value.format(**format_dict)
-                if new_value != value:
-                    format_dict[key] = new_value
-                    substitutions_made = True
-            except KeyError:
-                # Some variables may reference others that haven't been resolved yet
-                pass
-        
-        if not substitutions_made:
-            break
-    else:
-        logger.warning("Maximum iterations reached while resolving nested variables. Some may be unresolved.")
-
-    # Ensure SOFTWARE_DIR is present, as it's fundamental.
-    if "SOFTWARE_DIR" not in format_dict or not format_dict["SOFTWARE_DIR"]:
-        logger.error("`software_dir` not defined or is empty in the `env_setup.env_variables` section of your config.")
-        raise ValueError("Missing essential configuration: software_dir")
+    # Get environment variables (uppercase keys for {VARIABLE} format)
+    env_variables = env_setup_config.get("env_variables", {})
+    format_dict = {key.upper(): value for key, value in env_variables.items() if isinstance(value, str)}
 
     stage = config.get("stage")
     if not stage:
         logger.warning("Cannot determine environment setup: 'stage' not in config.")
         return []
 
-    # Hierarchical search for command list: stage-specific first, then category.
+    # Find commands: stage-specific first, then category fallback
     stage_cmds = []
     if stage in env_setup_config:
-        logger.info(f"Using specific environment setup for stage '{stage}'.")
         stage_cmds = env_setup_config.get(stage, [])
     else:
         # Determine category and fall back to it
@@ -112,21 +76,19 @@ def get_env_setup_cmds(config):
             category = "postprocessing"
 
         if category and category in env_setup_config:
-            logger.info(f"No specific setup for '{stage}', falling back to category '{category}'.")
             stage_cmds = env_setup_config.get(category, [])
-        else:
-            logger.warning(f"No environment setup found for stage '{stage}' or category '{category}'.")
 
     if not stage_cmds:
+        logger.warning(f"No environment setup found for stage '{stage}'.")
         return []
 
-    # Substitute variables
+    # Simple variable substitution
     processed_cmds = []
     for cmd in stage_cmds:
         try:
             processed_cmds.append(cmd.format(**format_dict))
         except KeyError as e:
-            logger.error(f"Variable {e} is used in a command but not defined in env_setup.env_variables.")
+            logger.error(f"Variable {e} used in command but not defined in env_variables: {cmd}")
             raise ValueError(f"Undefined variable in command: {cmd}")
 
     return processed_cmds
@@ -134,9 +96,7 @@ def get_env_setup_cmds(config):
 def apply_config_defaults(config):
     """
     Apply config defaults from env_setup.config_defaults to the main config.
-    
-    This function recursively merges defaults into the config, but only for
-    keys that are not already present (config values take precedence).
+    Recursively merges defaults, with config values taking precedence.
     
     Args:
         config (dict): The main configuration dictionary
@@ -148,38 +108,25 @@ def apply_config_defaults(config):
     config_defaults = env_setup_config.get("config_defaults", {})
     
     if not config_defaults:
-        logger.debug("No config_defaults found in env_setup. Skipping default application.")
         return config
     
-    # Create a copy to avoid modifying the original
     updated_config = config.copy()
     
-    # Apply defaults recursively
     def merge_defaults(target_dict, defaults_dict):
         """Recursively merge defaults into target, with target taking precedence."""
         for key, default_value in defaults_dict.items():
             if key not in target_dict:
-                # Key doesn't exist in target, use default
                 target_dict[key] = default_value
-                logger.debug(f"Applied default for '{key}': {default_value}")
             elif isinstance(default_value, dict) and isinstance(target_dict[key], dict):
-                # Both are dicts, recurse
                 merge_defaults(target_dict[key], default_value)
-            # If key exists and is not a dict, keep the existing value (target precedence)
     
     merge_defaults(updated_config, config_defaults)
-    
     return updated_config
 
 def substitute_config_variables(config):
     """
-    Substitute variables in config values using patterns like {VAR_NAME}.
-    
-    This function handles two types of variables:
-    1. Environment variables from env_setup.env_variables (e.g., {SOFTWARE_DIR})
-    2. Internal config references (e.g., {common.account})
-    
-    It avoids interfering with double-brace templates like {{XQCUT}}.
+    Apply final variable substitution to config after defaults are merged.
+    Only handles {section.key} references within the config itself.
     
     Args:
         config (dict): The configuration dictionary
@@ -190,81 +137,33 @@ def substitute_config_variables(config):
     import re
     import copy
     
-    # Work with a deep copy to avoid modifying the original
     result_config = copy.deepcopy(config)
     
-    # Get environment variables from env_setup section
-    env_setup_config = result_config.get("env_setup", {})
-    env_variables_config = env_setup_config.get("env_variables", env_setup_config.get("variables", {}))
+    # Pattern to match {section.key} but not {{template}} 
+    var_pattern = re.compile(r'(?<!\{)\{([a-zA-Z_][a-zA-Z0-9_.]+)\}(?!\})')
     
-    # Create format dictionary for environment variables (uppercase keys)
-    env_format_dict = {key.upper(): value for key, value in env_variables_config.items() if isinstance(value, str)}
-    
-    # Resolve nested variable references in environment variables
-    max_env_iterations = 5
-    for iteration in range(max_env_iterations):
-        substitutions_made = False
-        for key, value in env_format_dict.items():
-            try:
-                new_value = value.format(**env_format_dict)
-                if new_value != value:
-                    env_format_dict[key] = new_value
-                    substitutions_made = True
-            except KeyError:
-                pass
-        if not substitutions_made:
-            break
-    
-    # Pattern to match single-brace variables but not {{template}}
-    var_pattern = re.compile(r'(?<!\{)\{([a-zA-Z_][a-zA-Z0-9_.]*)\}(?!\})')
-    
-    def substitute_in_value(value, path=""):
-        """Recursively substitute variables in a value."""
-        if isinstance(value, str):
-            if '{' in value and not value.startswith('{{'):
-                def replace_variable(match):
-                    var_path = match.group(1)
-                    
-                    # First try environment variables (uppercase)
-                    if var_path.upper() in env_format_dict:
-                        return env_format_dict[var_path.upper()]
-                    
-                    # Then try config references with dot notation
-                    if '.' in var_path:
-                        path_parts = var_path.split('.')
-                        current = result_config
-                        try:
-                            for part in path_parts:
-                                current = current[part]
-                            return str(current)
-                        except (KeyError, TypeError):
-                            pass
-                    
-                    logger.debug(f"Could not resolve variable reference: {{{var_path}}} at {path}")
-                    return match.group(0)  # Return the original if we can't resolve it
-                
-                return var_pattern.sub(replace_variable, value)
-            else:
-                return value
+    def substitute_in_value(value):
+        if isinstance(value, str) and '{' in value and not value.startswith('{{'):
+            def replace_variable(match):
+                var_path = match.group(1)
+                path_parts = var_path.split('.')
+                current = result_config
+                try:
+                    for part in path_parts:
+                        current = current[part]
+                    return str(current)
+                except (KeyError, TypeError):
+                    logger.debug(f"Could not resolve config reference: {{{var_path}}}")
+                    return match.group(0)
+            return var_pattern.sub(replace_variable, value)
         elif isinstance(value, dict):
-            return {k: substitute_in_value(v, f"{path}.{k}" if path else k) for k, v in value.items()}
+            return {k: substitute_in_value(v) for k, v in value.items()}
         elif isinstance(value, list):
-            return [substitute_in_value(item, f"{path}[{i}]") for i, item in enumerate(value)]
+            return [substitute_in_value(item) for item in value]
         else:
             return value
     
-    # Apply substitutions with multiple passes to handle chained references
-    max_iterations = 3
-    for iteration in range(max_iterations):
-        old_result = copy.deepcopy(result_config)
-        result_config = substitute_in_value(result_config)
-        
-        if result_config == old_result:
-            break
-    else:
-        logger.warning("Maximum iterations reached during variable substitution. Some references may be unresolved.")
-    
-    return result_config
+    return substitute_in_value(result_config)
 
 def get_stage_script_path(config, software_repo_path=None):
     """
