@@ -1,2 +1,3 @@
 simple-slurm==0.3.5
 pyhepmc==2.14.0
+pyyaml
