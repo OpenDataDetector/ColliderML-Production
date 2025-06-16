@@ -81,8 +81,6 @@ def load_config(args):
         with open(args.config) as f:
             config = yaml.safe_load(f)
             logger.info(f"Loaded configuration from {args.config}")
-        # Convert dict to namespace while preserving nested structure
-        # Note: Removed aggressive flattening that was causing conflicts
         # Only set values from config if the arg is None
         for key, value in config.items():
             if getattr(args, key, None) is None:
