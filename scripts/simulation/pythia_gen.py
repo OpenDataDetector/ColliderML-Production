@@ -157,39 +157,33 @@ def generate_hard_scatter(output_dir, config, logger):
     rnd = acts.examples.RandomNumbers(seed=config.seed or int(time.time()))
     
     # No vertex smearing during generation - ACTS will handle this during merge
+    output_path = output_dir / "events_signal.hepmc3"
     
-    # Use addPythia8 to generate events
-    # The function creates HepMC3 output directly when we specify outputDirRoot
-    # The output file will be named pythia8_particles.hepmc3
     addPythia8(
         s,
         npileup=0,  # No pileup in signal generation
         nhard=1,    # One hard process per event
         hardProcess=pythia_settings,
         outputDirCsv=None,
-        outputDirRoot=str(output_dir),  # Enable HepMC3 output to this directory
+        outputDirRoot=None,
         rnd=rnd,
         logLevel=acts.logging.DEBUG,
         vtxGen=None,
     )
     
-    logger.info(f"Generating hard scatter events with Pythia8")
+    s.addWriter(
+        HepMC3Writer(
+            acts.logging.INFO,
+            inputEvent="particles",
+            outputPath=output_path,
+        )
+    )
+    
+    logger.info(f"Writing hard scatter events to {output_path}")
     s.run()
-    
-    # The actual output file created by addPythia8
-    output_path = output_dir / "pythia8_particles.hepmc3"
-    
-    # Rename to our standard name
-    final_path = output_dir / "events_signal.hepmc3"
-    if output_path.exists():
-        output_path.rename(final_path)
-        logger.info(f"Hard scatter events written to {final_path}")
-    else:
-        raise FileNotFoundError(f"Expected output file not found: {output_path}")
-    
     logger.info("Hard scatter generation completed")
     
-    return final_path
+    return output_path
 
 def generate_pileup(output_dir, config, logger):
     """Generate individual pileup events for ACTS merging.
@@ -208,37 +202,34 @@ def generate_pileup(output_dir, config, logger):
     s.config.logLevel = acts.logging.DEBUG
     rnd = acts.examples.RandomNumbers(seed=(config.seed or int(time.time())) + 1000)  # Different seed for pileup
     
+    output_path = output_dir / "events_pileup.hepmc3"
+    
     # Generate individual pileup events (no hard process)
-    # The function creates HepMC3 output directly when we specify outputDirRoot
     addPythia8(
         s,
         npileup=1,  # Generate individual pileup events
         nhard=0,    # No hard process
         hardProcess=None,
         outputDirCsv=None,
-        outputDirRoot=str(output_dir),  # Enable HepMC3 output to this directory
+        outputDirRoot=None,
         rnd=rnd,
         logLevel=acts.logging.DEBUG,
         vtxGen=None,  # No vertex smearing during generation
     )
     
-    logger.info(f"Generating individual pileup events")
+    s.addWriter(
+        HepMC3Writer(
+            acts.logging.INFO,
+            inputEvent="particles",
+            outputPath=output_path,
+        )
+    )
+    
+    logger.info(f"Writing individual pileup events to {output_path}")
     s.run()
-    
-    # The actual output file created by addPythia8
-    output_path = output_dir / "pythia8_particles.hepmc3"
-    
-    # Rename to our standard name
-    final_path = output_dir / "events_pileup.hepmc3"
-    if output_path.exists():
-        output_path.rename(final_path)
-        logger.info(f"Pileup events written to {final_path}")
-    else:
-        raise FileNotFoundError(f"Expected output file not found: {output_path}")
-    
     logger.info("Pileup generation completed")
     
-    return final_path
+    return output_path
 
 def find_hard_scatter_file(output_dir, config, explicit_path=None):
     """Find hard scatter file with smart detection."""
