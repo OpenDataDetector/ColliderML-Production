@@ -166,7 +166,6 @@ def generate_hard_scatter(output_dir, config, logger):
         hardProcess=pythia_settings,
         outputDirCsv=None,
         outputDirRoot=None,
-        outputEvent="signal_events",
         rnd=rnd,
         logLevel=acts.logging.DEBUG,
         vtxGen=None,
@@ -175,7 +174,7 @@ def generate_hard_scatter(output_dir, config, logger):
     s.addWriter(
         HepMC3Writer(
             acts.logging.INFO,
-            inputEvent="signal_events",
+            inputEvent="particles",
             outputPath=output_path,
         )
     )
@@ -213,7 +212,6 @@ def generate_pileup(output_dir, config, logger):
         hardProcess=None,
         outputDirCsv=None,
         outputDirRoot=None,
-        outputEvent="pileup_events",
         rnd=rnd,
         logLevel=acts.logging.DEBUG,
         vtxGen=None,  # No vertex smearing during generation
@@ -222,7 +220,7 @@ def generate_pileup(output_dir, config, logger):
     s.addWriter(
         HepMC3Writer(
             acts.logging.INFO,
-            inputEvent="pileup_events",
+            inputEvent="particles",
             outputPath=output_path,
         )
     )
