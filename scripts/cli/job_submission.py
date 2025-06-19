@@ -188,78 +188,68 @@ class JobSubmitter:
         return slurm
     
     def _add_simulation_commands(self, slurm, previous_runs, is_monolithic=False):
-        """Add commands for simulation stages, using env_setup from config if present."""
-        common_cfg = self.config["common"]
-        
-        # Add environment setup with container
+        """Add commands for simulation stages using shared command builder for consistency with interactive mode."""
+        # Add basic SLURM environment setup
         slurm.add_cmd(r"cd $HOME")
         slurm.add_cmd("export SLURM_CPU_BIND=\"cores\"")
         
-        # Start srun command with container
-        srun_options = "--exact"
-        if not is_monolithic:
-            # If distributed, we need to preserve SLURM_PROCID for run calculation
-            pass
+        # Use shared command builder for consistency
+        execution_mode = "monolithic_slurm" if is_monolithic else "distributed_slurm"
+        output_dir = cli_utils.get_version_directory(self.config) if is_monolithic else self.run_dir
         
-        slurm.add_cmd(f"srun {srun_options} -u shifter --image={common_cfg['container']} --module=cvmfs bash -c \"")
-        
-        # Use centralized and configurable env_setup
-        env_setup_cmds = cli_utils.get_env_setup_cmds(self.config)
-        for cmd in env_setup_cmds:
-            slurm.add_cmd(cmd + " && \\")
-        
-        # Prepare stage-specific command 
-        if is_monolithic:
-            # For monolithic mode, don't use SLURM_PROCID, provide version_dir instead
-            version_dir = cli_utils.get_version_directory(self.config)
-            cmd = (f"python {self.get_stage_script()} "
-                  f"--config {self.config_path} "
-                  f"--output-base-dir {version_dir}")
+        try:
+            command_info = cli_utils.build_stage_command(
+                config=self.config,
+                config_path=self.config_path,
+                stage_script_path=self.get_stage_script(),
+                output_dir=output_dir,
+                execution_mode=execution_mode,
+                slurm_procid_offset=previous_runs
+            )
             
-            # If stage requires specific monolithic arguments, add them
-            if self.config["stage"] == "new_generation":
-                # For madgraph generation, we might pass additional parameters 
-                # specific to that monolithic process
-                pass
-        else:
-            # For distributed mode, use SLURM_PROCID
-            cmd = (f"python {self.get_stage_script()} "
-                  f"--config {self.config_path} "
-                  f"--output {self.run_dir} "
-                  f"--output-subdir \$(({previous_runs} + SLURM_PROCID)) "
-                  f"--seed {self.config['dataset']}_{self.config['version']}_run\$(({previous_runs} + SLURM_PROCID))")
-        
-        # Close container command
-        cmd += "\""
-        slurm.add_cmd(cmd)
+            # Add the shifter/srun command prefix
+            slurm.add_cmd(command_info["shifter_command"])
+            
+            # Add environment setup commands
+            for cmd in command_info["env_setup_commands"]:
+                slurm.add_cmd(cmd + " && \\")
+            
+            # Add the python command and close the quoted section
+            slurm.add_cmd(command_info["python_command"] + "\"")
+            
+        except Exception as e:
+            logger.error(f"Error building simulation command: {e}")
+            raise
     
     def _add_postprocessing_commands(self, slurm, previous_runs, is_monolithic=False):
-        """Add commands for postprocessing stages, using env_setup from config if present."""
-        # Use srun to properly parallelize tasks with all environment setup inside
-        srun_options = "--exact"
-        slurm.add_cmd(f"srun {srun_options} bash -c \"")
+        """Add commands for postprocessing stages using shared command builder for consistency with interactive mode."""
+        # Use shared command builder for consistency
+        execution_mode = "monolithic_slurm" if is_monolithic else "distributed_slurm"
+        output_dir = cli_utils.get_version_directory(self.config) if is_monolithic else self.run_dir
         
-        # Use centralized and configurable env_setup
-        env_setup_cmds = cli_utils.get_env_setup_cmds(self.config)
-        for cmd in env_setup_cmds:
-            slurm.add_cmd(cmd + " && \\")
-        
-        # Add the Python command based on mode
-        if is_monolithic:
-            # For monolithic mode, we pass the whole version directory
-            version_dir = cli_utils.get_version_directory(self.config)
-            cmd = (f"python {self.get_stage_script()} "
-                  f"--config {self.config_path} "
-                  f"--output-base-dir {version_dir}")
-        else:
-            # For distributed mode, use SLURM_PROCID
-            cmd = (f"python {self.get_stage_script()} "
-                  f"--config {self.config_path} "
-                  f"--chunk-index \$(({previous_runs} + SLURM_PROCID))")
-        
-        # Close the quotation for srun
-        cmd += "\""
-        slurm.add_cmd(cmd)
+        try:
+            command_info = cli_utils.build_stage_command(
+                config=self.config,
+                config_path=self.config_path,
+                stage_script_path=self.get_stage_script(),
+                output_dir=output_dir,
+                execution_mode=execution_mode,
+                slurm_procid_offset=previous_runs
+            )
+            
+            # Add the srun command prefix (no shifter for postprocessing)
+            slurm.add_cmd(command_info["shifter_command"])
+            
+            # Add environment setup commands
+            for cmd in command_info["env_setup_commands"]:
+                slurm.add_cmd(cmd + " && \\")
+            
+            # Add the python command and close the quoted section
+            slurm.add_cmd(command_info["python_command"] + "\"")
+            
+        except Exception as e:
+            logger.error(f"Error building postprocessing command: {e}")
+            raise
     
     def submit_jobs(self):
         """Submit all jobs for the stage"""
