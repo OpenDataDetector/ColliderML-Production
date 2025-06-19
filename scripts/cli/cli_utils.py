@@ -93,6 +93,159 @@ def get_env_setup_cmds(config):
 
     return processed_cmds
 
+def build_stage_command(config, config_path, stage_script_path, output_dir, output_subdir="0", 
+                       execution_mode="interactive", slurm_procid_offset=0):
+    """
+    Build the complete command setup for running a stage, handling both simulation and postprocessing stages.
+    This centralizes environment setup logic to ensure consistency between interactive and batch modes.
+    
+    Args:
+        config (dict): The configuration dictionary
+        config_path (str/Path): Path to the config file
+        stage_script_path (str/Path): Path to the stage script
+        output_dir (str/Path): Output directory path
+        output_subdir (str): Output subdirectory (or "all" for interactive)
+        execution_mode (str): "interactive", "distributed_slurm", or "monolithic_slurm"
+        slurm_procid_offset (int): Offset for SLURM process ID calculation
+    
+    Returns:
+        dict: Dictionary containing:
+            - "use_shifter": bool - Whether to use shifter container
+            - "shifter_command": str - Shifter command prefix (if applicable)
+            - "env_setup_commands": list - Environment setup commands
+            - "python_command": str - The main Python command
+            - "full_command": str - Complete command ready to execute
+    """
+    stage = config["stage"]
+    is_simulation = stage in SIMULATION_STAGES
+    is_postprocessing = stage in POSTPROCESSING_STAGES
+    
+    if not (is_simulation or is_postprocessing):
+        raise ValueError(f"Unknown stage category for stage: {stage}")
+    
+    # Get environment setup commands
+    env_setup_cmds = get_env_setup_cmds(config)
+    
+    # Determine if we need shifter (simulation stages need it)
+    use_shifter = is_simulation
+    
+    # Build the main Python command
+    python_cmd_parts = [
+        "python",
+        str(stage_script_path),
+        "--config", str(config_path)
+    ]
+    
+    # Add stage-specific arguments
+    if execution_mode == "monolithic_slurm":
+        # For monolithic mode, pass the base output directory
+        python_cmd_parts.extend(["--output-base-dir", str(output_dir)])
+    elif is_simulation:
+        # For simulation stages in distributed mode
+        if execution_mode == "interactive":
+            python_cmd_parts.extend([
+                "--output", str(output_dir),
+                "--output-subdir", str(output_subdir)
+            ])
+            if output_subdir != "all":
+                # Add seed for specific run
+                dataset = config.get("dataset", "unknown")
+                version = config.get("version", "unknown")
+                python_cmd_parts.extend([
+                    "--seed", f"{dataset}_{version}_run{output_subdir}"
+                ])
+        else:  # distributed_slurm
+            python_cmd_parts.extend([
+                "--output", str(output_dir),
+                "--output-subdir", f"$(({slurm_procid_offset} + SLURM_PROCID))"
+            ])
+            dataset = config.get("dataset", "unknown")
+            version = config.get("version", "unknown")
+            python_cmd_parts.extend([
+                "--seed", f"{dataset}_{version}_run$(({slurm_procid_offset} + SLURM_PROCID))"
+            ])
+    else:  # postprocessing stages
+        if execution_mode == "interactive":
+            if output_subdir != "all":
+                python_cmd_parts.extend(["--chunk-index", str(output_subdir)])
+            # For "all" case in postprocessing, we might need special handling
+        else:  # distributed_slurm
+            python_cmd_parts.extend([
+                "--chunk-index", f"$(({slurm_procid_offset} + SLURM_PROCID))"
+            ])
+    
+    python_command = " ".join(python_cmd_parts)
+    
+    # Build the complete command based on execution mode and shifter usage
+    if execution_mode == "interactive":
+        if use_shifter:
+            # Interactive mode with shifter
+            common_cfg = config.get("common", {})
+            container = common_cfg.get("container")
+            if not container:
+                raise ValueError("Simulation stage requires 'common.container' in config")
+            
+            shifter_cmd = f"shifter --image={container} --module=cvmfs bash -c \""
+            
+            # Combine env setup and python command inside shifter
+            inner_commands = env_setup_cmds + [python_command]
+            inner_command_str = " && ".join(inner_commands)
+            
+            full_command = shifter_cmd + inner_command_str + "\""
+            
+            return {
+                "use_shifter": True,
+                "shifter_command": shifter_cmd,
+                "env_setup_commands": env_setup_cmds,
+                "python_command": python_command,
+                "full_command": full_command
+            }
+        else:
+            # Interactive mode without shifter
+            full_command_list = env_setup_cmds + [python_command]
+            full_command = " && ".join(full_command_list)
+            
+            return {
+                "use_shifter": False,
+                "shifter_command": None,
+                "env_setup_commands": env_setup_cmds,
+                "python_command": python_command,
+                "full_command": full_command
+            }
+    
+    else:  # SLURM modes
+        if use_shifter:
+            # SLURM with shifter (simulation stages)
+            common_cfg = config.get("common", {})
+            container = common_cfg.get("container")
+            if not container:
+                raise ValueError("Simulation stage requires 'common.container' in config")
+            
+            srun_options = "--exact"
+            shifter_cmd = f"srun {srun_options} -u shifter --image={container} --module=cvmfs bash -c \""
+            
+            # Environment setup commands are added inside the shifter container
+            # Python command is also inside
+            return {
+                "use_shifter": True,
+                "shifter_command": shifter_cmd,
+                "env_setup_commands": env_setup_cmds,
+                "python_command": python_command,
+                "full_command": None  # Will be built by the SLURM job submitter
+            }
+        else:
+            # SLURM without shifter (postprocessing stages)
+            srun_options = "--exact"
+            srun_cmd = f"srun {srun_options} bash -c \""
+            
+            return {
+                "use_shifter": False,
+                "shifter_command": srun_cmd,
+                "env_setup_commands": env_setup_cmds,
+                "python_command": python_command,
+                "full_command": None  # Will be built by the SLURM job submitter
+            }
+
 def apply_config_defaults(config):
     """
     Apply config defaults from env_setup.config_defaults to the main config.
