@@ -386,7 +386,7 @@ def main():
                         try:
                             # Use filename that ACTS merge script can auto-detect
                             if event_file_path.name.endswith('.hepmc.gz'):
-                                destination_path = effective_output_dir / "events.hepmc.gz"
+                            destination_path = effective_output_dir / "events.hepmc.gz"
                             else:
                                 destination_path = effective_output_dir / "events.hepmc3"
                             shutil.move(str(event_file_path), str(destination_path))
