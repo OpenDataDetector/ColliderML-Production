@@ -54,9 +54,9 @@ def get_env_setup_cmds(config):
         logger.warning("No env_setup section found in configuration.")
         return []
 
-    # Get environment variables (uppercase keys for {VARIABLE} format)
+    # Get environment variables (preserve original case for formatting)
     env_variables = env_setup_config.get("env_variables", {})
-    format_dict = {key.upper(): value for key, value in env_variables.items() if isinstance(value, str)}
+    format_dict = {key: value for key, value in env_variables.items() if isinstance(value, str)}
 
     stage = config.get("stage")
     if not stage:
