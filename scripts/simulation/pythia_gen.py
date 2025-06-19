@@ -341,9 +341,9 @@ def merge_events(hard_scatter_file, pileup_file, output_dir, config, logger):
 
 def determine_workflow(config, logger):
     """Determine what operations to perform based on config."""
-    # Simple logic: check config directly
-    generate_hard_scatter = getattr(config, 'generate_hard_scatter', False) or bool(getattr(config, 'hard_process', None))
-    generate_pileup = getattr(config, 'generate_pileup', False) or (getattr(config, 'pileup', 0) > 0)
+    # Simplest logic: check config directly
+    generate_hard_scatter = bool(getattr(config, 'hard_process', None))
+    generate_pileup = getattr(config, 'pileup', 0) > 0
     merge = getattr(config, 'merge', False)
     
     logger.info("Workflow determined:")
