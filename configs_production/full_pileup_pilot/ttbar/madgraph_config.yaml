@@ -5,7 +5,7 @@
 # --- Dataset & Version ---
 campaign: "full_pileup_pilot"
 dataset: "ttbar"
-version: "v7"
+version: "v8"
 stage: "madgraph_generation"  # One of: madgraph_generation, pythia_generation, merge_smear, simulation, digitization
 job_config:
   execution_mode: "interactive"
@@ -22,7 +22,7 @@ generation_scratch_dir: "{madgraph.generation_scratch_dir}"
 output: "{madgraph.output}"
 
 # --- MadGraph Event Settings ---
-events: 1024               
+events: 8               
 seed: 42                   
 
 # --- Card Templates ---
@@ -54,7 +54,7 @@ card_customizations:
     # "Top:all ": "on" # Example if Pythia8 needs to be told to decay tops (usually does by default)
 
 splitting_config:
-  enable: true
+  enable: false
   events_per_file: 32
   output_filename: "events.hepmc3"
 
