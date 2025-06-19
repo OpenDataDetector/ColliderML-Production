@@ -220,7 +220,7 @@ def generate_pileup(output_dir, config, logger):
     s.addWriter(
         HepMC3Writer(
             acts.logging.INFO,
-            inputEvent="particles",
+            inputEvent="pythia8-event",
             outputPath=output_path,
         )
     )
@@ -358,11 +358,6 @@ def run_workflow(output_dir, config, logger):
         Path: Path to final output file
     """
     should_generate_hard_scatter, should_generate_pileup, should_merge = determine_workflow(config, logger)
-    
-    logger.info("Workflow plan:")
-    logger.info(f"  Generate hard scatter: {should_generate_hard_scatter}")
-    logger.info(f"  Generate pileup: {should_generate_pileup}")
-    logger.info(f"  Merge events: {should_merge}")
     
     # Generation Phase
     hard_scatter_file = None
