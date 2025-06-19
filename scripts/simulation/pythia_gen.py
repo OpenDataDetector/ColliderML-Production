@@ -5,7 +5,7 @@ import acts.examples
 from acts.examples import Sequencer
 from acts.examples.simulation import addPythia8
 from acts.examples.hepmc3 import (
-        HepMC3AsciiWriter,
+        HepMC3Writer,
     )
 import traceback
 # Removed pyhepmc, numpy imports as they will be handled by the imported module
@@ -168,7 +168,7 @@ def generate_pileup_events(output_dir, config, logger):
     logger.debug("Pythia8 pileup-only generator created successfully.")
 
     s_pileup.addWriter(
-        HepMC3AsciiWriter(
+        HepMC3Writer(
             acts.logging.INFO,
             inputEvent="pileup_events",
             outputPath=pileup_path,
@@ -310,7 +310,7 @@ def run_standard_pythia_mode(output_dir, config, logger):
         logger.debug("Pythia8 generator created successfully")
 
         s.addWriter(
-            HepMC3AsciiWriter(
+            HepMC3Writer(
                 acts.logging.VERBOSE,
                 inputEvent="events",
                 outputPath=output_path,

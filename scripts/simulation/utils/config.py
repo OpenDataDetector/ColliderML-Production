@@ -81,11 +81,6 @@ def load_config(args):
         with open(args.config) as f:
             config = yaml.safe_load(f)
             logger.info(f"Loaded configuration from {args.config}")
-        # Flatten nested YAML keys if needed
-        for k, v in list(config.items()):
-            if isinstance(v, dict):
-                for subk, subv in v.items():
-                    config[subk] = subv
         # Only set values from config if the arg is None
         for key, value in config.items():
             if getattr(args, key, None) is None:
