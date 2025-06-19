@@ -342,16 +342,16 @@ def merge_events(hard_scatter_file, pileup_file, output_dir, config, logger):
 def determine_workflow(config, logger):
     """Determine what operations to perform based on config."""
     # Simplest logic: check config directly
-    generate_hard_scatter = bool(getattr(config, 'hard_process', None))
-    generate_pileup = getattr(config, 'pileup', 0) > 0
-    merge = getattr(config, 'merge', False)
+    should_generate_hard_scatter = bool(getattr(config, 'hard_process', None))
+    should_generate_pileup = getattr(config, 'pileup', 0) > 0
+    should_merge = getattr(config, 'merge', False)
     
     logger.info("Workflow determined:")
-    logger.info(f"  → Generate hard scatter: {generate_hard_scatter}")
-    logger.info(f"  → Generate pileup: {generate_pileup}")
-    logger.info(f"  → Merge events: {merge}")
+    logger.info(f"  → Generate hard scatter: {should_generate_hard_scatter}")
+    logger.info(f"  → Generate pileup: {should_generate_pileup}")
+    logger.info(f"  → Merge events: {should_merge}")
     
-    return generate_hard_scatter, generate_pileup, merge
+    return should_generate_hard_scatter, should_generate_pileup, should_merge
 
 def run_workflow(output_dir, config, logger):
     """Execute the complete workflow based on configuration.
@@ -359,27 +359,27 @@ def run_workflow(output_dir, config, logger):
     Returns:
         Path: Path to final output file
     """
-    generate_hard_scatter, generate_pileup, merge = determine_workflow(config, logger)
+    should_generate_hard_scatter, should_generate_pileup, should_merge = determine_workflow(config, logger)
     
     logger.info("Workflow plan:")
-    logger.info(f"  Generate hard scatter: {generate_hard_scatter}")
-    logger.info(f"  Generate pileup: {generate_pileup}")
-    logger.info(f"  Merge events: {merge}")
+    logger.info(f"  Generate hard scatter: {should_generate_hard_scatter}")
+    logger.info(f"  Generate pileup: {should_generate_pileup}")
+    logger.info(f"  Merge events: {should_merge}")
     
     # Generation Phase
     hard_scatter_file = None
     pileup_file = None
     
-    if generate_hard_scatter:
+    if should_generate_hard_scatter:
         logger.info("=== GENERATION PHASE: Hard Scatter ===")
         hard_scatter_file = generate_hard_scatter(output_dir, config, logger)
     
-    if generate_pileup:
+    if should_generate_pileup:
         logger.info("=== GENERATION PHASE: Pileup ===")
         pileup_file = generate_pileup(output_dir, config, logger)
     
     # Merging Phase  
-    if merge:
+    if should_merge:
         logger.info("=== MERGING PHASE ===")
         
         # Find files if not generated
