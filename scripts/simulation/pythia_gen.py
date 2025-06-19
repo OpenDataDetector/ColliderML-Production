@@ -317,6 +317,7 @@ def merge_events(hard_scatter_file, pileup_file, output_dir, config, logger):
             outputEvent="merged_events",
             randomNumbers=rng,
             vertexGenerator=vtxGen,
+            numEvents=config.events,  # Specify number of events to avoid auto-detection
         )
     )
     
