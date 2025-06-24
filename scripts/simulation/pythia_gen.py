@@ -153,7 +153,7 @@ def generate_hard_scatter(output_dir, config, logger):
     logger.info(f"Generating {config.events} hard scatter events")
     
     s = Sequencer(numThreads=1, events=config.events)
-    s.config.logLevel = acts.logging.DEBUG
+    s.config.logLevel = acts.logging.INFO
     rnd = acts.examples.RandomNumbers(seed=config.seed or int(time.time()))
     
     # No vertex smearing during generation - ACTS will handle this during merge
@@ -167,7 +167,7 @@ def generate_hard_scatter(output_dir, config, logger):
         outputDirCsv=None,
         outputDirRoot=None,
         rnd=rnd,
-        logLevel=acts.logging.DEBUG,
+        logLevel=acts.logging.INFO,
         vtxGen=None,
     )
     
@@ -199,7 +199,7 @@ def generate_pileup(output_dir, config, logger):
                 f"({config.events} signal events × {pileup_multiplicity} pileup per signal)")
     
     s = Sequencer(numThreads=1, events=total_pileup_events)
-    s.config.logLevel = acts.logging.DEBUG
+    s.config.logLevel = acts.logging.INFO
     rnd = acts.examples.RandomNumbers(seed=(config.seed or int(time.time())) + 1000)  # Different seed for pileup
     
     output_path = output_dir / "events_pileup.hepmc3"
@@ -213,7 +213,7 @@ def generate_pileup(output_dir, config, logger):
         outputDirCsv=None,
         outputDirRoot=None,
         rnd=rnd,
-        logLevel=acts.logging.DEBUG,
+        logLevel=acts.logging.INFO,
         vtxGen=None,  # No vertex smearing during generation
     )
     
