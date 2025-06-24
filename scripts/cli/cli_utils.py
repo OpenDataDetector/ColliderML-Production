@@ -23,6 +23,10 @@ SIMULATION_STAGES = ["madgraph_generation", "pythia_generation", "merge_smear", 
 POSTPROCESSING_STAGES = ["build_tracks", "build_hits", "build_particles"]
 VALID_STAGES = SIMULATION_STAGES + POSTPROCESSING_STAGES
 
+# Define which stages need shifter container (subset of simulation stages)
+# madgraph_generation runs on host environment and doesn't need shifter
+SHIFTER_STAGES = ["pythia_generation", "merge_smear", "simulation", "digitization"]
+
 # Stage to script mappings
 STAGE_SCRIPT_MAP = {
     # Simulation scripts
@@ -99,6 +103,9 @@ def build_stage_command(config, config_path, stage_script_path, output_dir, outp
     Build the complete command setup for running a stage, handling both simulation and postprocessing stages.
     This centralizes environment setup logic to ensure consistency between interactive and batch modes.
     
+    Shifter containers are only used for stages that require them (defined in SHIFTER_STAGES).
+    madgraph_generation runs in the host environment without shifter.
+    
     Args:
         config (dict): The configuration dictionary
         config_path (str/Path): Path to the config file
@@ -126,8 +133,8 @@ def build_stage_command(config, config_path, stage_script_path, output_dir, outp
     # Get environment setup commands
     env_setup_cmds = get_env_setup_cmds(config)
     
-    # Determine if we need shifter (simulation stages need it)
-    use_shifter = is_simulation
+    # Determine if we need shifter (only specific stages need it)
+    use_shifter = stage in SHIFTER_STAGES
     
     # Build the main Python command
     python_cmd_parts = [
@@ -183,7 +190,7 @@ def build_stage_command(config, config_path, stage_script_path, output_dir, outp
             common_cfg = config.get("common", {})
             container = common_cfg.get("container")
             if not container:
-                raise ValueError("Simulation stage requires 'common.container' in config")
+                raise ValueError(f"Stage '{stage}' requires shifter container but 'common.container' not found in config")
             
             shifter_cmd = f"shifter --image={container} --module=cvmfs bash -c \""
             
@@ -215,11 +222,11 @@ def build_stage_command(config, config_path, stage_script_path, output_dir, outp
     
     else:  # SLURM modes
         if use_shifter:
-            # SLURM with shifter (simulation stages)
+            # SLURM with shifter (stages that need containers)
             common_cfg = config.get("common", {})
             container = common_cfg.get("container")
             if not container:
-                raise ValueError("Simulation stage requires 'common.container' in config")
+                raise ValueError(f"Stage '{stage}' requires shifter container but 'common.container' not found in config")
             
             srun_options = "--exact"
             shifter_cmd = f"srun {srun_options} -u shifter --image={container} --module=cvmfs bash -c \""
