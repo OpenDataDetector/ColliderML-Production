@@ -3,9 +3,9 @@
 #========================================================================
 
 # --- Dataset & Version ---
-campaign: "full_pileup_pilot"
+campaign: "full_pileup_mini_pilot"
 dataset: "ttbar"
-version: "v9"
+version: "v1"
 stage: "madgraph_generation"  # One of: madgraph_generation, pythia_generation, merge_smear, simulation, digitization
 job_config:
   execution_mode: "interactive"
@@ -22,7 +22,7 @@ generation_scratch_dir: "{madgraph.generation_scratch_dir}"
 output: "{madgraph.output}"
 
 # --- MadGraph Event Settings ---
-events: 2048               
+events: 32768               
 seed: 42                   
 
 # --- Card Templates ---
