@@ -5,7 +5,7 @@
 # --- Dataset & Version ---
 campaign: "full_pileup_pilot"
 dataset: "ttbar"
-version: "v8"
+version: "v9"
 stage: "madgraph_generation"  # One of: madgraph_generation, pythia_generation, merge_smear, simulation, digitization
 job_config:
   execution_mode: "interactive"
@@ -22,7 +22,7 @@ generation_scratch_dir: "{madgraph.generation_scratch_dir}"
 output: "{madgraph.output}"
 
 # --- MadGraph Event Settings ---
-events: 8               
+events: 2048               
 seed: 42                   
 
 # --- Card Templates ---
@@ -33,7 +33,7 @@ card_templates:
 # --- Card Customizations ---
 card_customizations:
   run_card:
-    "xqcut": 60.0          # Shower-kT starting scale (GeV) for ttbar - NEEDS TUNING
+    "xqcut": 0.0          # Shower-kT starting scale (GeV) for ttbar - NEEDS TUNING
     "parton_shower": "PYTHIA8" 
     # For ttbar, you might also want to ensure these are set appropriately in the run_card via regex or have good defaults:
     # "ickkw": 1           # FxFx merging scheme
@@ -41,9 +41,9 @@ card_customizations:
     # "auto_ptj_bias": ".true." # May improve efficiency for some NLO processes
 
   pythia8_card: 
-    "{{XQCUT}}": 60.0        # MUST be IDENTICAL to the run_card xqcut value.
+    "{{XQCUT}}": 0.0        # MUST be IDENTICAL to the run_card xqcut value.
     "{{PYTHIA_SEED}}": 42 
-    "{{NEVENTS}}": 10000 # Matches global 'events', though often ignored by Pythia when MG drives
+    "{{NEVENTS}}": 2048 # Matches global 'events', though often ignored by Pythia when MG drives
     "{{N_JET_MAX_MATCH}}": 1 # For t t~ + 0,1 jet ME from 'generate p p > t t~ [QCD]'
     "{{PYTHIA_TUNE}}": 14    # Example: Monash 2013 tune (Tune:pp = 5 for older default)
     # "{{PDF_SET_NAME}}": "NNPDF31_nlo_as_0118" # Set if PDF:pSet is uncommented in template
@@ -54,8 +54,8 @@ card_customizations:
     # "Top:all ": "on" # Example if Pythia8 needs to be told to decay tops (usually does by default)
 
 splitting_config:
-  enable: false
-  events_per_file: 32
+  enable: true
+  events_per_file: 128
   output_filename: "events.hepmc3"
 
 # --- Logging ---
