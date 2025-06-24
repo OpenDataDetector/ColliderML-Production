@@ -164,12 +164,12 @@ def build_stage_command(config, config_path, stage_script_path, output_dir, outp
         else:  # distributed_slurm
             python_cmd_parts.extend([
                 "--output", str(output_dir),
-                "--output-subdir", f"$(({slurm_procid_offset} + SLURM_PROCID))"
+                "--output-subdir", f"\$(({slurm_procid_offset} + SLURM_PROCID))"
             ])
             dataset = config.get("dataset", "unknown")
             version = config.get("version", "unknown")
             python_cmd_parts.extend([
-                "--seed", f"{dataset}_{version}_run$(({slurm_procid_offset} + SLURM_PROCID))"
+                "--seed", f"{dataset}_{version}_run\$(({slurm_procid_offset} + SLURM_PROCID))"
             ])
     else:  # postprocessing stages
         if execution_mode == "interactive":
