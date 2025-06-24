@@ -8,7 +8,7 @@ job_config:
   n_runs: 16  # Number of jobs to submit
   runs_per_node: 8  # Number of runs per node
   time_limit: "00:30:00"  # Time limit per job
-  qos: "default"
+  qos: "debug"
   execution_mode: "distributed_slurm"
 
 validation_config:
