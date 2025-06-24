@@ -254,15 +254,7 @@ def find_hard_scatter_file(output_dir, config, explicit_path=None):
         if candidate.exists():
             return candidate
     
-    # Look for any hepmc file that might be signal
-    hepmc_files = list(output_dir.glob("*.hepmc*"))
-    if len(hepmc_files) == 1:
-        return hepmc_files[0]
-    
-    raise FileNotFoundError(
-        f"Hard scatter file not found. Looked for: {[str(c) for c in candidates]}. "
-        f"Available files: {[f.name for f in hepmc_files]}"
-    )
+    raise FileNotFoundError(f"Hard scatter file not found. Looked for: {[str(c) for c in candidates]}")
 
 def find_pileup_file(output_dir, config, explicit_path=None):
     """Find pileup file with smart detection."""
