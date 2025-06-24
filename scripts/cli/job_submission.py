@@ -22,10 +22,9 @@ class JobSubmitter:
     POSTPROCESSING_STAGES = ["build_tracks", "build_hits", "build_particles"]
     VALID_STAGES = SIMULATION_STAGES + POSTPROCESSING_STAGES
     
-    def __init__(self, config_path, git_repo_path, dry_run=False, run_range=None, run_list=None):
-        """Initialize with YAML config"""
+    def __init__(self, config_path=None, config_dict=None, git_repo_path=None, dry_run=False, run_range=None, run_list=None):
+        """Initialize with YAML config file or pre-processed config dict"""
         self.dry_run = dry_run
-        self.config_path = config_path
         self.git_repo_path = git_repo_path
         self.run_range = run_range
         self.run_list = run_list
@@ -34,8 +33,16 @@ class JobSubmitter:
         if run_range and run_list:
             raise ValueError("Cannot specify both run_range and run_list")
         
-        with open(config_path) as f:
-            self.config = yaml.safe_load(f)
+        # Accept either config_path OR config_dict
+        if config_dict is not None:
+            self.config = config_dict
+            self.config_path = config_path or "processed_config"  # Use provided path or placeholder
+        elif config_path is not None:
+            self.config_path = config_path
+            with open(config_path) as f:
+                self.config = yaml.safe_load(f)
+        else:
+            raise ValueError("Must provide either config_path or config_dict")
             
         self.validate_config()
         self.calculate_job_distribution()

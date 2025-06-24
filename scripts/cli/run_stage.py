@@ -264,8 +264,10 @@ def main():
             submitter_run_range = args.run_range if args.run_range else None
             submitter_run_list = args.run_list if args.run_list else None
             
-            # For monolithic_slurm mode, we ensure n_runs and runs_per_node are suitable
+            # Start with the processed config (which has env_setup defaults applied)
             effective_config = config.copy()
+            
+            # For monolithic_slurm mode, we ensure n_runs and runs_per_node are suitable
             if execution_mode == "monolithic_slurm":
                 if "job_config" not in effective_config:
                     effective_config["job_config"] = {}
@@ -288,9 +290,10 @@ def main():
             else:
                 config_path_for_submitter = args.config
 
-            # Initialize JobSubmitter
+            # Initialize JobSubmitter with processed config
             job_submitter = JobSubmitter(
                 config_path=config_path_for_submitter,
+                config_dict=effective_config,  # Pass the processed config with defaults applied
                 git_repo_path=git_repo_path,
                 dry_run=args.dry_run,
                 run_range=submitter_run_range,
