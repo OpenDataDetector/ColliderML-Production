@@ -6,6 +6,7 @@ from acts.examples import Sequencer
 from acts.examples.simulation import addPythia8
 from acts.examples.hepmc3 import (
         HepMC3Writer,
+        HepMC3Reader,
     )
 import traceback
 # Removed pyhepmc, numpy imports as they will be handled by the imported module
@@ -13,17 +14,53 @@ import traceback
 from utils.app_logging import setup_logging, TimingRecorder
 from utils.config import create_base_parser, load_config
 
-# Import merging and smearing functions
-from merge_and_smear_madgraph import merge_hepmc_files as merge_external_signal_with_pileup
 
 u = acts.UnitConstants
 
 def parse_args():
     """Parse command line arguments"""
-    parser = create_base_parser("Pythia8 event generation for ACTS")
+    parser = create_base_parser("Pythia8 event generation and ACTS merging")
+    
+    # Generation control
+    parser.add_argument(
+        "--generate-hard-scatter",
+        help="Generate hard scatter events with Pythia8",
+        action="store_true",
+        default=None,
+    )
+    parser.add_argument(
+        "--generate-pileup",
+        help="Generate pileup events with Pythia8", 
+        action="store_true",
+        default=None,
+    )
+    
+    # Merging control
+    parser.add_argument(
+        "--merge",
+        help="Merge hard scatter and pileup using ACTS HepMC3Reader",
+        action="store_true", 
+        default=None,
+    )
+    
+    # File paths (optional overrides)
+    parser.add_argument(
+        "--hard-scatter-file",
+        help="Path to hard scatter file (auto-detect if not specified)",
+        type=Path,
+        default=None,
+    )
+    parser.add_argument(
+        "--pileup-file", 
+        help="Path to pileup file (auto-detect if not specified)",
+        type=Path,
+        default=None,
+    )
+    
+    # Pythia8 settings
     parser.add_argument(
         "--pileup",
-        help="Number of pile-up events",
+        help="Number of pile-up events per hard scatter",
         type=int,
         default=None,
     )
@@ -39,13 +76,7 @@ def parse_args():
         type=str,
         default=None,
     )
-    # Merge signal flag
-    parser.add_argument(
-        "--merge-signal",
-        help="Merge with existing signal file (events.hepmc3 or events.hepmc.gz) in output directory",
-        action="store_true",
-        default=None,
-    )
+    
     # Vertex smearing parameters 
     parser.add_argument(
         "--vertex-sigma-xy",
@@ -68,333 +99,332 @@ def parse_args():
     return parser.parse_args()
 
 def create_vertex_generator(config, logger):
-    """Create ACTS GaussianVertexGenerator from config parameters.
+    """Create ACTS GaussianVertexGenerator from config parameters."""
+    sigma_xy = getattr(config, 'vertex_sigma_xy', 0.0) or 0.0
+    sigma_z = getattr(config, 'vertex_sigma_z', 0.0) or 0.0
+    sigma_t = getattr(config, 'vertex_sigma_t', 0.0) or 0.0
     
-    Args:
-        config: Configuration object with vertex_sigma_xy, vertex_sigma_z, vertex_sigma_t
-        logger: Logger instance
-        
-    Returns:
-        acts.examples.GaussianVertexGenerator or None if no smearing configured
-    """
-    logger.info(f"Configuring vertex smearing with sigma_xy={config.vertex_sigma_xy} mm, "
-                f"sigma_z={config.vertex_sigma_z} mm, sigma_t={config.vertex_sigma_t} ns")
+    logger.info(f"Vertex smearing: sigma_xy={sigma_xy} mm, sigma_z={sigma_z} mm, sigma_t={sigma_t} ns")
     
-    if any(sigma is not None and sigma != 0 for sigma in [
-        config.vertex_sigma_xy,
-        config.vertex_sigma_z,
-        config.vertex_sigma_t
-    ]):
+    if any(sigma != 0 for sigma in [sigma_xy, sigma_z, sigma_t]):
         return acts.examples.GaussianVertexGenerator(
             stddev=acts.Vector4(
-                config.vertex_sigma_xy * u.mm,
-                config.vertex_sigma_xy * u.mm,
-                config.vertex_sigma_z * u.mm,
-                config.vertex_sigma_t * u.ns
+                sigma_xy * u.mm,
+                sigma_xy * u.mm, 
+                sigma_z * u.mm,
+                sigma_t * u.ns
             ),
             mean=acts.Vector4(0, 0, 0, 0),
         )
-    return None
+    else:
+        logger.info("No vertex smearing configured")
+        return None
 
 def parse_pythia_settings(config, logger):
-    """Parse Pythia8 settings from config and hard process.
-    
-    Args:
-        config: Configuration object with pythia_settings and hard_process
-        logger: Logger instance
-        
-    Returns:
-        list: Pythia8 settings or None if no settings configured
-    """
+    """Parse Pythia8 settings from config and hard process."""
     pythia_settings = []
     
-    # Add all settings from config if present
+    # Add settings from config
     if getattr(config, 'pythia_settings', None):
         if isinstance(config.pythia_settings, str):
-            logger.debug("Processing command-line pythia settings")
             pythia_settings.extend([s.strip() for s in config.pythia_settings.split(',') if s.strip()])
         elif isinstance(config.pythia_settings, list):
-            logger.debug("Processing YAML list pythia settings")
             pythia_settings.extend(config.pythia_settings)
         else:
             raise ValueError("pythia_settings must be either a comma-separated string or a list")
     
-    # Always append the hard process at the end
+    # Add hard process
     hard_process = getattr(config, 'hard_process', None)
     if isinstance(hard_process, str) and hard_process.strip():
         pythia_settings.append(f"{hard_process.strip()}=on")
 
     return pythia_settings if pythia_settings else None
 
-def generate_pileup_events(output_dir, config, logger):
-    """Generate pileup-only events with vertex smearing applied during generation.
+def generate_hard_scatter(output_dir, config, logger):
+    """Generate hard scatter events with Pythia8.
     
-    Args:
-        output_dir: Path to output directory
-        config: Configuration object
-        logger: Logger instance
-        
     Returns:
-        Path: Path to generated pileup file (events_pileup.hepmc3)
+        Path: Path to generated hard scatter file
     """
-    logger.info(f"Generating {config.events} pileup events for merging.")
+    pythia_settings = parse_pythia_settings(config, logger)
+    if not pythia_settings:
+        raise ValueError("No hard process configured for hard scatter generation")
     
-    # Create sequencer for pileup generation
-    s_pileup = Sequencer(numThreads=1, events=config.events)
-    s_pileup.config.logLevel = acts.logging.DEBUG
-    seed_pileup = config.seed or int(time.time())
-    logger.info(f"Using random seed for pileup: {seed_pileup}")
-    rnd_pileup = acts.examples.RandomNumbers(seed=seed_pileup)
+    logger.info(f"Generating {config.events} hard scatter events")
     
-    # Apply vertex smearing to pileup during generation for efficiency
-    vtxGen_pileup = create_vertex_generator(config, logger)
+    s = Sequencer(numThreads=1, events=config.events)
+    s.config.logLevel = acts.logging.INFO
+    rnd = acts.examples.RandomNumbers(seed=config.seed or int(time.time()))
     
-    # Pileup events output path
-    pileup_path = output_dir / "events_pileup.hepmc3"
+    # No vertex smearing during generation - ACTS will handle this during merge
+    output_path = output_dir / "events_signal.hepmc3"
     
-    logger.debug("Creating Pythia8 pileup-only generator...")
     addPythia8(
-        s_pileup,
-        npileup=config.pileup,
-        nhard=0,
+        s,
+        npileup=0,  # No pileup in signal generation
+        nhard=1,    # One hard process per event
+        hardProcess=pythia_settings,
+        outputDirCsv=None,
+        outputDirRoot=None,
+        rnd=rnd,
+        logLevel=acts.logging.INFO,
+        vtxGen=None,
+    )
+    
+    s.addWriter(
+        HepMC3Writer(
+            acts.logging.INFO,
+            inputEvent="particles",
+            outputPath=output_path,
+        )
+    )
+    
+    logger.info(f"Writing hard scatter events to {output_path}")
+    s.run()
+    logger.info("Hard scatter generation completed")
+    
+    return output_path
+
+def generate_pileup(output_dir, config, logger):
+    """Generate individual pileup events for ACTS merging.
+    
+    Returns:
+        Path: Path to generated pileup file
+    """
+    # Calculate total pileup events needed
+    pileup_multiplicity = getattr(config, 'pileup', 1)
+    total_pileup_events = config.events * pileup_multiplicity
+    
+    logger.info(f"Generating {total_pileup_events} individual pileup events "
+                f"({config.events} signal events × {pileup_multiplicity} pileup per signal)")
+    
+    s = Sequencer(numThreads=1, events=total_pileup_events)
+    s.config.logLevel = acts.logging.INFO
+    rnd = acts.examples.RandomNumbers(seed=(config.seed or int(time.time())) + 1000)  # Different seed for pileup
+    
+    output_path = output_dir / "events_pileup.hepmc3"
+    
+    # Generate individual pileup events (no hard process)
+    addPythia8(
+        s,
+        npileup=1,  # Generate individual pileup events
+        nhard=0,    # No hard process
         hardProcess=None,
         outputDirCsv=None,
         outputDirRoot=None,
-        outputEvent="pileup_events",
-        rnd=rnd_pileup,
-        logLevel=acts.logging.DEBUG,
-        vtxGen=vtxGen_pileup,  # Apply vertex smearing during pileup generation
+        rnd=rnd,
+        logLevel=acts.logging.INFO,
+        vtxGen=None,  # No vertex smearing during generation
     )
-    logger.debug("Pythia8 pileup-only generator created successfully.")
-
-    s_pileup.addWriter(
+    
+    s.addWriter(
         HepMC3Writer(
             acts.logging.INFO,
-            inputEvent="pileup_events",
-            outputPath=pileup_path,
+            inputEvent="pythia8-event",
+            outputPath=output_path,
         )
     )
+    
+    logger.info(f"Writing individual pileup events to {output_path}")
+    s.run()
+    logger.info("Pileup generation completed")
+    
+    return output_path
 
-    logger.info(f"Writing pileup events to {pileup_path}")
-    s_pileup.run()
-    logger.info("Pileup generation completed.")
+def find_hard_scatter_file(output_dir, config, explicit_path=None):
+    """Find hard scatter file with smart detection."""
+    if explicit_path and explicit_path.exists():
+        return explicit_path
     
-    return pileup_path
-
-def merge_signal_and_pileup(signal_file_path, pileup_path, output_dir, config, logger):
-    """Merge pre-existing signal file with generated pileup events.
+    # Check config for hard scatter file path
+    config_path = getattr(config, 'hard_scatter_file', None)
+    if config_path:
+        config_path = Path(config_path)
+        if config_path.exists():
+            return config_path
     
-    Args:
-        signal_file_path: Path to signal file (events.hepmc3 or events.hepmc.gz)
-        pileup_path: Path to pileup file (events_pileup.hepmc3)
-        output_dir: Output directory
-        config: Configuration object
-        logger: Logger instance
-        
-    Returns:
-        Path: Path to merged output file (merged_events.hepmc3)
-    """
-    # For merge: only smear signal events (pileup is already smeared)
-    vertex_sigmas_for_signal_only = {
-        'xy': getattr(config, 'vertex_sigma_xy', 0.0),
-        'z': getattr(config, 'vertex_sigma_z', 0.0),
-        't': getattr(config, 'vertex_sigma_t', 0.0)  # Pass as ns
-    }
-    
-    final_merged_path = output_dir / "merged_events.hepmc3"
-    logger.info(f"Calling merge function for signal {signal_file_path} and pileup {pileup_path}")
-    logger.info("Note: Pileup events already have vertex smearing applied, only signal events will be smeared during merge")
-    
-    merge_external_signal_with_pileup(
-        signal_path=signal_file_path,
-        pileup_path=pileup_path,
-        num_events=config.events,
-        output_path=final_merged_path,
-        vertex_sigmas_mm_ns=vertex_sigmas_for_signal_only,
-        config=None,
-        smear_pileup=False,  # Pileup is already smeared during generation
-        logger=logger
-    )
-    
-    logger.info(f"Signal-pileup merge completed. Output: {final_merged_path}")
-    return final_merged_path
-
-def run_merge_signal_mode(output_dir, config, logger):
-    """Run signal merging mode: generate pileup and merge with existing signal file.
-    
-    Args:
-        output_dir: Path to output directory
-        config: Configuration object
-        logger: Logger instance
-        
-    Returns:
-        Path: Path to final merged output file
-    """
-    # Check for existing signal file - try both naming conventions
-    signal_file_candidates = [
-        output_dir / "events.hepmc3",      # From MadGraph with splitting
-        output_dir / "events.hepmc.gz"    # From MadGraph without splitting
+    # Auto-detect in output directory
+    candidates = [
+        output_dir / "events_signal.hepmc3",  # From Pythia8 generation
+        output_dir / "events.hepmc3",         # From MadGraph with splitting
+        output_dir / "events.hepmc.gz",      # From MadGraph without splitting
     ]
     
-    signal_file_path = None
-    for candidate in signal_file_candidates:
+    for candidate in candidates:
         if candidate.exists():
-            signal_file_path = candidate
-            break
+            return candidate
     
-    if signal_file_path is None:
-        available_files = list(output_dir.glob("*.hepmc*"))
-        raise FileNotFoundError(
-            f"No signal file found. Looked for: {[str(c) for c in signal_file_candidates]}. "
-            f"Available files in {output_dir}: {[f.name for f in available_files]}"
-        )
-    
-    logger.info(f"Signal file merging mode with: {signal_file_path}")
-    
-    # Generate pileup events with smearing
-    pileup_path = generate_pileup_events(output_dir, config, logger)
-    
-    # Merge signal and pileup
-    return merge_signal_and_pileup(signal_file_path, pileup_path, output_dir, config, logger)
+    raise FileNotFoundError(f"Hard scatter file not found. Looked for: {[str(c) for c in candidates]}")
 
-def run_standard_pythia_mode(output_dir, config, logger):
-    """Run standard Pythia8 generation mode (signal+pileup or pileup-only).
+def find_pileup_file(output_dir, config, explicit_path=None):
+    """Find pileup file with smart detection."""
+    if explicit_path and explicit_path.exists():
+        return explicit_path
     
-    Args:
-        output_dir: Path to output directory
-        config: Configuration object
-        logger: Logger instance
-        
+    # Check config for pileup file path
+    config_path = getattr(config, 'pileup_file', None)
+    if config_path:
+        config_path = Path(config_path)
+        if config_path.exists():
+            return config_path
+    
+    # Auto-detect in output directory
+    pileup_path = output_dir / "events_pileup.hepmc3"
+    if pileup_path.exists():
+        return pileup_path
+    
+    raise FileNotFoundError(f"Pileup file not found: {pileup_path}")
+
+def merge_events(hard_scatter_file, pileup_file, output_dir, config, logger):
+    """Merge hard scatter and pileup events using ACTS HepMC3Reader.
+    
     Returns:
-        Path: Path to generated output file
+        Path: Path to merged output file
     """
-    logger.info("Standard Pythia8 generation mode (no signal file merging).")
+    pileup_multiplicity = getattr(config, 'pileup', 1)
     
-    # Create sequencer for Pythia8
-    s = Sequencer(numThreads=1, events=config.events)
-    s.config.logLevel = acts.logging.DEBUG
-    seed = config.seed or int(time.time())
-    logger.info(f"Using random seed: {seed}")
-    rnd = acts.examples.RandomNumbers(seed=seed)
+    logger.info(f"ACTS merging:")
+    logger.info(f"  Hard scatter: {hard_scatter_file}")
+    logger.info(f"  Pileup: {pileup_file}")
+    logger.info(f"  Pileup multiplicity: {pileup_multiplicity}")
     
     # Create vertex generator
     vtxGen = create_vertex_generator(config, logger)
     
-    # Parse Pythia8 settings
-    pythia_settings = parse_pythia_settings(config, logger)
+    # Create sequencer
+    s = acts.examples.Sequencer(numThreads=1, events=config.events)
+    s.config.logLevel = acts.logging.INFO
     
-    logger.info(f"Generating {config.events} events with {config.pileup} pileup each")
-    logger.info(f"Final Pythia8 settings: {pythia_settings}")
+    # Random number generator
+    rng = acts.examples.RandomNumbers(seed=config.seed or 42)
     
-    # Determine output path based on whether we have hard process
-    if pythia_settings is not None:
-        output_path = output_dir / "merged_events.hepmc3"  # Signal+pileup final product
-    else:
-        output_path = output_dir / "events_pileup.hepmc3"  # Pileup-only, needs later merging
-
-    try:
-        logger.debug("Creating Pythia8 generator...")
-        nhardProcess = 1 if pythia_settings is not None else 0
-        generator = addPythia8(
-            s,
-            npileup=config.pileup,
-            nhard=nhardProcess,
-            hardProcess=pythia_settings,
-            outputDirCsv=None,
-            outputDirRoot=None,
-            outputEvent="events",
-            rnd=rnd,
-            logLevel=acts.logging.DEBUG,
-            vtxGen=vtxGen,
+    # ACTS HepMC3Reader with merging
+    s.addReader(
+        HepMC3Reader(
+            inputPaths=[
+                (hard_scatter_file, 1),               # Read each signal event once
+                (pileup_file, pileup_multiplicity),   # Read pileup with multiplicity
+            ],
+            level=acts.logging.INFO,
+            outputEvent="merged_events",
+            randomNumbers=rng,
+            vertexGenerator=vtxGen,
+            numEvents=config.events,  # Specify number of events to avoid auto-detection
         )
-        logger.debug("Pythia8 generator created successfully")
-
-        s.addWriter(
-            HepMC3Writer(
-                acts.logging.VERBOSE,
-                inputEvent="events",
-                outputPath=output_path,
-            )
+    )
+    
+    # Output merged file
+    merged_path = output_dir / "merged_events.hepmc3"
+    s.addWriter(
+        HepMC3Writer(
+            inputEvent="merged_events",
+            outputPath=merged_path,
+            level=acts.logging.INFO,
+            writeEventsInOrder=False,
         )
+    )
+    
+    logger.info(f"Running ACTS merge to: {merged_path}")
+    s.run()
+    logger.info("ACTS merging completed")
+    
+    return merged_path
 
-        logger.debug(f"Writing HepMC3 events to {output_path}")
-        logger.debug("About to start sequencer run...")
-        
-        s.run()
-        logger.debug("Sequencer run completed")
-            
-    except Exception as e:
-        logger.error(f"Error during Pythia8 generation: {str(e)}")
-        logger.error(traceback.format_exc())
-        if hasattr(s, 'config') and hasattr(s, 'currentEvent'):
-            logger.error(f"Sequencer state at crash:")
-            logger.error(f"  Number of events: {s.config.events}")
-            logger.error(f"  Current event: {s.currentEvent}")
-        raise
+def determine_workflow(config, logger):
+    """Determine what operations to perform based on config."""
+    # Simplest logic: check config directly
+    should_generate_hard_scatter = bool(getattr(config, 'hard_process', None))
+    should_generate_pileup = getattr(config, 'pileup', 0) > 0
+    should_merge = getattr(config, 'merge', False)
     
-    # Verify output files exist
-    if not output_path.exists():
-        raise FileNotFoundError("Pythia8 failed to generate output files")
+    logger.info("Workflow determined:")
+    logger.info(f"  → Generate hard scatter: {should_generate_hard_scatter}")
+    logger.info(f"  → Generate pileup: {should_generate_pileup}")
+    logger.info(f"  → Merge events: {should_merge}")
     
-    return output_path
+    return should_generate_hard_scatter, should_generate_pileup, should_merge
 
-def run_pythia_stage(output_dir, config, logger=None):
-    """Run Pythia8 stage to generate HepMC3 files.
+def run_workflow(output_dir, config, logger):
+    """Execute the complete workflow based on configuration.
     
-    Supports two modes:
-    1. Standard mode: Generate events using Pythia8 (signal+pileup or pileup-only)
-    2. Merge mode: Generate pileup and merge with existing signal file from MadGraph
-    
-    Args:
-        output_dir: Path to output directory
-        config: Configuration object with stage parameters
-        logger: Optional logger instance
-        
     Returns:
         Path: Path to final output file
     """
-    logger = logger or setup_logging("Pythia8Stage")
-    logger.info("Initializing Pythia8 generation...")
+    should_generate_hard_scatter, should_generate_pileup, should_merge = determine_workflow(config, logger)
     
-    # Check if we're doing signal file merging
-    merge_signal = getattr(config, 'merge_signal', False)
+    # Generation Phase
+    hard_scatter_file = None
+    pileup_file = None
     
-    if merge_signal:
-        return run_merge_signal_mode(output_dir, config, logger)
+    if should_generate_hard_scatter:
+        logger.info("=== GENERATION PHASE: Hard Scatter ===")
+        hard_scatter_file = generate_hard_scatter(output_dir, config, logger)
+    
+    if should_generate_pileup:
+        logger.info("=== GENERATION PHASE: Pileup ===")
+        pileup_file = generate_pileup(output_dir, config, logger)
+    
+    # Merging Phase  
+    if should_merge:
+        logger.info("=== MERGING PHASE ===")
+        
+        # Find files if not generated
+        if not hard_scatter_file:
+            hard_scatter_file = find_hard_scatter_file(
+                output_dir, config, 
+                getattr(config, 'hard_scatter_file', None)
+            )
+            logger.info(f"Found hard scatter file: {hard_scatter_file}")
+        
+        if not pileup_file:
+            pileup_file = find_pileup_file(
+                output_dir, config,
+                getattr(config, 'pileup_file', None)
+            )
+            logger.info(f"Found pileup file: {pileup_file}")
+        
+        return merge_events(hard_scatter_file, pileup_file, output_dir, config, logger)
+    
+    # Return the last generated file if no merging
+    if hard_scatter_file:
+        return hard_scatter_file
+    elif pileup_file:
+        return pileup_file
     else:
-        return run_standard_pythia_mode(output_dir, config, logger)
+        raise ValueError("No files generated and no merging performed")
 
 def main():
     try:
         # Parse arguments and load config
         args = parse_args()
         config = load_config(args)
-        logger = setup_logging()
+        logger = setup_logging("Pythia8ACTS")
         
-        # Create output directory structure
+        # Create output directory
         output_dir = Path(args.output)
         if args.output_subdir:
             output_dir = output_dir / args.output_subdir
         output_dir.mkdir(parents=True, exist_ok=True)
         
-        # Initialize timing recorder
+        logger.info("=== Pythia8 + ACTS Workflow ===")
+        logger.info(f"Output directory: {output_dir}")
+        logger.info(f"Events: {config.events}")
+        
+        # Initialize timing
         timer = TimingRecorder(output_dir)
         
-        # Run Pythia8 generation
-        with timer.record("Pythia8 Generation"):
-            output_path = run_pythia_stage(
-                output_dir, config, logger
-            )
+        # Run workflow
+        with timer.record("Pythia8 + ACTS Workflow"):
+            final_output = run_workflow(output_dir, config, logger)
         
         # Write timing report
         timer.write_report()
         
-        logger.info("Pythia8 generation completed successfully")
-        logger.info(f"Output file:")
-        logger.info(f"  {output_path}")
+        logger.info("=== Workflow Completed Successfully ===")
+        logger.info(f"Final output: {final_output}")
         
     except Exception as e:
-        logger.error(f"Fatal error in main: {str(e)}")
+        logger.error(f"Fatal error: {str(e)}")
         logger.error(traceback.format_exc())
         raise
 
