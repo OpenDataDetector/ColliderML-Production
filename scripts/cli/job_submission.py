@@ -174,7 +174,7 @@ class JobSubmitter:
             time=job_cfg["time_limit"],
             nodes=1,
             ntasks_per_node=1 if is_monolithic else job_cfg["runs_per_node"],
-            cpus_per_task=job_cfg.get("max_cores", 128) if is_monolithic else job_cfg.get("max_cores", 128)//job_cfg["runs_per_node"],
+            cpus_per_task=job_cfg.get("max_cores", 256) if is_monolithic else job_cfg.get("max_cores", 256)//job_cfg["runs_per_node"],
             constraint="cpu",
             output=str(self.log_dir / f"job_{node_idx}_%j.out"),
             error=str(self.log_dir / f"job_{node_idx}_%j.err")
