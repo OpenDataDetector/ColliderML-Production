@@ -3,7 +3,7 @@
 #========================================================================
 
 # --- Dataset & Version ---
-campaign: "full_pileup_pilot"
+campaign: "full_pileup_mini_pilot"
 dataset: "ggf"
 version: "v1"
 stage: "madgraph_generation"  # One of: madgraph_generation, pythia_generation, merge_smear, simulation, digitization
