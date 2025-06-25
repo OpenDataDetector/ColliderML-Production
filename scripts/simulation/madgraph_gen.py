@@ -384,10 +384,13 @@ def main():
                     else:
                         # Splitting not enabled, move the HEPMC file directly
                         try:
-                            # Use clean filename consistent with splitting naming pattern
-                            destination_path = effective_output_dir / "events.hepmc.gz"
+                            # Use filename that ACTS merge script can auto-detect
+                            if event_file_path.name.endswith('.hepmc.gz'):
+                                destination_path = effective_output_dir / "events.hepmc.gz"
+                            else:
+                                destination_path = effective_output_dir / "events.hepmc3"
                             shutil.move(str(event_file_path), str(destination_path))
-                            print(f"Moved HEPMC file {event_file_path.name} to {destination_path} (splitting disabled, clean name).")
+                            print(f"Moved HEPMC file {event_file_path.name} to {destination_path} (splitting disabled, ACTS-compatible name).")
                             files_processed_count += 1
                         except Exception as e:
                             print(f"Error moving HEPMC file {event_file_path.name}: {e}")

@@ -14,7 +14,7 @@ log/
 # Environments
 **/*_env/
 
-# User-specific environment setup (use env_setup_template.yaml as base)
+# User-specific environment setup (use env_setup.yaml.template as base)
 scripts/cli/env_setup.yaml
 
 # Config Management (Branch-based strategy)

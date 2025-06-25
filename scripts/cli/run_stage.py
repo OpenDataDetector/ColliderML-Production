@@ -34,23 +34,13 @@ def get_git_root(start_path):
 def get_software_version_dir(config):
     """Constructs the path to the specific version directory for software snapshot."""
     base_dir = Path(config["common"]["output_base_dir"])
-    # Use a dedicated subdirectory for software snapshots to avoid cluttering the version_dir
-    # This keeps version_dir for actual data runs as defined in job_submission.py
     software_snapshot_base = base_dir / config["dataset"] / config["version"] / "software_snapshots"
-    # timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-    # version_specific_software_dir = software_snapshot_base / timestamp
-    # For now, let's use a simpler, non-timestamped name. Can be refined.
     version_specific_software_dir = software_snapshot_base / "current"
     return version_specific_software_dir
 
 def git_commit_and_log_config(config, config_path, git_repo_path, force_commit=False):
     """Commits the software state and logs the config. Returns True on success."""
     try:
-        # Determine the output directory for this specific run based on config
-        # This is where we'll save the config and the git commit marker
-        # We need job_submission.py's setup_directories logic or similar here
-        # For now, let's use a simplified version_dir from the config for placing commit log
-        # This should ideally align with where job_submission.py sets up its main version_dir
         temp_submitter_for_paths = JobSubmitter(config_path=config_path, dry_run=True)
         output_version_dir = temp_submitter_for_paths.version_dir # This is dataset/version/
         
@@ -126,41 +116,46 @@ def run_interactive(config, config_path_arg, stage_script_path):
     logger.info(f"Running stage '{config['stage']}' interactively.")
     logger.info(f"Using script: {stage_script_path}")
 
-    # 1. Get environment setup commands from the centralized utility
-    env_setup_cmds = cli_utils.get_env_setup_cmds(config)
-    if not env_setup_cmds:
-        logger.warning("No environment setup commands found. Running script in current environment.")
-
-    # 2. Construct the basic python command.
-    # We use 'python' instead of sys.executable to ensure the shell finds the
-    # interpreter from the PATH, which should be modified by the env_setup commands.
-    python_command = [
-        "python",
-        str(stage_script_path),
-        "--config", str(config_path_arg)
-    ]
-
-    # 3. Create necessary output directories and add to command
+    # Create necessary output directories
     logger.info("Creating output directories for interactive run...")
     directories = cli_utils.create_necessary_directories(config)
     run_dir = directories["run_dir"]
-    python_command.extend(["--output", str(run_dir)])
-    python_command.extend(["--output-subdir", "all"])
 
-    # 4. Combine environment setup and python execution into a single command string
-    full_command_list = env_setup_cmds + [" ".join(python_command)]
-    final_command_str = " && ".join(full_command_list)
-
-    logger.info(f"Executing command string: {final_command_str}")
+    # Use shared command builder to ensure consistency with batch mode
     try:
+        command_info = cli_utils.build_stage_command(
+            config=config,
+            config_path=config_path_arg,
+            stage_script_path=stage_script_path,
+            output_dir=run_dir,
+            output_subdir="all",
+            execution_mode="interactive"
+        )
+        
+        final_command_str = command_info["full_command"]
+        
+        if command_info["use_shifter"]:
+            logger.info(f"Running stage '{config['stage']}' with shifter container.")
+        else:
+            logger.info(f"Running stage '{config['stage']}' in regular environment.")
+        
+        if not command_info["env_setup_commands"]:
+            logger.warning("No environment setup commands found. Running script in current environment.")
+        
+        logger.info(f"Executing command string: {final_command_str}")
+        
         # Use shell=True to correctly process the command string with '&&' and environment sourcing
         process = subprocess.run(final_command_str, shell=True, check=True)
         logger.info(f"Interactive stage '{config['stage']}' completed successfully.")
+        
     except subprocess.CalledProcessError as e:
         logger.error(f"Interactive stage '{config['stage']}' failed with return code: {e.returncode}")
         sys.exit(1)
     except FileNotFoundError:
         logger.error(f"Error: Stage script {stage_script_path} not found.")
+        sys.exit(1)
+    except Exception as e:
+        logger.error(f"Error building command for interactive execution: {e}")
         sys.exit(1)
 
 def main():
@@ -269,8 +264,10 @@ def main():
             submitter_run_range = args.run_range if args.run_range else None
             submitter_run_list = args.run_list if args.run_list else None
             
-            # For monolithic_slurm mode, we ensure n_runs and runs_per_node are suitable
+            # Start with the processed config (which has env_setup defaults applied)
             effective_config = config.copy()
+            
+            # For monolithic_slurm mode, we ensure n_runs and runs_per_node are suitable
             if execution_mode == "monolithic_slurm":
                 if "job_config" not in effective_config:
                     effective_config["job_config"] = {}
@@ -293,9 +290,10 @@ def main():
             else:
                 config_path_for_submitter = args.config
 
-            # Initialize JobSubmitter
+            # Initialize JobSubmitter with processed config
             job_submitter = JobSubmitter(
                 config_path=config_path_for_submitter,
+                config_dict=effective_config,  # Pass the processed config with defaults applied
                 git_repo_path=git_repo_path,
                 dry_run=args.dry_run,
                 run_range=submitter_run_range,
