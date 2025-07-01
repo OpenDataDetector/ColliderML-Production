@@ -53,7 +53,6 @@ def parse_args():
         "--ambi-solver",
         help="Ambiguity solver to use",
         choices=["greedy", "scoring", "ML"],
-        default="greedy",
     )
     parser.add_argument(
         "--ambi-config",
@@ -64,32 +63,27 @@ def parse_args():
         "--output-root",
         help="Write ROOT output files",
         action="store_true",
-        default=True,
     )
     parser.add_argument(
         "--output-csv",
         help="Write CSV output files",
         action="store_true",
-        default=False,
     )
     parser.add_argument(
         "--digi",
         help="Run digitization",
         action="store_true",
-        default=True,
     )
     parser.add_argument(
         "--reco",
         help="Run reconstruction",
         action="store_true",
-        default=False,
     )
     
     parser.add_argument(
         "--vertexing",
         help="Run vertexing",
         action="store_true",
-        default=False,
     )
     return parser.parse_args()
 
