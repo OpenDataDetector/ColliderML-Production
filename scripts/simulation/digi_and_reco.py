@@ -43,31 +43,37 @@ def parse_args():
         "--digi-config",
         help="Digitization configuration file",
         type=Path,
+        default=None
     )
     parser.add_argument(
         "--material-config",
         help="Material map configuration file",
         type=Path,
+        default=None
     )
     parser.add_argument(
         "--ambi-solver",
         help="Ambiguity solver to use",
         choices=["greedy", "scoring", "ML"],
+        default=None
     )
     parser.add_argument(
         "--ambi-config",
         help="Score Based ambiguity resolution config",
         type=Path,
+        default=None
     )
     parser.add_argument(
         "--output-root",
         help="Write ROOT output files",
         action="store_true",
+        default=None
     )
     parser.add_argument(
         "--output-csv",
         help="Write CSV output files",
         action="store_true",
+        default=None
     )
     parser.add_argument(
         "--digi",
@@ -84,6 +90,7 @@ def parse_args():
         "--vertexing",
         help="Run vertexing",
         action="store_true",
+        default=None
     )
     return parser.parse_args()
 
