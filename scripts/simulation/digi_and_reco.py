@@ -130,24 +130,22 @@ def setup_acts_reconstruction(input_path, output_dir, config, rnd, logger=None):
     field = detector.field
     
     # Configure EDM4hep reader
-    edm4hepReader = acts.examples.edm4hep.EDM4hepReader(
+    edm4hepReader = acts.examples.edm4hep.EDM4hepSimReader(
+        inputPath=str(input_path),
+        inputSimHits=[
+            "PixelBarrelReadout",
+            "PixelEndcapReadout",
+            "ShortStripBarrelReadout",
+            "ShortStripEndcapReadout",
+            "LongStripBarrelReadout",
+            "LongStripEndcapReadout"
+        ],
+        outputParticlesGenerator="particles_input",
+        outputParticlesSimulation="particles_simulated",
+        outputSimHits="simhits",
+        dd4hepDetector=detector,
+        trackingGeometry=trackingGeometry,
         level=acts.logging.DEBUG,
-        config=acts.examples.edm4hep.EDM4hepReader.Config(
-            inputPath=str(input_path),
-            inputSimHits=[
-                "PixelBarrelReadout",
-                "PixelEndcapReadout",
-                "ShortStripBarrelReadout",
-                "ShortStripEndcapReadout",
-                "LongStripBarrelReadout",
-                "LongStripEndcapReadout"
-            ],
-            outputParticlesGenerator="particles_input",
-            outputParticlesSimulation="particles_simulated",
-            outputSimHits="simhits",
-            dd4hepDetector=detector,
-            trackingGeometry=trackingGeometry
-        )
     )
     s.addReader(edm4hepReader)
     s.addWhiteboardAlias("particles", edm4hepReader.config.outputParticlesGenerator)
