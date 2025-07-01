@@ -35,7 +35,7 @@ card_customizations:
   run_card:
     "xqcut": 0.0          # Lower xqcut for electroweak single Higgs
     "parton_shower": "PYTHIA8"
-    "nn23nlo": "pdlabel"
+    "pdlabel": "nn23nlo"
 
   pythia8_card: 
     # These customizations apply to the standard pythia8_card_default.dat
