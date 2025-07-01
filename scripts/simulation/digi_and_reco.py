@@ -5,7 +5,12 @@ import acts.examples
 import acts.examples.edm4hep
 from acts.examples import Sequencer
 from acts.examples.odd import getOpenDataDetector, getOpenDataDetectorDirectory
-from acts.examples.simulation import addDigitization
+from acts.examples.simulation import (
+    addDigitization,
+    addSimParticleSelection,
+    addDigiParticleSelection,
+    ParticleSelectorConfig,
+)
 from acts.examples.reconstruction import (
     addSeeding,
     addCKFTracks,
@@ -168,6 +173,18 @@ def setup_acts_reconstruction(input_path, output_dir, config, rnd, logger=None):
     s.addAlgorithm(edm4hepConverter)
     s.addWhiteboardAlias("particles", "particles_input")
     
+    # Add sim particle selection (filters particles from simulation)
+    # addSimParticleSelection(
+    #     s,
+    #     ParticleSelectorConfig(
+    #         rho=(0.0, 24 * u.mm),
+    #         absZ=(0.0, 1.0 * u.m),
+    #         eta=(-3.0, 3.0),
+    #         pt=(150 * u.MeV, None),
+    #         removeNeutral=True,
+    #     ),
+    # )
+    
     # Add digitization if enabled
     digi_enabled = getattr(config, 'digi', True)  # Default True
     if digi_enabled:
@@ -181,6 +198,17 @@ def setup_acts_reconstruction(input_path, output_dir, config, rnd, logger=None):
             outputDirCsv=None,
             rnd=rnd,
             logLevel=acts.logging.DEBUG,
+        )
+        
+        # Add digi particle selection (filters particles with sufficient measurements)
+        addDigiParticleSelection(
+            s,
+            ParticleSelectorConfig(
+                pt=(1.0 * u.GeV, None),
+                eta=(-3.0, 3.0),
+                measurements=(9, None),
+                removeNeutral=True,
+            ),
         )
     
     # Add reconstruction components if enabled
