@@ -35,8 +35,8 @@ card_customizations:
   run_card:
     "xqcut": 0.0          # Lower xqcut for electroweak single Higgs
     "parton_shower": "PYTHIA8"
-    "pdlabel": "nn23nlo"
-    "lhaid": 244800
+    "pdlabel": "lhapdf"
+    "lhaid": 325700       # NNPDF31_nlo_as_0118 - single member, no replicas
     "systematics_arguments": 
       - '--mur=0.5,1,2'
       - '--muf=0.5,1,2'
