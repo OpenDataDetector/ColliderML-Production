@@ -36,7 +36,10 @@ card_customizations:
     "xqcut": 0.0          # Lower xqcut for electroweak single Higgs
     "parton_shower": "PYTHIA8"
     "pdlabel": "nn23nlo"
-    "systematics_arguments": "['--mur=0.5,1,2', '--muf=0.5,1,2']"
+    "lhaid": 244800
+    "systematics_arguments": 
+      - '--mur=0.5,1,2'
+      - '--muf=0.5,1,2'
 
   pythia8_card: 
     # These customizations apply to the standard pythia8_card_default.dat
