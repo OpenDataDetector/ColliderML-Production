@@ -25,6 +25,8 @@ from utils.app_logging import setup_logging, TimingRecorder
 from utils.config import create_base_parser, load_config
 from contextlib import contextmanager
 import math
+from acts.examples.podio import PodioReader
+from acts.examples.edm4hep import EDM4hepSimInputConverter
 
 u = acts.UnitConstants
 
@@ -129,9 +131,20 @@ def setup_acts_reconstruction(input_path, output_dir, config, rnd, logger=None):
     trackingGeometry = detector.trackingGeometry()
     field = detector.field
     
-    # Configure EDM4hep reader
-    edm4hepReader = acts.examples.edm4hep.EDM4hepSimReader(
+    # Configure EDM4hep reader and converter
+    # Step 1: PodioReader to read the EDM4hep file
+    podioReader = PodioReader(
+        level=acts.logging.DEBUG,
         inputPath=str(input_path),
+        outputFrame="events",
+        category="events",
+    )
+    s.addReader(podioReader)
+    
+    # Step 2: EDM4hepSimInputConverter algorithm to convert EDM4hep data to ACTS format
+    edm4hepConverter = EDM4hepSimInputConverter(
+        level=acts.logging.DEBUG,
+        inputFrame="events",
         inputSimHits=[
             "PixelBarrelReadout",
             "PixelEndcapReadout",
@@ -143,12 +156,12 @@ def setup_acts_reconstruction(input_path, output_dir, config, rnd, logger=None):
         outputParticlesGenerator="particles_input",
         outputParticlesSimulation="particles_simulated",
         outputSimHits="simhits",
+        outputSimVertices="simvertices",
         dd4hepDetector=detector,
         trackingGeometry=trackingGeometry,
-        level=acts.logging.DEBUG,
     )
-    s.addReader(edm4hepReader)
-    s.addWhiteboardAlias("particles", edm4hepReader.config.outputParticlesGenerator)
+    s.addAlgorithm(edm4hepConverter)
+    s.addWhiteboardAlias("particles", "particles_input")
     
     # Add digitization if enabled
     if config.digi:
