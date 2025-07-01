@@ -5,7 +5,7 @@ import acts.examples
 import acts.examples.edm4hep
 from acts.examples import Sequencer
 from acts.examples.odd import getOpenDataDetector, getOpenDataDetectorDirectory
-from acts.examples.simulation import addDigitization, addParticleSelection, ParticleSelectorConfig
+from acts.examples.simulation import addDigitization
 from acts.examples.reconstruction import (
     addSeeding,
     addCKFTracks,
@@ -151,23 +151,6 @@ def setup_acts_reconstruction(input_path, output_dir, config, rnd, logger=None):
     s.addReader(edm4hepReader)
     s.addWhiteboardAlias("particles", edm4hepReader.config.outputParticlesGenerator)
     
-    # Add particle selection
-    addParticleSelection(
-        s,
-        config=ParticleSelectorConfig(
-            rho=(0.0, 24 * u.mm),
-            absZ=(0.0, 1.0 * u.m),
-            eta=(-3.0, 3.0),
-            pt=(1.0 * u.GeV, None),
-            # time=(0.0 * u.ns, 25 * u.ns), # TODO: This removes all particles - understand why!
-            # measurements=(3, None),
-            removeNeutral=True,
-            # removeSecondaries=True,
-        ),
-        inputParticles="particles_input",
-        outputParticles="particles_selected",
-    )
-    
     # Add digitization if enabled
     if config.digi:
         logger.info("Adding digitization")
@@ -209,7 +192,7 @@ def setup_acts_reconstruction(input_path, output_dir, config, rnd, logger=None):
             s,
             trackingGeometry,
             field,
-            TrackSelectorConfig(
+            trackSelectorConfig=TrackSelectorConfig(
                 pt=(1.0 * u.GeV, None),
                 absEta=(None, 3.0),
                 loc0=(-4.0 * u.mm, 4.0 * u.mm),
@@ -217,7 +200,7 @@ def setup_acts_reconstruction(input_path, output_dir, config, rnd, logger=None):
                 maxHoles=2,
                 maxOutliers=2,
             ),
-            CkfConfig(
+            ckfConfig=CkfConfig(
                 chi2CutOffMeasurement=15.0,
                 chi2CutOffOutlier=25.0,
                 numMeasurementsCutOff=10,
@@ -257,7 +240,7 @@ def setup_acts_reconstruction(input_path, output_dir, config, rnd, logger=None):
         if config.ambi_solver == "ML":
             addAmbiguityResolutionML(
                 s,
-                AmbiguityResolutionMLConfig(
+                config=AmbiguityResolutionMLConfig(
                     maximumSharedHits=3,
                     maximumIterations=1000000,
                     nMeasurementsMin=7,
@@ -269,12 +252,10 @@ def setup_acts_reconstruction(input_path, output_dir, config, rnd, logger=None):
         elif config.ambi_solver == "scoring":
             addScoreBasedAmbiguityResolution(
                 s,
-                ScoreBasedAmbiguityResolutionConfig(
+                config=ScoreBasedAmbiguityResolutionConfig(
                     minScore=0,
                     maxShared=2,
-                    maxSharedTracksPerMeasurement=2,
-                    pTMax=1400,
-                    pTMin=0.5,
+                    maxSharedTracksPerMeasurement=2
                 ),
                 outputDirRoot=perf_output if config.output_root else None,
                 outputDirCsv=perf_output if config.output_csv else None,
@@ -283,7 +264,7 @@ def setup_acts_reconstruction(input_path, output_dir, config, rnd, logger=None):
         else:
             addAmbiguityResolution(
                 s,
-                AmbiguityResolutionConfig(
+                config=AmbiguityResolutionConfig(
                     maximumSharedHits=3,
                     maximumIterations=1000000,
                     nMeasurementsMin=7,
@@ -319,15 +300,6 @@ def add_root_writers(s, output_dir):
         config=acts.examples.RootSimHitWriter.Config(
             filePath=str(output_dir / "simhits.root"),
             inputSimHits="simhits"
-        ),
-        level=acts.logging.INFO
-    ))
-    
-    # Write particles
-    s.addWriter(acts.examples.RootParticleFlatWriter(
-        config=acts.examples.RootParticleFlatWriter.Config(
-            filePath=str(output_dir / "particles.root"),
-            inputParticles="particles_selected" # TODO: Decide on whether we write particles_input or particles_selected
         ),
         level=acts.logging.INFO
     ))

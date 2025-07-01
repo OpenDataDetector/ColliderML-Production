@@ -46,16 +46,6 @@ def customize_run_card_with_regex(card_path, run_card_settings, global_nevents, 
     settings_to_apply['nevents'] = global_nevents
     settings_to_apply['iseed'] = global_seed
 
-    # --- Start of new logging ---
-    print("DEBUG: Checking systematics_arguments from config...")
-    if 'systematics_arguments' in settings_to_apply:
-        syst_args = settings_to_apply['systematics_arguments']
-        print(f"  > Found 'systematics_arguments': {syst_args}")
-        print(f"  > Type: {type(syst_args)}")
-    else:
-        print("  > 'systematics_arguments' not found in settings to apply.")
-    # --- End of new logging ---
-
     modified_lines = []
     for line in content_lines:
         modified_line = line
@@ -69,10 +59,6 @@ def customize_run_card_with_regex(card_path, run_card_settings, global_nevents, 
 
             match = re.match(strict_pattern, line)
             if match:
-                # --- Start of new logging ---
-                if param_name == 'systematics_arguments':
-                    print(f"DEBUG: Matched line for '{param_name}'. Replacing with: {param_value}")
-                # --- End of new logging ---
                 # Construct the new line with the new value
                 # Spaces (group 1), new value, rest of the matched line (group 3 and 4)
                 modified_line = f"{match.group(1)}{str(param_value)}{match.group(3)}{match.group(4)}\n"
