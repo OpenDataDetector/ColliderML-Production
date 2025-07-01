@@ -174,16 +174,16 @@ def setup_acts_reconstruction(input_path, output_dir, config, rnd, logger=None):
     s.addWhiteboardAlias("particles", "particles_input")
     
     # Add sim particle selection (filters particles from simulation)
-    # addSimParticleSelection(
-    #     s,
-    #     ParticleSelectorConfig(
-    #         rho=(0.0, 24 * u.mm),
-    #         absZ=(0.0, 1.0 * u.m),
-    #         eta=(-3.0, 3.0),
-    #         pt=(150 * u.MeV, None),
-    #         removeNeutral=True,
-    #     ),
-    # )
+    addSimParticleSelection(
+        s,
+        ParticleSelectorConfig(
+            rho=(0.0, 24 * u.mm),
+            absZ=(0.0, 1.0 * u.m),
+            eta=(-4.0, 4.0),
+            pt=(150 * u.MeV, None),
+            removeNeutral=True,
+        ),
+    )
     
     # Add digitization if enabled
     digi_enabled = getattr(config, 'digi', True)  # Default True
