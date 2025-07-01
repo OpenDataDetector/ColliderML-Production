@@ -101,7 +101,6 @@ def setup_acts_reconstruction(input_path, output_dir, config, rnd, logger=None):
     
     # Get detector and field
     geoDir = getOpenDataDetectorDirectory()
-    field = acts.ConstantBField(acts.Vector3(0.0, 0.0, 2.0 * u.T))
     
     # Set performance output directory based on flag
     perf_output = output_dir if config.performance_metrics else None
@@ -123,10 +122,12 @@ def setup_acts_reconstruction(input_path, output_dir, config, rnd, logger=None):
     oddMaterialDeco = acts.IMaterialDecorator.fromFile(oddMaterialMap)
     
     # Get detector
-    detector, trackingGeometry, _ = getOpenDataDetector(
+    detector = getOpenDataDetector(
         odd_dir=geoDir,
-        mdecorator=oddMaterialDeco
+        materialDecorator=oddMaterialDeco
     )
+    trackingGeometry = detector.trackingGeometry()
+    field = detector.field
     
     # Configure EDM4hep reader
     edm4hepReader = acts.examples.edm4hep.EDM4hepReader(
