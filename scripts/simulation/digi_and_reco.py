@@ -99,18 +99,20 @@ def setup_acts_reconstruction(input_path, output_dir, config, rnd, logger=None):
     geoDir = getOpenDataDetectorDirectory()
     
     # Set performance output directory based on flag
-    perf_output = output_dir if config.performance_metrics else None
+    perf_output = output_dir if getattr(config, 'performance_metrics', False) else None
     
     # Load material map
+    material_config = getattr(config, 'material_config', None)
     oddMaterialMap = (
-        geoDir / f"data/{config.material_config}"
-        if config.material_config
+        geoDir / f"data/{material_config}"
+        if material_config
         else geoDir / "data/odd-material-maps.root"
     )
 
+    digi_config = getattr(config, 'digi_config', None)
     oddDigiConfig = (
-        geoDir / f"config/{config.digi_config}"
-        if config.digi_config
+        geoDir / f"config/{digi_config}"
+        if digi_config
         else geoDir / "config/odd-digi-smearing-config.json"
     )
 
@@ -158,21 +160,23 @@ def setup_acts_reconstruction(input_path, output_dir, config, rnd, logger=None):
     s.addWhiteboardAlias("particles", "particles_input")
     
     # Add digitization if enabled
-    if config.digi:
+    digi_enabled = getattr(config, 'digi', True)  # Default True
+    if digi_enabled:
         logger.info("Adding digitization")
         addDigitization(
             s,
             trackingGeometry,
             field,
             digiConfigFile=oddDigiConfig,
-            outputDirRoot=perf_output if config.output_root else None,
+            outputDirRoot=perf_output if getattr(config, 'output_root', True) else None,
             outputDirCsv=None,
             rnd=rnd,
             logLevel=acts.logging.DEBUG,
         )
     
     # Add reconstruction components if enabled
-    if config.reco:
+    reco_enabled = getattr(config, 'reco', False)  # Default False
+    if reco_enabled:
         logger.info("Adding reconstruction chain")
         # Add seeding
         addSeeding(
@@ -190,7 +194,7 @@ def setup_acts_reconstruction(input_path, output_dir, config, rnd, logger=None):
             initialSigmaPtRel=0.1,
             initialVarInflation=[1.0] * 6,
             geoSelectionConfigFile=oddSeedingSel,
-            outputDirRoot=perf_output if config.output_root else None
+            outputDirRoot=perf_output if getattr(config, 'output_root', True) else None
         )
         
         # Add CKF tracking
@@ -234,16 +238,19 @@ def setup_acts_reconstruction(input_path, output_dir, config, rnd, logger=None):
                     30,  # long strip
                 ],
             ),
-            outputDirRoot=perf_output if config.output_root else None,
-            outputDirCsv=perf_output if config.output_csv else None,
-            writeCovMat=config.performance_metrics,
-            writeTrackStates=config.performance_metrics,
-            writeTrackSummary=config.performance_metrics,
-            writePerformance=config.performance_metrics,
+            outputDirRoot=perf_output if getattr(config, 'output_root', True) else None,
+            outputDirCsv=perf_output if getattr(config, 'output_csv', False) else None,
+            writeCovMat=getattr(config, 'performance_metrics', False),
+            writeTrackStates=getattr(config, 'performance_metrics', False),
+            writeTrackSummary=getattr(config, 'performance_metrics', False),
+            writePerformance=getattr(config, 'performance_metrics', False),
         )
         
         # Add ambiguity resolution
-        if config.ambi_solver == "ML":
+        ambi_solver = getattr(config, 'ambi_solver', 'greedy')  # Default greedy
+        ambi_config = getattr(config, 'ambi_config', None)
+        
+        if ambi_solver == "ML":
             addAmbiguityResolutionML(
                 s,
                 config=AmbiguityResolutionMLConfig(
@@ -251,11 +258,11 @@ def setup_acts_reconstruction(input_path, output_dir, config, rnd, logger=None):
                     maximumIterations=1000000,
                     nMeasurementsMin=7,
                 ),
-                outputDirRoot=perf_output if config.output_root else None,
-                outputDirCsv=perf_output if config.output_csv else None,
-                onnxModelFile=str(config.ambi_config),
+                outputDirRoot=perf_output if getattr(config, 'output_root', True) else None,
+                outputDirCsv=perf_output if getattr(config, 'output_csv', False) else None,
+                onnxModelFile=str(ambi_config),
             )
-        elif config.ambi_solver == "scoring":
+        elif ambi_solver == "scoring":
             addScoreBasedAmbiguityResolution(
                 s,
                 config=ScoreBasedAmbiguityResolutionConfig(
@@ -263,9 +270,9 @@ def setup_acts_reconstruction(input_path, output_dir, config, rnd, logger=None):
                     maxShared=2,
                     maxSharedTracksPerMeasurement=2
                 ),
-                outputDirRoot=perf_output if config.output_root else None,
-                outputDirCsv=perf_output if config.output_csv else None,
-                ambiVolumeFile=config.ambi_config,
+                outputDirRoot=perf_output if getattr(config, 'output_root', True) else None,
+                outputDirCsv=perf_output if getattr(config, 'output_csv', False) else None,
+                ambiVolumeFile=ambi_config,
             )
         else:
             addAmbiguityResolution(
@@ -275,26 +282,29 @@ def setup_acts_reconstruction(input_path, output_dir, config, rnd, logger=None):
                     maximumIterations=1000000,
                     nMeasurementsMin=7,
                 ),
-                outputDirRoot=perf_output if config.output_root else None,
-                outputDirCsv=perf_output if config.output_csv else None,
-                writeCovMat=config.performance_metrics,
-                writeTrackStates=config.performance_metrics,
-                writeTrackSummary=config.performance_metrics,
-                writePerformance=config.performance_metrics,
+                outputDirRoot=perf_output if getattr(config, 'output_root', True) else None,
+                outputDirCsv=perf_output if getattr(config, 'output_csv', False) else None,
+                writeCovMat=getattr(config, 'performance_metrics', False),
+                writeTrackStates=getattr(config, 'performance_metrics', False),
+                writeTrackSummary=getattr(config, 'performance_metrics', False),
+                writePerformance=getattr(config, 'performance_metrics', False),
             )
         
         # Add vertex fitting
-        if config.vertexing:
+        vertexing_enabled = getattr(config, 'vertexing', False)  # Default False
+        if vertexing_enabled:
             addVertexFitting(
                 s,
                 field,
                 vertexFinder=VertexFinder.AMVF,
-                outputDirRoot=perf_output if config.output_root else None,
-                outputDirCsv=perf_output if config.output_csv else None,
+                outputDirRoot=perf_output if getattr(config, 'output_root', True) else None,
+                outputDirCsv=perf_output if getattr(config, 'output_csv', False) else None,
             )
     
     # Add ROOT writers if enabled and performance metrics are on
-    if config.output_root and config.performance_metrics:
+    output_root = getattr(config, 'output_root', True)
+    performance_metrics = getattr(config, 'performance_metrics', False)
+    if output_root and performance_metrics:
         add_root_writers(s, output_dir)
     
     return s
