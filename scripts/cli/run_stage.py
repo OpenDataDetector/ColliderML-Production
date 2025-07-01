@@ -117,9 +117,15 @@ def run_interactive(config, config_path_arg, stage_script_path):
     logger.info(f"Using script: {stage_script_path}")
 
     # Create necessary output directories
-    logger.info("Creating output directories for interactive run...")
-    directories = cli_utils.create_necessary_directories(config)
-    run_dir = directories["run_dir"]
+    debug_output_dir = config.get("debug_output_dir")
+    if debug_output_dir:
+        run_dir = Path(debug_output_dir)
+        run_dir.mkdir(parents=True, exist_ok=True)
+        logger.info(f"Using custom debug output directory from config: {run_dir}")
+    else:
+        logger.info("Creating output directories for interactive run...")
+        directories = cli_utils.create_necessary_directories(config)
+        run_dir = directories["run_dir"]
 
     # Use shared command builder to ensure consistency with batch mode
     try:
