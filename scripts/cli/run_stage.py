@@ -122,10 +122,14 @@ def run_interactive(config, config_path_arg, stage_script_path):
         run_dir = Path(debug_output_dir)
         run_dir.mkdir(parents=True, exist_ok=True)
         logger.info(f"Using custom debug output directory from config: {run_dir}")
+        # Don't use subdirectory when debug output dir is specified
+        output_subdir = None
     else:
         logger.info("Creating output directories for interactive run...")
         directories = cli_utils.create_necessary_directories(config)
         run_dir = directories["run_dir"]
+        # Use default subdirectory for normal runs
+        output_subdir = "all"
 
     # Use shared command builder to ensure consistency with batch mode
     try:
@@ -134,7 +138,7 @@ def run_interactive(config, config_path_arg, stage_script_path):
             config_path=config_path_arg,
             stage_script_path=stage_script_path,
             output_dir=run_dir,
-            output_subdir="all",
+            output_subdir=output_subdir,
             execution_mode="interactive"
         )
         
