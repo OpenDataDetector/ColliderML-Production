@@ -64,7 +64,8 @@ def customize_run_card_with_regex(card_path, run_card_settings, global_nevents, 
             # This pattern looks for: <spaces><value_to_replace><spaces>=<spaces><param_name><spaces><comment_or_nothing>
             # It assumes the value is a single "word" (can include numbers, dots, minus)
             # and the parameter name is exact.
-            strict_pattern = rf"^(\s*)(\S+)(\s*=\s*{re.escape(param_name)})(\s*!.*|\s*)$"
+            # Updated pattern to handle values with spaces (like lists)
+            strict_pattern = rf"^(\s*)(.+?)(\s*=\s*{re.escape(param_name)})(\s*!.*|\s*)$"
 
             match = re.match(strict_pattern, line)
             if match:
