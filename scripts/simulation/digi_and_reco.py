@@ -79,11 +79,13 @@ def parse_args():
         "--digi",
         help="Run digitization",
         action="store_true",
+        default=None
     )
     parser.add_argument(
         "--reco",
         help="Run reconstruction",
         action="store_true",
+        default=None
     )
     
     parser.add_argument(
