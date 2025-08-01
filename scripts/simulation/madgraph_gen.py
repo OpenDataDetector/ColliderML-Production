@@ -37,7 +37,8 @@ def customize_placeholder_card(template_path, output_path, customizations):
         f.write(content)
 
 def customize_run_card_with_regex(card_path, run_card_settings, global_nevents, global_seed):
-    """Modifies the MadGraph-generated run_card.dat using regex for specific parameters."""
+    """Modifies the MadGraph-generated run_card.dat using regex for specific parameters.
+    Updates existing parameters and adds new ones if they don't exist."""
     with open(card_path, 'r') as f:
         content_lines = f.readlines()
 
@@ -46,10 +47,17 @@ def customize_run_card_with_regex(card_path, run_card_settings, global_nevents, 
     settings_to_apply['nevents'] = global_nevents
     settings_to_apply['iseed'] = global_seed
 
+    # Track which parameters were successfully updated
+    updated_params = set()
     modified_lines = []
+    
     for line in content_lines:
         modified_line = line
         for param_name, param_value in settings_to_apply.items():
+            # Skip if already updated (avoid double-updating)
+            if param_name in updated_params:
+                continue
+                
             # Regex to find lines like: '  10000 = nevents    ! Number of even
             # This pattern looks for: <spaces><value_to_replace><spaces>=<spaces><param_name><spaces><comment_or_nothing>
             # It assumes the value is a single "word" (can include numbers, dots, minus)
@@ -62,13 +70,37 @@ def customize_run_card_with_regex(card_path, run_card_settings, global_nevents, 
                 # Construct the new line with the new value
                 # Spaces (group 1), new value, rest of the matched line (group 3 and 4)
                 modified_line = f"{match.group(1)}{str(param_value)}{match.group(3)}{match.group(4)}\n"
+                updated_params.add(param_name)
                 # Since a parameter should only be set once, break from inner loop
                 break 
         modified_lines.append(modified_line)
 
+    # Add any parameters that weren't found in the existing file
+    missing_params = set(settings_to_apply.keys()) - updated_params
+    if missing_params:
+        # Add a comment section for new parameters
+        modified_lines.append("\n")
+        modified_lines.append("!======================================================================\n")
+        modified_lines.append("! Parameters added by ColliderML madgraph_gen.py\n")
+        modified_lines.append("!======================================================================\n")
+        
+        for param_name in sorted(missing_params):  # Sort for consistency
+            param_value = settings_to_apply[param_name]
+            # Format: <value> = <param_name>    ! Added by script
+            new_line = f"  {param_value} = {param_name}    ! Added by ColliderML script\n"
+            modified_lines.append(new_line)
+
     with open(card_path, 'w') as f:
         f.writelines(modified_lines)
-    print(f"Updated {card_path} with custom settings for: {list(settings_to_apply.keys())}")
+    
+    # Update the print statement to show both updated and added parameters
+    updated_list = list(updated_params)
+    added_list = list(missing_params) if missing_params else []
+    print(f"Updated {card_path}:")
+    if updated_list:
+        print(f"  - Updated existing parameters: {updated_list}")
+    if added_list:
+        print(f"  - Added new parameters: {added_list}")
 
 def split_hepmc_file(input_hepmc_path: Path,
                      final_output_base_dir: Path,
