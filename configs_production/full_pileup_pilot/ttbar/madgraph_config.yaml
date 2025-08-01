@@ -5,7 +5,7 @@
 # --- Dataset & Version ---
 campaign: "full_pileup_mini_pilot"
 dataset: "ttbar"
-version: "v2"
+version: "v3"
 stage: "madgraph_generation"  # One of: madgraph_generation, pythia_generation, merge_smear, simulation, digitization
 job_config:
   execution_mode: "interactive"
@@ -35,10 +35,11 @@ card_customizations:
     "parton_shower": "PYTHIA8" 
     "ebeam1": 7000.0 # 14 TeV centre of mass energy
     "ebeam2": 7000.0 # 14 TeV centre of mass energy
-    # For ttbar, you might also want to ensure these are set appropriately in the run_card via regex or have good defaults:
-    # "ickkw": 1           # FxFx merging scheme
-    # "maxjetflavor": 5    # For 5F PDF schemes (if top is not a jet flavour)
-    # "auto_ptj_bias": ".true." # May improve efficiency for some NLO processes
+    "ickkw": 3           # FxFx merging scheme
+    "maxjetflavor": 5    # For 5F PDF schemes (if top is not a jet flavour)
+    "jetradius": 1.0
+    "etaj": 10.0
+    "ptj": 8.0
     "reweight_scale": "False"
     "store_rwgt_info": "True"
     "systematics_program": "systematics"
@@ -46,13 +47,13 @@ card_customizations:
       - '--mur=0.5,1,2'
       - '--muf=0.5,1,2'
       - '--dyn=-1'
-    
+    # See https://gitlab.cern.ch/atlas-physics/pmg/mcjoboptions/-/blob/master/950xxx/950632/mc.MGPy8EG_Zll_FxFx_1jets_valid.py
 
   pythia8_card: 
     "{{XQCUT}}": 0.0        # MUST be IDENTICAL to the run_card xqcut value.
     "{{PYTHIA_SEED}}": 42 
     "{{NEVENTS}}": 32768 # Matches global 'events', though often ignored by Pythia when MG drives
-    "{{N_JET_MAX_MATCH}}": 1 # For t t~ + 0,1 jet ME from 'generate p p > t t~ [QCD]'
+    "{{N_JET_MAX_MATCH}}": 2 # For t t~ + 0,1 jet ME from 'generate p p > t t~ [QCD]'
     "{{PYTHIA_TUNE}}": 14    # Example: Monash 2013 tune (Tune:pp = 5 for older default)
     # "{{PDF_SET_NAME}}": "NNPDF31_nlo_as_0118" # Set if PDF:pSet is uncommented in template
     "{{JET_MATCH_CONE_R}}": 1.0

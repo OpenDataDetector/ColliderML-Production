@@ -3,19 +3,25 @@
 
 # 1) Settings related to FxFx merging.
 JetMatching:doFxFx = on
-JetMatching:qCut = {{XQCUT}}      ! (GeV) This value MUST be the same as xqcut in run_card.dat
-                               ! It is the shower-kT starting scale.
-JetMatching:coneRadius = {{JET_MATCH_CONE_R}}   ! Jet definition cone size for matching
-JetMatching:etaMax = {{JET_MATCH_ETA_MAX}}       ! Maximum pseudorapidity for jet matching
-JetMatching:nJetMax = {{N_JET_MAX_MATCH}}        ! For p p > l+ l- [QCD], MG generates 0- and 1-jet events at NLO.
-                               ! Pythia matches up to N_JET_MAX_MATCH additional jet(s) from its PS.
+JetMatching:qCut = {{XQCUT}}        ! (GeV) This value MUST be the same as xqcut in run_card.dat (?? Is it even in the run card??)
+                                    ! It is the shower-kT starting scale.
+JetMatching:coneRadius = {{JET_MATCH_CONE_R}}       ! Jet definition cone size for matching (?? Is this even in the run card??)
+JetMatching:etaMax = {{JET_MATCH_ETA_MAX}}          ! Maximum pseudorapidity for jet matching (?? Is this even in the run card??)
+JetMatching:nJetMax = {{N_JET_MAX_MATCH}}           ! For p p > l+ l- [QCD], MG generates 0- and 1-jet events at NLO.
+                                                    ! Pythia matches up to N_JET_MAX_MATCH additional jet(s) from its PS.                               
 
 # 2) Tell Pythia to use the LHEF FxFx header information for scales.
 SpaceShower:pTmaxMatch = 1     ! Apply FxFx ME-PS matching in SpaceShower (recommended).
+SpaceShower:pTmaxFudge = 1.0   ! Factor to multiply the ME scale for PS starting scale
 TimeShower:pTmaxMatch = 1      ! Apply FxFx ME-PS matching in TimeShower (recommended).
-# Alternative if pTmaxMatch=1 causes issues (older Pythia versions or specific processes):
-# SpaceShower:pTmaxFactor = 1.0  ! Factor to multiply the ME scale for PS starting scale
-# TimeShower:pTmaxFactor = 1.0   ! Factor to multiply the ME scale for PS starting scale
+TimeShower:pTmaxFudge = 1.0    ! Factor to multiply the ME scale for PS starting scale
+TimeShower:globalRecoil = on   ! Global recoil for time-like showers
+TimeShower:limitPTmaxGlobal = on ! Limit the maximum pT of the global recoil
+TimeShower:nMaxGlobalRecoil = 1  ! Maximum number of global recoils
+TimeShower:globalRecoilMode = 2 ! Mode for global recoil
+TimeShower:nMaxGlobalBranch = 1 ! Maximum number of global branches
+TimeShower:weightGluonToQuark=1 ! Weight for gluon to quark splitting
+SpaceShower:MEcorrections = off ! Disable ME corrections for ISR
 
 # 3) Beam parameters
 Beams:frameType = 4            ! Use LHEF event format, expecting p p @ 13 TeV from run_card
