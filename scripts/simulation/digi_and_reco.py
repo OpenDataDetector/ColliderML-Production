@@ -5,7 +5,12 @@ import acts.examples
 import acts.examples.edm4hep
 from acts.examples import Sequencer
 from acts.examples.odd import getOpenDataDetector, getOpenDataDetectorDirectory
-from acts.examples.simulation import addDigitization, addParticleSelection, ParticleSelectorConfig
+from acts.examples.simulation import (
+    addDigitization,
+    addSimParticleSelection,
+    addDigiParticleSelection,
+    ParticleSelectorConfig,
+)
 from acts.examples.reconstruction import (
     addSeeding,
     addCKFTracks,
@@ -25,6 +30,8 @@ from utils.app_logging import setup_logging, TimingRecorder
 from utils.config import create_base_parser, load_config
 from contextlib import contextmanager
 import math
+from acts.examples.podio import PodioReader
+from acts.examples.edm4hep import EDM4hepSimInputConverter
 
 u = acts.UnitConstants
 
@@ -41,53 +48,56 @@ def parse_args():
         "--digi-config",
         help="Digitization configuration file",
         type=Path,
+        default=None
     )
     parser.add_argument(
         "--material-config",
         help="Material map configuration file",
         type=Path,
+        default=None
     )
     parser.add_argument(
         "--ambi-solver",
         help="Ambiguity solver to use",
         choices=["greedy", "scoring", "ML"],
-        default="greedy",
+        default=None
     )
     parser.add_argument(
         "--ambi-config",
         help="Score Based ambiguity resolution config",
         type=Path,
+        default=None
     )
     parser.add_argument(
         "--output-root",
         help="Write ROOT output files",
         action="store_true",
-        default=True,
+        default=None
     )
     parser.add_argument(
         "--output-csv",
         help="Write CSV output files",
         action="store_true",
-        default=False,
+        default=None
     )
     parser.add_argument(
         "--digi",
         help="Run digitization",
         action="store_true",
-        default=True,
+        default=None
     )
     parser.add_argument(
         "--reco",
         help="Run reconstruction",
         action="store_true",
-        default=False,
+        default=None
     )
     
     parser.add_argument(
         "--vertexing",
         help="Run vertexing",
         action="store_true",
-        default=False,
+        default=None
     )
     return parser.parse_args()
 
@@ -101,21 +111,22 @@ def setup_acts_reconstruction(input_path, output_dir, config, rnd, logger=None):
     
     # Get detector and field
     geoDir = getOpenDataDetectorDirectory()
-    field = acts.ConstantBField(acts.Vector3(0.0, 0.0, 2.0 * u.T))
     
     # Set performance output directory based on flag
-    perf_output = output_dir if config.performance_metrics else None
+    perf_output = output_dir if getattr(config, 'performance_metrics', False) else None
     
     # Load material map
+    material_config = getattr(config, 'material_config', None)
     oddMaterialMap = (
-        geoDir / f"data/{config.material_config}"
-        if config.material_config
+        geoDir / f"data/{material_config}"
+        if material_config
         else geoDir / "data/odd-material-maps.root"
     )
 
+    digi_config = getattr(config, 'digi_config', None)
     oddDigiConfig = (
-        geoDir / f"config/{config.digi_config}"
-        if config.digi_config
+        geoDir / f"config/{digi_config}"
+        if digi_config
         else geoDir / "config/odd-digi-smearing-config.json"
     )
 
@@ -123,67 +134,86 @@ def setup_acts_reconstruction(input_path, output_dir, config, rnd, logger=None):
     oddMaterialDeco = acts.IMaterialDecorator.fromFile(oddMaterialMap)
     
     # Get detector
-    detector, trackingGeometry, _ = getOpenDataDetector(
+    detector = getOpenDataDetector(
         odd_dir=geoDir,
-        mdecorator=oddMaterialDeco
+        materialDecorator=oddMaterialDeco
     )
+    trackingGeometry = detector.trackingGeometry()
+    field = detector.field
     
-    # Configure EDM4hep reader
-    edm4hepReader = acts.examples.edm4hep.EDM4hepReader(
+    # Configure EDM4hep reader and converter
+    # Step 1: PodioReader to read the EDM4hep file
+    podioReader = PodioReader(
         level=acts.logging.DEBUG,
-        config=acts.examples.edm4hep.EDM4hepReader.Config(
-            inputPath=str(input_path),
-            inputSimHits=[
-                "PixelBarrelReadout",
-                "PixelEndcapReadout",
-                "ShortStripBarrelReadout",
-                "ShortStripEndcapReadout",
-                "LongStripBarrelReadout",
-                "LongStripEndcapReadout"
-            ],
-            outputParticlesGenerator="particles_input",
-            outputParticlesSimulation="particles_simulated",
-            outputSimHits="simhits",
-            dd4hepDetector=detector,
-            trackingGeometry=trackingGeometry
-        )
+        inputPath=str(input_path),
+        outputFrame="events",
+        category="events",
     )
-    s.addReader(edm4hepReader)
-    s.addWhiteboardAlias("particles", edm4hepReader.config.outputParticlesGenerator)
+    s.addReader(podioReader)
     
-    # Add particle selection
-    addParticleSelection(
+    # Step 2: EDM4hepSimInputConverter algorithm to convert EDM4hep data to ACTS format
+    edm4hepConverter = EDM4hepSimInputConverter(
+        level=acts.logging.DEBUG,
+        inputFrame="events",
+        inputSimHits=[
+            "PixelBarrelReadout",
+            "PixelEndcapReadout",
+            "ShortStripBarrelReadout",
+            "ShortStripEndcapReadout",
+            "LongStripBarrelReadout",
+            "LongStripEndcapReadout"
+        ],
+        outputParticlesGenerator="particles_input",
+        outputParticlesSimulation="particles_simulated",
+        outputSimHits="simhits",
+        outputSimVertices="simvertices",
+        dd4hepDetector=detector,
+        trackingGeometry=trackingGeometry,
+    )
+    s.addAlgorithm(edm4hepConverter)
+    s.addWhiteboardAlias("particles", "particles_input")
+    
+    # Add sim particle selection (filters particles from simulation)
+    addSimParticleSelection(
         s,
-        config=ParticleSelectorConfig(
+        ParticleSelectorConfig(
             rho=(0.0, 24 * u.mm),
             absZ=(0.0, 1.0 * u.m),
-            eta=(-3.0, 3.0),
-            pt=(1.0 * u.GeV, None),
-            # time=(0.0 * u.ns, 25 * u.ns), # TODO: This removes all particles - understand why!
-            # measurements=(3, None),
+            eta=(-4.0, 4.0),
+            pt=(150 * u.MeV, None),
             removeNeutral=True,
-            # removeSecondaries=True,
         ),
-        inputParticles="particles_input",
-        outputParticles="particles_selected",
     )
     
     # Add digitization if enabled
-    if config.digi:
+    digi_enabled = getattr(config, 'digi', True)  # Default True
+    if digi_enabled:
         logger.info("Adding digitization")
         addDigitization(
             s,
             trackingGeometry,
             field,
             digiConfigFile=oddDigiConfig,
-            outputDirRoot=perf_output if config.output_root else None,
+            outputDirRoot=perf_output if getattr(config, 'output_root', True) else None,
             outputDirCsv=None,
             rnd=rnd,
             logLevel=acts.logging.DEBUG,
         )
+        
+        # Add digi particle selection (filters particles with sufficient measurements)
+        addDigiParticleSelection(
+            s,
+            ParticleSelectorConfig(
+                pt=(1.0 * u.GeV, None),
+                eta=(-3.0, 3.0),
+                measurements=(9, None),
+                removeNeutral=True,
+            ),
+        )
     
     # Add reconstruction components if enabled
-    if config.reco:
+    reco_enabled = getattr(config, 'reco', False)  # Default False
+    if reco_enabled:
         logger.info("Adding reconstruction chain")
         # Add seeding
         addSeeding(
@@ -201,7 +231,7 @@ def setup_acts_reconstruction(input_path, output_dir, config, rnd, logger=None):
             initialSigmaPtRel=0.1,
             initialVarInflation=[1.0] * 6,
             geoSelectionConfigFile=oddSeedingSel,
-            outputDirRoot=perf_output if config.output_root else None
+            outputDirRoot=perf_output if getattr(config, 'output_root', True) else None
         )
         
         # Add CKF tracking
@@ -209,7 +239,7 @@ def setup_acts_reconstruction(input_path, output_dir, config, rnd, logger=None):
             s,
             trackingGeometry,
             field,
-            TrackSelectorConfig(
+            trackSelectorConfig=TrackSelectorConfig(
                 pt=(1.0 * u.GeV, None),
                 absEta=(None, 3.0),
                 loc0=(-4.0 * u.mm, 4.0 * u.mm),
@@ -217,7 +247,7 @@ def setup_acts_reconstruction(input_path, output_dir, config, rnd, logger=None):
                 maxHoles=2,
                 maxOutliers=2,
             ),
-            CkfConfig(
+            ckfConfig=CkfConfig(
                 chi2CutOffMeasurement=15.0,
                 chi2CutOffOutlier=25.0,
                 numMeasurementsCutOff=10,
@@ -245,69 +275,73 @@ def setup_acts_reconstruction(input_path, output_dir, config, rnd, logger=None):
                     30,  # long strip
                 ],
             ),
-            outputDirRoot=perf_output if config.output_root else None,
-            outputDirCsv=perf_output if config.output_csv else None,
-            writeCovMat=config.performance_metrics,
-            writeTrackStates=config.performance_metrics,
-            writeTrackSummary=config.performance_metrics,
-            writePerformance=config.performance_metrics,
+            outputDirRoot=perf_output if getattr(config, 'output_root', True) else None,
+            outputDirCsv=perf_output if getattr(config, 'output_csv', False) else None,
+            writeCovMat=getattr(config, 'performance_metrics', False),
+            writeTrackStates=getattr(config, 'performance_metrics', False),
+            writeTrackSummary=getattr(config, 'performance_metrics', False),
+            writePerformance=getattr(config, 'performance_metrics', False),
         )
         
         # Add ambiguity resolution
-        if config.ambi_solver == "ML":
+        ambi_solver = getattr(config, 'ambi_solver', 'greedy')  # Default greedy
+        ambi_config = getattr(config, 'ambi_config', None)
+        
+        if ambi_solver == "ML":
             addAmbiguityResolutionML(
                 s,
-                AmbiguityResolutionMLConfig(
+                config=AmbiguityResolutionMLConfig(
                     maximumSharedHits=3,
                     maximumIterations=1000000,
                     nMeasurementsMin=7,
                 ),
-                outputDirRoot=perf_output if config.output_root else None,
-                outputDirCsv=perf_output if config.output_csv else None,
-                onnxModelFile=str(config.ambi_config),
+                outputDirRoot=perf_output if getattr(config, 'output_root', True) else None,
+                outputDirCsv=perf_output if getattr(config, 'output_csv', False) else None,
+                onnxModelFile=str(ambi_config),
             )
-        elif config.ambi_solver == "scoring":
+        elif ambi_solver == "scoring":
             addScoreBasedAmbiguityResolution(
                 s,
-                ScoreBasedAmbiguityResolutionConfig(
+                config=ScoreBasedAmbiguityResolutionConfig(
                     minScore=0,
                     maxShared=2,
-                    maxSharedTracksPerMeasurement=2,
-                    pTMax=1400,
-                    pTMin=0.5,
+                    maxSharedTracksPerMeasurement=2
                 ),
-                outputDirRoot=perf_output if config.output_root else None,
-                outputDirCsv=perf_output if config.output_csv else None,
-                ambiVolumeFile=config.ambi_config,
+                outputDirRoot=perf_output if getattr(config, 'output_root', True) else None,
+                outputDirCsv=perf_output if getattr(config, 'output_csv', False) else None,
+                ambiVolumeFile=ambi_config,
             )
         else:
             addAmbiguityResolution(
                 s,
-                AmbiguityResolutionConfig(
+                config=AmbiguityResolutionConfig(
                     maximumSharedHits=3,
                     maximumIterations=1000000,
                     nMeasurementsMin=7,
                 ),
-                outputDirRoot=perf_output if config.output_root else None,
-                outputDirCsv=perf_output if config.output_csv else None,
-                writeCovMat=config.performance_metrics,
-                writeTrackStates=config.performance_metrics,
-                writeTrackSummary=config.performance_metrics,
-                writePerformance=config.performance_metrics,
+                outputDirRoot=perf_output if getattr(config, 'output_root', True) else None,
+                outputDirCsv=perf_output if getattr(config, 'output_csv', False) else None,
+                writeCovMat=getattr(config, 'performance_metrics', False),
+                writeTrackStates=getattr(config, 'performance_metrics', False),
+                writeTrackSummary=getattr(config, 'performance_metrics', False),
+                writePerformance=getattr(config, 'performance_metrics', False),
             )
         
         # Add vertex fitting
-        if config.vertexing:
+        vertexing_enabled = getattr(config, 'vertexing', False)  # Default False
+        if vertexing_enabled:
             addVertexFitting(
                 s,
                 field,
                 vertexFinder=VertexFinder.AMVF,
-                outputDirRoot=perf_output if config.output_root else None,
-                outputDirCsv=perf_output if config.output_csv else None,
+                outputDirRoot=perf_output if getattr(config, 'output_root', True) else None,
+                outputDirCsv=perf_output if getattr(config, 'output_csv', False) else None,
             )
     
     # Add ROOT writers if enabled and performance metrics are on
-    if config.output_root and config.performance_metrics:
+    output_root = getattr(config, 'output_root', True)
+    performance_metrics = getattr(config, 'performance_metrics', False)
+    if output_root and performance_metrics:
         add_root_writers(s, output_dir)
     
     return s
@@ -319,15 +353,6 @@ def add_root_writers(s, output_dir):
         config=acts.examples.RootSimHitWriter.Config(
             filePath=str(output_dir / "simhits.root"),
             inputSimHits="simhits"
-        ),
-        level=acts.logging.INFO
-    ))
-    
-    # Write particles
-    s.addWriter(acts.examples.RootParticleFlatWriter(
-        config=acts.examples.RootParticleFlatWriter.Config(
-            filePath=str(output_dir / "particles.root"),
-            inputParticles="particles_selected" # TODO: Decide on whether we write particles_input or particles_selected
         ),
         level=acts.logging.INFO
     ))

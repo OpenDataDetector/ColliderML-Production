@@ -150,17 +150,16 @@ def build_stage_command(config, config_path, stage_script_path, output_dir, outp
     elif is_simulation:
         # For simulation stages in distributed mode
         if execution_mode == "interactive":
-            python_cmd_parts.extend([
-                "--output", str(output_dir),
-                "--output-subdir", str(output_subdir)
-            ])
-            if output_subdir != "all":
-                # Add seed for specific run
-                dataset = config.get("dataset", "unknown")
-                version = config.get("version", "unknown")
-                python_cmd_parts.extend([
-                    "--seed", f"{dataset}_{version}_run{output_subdir}"
-                ])
+            python_cmd_parts.extend(["--output", str(output_dir)])
+            if output_subdir is not None:
+                python_cmd_parts.extend(["--output-subdir", str(output_subdir)])
+                if output_subdir != "all":
+                    # Add seed for specific run
+                    dataset = config.get("dataset", "unknown")
+                    version = config.get("version", "unknown")
+                    python_cmd_parts.extend([
+                        "--seed", f"{dataset}_{version}_run{output_subdir}"
+                    ])
         else:  # distributed_slurm
             python_cmd_parts.extend([
                 "--output", str(output_dir),
@@ -173,7 +172,7 @@ def build_stage_command(config, config_path, stage_script_path, output_dir, outp
             ])
     else:  # postprocessing stages
         if execution_mode == "interactive":
-            if output_subdir != "all":
+            if output_subdir is not None and output_subdir != "all":
                 python_cmd_parts.extend(["--chunk-index", str(output_subdir)])
             # For "all" case in postprocessing, we might need special handling
         else:  # distributed_slurm

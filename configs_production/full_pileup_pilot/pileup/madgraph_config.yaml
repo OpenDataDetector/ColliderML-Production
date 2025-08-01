@@ -11,7 +11,7 @@ job_config:
   execution_mode: "interactive"
 
 # --- MadGraph Process Definition ---
-mg_model: "sm"
+mg_model: "sm-no_b_mass"
 mg_definitions: 
   - "define j = g u c d s b u~ c~ d~ s~ b~"
 mg_generate_command: "generate p p > j j [QCD]"  # Pure QCD dijet production
@@ -35,6 +35,8 @@ card_customizations:
   run_card:
     "xqcut": 0.0          # Higher xqcut for pure QCD processes
     "parton_shower": "PYTHIA8"
+    "ebeam1": 7000.0 # 14 TeV centre of mass energy
+    "ebeam2": 7000.0 # 14 TeV centre of mass energy
 
   pythia8_card: 
     "{{XQCUT}}": 0.0        # MUST be IDENTICAL to the run_card xqcut value

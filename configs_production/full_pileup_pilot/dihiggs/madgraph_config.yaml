@@ -3,7 +3,7 @@
 #========================================================================
 
 # --- Dataset & Version ---
-campaign: "full_pileup_pilot"
+campaign: "full_pileup_mini_pilot"
 dataset: "dihiggs"
 version: "v1"
 stage: "madgraph_generation"  # One of: madgraph_generation, pythia_generation, merge_smear, simulation, digitization
@@ -11,7 +11,7 @@ job_config:
   execution_mode: "interactive"
 
 # --- MadGraph Process Definition ---
-mg_model: "sm"  # Use loop_sm model for NLO loop-induced processes
+mg_model: "sm-no_b_mass"  # Use loop_sm model for NLO loop-induced processes
 mg_definitions: [] 
 mg_generate_command: "generate g g > h h QED<=2 [QCD]"  # Di-Higgs at NLO. Removed QED order for simplicity, can be re-added.
 
@@ -22,7 +22,7 @@ generation_scratch_dir: "{madgraph.generation_scratch_dir}"
 output: "{madgraph.output}"
 
 # --- MadGraph Event Settings ---
-events: 1024               
+events: 32768               
 seed: 42                   
 
 # --- Card Templates ---
@@ -34,16 +34,18 @@ card_customizations:
   run_card:
     "xqcut": 0.0 # PREVIOUSLY 10.0          # Lower xqcut for di-Higgs (similar to single H)
     "parton_shower": "PYTHIA8"
+    "ebeam1": 7000.0 # 14 TeV centre of mass energy
+    "ebeam2": 7000.0 # 14 TeV centre of mass energy
 
   pythia8_card: 
     "{{XQCUT}}": 0.0 # PREVIOUSLY 10.0        # MUST be IDENTICAL to the run_card xqcut value
     "{{PYTHIA_SEED}}": 42 
-    "{{NEVENTS}}": 10000 
+    "{{NEVENTS}}": 32768 
     "{{PYTHIA_TUNE}}": 14    # Monash 2013 tune
 
 splitting_config:
   enable: true
-  events_per_file: 32
+  events_per_file: 128
   output_filename: "events.hepmc3"
 
 # --- Logging ---

@@ -11,7 +11,7 @@ job_config:
   execution_mode: "interactive"
 
 # --- MadGraph Process Definition ---
-mg_model: "sm"  # Use loop_sm model for NLO loop-induced processes
+mg_model: "sm-no_b_mass"  # Use loop_sm model for NLO loop-induced processes
 mg_definitions: [] 
 mg_generate_command: "generate p p > a a [QCD]"  # Diphoton at NLO, specifying explicit coupling order
 
@@ -34,6 +34,8 @@ card_customizations:
   run_card:
     "xqcut": 0.0          # Lower xqcut for electroweak diphoton process
     "parton_shower": "PYTHIA8"
+    "ebeam1": 7000.0 # 14 TeV centre of mass energy
+    "ebeam2": 7000.0 # 14 TeV centre of mass energy
 
   pythia8_card: 
     "{{XQCUT}}": 0.0        # MUST be IDENTICAL to the run_card xqcut value

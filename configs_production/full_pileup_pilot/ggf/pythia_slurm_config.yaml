@@ -7,7 +7,7 @@ job_config:
   # Number of nodes will be calculated as n_runs / runs_per_node
   n_runs: 256  # Number of runs (where a run produces N events)
   runs_per_node: 16  # Number of runs per node
-  time_limit: "01:00:00"  # Time limit per job
+  time_limit: "00:30:00"  # Time limit per job
   qos: "regular"
   execution_mode: "distributed_slurm"
 
