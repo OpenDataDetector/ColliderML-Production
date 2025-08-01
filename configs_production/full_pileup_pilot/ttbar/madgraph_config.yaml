@@ -11,7 +11,7 @@ job_config:
   execution_mode: "interactive"
 
 # --- MadGraph Process Definition ---
-mg_model: "sm"
+mg_model: "sm-no_b_mass"
 mg_definitions: [] # No specific lepton definitions needed for inclusive ttbar
 mg_generate_command: "generate p p > t t~ [QCD]"
 
@@ -35,6 +35,8 @@ card_customizations:
   run_card:
     "xqcut": 0.0          # Shower-kT starting scale (GeV) for ttbar - NEEDS TUNING
     "parton_shower": "PYTHIA8" 
+    "ebeam1": 7000.0 # 14 TeV centre of mass energy
+    "ebeam2": 7000.0 # 14 TeV centre of mass energy
     # For ttbar, you might also want to ensure these are set appropriately in the run_card via regex or have good defaults:
     # "ickkw": 1           # FxFx merging scheme
     # "maxjetflavor": 5    # For 5F PDF schemes (if top is not a jet flavour)
