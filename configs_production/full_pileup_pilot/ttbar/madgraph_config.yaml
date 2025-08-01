@@ -32,7 +32,6 @@ card_templates:
 # --- Card Customizations ---
 card_customizations:
   run_card:
-    "xqcut": 0.0          # Shower-kT starting scale (GeV) for ttbar - NEEDS TUNING
     "parton_shower": "PYTHIA8" 
     "ebeam1": 7000.0 # 14 TeV centre of mass energy
     "ebeam2": 7000.0 # 14 TeV centre of mass energy
