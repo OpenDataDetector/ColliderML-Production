@@ -35,11 +35,11 @@ card_customizations:
     "parton_shower": "PYTHIA8" 
     "ebeam1": 7000.0 # 14 TeV centre of mass energy
     "ebeam2": 7000.0 # 14 TeV centre of mass energy
-    "ickkw": 3           # FxFx merging scheme
-    "maxjetflavor": 5    # For 5F PDF schemes (if top is not a jet flavour)
-    "jetradius": 1.0
-    "etaj": 10.0
-    "ptj": 8.0
+    # "ickkw": 3           # FxFx merging scheme
+    # "maxjetflavor": 5    # For 5F PDF schemes (if top is not a jet flavour)
+    # "jetradius": 1.0
+    # "etaj": 10.0
+    # "ptj": 8.0
     "reweight_scale": "False"
     "store_rwgt_info": "True"
     "systematics_program": "systematics"
