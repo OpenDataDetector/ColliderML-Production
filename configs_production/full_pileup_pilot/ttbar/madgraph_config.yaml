@@ -22,13 +22,12 @@ generation_scratch_dir: "{madgraph.generation_scratch_dir}"
 output: "{madgraph.output}"
 
 # --- MadGraph Event Settings ---
-events: 32768               
+events: 256               
 seed: 42                   
 
 # --- Card Templates ---
 card_templates:
   pythia8_card: "{templates.pythia8_card_fxfx}" # Now uses variable from env_setup.yaml
-  # param_card: "param_card_ttbar_template.dat" # If you need to set top mass, width, etc.
 
 # --- Card Customizations ---
 card_customizations:
@@ -41,6 +40,14 @@ card_customizations:
     # "ickkw": 1           # FxFx merging scheme
     # "maxjetflavor": 5    # For 5F PDF schemes (if top is not a jet flavour)
     # "auto_ptj_bias": ".true." # May improve efficiency for some NLO processes
+    "use_syst": "True"
+    "store_reweight_info": "True"
+    "systematics_program": "systematics"
+    "systematics_arguments": 
+      - '--mur=0.5,1,2'
+      - '--muf=0.5,1,2'
+      - '--dyn=-1'
+    
 
   pythia8_card: 
     "{{XQCUT}}": 0.0        # MUST be IDENTICAL to the run_card xqcut value.
