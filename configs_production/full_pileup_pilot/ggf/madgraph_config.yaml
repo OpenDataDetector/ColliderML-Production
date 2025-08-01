@@ -5,7 +5,7 @@
 # --- Dataset & Version ---
 campaign: "full_pileup_mini_pilot"
 dataset: "ggf"
-version: "v2"
+version: "v3"
 stage: "madgraph_generation"  # One of: madgraph_generation, pythia_generation, merge_smear, simulation, digitization
 job_config:
   execution_mode: "interactive"
@@ -39,10 +39,10 @@ card_customizations:
     "ebeam2": 7000.0 # 14 TeV centre of mass energy
     # "pdlabel": "lhapdf"
     # "lhaid": 13200
-    # "systematics_arguments": 
-    #   - '--mur=0.5,1,2'
-    #   - '--muf=0.5,1,2'
-    use_syst: "False"
+    "systematics_arguments": 
+      - '--mur=0.5,1,2'
+      - '--muf=0.5,1,2'
+    use_syst: "True"
 
   pythia8_card: 
     # These customizations apply to the standard pythia8_card_default.dat
