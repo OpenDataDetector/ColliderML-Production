@@ -5,7 +5,7 @@
 # --- Dataset & Version ---
 campaign: "full_pileup_mini_pilot"
 dataset: "ttbar"
-version: "v1"
+version: "v2"
 stage: "madgraph_generation"  # One of: madgraph_generation, pythia_generation, merge_smear, simulation, digitization
 job_config:
   execution_mode: "interactive"
@@ -40,8 +40,8 @@ card_customizations:
     # "ickkw": 1           # FxFx merging scheme
     # "maxjetflavor": 5    # For 5F PDF schemes (if top is not a jet flavour)
     # "auto_ptj_bias": ".true." # May improve efficiency for some NLO processes
-    "use_syst": "True"
-    "store_reweight_info": "True"
+    "reweight_scale": "False"
+    "store_rwgt_info": "True"
     "systematics_program": "systematics"
     "systematics_arguments": 
       - '--mur=0.5,1,2'
