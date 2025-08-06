@@ -13,22 +13,22 @@
 # =====================================================================
 env_variables:
   # ATLAS/CVMFS setup (usually standard)
-  lcg_view: "LCG_107 x86_64-el9-gcc13-opt"
+  LCG_VIEW: "LCG_107 x86_64-el9-gcc13-opt"
   
   # Tool-specific paths - CUSTOMIZE THESE FOR YOUR INSTALLATIONS
-  dd4hep_setup_script: # e.g. "/afs/cern.ch/user/d/dmurnane/ColliderML/DD4hep/dd4hep-colliderml/bin/thisdd4hep.sh"
-  acts_setup_script: # e.g. "/afs/cern.ch/user/d/dmurnane/ColliderML/acts/build/python/setup.sh"
-  colliderml_env_path: # e.g. "/afs/cern.ch/user/d/dmurnane/ColliderML/colliderml_env"
+  DD4HEP_SETUP_SCRIPT: # e.g. "/afs/cern.ch/user/d/dmurnane/ColliderML/DD4hep/dd4hep-colliderml/bin/thisdd4hep.sh"
+  ACTS_SETUP_SCRIPT: # e.g. "/afs/cern.ch/user/d/dmurnane/ColliderML/acts/build/python/setup.sh"
+  COLLIDERML_ENV_PATH: # e.g. "/afs/cern.ch/user/d/dmurnane/ColliderML/colliderml_env"
 
   # MadGraph-specific environment paths
-  madgraph_env_path: # e.g. "/afs/cern.ch/user/d/dmurnane/ColliderML/colliderml_env"
-  madgraph_lcg_view: "LCG_107 x86_64-el9-gcc13-opt"
+  MADGRAPH_ENV_PATH: # e.g. "/afs/cern.ch/user/d/dmurnane/ColliderML/colliderml_env"
+  MADGRAPH_LCG_VIEW: "LCG_107 x86_64-el9-gcc13-opt"
   
   # Base software directory for cd commands
-  software_base_dir: # e.g. "/afs/cern.ch/user/d/dmurnane/ColliderML"
+  SOFTWARE_BASE_DIR: # e.g. "/afs/cern.ch/user/d/dmurnane/ColliderML"
   
   # Postprocessing conda environment name
-  # conda_env_name: # e.g. "collider-env"
+  # CONDA_ENV_NAME: # e.g. "collider-env"
 
 # =====================================================================
 # Config Defaults - Used for stage config substitution

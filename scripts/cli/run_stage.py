@@ -154,6 +154,9 @@ def run_interactive(config, config_path_arg, stage_script_path):
         
         logger.info(f"Executing command string: {final_command_str}")
         
+        # print(f"DEBUG COMMAND: {final_command_str}", file=sys.stderr)
+        # sys.exit(0) # Exit after printing
+
         # Use shell=True to correctly process the command string with '&&' and environment sourcing
         process = subprocess.run(final_command_str, shell=True, check=True)
         logger.info(f"Interactive stage '{config['stage']}' completed successfully.")
