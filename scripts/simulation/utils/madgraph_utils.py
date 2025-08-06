@@ -86,16 +86,10 @@ def customize_card_with_regex(card_path, card_settings):
     # Add any parameters that weren't found in the existing file
     missing_params = set(card_settings.keys()) - updated_params
     if missing_params:
-        # Add a comment section for new parameters
-        modified_lines.append("\n")
-        modified_lines.append("!======================================================================\n")
-        modified_lines.append("! Parameters added by ColliderML script\n")
-        modified_lines.append("!======================================================================\n")
-        
         for param_name in sorted(missing_params):  # Sort for consistency
             param_value = card_settings[param_name]
             # Use Pythia8 format for new parameters (more common)
-            new_line = f"{param_name} = {param_value}    ! Added by ColliderML script\n"
+            new_line = f"{param_name} = {param_value} \n"
             modified_lines.append(new_line)
 
     with open(card_path, 'w') as f:
