@@ -306,6 +306,8 @@ def main():
     args = parser.parse_args()
     config = load_config(args)
 
+    print(f"Config: {config}")
+
     # Set up logging
     log_level = getattr(config, 'log_level', 'INFO')
     logging.basicConfig(
