@@ -19,7 +19,8 @@ CONFIG_FILE_NAME = "expanded_config.yaml"
 GIT_COMMIT_SUCCESS_FILE = ".git_commit_success"
 
 # Define stage categories
-SIMULATION_STAGES = ["madgraph_init", "madgraph_generation", "pythia_generation", "merge_smear", "simulation", "digitization"]
+MADGRAPH_STAGES = ["madgraph_init", "madgraph_generation"]
+SIMULATION_STAGES = MADGRAPH_STAGES + ["pythia_generation", "merge_smear", "simulation", "digitization"]
 POSTPROCESSING_STAGES = ["build_tracks", "build_hits", "build_particles"]
 VALID_STAGES = SIMULATION_STAGES + POSTPROCESSING_STAGES
 
@@ -75,7 +76,9 @@ def get_env_setup_cmds(config):
     else:
         # Determine category and fall back to it
         category = None
-        if stage in SIMULATION_STAGES:
+        if stage in MADGRAPH_STAGES:
+            category = "madgraph"
+        elif stage in SIMULATION_STAGES:
             category = "simulation"
         elif stage in POSTPROCESSING_STAGES:
             category = "postprocessing"
