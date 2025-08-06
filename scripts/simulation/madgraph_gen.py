@@ -116,7 +116,8 @@ def customize_cards_for_run(process_dir, config, run_id=None):
     logger.info(f"Customizing run_card.dat for run (events={run_params.get('nevents', 'default')}, seed={run_params.get('iseed', 'default')})")
     
     # Get base run_card settings from config if they exist
-    base_run_card_settings = getattr(config, 'card_customizations', {}).get('run_card', {})
+    card_customizations = getattr(config, 'card_customizations', {})
+    base_run_card_settings = card_customizations.get('run_card', {}) or {}
     
     # Merge base settings with run-specific parameters
     final_run_card_settings = {**base_run_card_settings, **run_params}
@@ -134,7 +135,7 @@ def customize_cards_for_run(process_dir, config, run_id=None):
                 shower_params['iseed'] = config.seed
             
             # Get base shower_card settings from config
-            base_shower_settings = getattr(config, 'card_customizations', {}).get('shower_card', {})
+            base_shower_settings = card_customizations.get('shower_card', {}) or {}
             final_shower_settings = {**base_shower_settings, **shower_params}
             
             if final_shower_settings:
@@ -152,7 +153,7 @@ def customize_cards_for_run(process_dir, config, run_id=None):
                 pythia8_params['Random:seed'] = config.seed
             
             # Get base pythia8_card settings from config
-            base_pythia8_settings = getattr(config, 'card_customizations', {}).get('pythia8_card', {})
+            base_pythia8_settings = card_customizations.get('pythia8_card', {}) or {}
             final_pythia8_settings = {**base_pythia8_settings, **pythia8_params}
             
             if final_pythia8_settings:
@@ -284,17 +285,13 @@ def main():
             splitting_enabled = splitting_config.get('enable', False)
         else:
             splitting_enabled = getattr(splitting_config, 'enable', False)
-    except Exception as e:
-        logger.warning(f"Error accessing splitting config: {e}. Defaulting to splitting_enabled = False")
-        splitting_enabled = False
-    
-    # Get splitting configuration
-    try:
+        
         split_events_per_file = splitting_config.get('events_per_file', 1000)
         split_output_filename = splitting_config.get('output_filename', 'events.hepmc')
-        logger.info(f"Splitting config: enabled={splitting_enabled}, events_per_file={split_events_per_file}")
+        logger.info(f"Splitting config: enable={splitting_enabled}, events_per_file={split_events_per_file}")
     except Exception as e:
-        logger.warning(f"Error accessing splitting config details: {e}. Using defaults")
+        logger.warning(f"Error accessing splitting config: {e}. Using defaults")
+        splitting_enabled = False
         split_events_per_file = 1000
         split_output_filename = 'events.hepmc'
 
@@ -320,7 +317,7 @@ def main():
         
         # Generate launch script with optional --name parameter for proper run naming
         run_name = f"run_{run_id}" if run_id else None
-        
+
         with open(temp_launch_script_path, 'w') as f:
             if process_type == "noborn" and parton_shower_mode == 'PYTHIA8':
                 logger.info("Loop-induced process with parton showering detected. Generating multi-step launch script.")
@@ -336,8 +333,8 @@ def main():
                     f.write(f"launch {copied_process_dir} -f --name={run_name}\n")
                 else:
                     f.write(f"launch {copied_process_dir} -f\n")
-                f.write("set automatic_html_opening False\n")
-                f.write("exit\n")
+            f.write("set automatic_html_opening False\n")
+            f.write("exit\n")
 
         logger.info(f"Executing MadGraph with script: {temp_launch_script_path}")
         logger.info(f"Process type: {process_type}, Run name: {run_name}")
