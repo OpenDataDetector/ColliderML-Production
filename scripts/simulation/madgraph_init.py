@@ -282,7 +282,7 @@ def store_process_directory(process_dir, config, logger):
     
     # Ensure parent directory exists
     version_dir.mkdir(parents=True, exist_ok=True)
-    
+     
     # Copy the process directory to final location
     logger.info(f"Storing compiled process directory: {process_dir} -> {final_process_dir}")
     # Use ignore_dangling_symlinks to handle broken symlinks that MadGraph sometimes creates
