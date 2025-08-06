@@ -28,12 +28,7 @@ import logging
 from pathlib import Path
 from utils.config import create_base_parser, load_config
 
-# Add the parent directory to sys.path to enable relative imports
-script_dir = Path(__file__).parent
-parent_dir = script_dir.parent
-sys.path.insert(0, str(parent_dir))
-
-from cli.cli_utils import get_version_directory
+# Note: We avoid importing cli_utils to prevent anti-pattern of modifying shared utilities
 
 logger = logging.getLogger(__name__)
 
@@ -277,9 +272,9 @@ def store_process_directory(process_dir, config, logger):
     process_name = f"{config.dataset}_{config.version}"
     
     # Determine storage location: dataset_version_dir/madgraph_process/
-    
-    
-    version_dir = get_version_directory(config)
+    # Build version directory path directly (avoid modifying shared cli_utils)
+    base_dir = Path(config.common["output_base_dir"])
+    version_dir = base_dir / config.campaign / config.dataset / config.version
     storage_dir = version_dir / "madgraph_process"
     storage_dir.mkdir(parents=True, exist_ok=True)
     
