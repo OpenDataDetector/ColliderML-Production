@@ -13,6 +13,7 @@
 # =====================================================================
 env_variables:
   # ATLAS/CVMFS setup (usually standard)
+  ATLAS_LOCAL_ROOT_BASE: # e.g. "/cvmfs/atlas.cern.ch/repo/ATLASLocalRootBase"
   LCG_VIEW: "LCG_107 x86_64-el9-gcc13-opt"
   
   # Tool-specific paths - CUSTOMIZE THESE FOR YOUR INSTALLATIONS
@@ -58,6 +59,9 @@ config_defaults:
 # The 'simulation' key contains the general setup for most simulation stages
 # (pythia, ddsim, digi, etc.). This is used if a more specific stage setup isn't found.
 simulation:
+  - 'cd {ATLAS_LOCAL_ROOT_BASE}'
+  - 'export ATLAS_LOCAL_ROOT_BASE={ATLAS_LOCAL_ROOT_BASE}'
+  - 'source {ATLAS_LOCAL_ROOT_BASE}/user/atlasLocalSetup.sh'
   - 'cd {SOFTWARE_BASE_DIR}'
   - 'source /cvmfs/sft.cern.ch/lcg/views/setupViews.sh {LCG_VIEW}'
   - 'source {COLLIDERML_ENV_PATH}/bin/activate'
