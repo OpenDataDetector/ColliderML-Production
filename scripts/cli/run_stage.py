@@ -299,9 +299,11 @@ def main():
                     logger.info(f"Created temporary modified config for monolithic mode: {temp_config_path}")
                     config_path_for_submitter = str(temp_config_path)
                 else:
-                    config_path_for_submitter = args.config
+                    # Use processed config if available, otherwise fall back to original
+                    config_path_for_submitter = str(processed_config_path) if processed_config_path else args.config
             else:
-                config_path_for_submitter = args.config
+                # Use processed config if available, otherwise fall back to original
+                config_path_for_submitter = str(processed_config_path) if processed_config_path else args.config
 
             # Initialize JobSubmitter with processed config
             job_submitter = JobSubmitter(
