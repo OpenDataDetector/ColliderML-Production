@@ -19,17 +19,18 @@ CONFIG_FILE_NAME = "expanded_config.yaml"
 GIT_COMMIT_SUCCESS_FILE = ".git_commit_success"
 
 # Define stage categories
-SIMULATION_STAGES = ["madgraph_generation", "pythia_generation", "merge_smear", "simulation", "digitization"]
+SIMULATION_STAGES = ["madgraph_init", "madgraph_generation", "pythia_generation", "merge_smear", "simulation", "digitization"]
 POSTPROCESSING_STAGES = ["build_tracks", "build_hits", "build_particles"]
 VALID_STAGES = SIMULATION_STAGES + POSTPROCESSING_STAGES
 
 # Define which stages need shifter container (subset of simulation stages)
-# madgraph_generation runs on host environment and doesn't need shifter
+# madgraph_init and madgraph_generation run on host environment and don't need shifter
 SHIFTER_STAGES = ["pythia_generation", "merge_smear", "simulation", "digitization"]
 
 # Stage to script mappings
 STAGE_SCRIPT_MAP = {
     # Simulation scripts
+    "madgraph_init": "simulation/madgraph_init.py",
     "madgraph_generation": "simulation/madgraph_gen.py",
     "pythia_generation": "simulation/pythia_gen.py",
     "merge_smear": "simulation/merge_and_smear.py",
