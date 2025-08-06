@@ -27,6 +27,7 @@ import yaml
 import logging
 from pathlib import Path
 from utils.config import create_base_parser, load_config
+from cli.cli_utils import get_version_directory
 
 logger = logging.getLogger(__name__)
 
@@ -270,7 +271,8 @@ def store_process_directory(process_dir, config, logger):
     process_name = f"{config.dataset}_{config.version}"
     
     # Determine storage location: dataset_version_dir/madgraph_process/
-    from cli.cli_utils import get_version_directory
+    
+    
     version_dir = get_version_directory(config)
     storage_dir = version_dir / "madgraph_process"
     storage_dir.mkdir(parents=True, exist_ok=True)
@@ -305,8 +307,9 @@ def main():
     config = load_config(args)
 
     # Set up logging
+    log_level = getattr(config, 'log_level', 'INFO')
     logging.basicConfig(
-        level=getattr(logging, config.get('log_level', 'INFO').upper()),
+        level=getattr(logging, log_level.upper()),
         format='%(asctime)s - %(levelname)s - %(message)s'
     )
     logger.info("Starting MadGraph process initialization")
