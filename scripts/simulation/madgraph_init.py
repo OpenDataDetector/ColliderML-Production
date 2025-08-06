@@ -269,21 +269,19 @@ def store_process_directory(process_dir, config, logger):
     Returns:
         Path to the stored process directory
     """
-    process_name = f"{config.dataset}_{config.version}"
-    
     # Determine storage location: dataset_version_dir/madgraph_process/
     # Build version directory path directly (avoid modifying shared cli_utils)
     base_dir = Path(config.common["output_base_dir"])
     version_dir = base_dir / config.campaign / config.dataset / config.version
-    storage_dir = version_dir / "madgraph_process"
-    storage_dir.mkdir(parents=True, exist_ok=True)
+    final_process_dir = version_dir / "madgraph_process"
     
-    final_process_dir = storage_dir / process_name
-    
-    # Remove existing directory if it exists
+    # Remove existing directory if it exists, then create clean parent directories
     if final_process_dir.exists():
         logger.warning(f"Removing existing process directory: {final_process_dir}")
         shutil.rmtree(final_process_dir)
+    
+    # Ensure parent directory exists
+    version_dir.mkdir(parents=True, exist_ok=True)
     
     # Copy the process directory to final location
     logger.info(f"Storing compiled process directory: {process_dir} -> {final_process_dir}")
