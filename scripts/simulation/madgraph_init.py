@@ -240,7 +240,7 @@ def main():
         logger.info("=== Step 4: Cleanup ===")
         temp_parent = process_dir.parent
         logger.info(f"Cleaning up temporary directory: {temp_parent}")
-        shutil.rmtree(temp_parent)
+        # shutil.rmtree(temp_parent)
         
         logger.info("=== MadGraph Process Initialization Complete ===")
         logger.info(f"Process '{process_name}' ready for parallel event generation")
