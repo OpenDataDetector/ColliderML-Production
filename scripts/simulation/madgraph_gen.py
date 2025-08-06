@@ -305,7 +305,7 @@ def process_output_files(copied_process_dir, effective_output_dir, run_name, spl
     if run_name:
         actual_events_subdirs = list(events_dir_in_process.glob(run_name))
     else:
-    actual_events_subdirs = list(events_dir_in_process.glob("run_*"))
+        actual_events_subdirs = list(events_dir_in_process.glob("run_*"))
         
     # Fallback to main Events directory if no run subdirs found  
     if not actual_events_subdirs:
@@ -402,7 +402,7 @@ def copy_final_cards(copied_process_dir, process_type, process_name, config, log
         elif process_type == "noborn":
             pythia8_card_path = cards_dir / "pythia8_card.dat"
             if pythia8_card_path.exists():
-            destination = final_cards_storage_dir / f"{process_name}_pythia8_card.dat"
+                destination = final_cards_storage_dir / f"{process_name}_pythia8_card.dat"
                 shutil.copy(pythia8_card_path, destination)
                 logger.info(f"Copied final pythia8_card to {destination}")
                 
