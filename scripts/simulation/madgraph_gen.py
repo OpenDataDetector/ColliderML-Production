@@ -131,7 +131,7 @@ def customize_cards_for_run(process_dir, config, run_id=None):
             if hasattr(config, 'events'):
                 shower_params['nevents'] = config.events
             if hasattr(config, 'seed'):
-                shower_params['iseed'] = config.seed
+                shower_params['rnd_seed'] = config.seed
             
             # Get base shower_card settings from config (guaranteed to exist and be a dict)
             base_shower_settings = config.card_customizations['shower_card']
