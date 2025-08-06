@@ -287,7 +287,8 @@ def store_process_directory(process_dir, config, logger):
     
     # Copy the process directory to final location
     logger.info(f"Storing compiled process directory: {process_dir} -> {final_process_dir}")
-    shutil.copytree(process_dir, final_process_dir)
+    # Use ignore_dangling_symlinks to handle broken symlinks that MadGraph sometimes creates
+    shutil.copytree(process_dir, final_process_dir, ignore_dangling_symlinks=True)
     
     # Log some statistics about the stored directory
     total_size = sum(f.stat().st_size for f in final_process_dir.rglob('*') if f.is_file())
