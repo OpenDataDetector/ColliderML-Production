@@ -496,7 +496,7 @@ def main():
         if 'job_scratch_dir' in locals() and job_scratch_dir.exists():
             try:
                 logger.info(f"Cleaning up temporary directory: {job_scratch_dir}")
-                shutil.rmtree(job_scratch_dir)
+                # shutil.rmtree(job_scratch_dir)
                 logger.info("Cleanup completed successfully")
             except Exception as cleanup_error:
                 logger.warning(f"Error during cleanup: {cleanup_error}")
