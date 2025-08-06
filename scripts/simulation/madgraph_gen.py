@@ -73,8 +73,8 @@ def copy_process_directory(config):
     copied_process_dir = job_scratch_dir / "process"
     logger.info(f"Copying process directory: {stored_process_dir} -> {copied_process_dir}")
     
-    # Use ignore_dangling_symlinks to handle MadGraph's expected broken symlinks
-    shutil.copytree(stored_process_dir, copied_process_dir, ignore_dangling_symlinks=True)
+    # Preserve symlinks but ignore dangling ones that MadGraph sometimes creates  
+    shutil.copytree(stored_process_dir, copied_process_dir, symlinks=True, ignore_dangling_symlinks=True)
     
     # Log copy statistics
     total_size = sum(f.stat().st_size for f in copied_process_dir.rglob('*') if f.is_file())
