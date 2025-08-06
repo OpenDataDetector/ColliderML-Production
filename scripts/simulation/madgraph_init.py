@@ -27,7 +27,7 @@ import yaml
 import logging
 from pathlib import Path
 from utils.config import create_base_parser, load_config
-from cli.cli_utils import get_version_directory
+from ..cli.cli_utils import get_version_directory
 
 logger = logging.getLogger(__name__)
 
