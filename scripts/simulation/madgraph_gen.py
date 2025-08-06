@@ -256,7 +256,7 @@ def normalize_card_customizations(config):
 def setup_splitting_config(config, logger):
     """Set up HEPMC splitting configuration."""
     try:
-            splitting_config = getattr(config, 'splitting_config', {})
+        splitting_config = getattr(config, 'splitting_config', {})
         if isinstance(splitting_config, dict):
             splitting_enabled = splitting_config.get('enable', False)
         else:
