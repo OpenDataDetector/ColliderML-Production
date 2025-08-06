@@ -115,9 +115,8 @@ def customize_cards_for_run(process_dir, config, run_id=None):
     run_card_path = cards_dir / "run_card.dat"
     logger.info(f"Customizing run_card.dat for run (events={run_params.get('nevents', 'default')}, seed={run_params.get('iseed', 'default')})")
     
-    # Get base run_card settings from config if they exist
-    card_customizations = getattr(config, 'card_customizations', {})
-    base_run_card_settings = card_customizations.get('run_card', {}) or {}
+    # Get base run_card settings from config (guaranteed to exist and be a dict)
+    base_run_card_settings = config.card_customizations['run_card']
     
     # Merge base settings with run-specific parameters
     final_run_card_settings = {**base_run_card_settings, **run_params}
@@ -134,8 +133,8 @@ def customize_cards_for_run(process_dir, config, run_id=None):
             if hasattr(config, 'seed'):
                 shower_params['iseed'] = config.seed
             
-            # Get base shower_card settings from config
-            base_shower_settings = card_customizations.get('shower_card', {}) or {}
+            # Get base shower_card settings from config (guaranteed to exist and be a dict)
+            base_shower_settings = config.card_customizations['shower_card']
             final_shower_settings = {**base_shower_settings, **shower_params}
             
             if final_shower_settings:
@@ -152,8 +151,8 @@ def customize_cards_for_run(process_dir, config, run_id=None):
             if hasattr(config, 'seed'):
                 pythia8_params['Random:seed'] = config.seed
             
-            # Get base pythia8_card settings from config
-            base_pythia8_settings = card_customizations.get('pythia8_card', {}) or {}
+            # Get base pythia8_card settings from config (guaranteed to exist and be a dict)
+            base_pythia8_settings = config.card_customizations['pythia8_card']
             final_pythia8_settings = {**base_pythia8_settings, **pythia8_params}
             
             if final_pythia8_settings:
@@ -244,11 +243,178 @@ def split_hepmc_file(input_hepmc_path: Path,
         # Clean up any partially created files from this attempt if needed, though current logic doesn't require it.
         return []
 
+def normalize_card_customizations(config):
+    """Ensure card_customizations exists and all card types are dicts (not None)."""
+    if not hasattr(config, 'card_customizations') or config.card_customizations is None:
+        config.card_customizations = {}
+    
+    # Ensure each card type is a dict, not None
+    for card_type in ['run_card', 'shower_card', 'pythia8_card']:
+        if card_type not in config.card_customizations or config.card_customizations[card_type] is None:
+            config.card_customizations[card_type] = {}
+
+def setup_splitting_config(config, logger):
+    """Set up HEPMC splitting configuration."""
+    try:
+            splitting_config = getattr(config, 'splitting_config', {})
+        if isinstance(splitting_config, dict):
+            splitting_enabled = splitting_config.get('enable', False)
+        else:
+            splitting_enabled = getattr(splitting_config, 'enable', False)
+        
+        split_events_per_file = splitting_config.get('events_per_file', 1000)
+        split_output_filename = splitting_config.get('output_filename', 'events.hepmc')
+        logger.info(f"Splitting config: enable={splitting_enabled}, events_per_file={split_events_per_file}")
+        
+        return splitting_enabled, split_events_per_file, split_output_filename
+    except Exception as e:
+        logger.warning(f"Error accessing splitting config: {e}. Using defaults")
+        return False, 1000, 'events.hepmc'
+
+def create_launch_script(temp_launch_script_path, copied_process_dir, process_type, run_name, config, logger):
+    """Create the MadGraph launch script based on process type."""
+    run_card_settings = config.card_customizations['run_card']
+    parton_shower_mode = run_card_settings.get('parton_shower', 'OFF').upper()
+
+    with open(temp_launch_script_path, 'w') as f:
+        if process_type == "noborn" and parton_shower_mode == 'PYTHIA8':
+            logger.info("Loop-induced process with parton showering detected. Generating multi-step launch script.")
+            if run_name:
+                f.write(f"launch {copied_process_dir} --name={run_name}\n")
+            else:
+                f.write(f"launch {copied_process_dir}\n")
+            f.write("shower=Pythia8\n")
+            f.write("0\n")  # Skips card editing prompt, starts event generation
+        else:
+            logger.info("Standard NLO process detected. Generating simple launch script.")
+            if run_name:
+                f.write(f"launch {copied_process_dir} -f --name={run_name}\n")
+            else:
+                f.write(f"launch {copied_process_dir} -f\n")
+            f.write("set automatic_html_opening False\n")
+            f.write("exit\n")
+
+    logger.info(f"Process type: {process_type}, Run name: {run_name}")
+
+def process_output_files(copied_process_dir, effective_output_dir, run_name, splitting_enabled, 
+                        split_events_per_file, split_output_filename, logger):
+    """Process and move/split output files from MadGraph."""
+    events_dir_in_process = copied_process_dir / "Events"
+    
+    # Look for run-specific directories
+    if run_name:
+        actual_events_subdirs = list(events_dir_in_process.glob(run_name))
+    else:
+    actual_events_subdirs = list(events_dir_in_process.glob("run_*"))
+        
+    # Fallback to main Events directory if no run subdirs found  
+    if not actual_events_subdirs:
+        if events_dir_in_process.is_dir():
+             actual_events_subdirs = [events_dir_in_process]
+        else:
+            logger.warning(f"Events directory {events_dir_in_process} not found.")
+            actual_events_subdirs = []
+
+    files_processed_count = 0
+    logger.info(f"Processing events from {len(actual_events_subdirs)} directories")
+
+    for events_subdir_path in actual_events_subdirs:
+        if events_subdir_path.is_dir():
+            # Process LHE files: move them directly
+            for pattern in ["*.lhe", "*.lhe.gz"]:
+                for event_file_path in events_subdir_path.glob(pattern):
+                    try:
+                        destination_path = effective_output_dir / event_file_path.name
+                        shutil.move(str(event_file_path), str(destination_path))
+                        logger.info(f"Moved LHE file {event_file_path.name} to {destination_path}")
+                        files_processed_count += 1
+                    except Exception as e:
+                        logger.error(f"Error moving LHE file {event_file_path.name}: {e}")
+
+            # Process HepMC files: split if enabled, otherwise move
+            for pattern in ["*.hepmc", "*.hepmc.gz"]:
+                for event_file_path in events_subdir_path.glob(pattern):
+                    if splitting_enabled:
+                        logger.info(f"Processing HEPMC file for splitting: {event_file_path}")
+                        created_split_files = split_hepmc_file(
+                            input_hepmc_path=event_file_path,
+                            final_output_base_dir=effective_output_dir,
+                            events_per_file=split_events_per_file,
+                            output_filename=split_output_filename
+                        )
+                        if created_split_files:
+                            files_processed_count += len(created_split_files)
+                            try:
+                                event_file_path.unlink()
+                                logger.info(f"Removed original temporary HEPMC file {event_file_path} after successful splitting.")
+                            except OSError as e:
+                                logger.warning(f"Could not remove original temporary HEPMC file {event_file_path}: {e}")
+                        else:
+                            logger.warning(f"HEPMC splitting produced no files for {event_file_path} or was skipped. Attempting to move original.")
+                            try:
+                                destination_path = effective_output_dir / event_file_path.name
+                                shutil.move(str(event_file_path), str(destination_path))
+                                logger.info(f"Moved original HEPMC file {event_file_path.name} to {destination_path} (splitting failed/skipped).")
+                                files_processed_count += 1
+                            except Exception as e:
+                                logger.error(f"Error moving original HEPMC file {event_file_path.name} after failed/skipped split: {e}")
+                    else:
+                        # Splitting not enabled, move the HEPMC file directly
+                        try:
+                            if event_file_path.name.endswith('.hepmc.gz'):
+                                destination_path = effective_output_dir / "events.hepmc.gz"
+                            else:
+                                destination_path = effective_output_dir / "events.hepmc3"
+                            shutil.move(str(event_file_path), str(destination_path))
+                            logger.info(f"Moved HEPMC file {event_file_path.name} to {destination_path} (splitting disabled, ACTS-compatible name).")
+                            files_processed_count += 1
+                        except Exception as e:
+                            logger.error(f"Error moving HEPMC file {event_file_path.name}: {e}")
+    
+    if files_processed_count == 0:
+        logger.warning("No event files were found, moved, or split from the MadGraph run.")
+
+def copy_final_cards(copied_process_dir, process_type, process_name, config, logger):
+    """Copy final cards to dataset version directory."""
+    try:
+        version_dir = get_version_directory_path(config)
+        final_cards_storage_dir = version_dir / "final_cards"
+        final_cards_storage_dir.mkdir(exist_ok=True)
+
+        cards_dir = copied_process_dir / "Cards"
+        final_run_card_path = cards_dir / "run_card.dat"
+
+        # Copy run card
+        if final_run_card_path.exists():
+            destination = final_cards_storage_dir / f"{process_name}_run_card.dat"
+            shutil.copy(final_run_card_path, destination)
+            logger.info(f"Copied final run_card to {destination}")
+        else:
+            logger.warning(f"Final run_card.dat not found at {final_run_card_path}. Cannot copy.")
+
+        # Copy process-type specific cards
+        if process_type == "born":
+            shower_card_path = cards_dir / "shower_card.dat"
+            if shower_card_path.exists():
+                destination = final_cards_storage_dir / f"{process_name}_shower_card.dat"
+                shutil.copy(shower_card_path, destination)
+                logger.info(f"Copied final shower_card to {destination}")
+        elif process_type == "noborn":
+            pythia8_card_path = cards_dir / "pythia8_card.dat"
+            if pythia8_card_path.exists():
+            destination = final_cards_storage_dir / f"{process_name}_pythia8_card.dat"
+                shutil.copy(pythia8_card_path, destination)
+                logger.info(f"Copied final pythia8_card to {destination}")
+                
+    except Exception as e:
+        logger.warning(f"Could not copy final MadGraph cards to output directory: {e}")
+
 def main():
     """
     Main entry point for MadGraph event generation.
     This assumes that madgraph_init has already been run and the process directory exists.
     """
+    # Setup and validation
     parser = create_base_parser("MadGraph event generation for ColliderML")
     args = parser.parse_args()
     config = load_config(args)
@@ -268,78 +434,41 @@ def main():
             logger.error(f"Required configuration field missing: {field}")
             sys.exit(1)
 
+    # Basic setup
     process_name = f"{config.dataset}_{config.version}"
     mg_base_path = Path(config.mg_base_path)
     mg5_exe = mg_base_path / "bin" / "mg5_aMC"
+    
+    # Fix card_customizations None issue
+    normalize_card_customizations(config)
 
-    # Determine the effective output directory (matches pythia_gen.py logic)
+    # Setup output directory
     effective_output_dir = Path(args.output)
     if args.output_subdir:
         effective_output_dir = effective_output_dir / args.output_subdir
     effective_output_dir.mkdir(parents=True, exist_ok=True)
 
-    # Check for splitting configuration
-    try:
-        splitting_config = getattr(config, 'splitting_config', {})
-        if isinstance(splitting_config, dict):
-            splitting_enabled = splitting_config.get('enable', False)
-        else:
-            splitting_enabled = getattr(splitting_config, 'enable', False)
-        
-        split_events_per_file = splitting_config.get('events_per_file', 1000)
-        split_output_filename = splitting_config.get('output_filename', 'events.hepmc')
-        logger.info(f"Splitting config: enable={splitting_enabled}, events_per_file={split_events_per_file}")
-    except Exception as e:
-        logger.warning(f"Error accessing splitting config: {e}. Using defaults")
-        splitting_enabled = False
-        split_events_per_file = 1000
-        split_output_filename = 'events.hepmc'
+    # Setup splitting configuration
+    splitting_enabled, split_events_per_file, split_output_filename = setup_splitting_config(config, logger)
 
     try:
-        # --- NEW WORKFLOW: Copy pre-compiled process directory ---
+        # STEP 1: Copy pre-compiled process directory
         logger.info("=== STEP 1: Copy Pre-compiled Process Directory ===")
         copied_process_dir, job_scratch_dir = copy_process_directory(config)
         
-        # --- STEP 2: Customize cards for this specific run ---
+        # STEP 2: Customize cards for this specific run
         logger.info("=== STEP 2: Customize Cards for Run ===")
-        
-        # Get run ID from environment (for SLURM jobs) or default
         run_id = os.environ.get('SLURM_PROCID') or os.environ.get('SLURM_ARRAY_TASK_ID') or '0'
         process_type = customize_cards_for_run(copied_process_dir, config, run_id)
         
-        # --- STEP 3: Launch MadGraph event generation ---
+        # STEP 3: Launch MadGraph event generation
         logger.info("=== STEP 3: Launch MadGraph Event Generation ===")
         temp_launch_script_path = job_scratch_dir / "launch_script.mg5"
-        
-        # Create launch script based on process type
-        run_card_settings = getattr(config, 'card_customizations', {}).get('run_card', {})
-        parton_shower_mode = run_card_settings.get('parton_shower', 'OFF').upper()
-        
-        # Generate launch script with optional --name parameter for proper run naming
         run_name = f"run_{run_id}" if run_id else None
-
-        with open(temp_launch_script_path, 'w') as f:
-            if process_type == "noborn" and parton_shower_mode == 'PYTHIA8':
-                logger.info("Loop-induced process with parton showering detected. Generating multi-step launch script.")
-                if run_name:
-                    f.write(f"launch {copied_process_dir} --name={run_name}\n")
-                else:
-                    f.write(f"launch {copied_process_dir}\n")
-                f.write("shower=Pythia8\n")
-                f.write("0\n")  # Skips card editing prompt, starts event generation
-            else:
-                logger.info("Standard NLO process detected. Generating simple launch script.")
-                if run_name:
-                    f.write(f"launch {copied_process_dir} -f --name={run_name}\n")
-                else:
-                    f.write(f"launch {copied_process_dir} -f\n")
-            f.write("set automatic_html_opening False\n")
-            f.write("exit\n")
-
-        logger.info(f"Executing MadGraph with script: {temp_launch_script_path}")
-        logger.info(f"Process type: {process_type}, Run name: {run_name}")
         
-        # Execute MadGraph event generation
+        create_launch_script(temp_launch_script_path, copied_process_dir, process_type, run_name, config, logger)
+        
+        logger.info(f"Executing MadGraph with script: {temp_launch_script_path}")
         stdout_event, stderr_event = run_command([str(mg5_exe), str(temp_launch_script_path)], cwd=copied_process_dir)
         logger.info("--- MadGraph event generation STDOUT: ---")
         logger.info(stdout_event)
@@ -348,120 +477,14 @@ def main():
             logger.warning(stderr_event)
         logger.info("--- MadGraph event generation complete. ---")
 
-        # --- STEP 4: Process and Move/Split output files ---
+        # STEP 4: Process and move/split output files
         logger.info("=== STEP 4: Process and Move/Split Output Files ===")
-        events_dir_in_process = copied_process_dir / "Events"
-        
-        # Look for run-specific directories (run_0, run_1, etc.) or the run we specified
-        if run_name:
-            actual_events_subdirs = list(events_dir_in_process.glob(run_name))
-        else:
-            actual_events_subdirs = list(events_dir_in_process.glob("run_*"))
-            
-        # Fallback to main Events directory if no run subdirs found  
-        if not actual_events_subdirs:
-            if events_dir_in_process.is_dir():
-                actual_events_subdirs = [events_dir_in_process]
-            else:
-                logger.warning(f"Events directory {events_dir_in_process} not found.")
-                actual_events_subdirs = []
+        process_output_files(copied_process_dir, effective_output_dir, run_name, 
+                           splitting_enabled, split_events_per_file, split_output_filename, logger)
 
-        files_processed_count = 0
-        logger.info(f"Processing events from {len(actual_events_subdirs)} directories")
-
-        for events_subdir_path in actual_events_subdirs:
-            if events_subdir_path.is_dir():
-                # Process LHE files: move them directly
-                for pattern in ["*.lhe", "*.lhe.gz"]:
-                    for event_file_path in events_subdir_path.glob(pattern):
-                        try:
-                            destination_path = effective_output_dir / event_file_path.name
-                            shutil.move(str(event_file_path), str(destination_path))
-                            logger.info(f"Moved LHE file {event_file_path.name} to {destination_path}")
-                            files_processed_count += 1
-                        except Exception as e:
-                            logger.error(f"Error moving LHE file {event_file_path.name}: {e}")
-
-                # Process HepMC files: split if enabled, otherwise move
-                for pattern in ["*.hepmc", "*.hepmc.gz"]:
-                    for event_file_path in events_subdir_path.glob(pattern):
-                        if splitting_enabled:
-                            logger.info(f"Processing HEPMC file for splitting: {event_file_path}")
-                            # Create run_X subdirs inside effective_output_dir
-                            created_split_files = split_hepmc_file(
-                                input_hepmc_path=event_file_path,
-                                final_output_base_dir=effective_output_dir, # run_X subdirs will be created here
-                                events_per_file=split_events_per_file,
-                                output_filename=split_output_filename
-                            )
-                            if created_split_files:
-                                files_processed_count += len(created_split_files)
-                                try:
-                                    event_file_path.unlink() # Remove original temp file
-                                    logger.info(f"Removed original temporary HEPMC file {event_file_path} after successful splitting.")
-                                except OSError as e:
-                                    logger.warning(f"Could not remove original temporary HEPMC file {event_file_path}: {e}")
-                            else:
-                                logger.warning(f"HEPMC splitting produced no files for {event_file_path} or was skipped. Attempting to move original.")
-                                try:
-                                    destination_path = effective_output_dir / event_file_path.name
-                                    shutil.move(str(event_file_path), str(destination_path))
-                                    logger.info(f"Moved original HEPMC file {event_file_path.name} to {destination_path} (splitting failed/skipped).")
-                                    files_processed_count += 1
-                                except Exception as e:
-                                    logger.error(f"Error moving original HEPMC file {event_file_path.name} after failed/skipped split: {e}")
-                        else:
-                            # Splitting not enabled, move the HEPMC file directly
-                            try:
-                                # Use filename that ACTS merge script can auto-detect
-                                if event_file_path.name.endswith('.hepmc.gz'):
-                                    destination_path = effective_output_dir / "events.hepmc.gz"
-                                else:
-                                    destination_path = effective_output_dir / "events.hepmc3"
-                                shutil.move(str(event_file_path), str(destination_path))
-                                logger.info(f"Moved HEPMC file {event_file_path.name} to {destination_path} (splitting disabled, ACTS-compatible name).")
-                                files_processed_count += 1
-                            except Exception as e:
-                                logger.error(f"Error moving HEPMC file {event_file_path.name}: {e}")
-        
-        if files_processed_count == 0:
-            logger.warning("No event files were found, moved, or split from the MadGraph run.")
-
-        # --- STEP 5: Copy final cards to dataset version directory ---
+        # STEP 5: Copy final cards
         logger.info("=== STEP 5: Copy Final Cards ===")
-        try:
-            # The dataset version directory is the parent of the stage-specific output directory
-            version_dir = get_version_directory_path(config)
-            final_cards_storage_dir = version_dir / "final_cards"
-            final_cards_storage_dir.mkdir(exist_ok=True)
-
-            cards_dir = copied_process_dir / "Cards"
-            final_run_card_path = cards_dir / "run_card.dat"
-            
-            # Copy run card
-            if final_run_card_path.exists():
-                destination = final_cards_storage_dir / f"{process_name}_run_card.dat"
-                shutil.copy(final_run_card_path, destination)
-                logger.info(f"Copied final run_card to {destination}")
-            else:
-                logger.warning(f"Final run_card.dat not found at {final_run_card_path}. Cannot copy.")
-
-            # Copy process-type specific cards
-            if process_type == "born":
-                shower_card_path = cards_dir / "shower_card.dat"
-                if shower_card_path.exists():
-                    destination = final_cards_storage_dir / f"{process_name}_shower_card.dat"
-                    shutil.copy(shower_card_path, destination)
-                    logger.info(f"Copied final shower_card to {destination}")
-            elif process_type == "noborn":
-                pythia8_card_path = cards_dir / "pythia8_card.dat"
-                if pythia8_card_path.exists():
-                    destination = final_cards_storage_dir / f"{process_name}_pythia8_card.dat"
-                    shutil.copy(pythia8_card_path, destination)
-                    logger.info(f"Copied final pythia8_card to {destination}")
-                    
-        except Exception as e:
-            logger.warning(f"Could not copy final MadGraph cards to output directory: {e}")
+        copy_final_cards(copied_process_dir, process_type, process_name, config, logger)
 
         logger.info("=== MadGraph event generation completed successfully ===")
         
@@ -469,7 +492,7 @@ def main():
         logger.error(f"Fatal error during MadGraph event generation: {e}")
         raise
     finally:
-        # --- CLEANUP: Remove temporary job scratch directory ---
+        # Cleanup
         if 'job_scratch_dir' in locals() and job_scratch_dir.exists():
             try:
                 logger.info(f"Cleaning up temporary directory: {job_scratch_dir}")
