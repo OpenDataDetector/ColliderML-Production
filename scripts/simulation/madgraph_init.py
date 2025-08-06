@@ -27,7 +27,13 @@ import yaml
 import logging
 from pathlib import Path
 from utils.config import create_base_parser, load_config
-from ..cli.cli_utils import get_version_directory
+
+# Add the parent directory to sys.path to enable relative imports
+script_dir = Path(__file__).parent
+parent_dir = script_dir.parent
+sys.path.insert(0, str(parent_dir))
+
+from cli.cli_utils import get_version_directory
 
 logger = logging.getLogger(__name__)
 
