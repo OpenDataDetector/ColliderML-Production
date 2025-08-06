@@ -27,120 +27,19 @@ import yaml
 import logging
 from pathlib import Path
 from utils.config import create_base_parser, load_config
-
-# Note: We avoid importing cli_utils to prevent anti-pattern of modifying shared utilities
+from utils.madgraph_utils import (
+    run_command, 
+    customize_card_with_regex, 
+    detect_process_type_from_stdout,
+    get_version_directory_path,
+    customize_cards_for_process_type
+)
 
 logger = logging.getLogger(__name__)
 
-def run_command(command, cwd=None, env=None, shell=False):
-    """Execute a command and return stdout, stderr"""
-    process = subprocess.Popen(
-        command,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        universal_newlines=True,
-        cwd=cwd,
-        env=env,
-        shell=shell
-    )
-    stdout, stderr = process.communicate()
-    if process.returncode != 0:
-        print(f"Error running command: {command}\nSTDOUT:\n{stdout}\nSTDERR:\n{stderr}")
-        sys.exit(1)
-    return stdout, stderr
+# run_command is now imported from madgraph_utils
 
-def customize_card_with_regex(card_path, card_settings):
-    """
-    Modifies a MadGraph card using regex for specific parameters.
-    Works for both run_card.dat, shower_card.dat, and pythia8_card.dat.
-    Updates existing parameters and adds new ones if they don't exist.
-    """
-    import re
-    
-    if not card_path.exists():
-        logger.warning(f"Card file {card_path} does not exist. Skipping customization.")
-        return
-    
-    with open(card_path, 'r') as f:
-        content_lines = f.readlines()
-
-    # Track which parameters were successfully updated
-    updated_params = set()
-    modified_lines = []
-    
-    for line in content_lines:
-        modified_line = line
-        for param_name, param_value in card_settings.items():
-            # Skip if already updated (avoid double-updating)
-            if param_name in updated_params:
-                continue
-                
-            # Handle different card formats:
-            # run_card/shower_card: '  10000 = nevents    ! Number of events'
-            # pythia8_card: 'Main:numberOfEvents      = -1'
-            
-            # Pattern 1: MG format with = param_name
-            mg_pattern = rf"^(\s*)(.+?)(\s*=\s*{re.escape(param_name)})(\s*[!#].*|\s*)$"
-            mg_match = re.match(mg_pattern, line)
-            
-            # Pattern 2: Pythia8 format with param_name =
-            pythia_pattern = rf"^(\s*{re.escape(param_name)}\s*=\s*)(.+?)(\s*[!#].*|\s*)$"
-            pythia_match = re.match(pythia_pattern, line)
-            
-            if mg_match:
-                # MadGraph format: value = param_name
-                modified_line = f"{mg_match.group(1)}{str(param_value)}{mg_match.group(3)}{mg_match.group(4)}\n"
-                updated_params.add(param_name)
-                break
-            elif pythia_match:
-                # Pythia8 format: param_name = value
-                modified_line = f"{pythia_match.group(1)}{str(param_value)}{pythia_match.group(3)}\n"
-                updated_params.add(param_name)
-                break
-                
-        modified_lines.append(modified_line)
-
-    # Add any parameters that weren't found in the existing file
-    missing_params = set(card_settings.keys()) - updated_params
-    if missing_params:
-        # Add a comment section for new parameters
-        modified_lines.append("\n")
-        modified_lines.append("!======================================================================\n")
-        modified_lines.append("! Parameters added by ColliderML madgraph_init.py\n")
-        modified_lines.append("!======================================================================\n")
-        
-        for param_name in sorted(missing_params):  # Sort for consistency
-            param_value = card_settings[param_name]
-            # Use Pythia8 format for new parameters (more common)
-            new_line = f"{param_name} = {param_value}    ! Added by ColliderML script\n"
-            modified_lines.append(new_line)
-
-    with open(card_path, 'w') as f:
-        f.writelines(modified_lines)
-    
-    # Log results
-    updated_list = list(updated_params)
-    added_list = list(missing_params) if missing_params else []
-    logger.info(f"Updated {card_path.name}:")
-    if updated_list:
-        logger.info(f"  - Updated existing parameters: {updated_list}")
-    if added_list:
-        logger.info(f"  - Added new parameters: {added_list}")
-
-def detect_process_type(process_generation_stdout):
-    """
-    Detect whether this is a born (NLO) or noborn (loop-induced) process.
-    
-    Args:
-        process_generation_stdout: The stdout from MadGraph process generation
-        
-    Returns:
-        str: "born" for NLO processes, "noborn" for loop-induced processes
-    """
-    if "noborn" in process_generation_stdout.lower():
-        return "noborn"
-    else:
-        return "born"
+# customize_card_with_regex and detect_process_type_from_stdout are now imported from madgraph_utils
 
 def generate_madgraph_process(config, scratch_dir, logger):
     """
@@ -215,7 +114,7 @@ def customize_default_cards(process_dir, config, process_generation_stdout, logg
     cards_dir = process_dir / "Cards"
     
     # Detect process type (born vs noborn)
-    process_type = detect_process_type(process_generation_stdout)
+    process_type = detect_process_type_from_stdout(process_generation_stdout)
     logger.info(f"Detected process type: {process_type}")
     
     # Customize run_card.dat (common to all process types)
@@ -270,9 +169,7 @@ def store_process_directory(process_dir, config, logger):
         Path to the stored process directory
     """
     # Determine storage location: dataset_version_dir/madgraph_process/
-    # Build version directory path directly (avoid modifying shared cli_utils)
-    base_dir = Path(config.common["output_base_dir"])
-    version_dir = base_dir / config.campaign / config.dataset / config.version
+    version_dir = get_version_directory_path(config)
     final_process_dir = version_dir / "madgraph_process"
     
     # Remove existing directory if it exists, then create clean parent directories
