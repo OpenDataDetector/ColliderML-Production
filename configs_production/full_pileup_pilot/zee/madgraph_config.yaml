@@ -1,0 +1,55 @@
+#========================================================================
+# YAML Configuration for MadGraph NLO Drell-Yan (Z/γ* → l+l-) Generation
+#========================================================================
+
+# --- Dataset & Version ---
+campaign: "full_pileup_mini_pilot"
+dataset: "drellyan"
+version: "v1"
+stage: "madgraph_generation"  # One of: madgraph_generation, pythia_generation, merge_smear, simulation, digitization
+job_config:
+  execution_mode: "interactive"
+
+# --- MadGraph Process Definition ---
+mg_model: "sm-no_b_mass"
+mg_definitions: []
+mg_generate_command: "generate p p > e+ e- [QCD]"  # Inclusive Drell-Yan using standard l+/l- definitions
+
+# --- Essential Paths & Environment ---
+# These now use variables from env_setup.yaml config_defaults
+mg_base_path: "{madgraph.mg_base_path}"
+generation_scratch_dir: "{madgraph.generation_scratch_dir}" 
+output: "{madgraph.output}"
+
+# --- MadGraph Event Settings ---
+events: 32768               
+seed: 42                   
+
+# --- Card Templates ---
+card_templates:
+  pythia8_card: "{templates.pythia8_card_fxfx}" # Now uses variable from env_setup.yaml
+
+# --- Card Customizations ---
+card_customizations:
+  run_card:
+    "xqcut": 0.0          # Lower xqcut for electroweak Drell-Yan process
+    "parton_shower": "PYTHIA8"
+    "ebeam1": 7000.0 # 14 TeV centre of mass energy
+    "ebeam2": 7000.0 # 14 TeV centre of mass energy
+
+  pythia8_card: 
+    "{{XQCUT}}": 0.0        # MUST be IDENTICAL to the run_card xqcut value
+    "{{PYTHIA_SEED}}": 42 
+    "{{NEVENTS}}": 32768 
+    "{{N_JET_MAX_MATCH}}": 2 # For Z/γ* + 0,1,2 jet matching
+    "{{PYTHIA_TUNE}}": 14    # Monash 2013 tune
+    "{{JET_MATCH_CONE_R}}": 1.0
+    "{{JET_MATCH_ETA_MAX}}": 5.0
+
+splitting_config:
+  enable: true
+  events_per_file: 128
+  output_filename: "events.hepmc3"
+
+# --- Logging ---
+log_level: "INFO" 
