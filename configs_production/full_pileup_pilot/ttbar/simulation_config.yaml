@@ -21,3 +21,4 @@ threads: 2
 minimalKineticEnergy: 0.001  # Minimum kinetic energy in GeV to register in truth
 truthParticleHandler: "Geant4FullTruthParticleHandler"
 
+debug_output_dir: "/global/cfs/cdirs/m4958/data/ColliderML/simulation/full_pileup_mini_pilot/ttbar/v1/runs/0"
