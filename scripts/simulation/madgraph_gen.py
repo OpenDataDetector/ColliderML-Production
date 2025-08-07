@@ -374,40 +374,49 @@ def process_output_files(copied_process_dir, effective_output_dir, run_name, spl
     if files_processed_count == 0:
         logger.warning("No event files were found, moved, or split from the MadGraph run.")
 
-def copy_final_cards(copied_process_dir, process_type, process_name, config, logger):
-    """Copy final cards to dataset version directory."""
+def copy_final_cards(copied_process_dir, process_type, process_name, effective_output_dir, config, logger):
+    """
+    Copy final cards to both the per-run output directory and central version directory.
+    """
     try:
-        version_dir = get_version_directory_path(config)
-        final_cards_storage_dir = version_dir / "final_cards"
-        final_cards_storage_dir.mkdir(exist_ok=True)
-
         cards_dir = copied_process_dir / "Cards"
         final_run_card_path = cards_dir / "run_card.dat"
-
-        # Copy run card
-        if final_run_card_path.exists():
-            destination = final_cards_storage_dir / f"{process_name}_run_card.dat"
-            shutil.copy(final_run_card_path, destination)
-            logger.info(f"Copied final run_card to {destination}")
-        else:
-            logger.warning(f"Final run_card.dat not found at {final_run_card_path}. Cannot copy.")
-
-        # Copy process-type specific cards
+        
+        # Determine card files to copy based on process type
+        cards_to_copy = [("run_card.dat", "run_card")]
+        
         if process_type == "born":
-            shower_card_path = cards_dir / "shower_card.dat"
-            if shower_card_path.exists():
-                destination = final_cards_storage_dir / f"{process_name}_shower_card.dat"
-                shutil.copy(shower_card_path, destination)
-                logger.info(f"Copied final shower_card to {destination}")
+            cards_to_copy.append(("shower_card.dat", "shower_card"))
         elif process_type == "noborn":
-            pythia8_card_path = cards_dir / "pythia8_card.dat"
-            if pythia8_card_path.exists():
-                destination = final_cards_storage_dir / f"{process_name}_pythia8_card.dat"
-                shutil.copy(pythia8_card_path, destination)
-                logger.info(f"Copied final pythia8_card to {destination}")
+            cards_to_copy.append(("pythia8_card.dat", "pythia8_card"))
+        
+        # Copy to per-run directory (runs/X/final_cards/)
+        run_cards_dir = effective_output_dir / "final_cards"
+        run_cards_dir.mkdir(exist_ok=True)
+        
+        # Copy to central version directory (version/final_cards/)
+        version_dir = get_version_directory_path(config)
+        central_cards_dir = version_dir / "final_cards"
+        central_cards_dir.mkdir(exist_ok=True)
+        
+        for card_filename, card_type in cards_to_copy:
+            card_path = cards_dir / card_filename
+            
+            if card_path.exists():
+                # Copy to run-specific directory with simple name
+                run_destination = run_cards_dir / card_filename
+                shutil.copy(card_path, run_destination)
+                logger.info(f"Copied final {card_type} to run directory: {run_destination}")
+                
+                # Copy to central directory with process name prefix
+                central_destination = central_cards_dir / f"{process_name}_{card_filename}"
+                shutil.copy(card_path, central_destination)
+                logger.info(f"Copied final {card_type} to central directory: {central_destination}")
+            else:
+                logger.warning(f"Final {card_filename} not found at {card_path}. Cannot copy.")
                 
     except Exception as e:
-        logger.warning(f"Could not copy final MadGraph cards to output directory: {e}")
+        logger.warning(f"Could not copy final MadGraph cards: {e}")
 
 def main():
     """
@@ -484,7 +493,7 @@ def main():
 
         # STEP 5: Copy final cards
         logger.info("=== STEP 5: Copy Final Cards ===")
-        copy_final_cards(copied_process_dir, process_type, process_name, config, logger)
+        copy_final_cards(copied_process_dir, process_type, process_name, effective_output_dir, config, logger)
 
         logger.info("=== MadGraph event generation completed successfully ===")
         
