@@ -149,8 +149,8 @@ def build_stage_command(config, config_path, stage_script_path, output_dir, outp
     
     # Add stage-specific arguments
     if execution_mode == "monolithic_slurm":
-        # For monolithic mode, pass the base output directory
-        python_cmd_parts.extend(["--output-base-dir", str(output_dir)])
+        # For monolithic mode, pass the output directory (same as other modes)
+        python_cmd_parts.extend(["--output", str(output_dir)])
     elif is_simulation:
         # For simulation stages in distributed mode
         if execution_mode == "interactive":
