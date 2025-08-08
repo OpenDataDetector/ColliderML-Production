@@ -20,7 +20,7 @@ job_config:
 validation_config:
 
 # Stage-specific configurations
-events: 100
+events: 10000
 single_particle: true
 
 # Particle gun configuration
