@@ -28,6 +28,7 @@ gun_particle: "mu-"  # Muons
 gun_energy: 10.0  # Energy in GeV
 minimalKineticEnergy: 0.001  # Minimum kinetic energy in GeV to register in truth
 truth_particle_handler: "Geant4FullTruthParticleHandler"
+threads: 1
 
 # Random direction distribution
 gun_distribution: "eta"  # Uniform on unit sphere
