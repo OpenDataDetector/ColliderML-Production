@@ -201,8 +201,8 @@ def run_ddsim(input_path, output_path, config, logger=None):
     
     # Configure common settings
     ddsim.outputFile = str(output_path)
-    ddsim.numberOfEvents = getattr(config, 'events', 10)
-    ddsim.numberOfThreads = getattr(config, 'threads', 1)
+    ddsim.numberOfEvents = config.events if config.events is not None else 10
+    ddsim.numberOfThreads = config.threads if config.threads is not None else 1
     ddsim.random.seed = getattr(config, 'seed', None) or int(time.time())
     
     # Configure physics

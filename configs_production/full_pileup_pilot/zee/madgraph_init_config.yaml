@@ -29,9 +29,9 @@ job_config:
 mg_model: "sm-no_b_mass"
 mg_definitions: [] # No specific lepton definitions needed for inclusive ttbar
 mg_generate_command: |
-  generate p p > e e~ [QCD]
-  add process p p > e e~ j [QCD]
-  add process p p > e e~ j j [QCD]
+  generate p p > e+ e- [QCD]
+  add process p p > e+ e- j [QCD]
+  add process p p > e+ e- j j [QCD]
 
 # --- Essential Paths & Environment ---
 # These use variables from env_setup.yaml config_defaults
