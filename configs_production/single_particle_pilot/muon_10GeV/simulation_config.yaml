@@ -5,7 +5,7 @@
 # --- Dataset & Version ---
 campaign: "single_particle_pilot"
 dataset: "muon_10GeV"
-version: "v1"
+version: "v2"
 stage: "simulation"
 
 # --- Job Configuration ---
@@ -20,7 +20,7 @@ job_config:
 validation_config:
 
 # Stage-specific configurations
-events: 10000
+events: 100
 single_particle: true
 
 # Particle gun configuration
@@ -28,7 +28,7 @@ gun_particle: "mu-"  # Muons
 gun_energy: 10.0  # Energy in GeV
 minimalKineticEnergy: 0.001  # Minimum kinetic energy in GeV to register in truth
 truth_particle_handler: "Geant4FullTruthParticleHandler"
-threads: 1
+threads: 2
 
 # Random direction distribution
 gun_distribution: "eta"  # Uniform on unit sphere
