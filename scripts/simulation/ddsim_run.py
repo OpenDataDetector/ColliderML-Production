@@ -58,8 +58,9 @@ def configure_particle_gun(ddsim, config, logger):
         ddsim.gun.momentumMin = getattr(config, 'gun_momentum_min', 0.0) * GeV
         ddsim.gun.momentumMax = getattr(config, 'gun_momentum_max', 10.0) * GeV
     
-    # Configure direction
-    ddsim.gun.direction = getattr(config, 'gun_direction', (0, 0, 1))
+    # Configure direction only if explicitly provided in config
+    if hasattr(config, 'gun_direction'):
+        ddsim.gun.direction = config.gun_direction
     
     # Configure position
     ddsim.gun.position = getattr(config, 'gun_position', (0.0, 0.0, 0.0))
@@ -78,6 +79,11 @@ def configure_particle_gun(ddsim, config, logger):
             ddsim.gun.phiMin = config.gun_phi_min
         if hasattr(config, 'gun_phi_max'):
             ddsim.gun.phiMax = config.gun_phi_max
+        # Map eta bounds as well (used by 'eta'/'pseudorapidity' distribution)
+        if hasattr(config, 'gun_eta_min'):
+            ddsim.gun.etaMin = config.gun_eta_min
+        if hasattr(config, 'gun_eta_max'):
+            ddsim.gun.etaMax = config.gun_eta_max
     
     # Configure multiplicity
     ddsim.gun.multiplicity = getattr(config, 'gun_multiplicity', 1)
