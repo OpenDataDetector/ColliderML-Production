@@ -5,7 +5,7 @@
 # --- Dataset & Version ---
 campaign: "single_particle_pilot"
 dataset: "muon_10GeV"
-version: "v2"
+version: "v1"
 stage: "simulation"
 
 # --- Job Configuration ---
