@@ -14,8 +14,8 @@ logger = logging.getLogger(__name__)
 def hash_seed_string(seed_str: str) -> int:
     """Convert a string seed pattern into a deterministic positive integer.
     
-    All seeds are constrained to 0-2147483647 (positive signed 32-bit range) 
-    for universal compatibility across simulation libraries including MadGraph.
+    All seeds are constrained to Pythia8's allowed range 1..900000000 to avoid
+    out-of-range errors while remaining compatible with MadGraph and others.
     
     Examples:
         "123" -> 123
@@ -24,11 +24,12 @@ def hash_seed_string(seed_str: str) -> int:
     """
     logger.info(f"Constructing seed from input: {seed_str}")
     
-    # If it's just a number, return it (constrained to positive signed 32-bit range)
+    # If it's just a number, return it (constrained to Pythia8's allowed range)
     try:
         seed = int(seed_str)
-        # Ensure positive and within signed 32-bit range for MadGraph compatibility
-        seed = abs(seed) % 2147483648  # 2^31, gives range 0 to 2147483647
+        # Ensure positive and within Pythia8 range [1, 900000000]
+        seed = abs(seed) % 900000000
+        seed = 1 if seed == 0 else seed
         logger.info(f"Input is numeric, using as seed: {seed}")
         return seed
     except ValueError:
@@ -36,8 +37,9 @@ def hash_seed_string(seed_str: str) -> int:
         hash_obj = hashlib.md5(seed_str.encode())
         # Convert first 4 bytes to signed integer (using big-endian, interpret as signed)
         seed = int.from_bytes(hash_obj.digest()[:4], 'big', signed=True)
-        # Take absolute value to ensure positive, constrain to signed 32-bit range
-        seed = abs(seed) % 2147483648  # 2^31, gives range 0 to 2147483647
+        # Ensure positive and within Pythia8 range [1, 900000000]
+        seed = abs(seed) % 900000000
+        seed = 1 if seed == 0 else seed
         logger.info(f"Input is string pattern, hashed to seed: {seed} (from pattern: {seed_str})")
         return seed
 
@@ -99,8 +101,9 @@ def load_config(args):
         args.seed = hash_seed_string(str(args.seed))
         logger.info(f"Final seed value: {args.seed} (from original input: {original_seed})")
     else:
-        # Use current time as default seed, constrained to positive signed 32-bit range
-        args.seed = abs(int(time.time())) % 2147483648
+        # Use current time as default seed, constrained to Pythia8's allowed range
+        args.seed = abs(int(time.time())) % 900000000
+        args.seed = 1 if args.seed == 0 else args.seed
         logger.info(f"No seed provided, using time-based seed: {args.seed}")
         
     return args
