@@ -20,7 +20,7 @@ job_config:
 validation_config:
 
 # Stage-specific configurations
-events: 10
+events: 10000
 single_particle: true
 seed: 42
 
@@ -29,7 +29,7 @@ gun_particle: "mu-"  # Muons
 gun_energy: 10.0  # Energy in GeV
 minimalKineticEnergy: 0.001  # Minimum kinetic energy in GeV to register in truth
 truthParticleHandler: "Geant4FullTruthParticleHandler"
-threads: 2
+threads: 8
 
 # Random direction distribution
 gun_distribution: "eta"  # Uniform on unit sphere
