@@ -5,7 +5,7 @@
 # --- Dataset & Version ---
 campaign: "single_particle_pilot"
 dataset: "muon_10GeV"
-version: "v1"
+version: "v3"
 stage: "simulation"
 
 # --- Job Configuration ---
@@ -20,7 +20,7 @@ job_config:
 validation_config:
 
 # Stage-specific configurations
-events: 10000
+events: 10
 single_particle: true
 
 # Particle gun configuration
