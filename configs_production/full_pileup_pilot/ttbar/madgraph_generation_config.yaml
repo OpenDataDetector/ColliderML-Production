@@ -29,7 +29,7 @@ validation_config:
 
 # --- Event Generation Parameters ---
 # These follow the exact same pattern as pythia_gen.py and ddsim_run.py
-events: 256  # Number of events per run, total events = n_runs * events
+events: 8  # Number of events per run, total events = n_runs * events
 seed: 42     # Base seed - will be modified per run using run_id
 
 # --- Essential Paths & Environment ---
@@ -70,11 +70,10 @@ card_customizations:
     # "Tune:pp": 14
 
 # --- HepMC Splitting Configuration (Optional) ---
-# Uncomment to enable splitting of HepMC output into smaller files
-# This follows the same pattern as pythia_generation
-hepmc_splitting:
-  enabled: true
-  events_per_file: 128
+# Configure splitting with keys expected by the generation script
+splitting_config:
+  enable: true
+  events_per_file: 4
   output_filename: "events.hepmc"
 
 # --- Logging ---
