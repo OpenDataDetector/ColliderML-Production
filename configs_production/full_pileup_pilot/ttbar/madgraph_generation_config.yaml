@@ -12,7 +12,7 @@
 # --- Dataset & Version ---
 campaign: "full_pileup_mini_pilot"
 dataset: "ttbar"
-version: "v4"
+version: "v6"
 stage: "madgraph_generation"
 
 # --- Job Configuration ---
@@ -29,7 +29,7 @@ validation_config:
 
 # --- Event Generation Parameters ---
 # These follow the exact same pattern as pythia_gen.py and ddsim_run.py
-events: 8  # Number of events per run, total events = n_runs * events
+events: 128  # Number of events per run, total events = n_runs * events
 seed: 42     # Base seed - will be modified per run using run_id
 
 # --- Essential Paths & Environment ---
@@ -72,7 +72,7 @@ card_customizations:
 # --- HepMC Splitting Configuration (Optional) ---
 # Configure splitting with keys expected by the generation script
 splitting_config:
-  enable: true
+  enable: false
   events_per_file: 4
   output_filename: "events.hepmc"
 
