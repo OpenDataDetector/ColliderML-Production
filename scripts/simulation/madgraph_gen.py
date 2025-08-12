@@ -296,6 +296,52 @@ def create_launch_script(temp_launch_script_path, copied_process_dir, process_ty
 
     logger.info(f"Process type: {process_type}, Run name: {run_name}")
 
+def run_warmup_in_place(config, mg5_exe, logger):
+    """Run a tiny in-place warmup (1 event, seed=42) in central madgraph_process, then exit.
+
+    This builds/validates integration grids and compiled objects to be reused by
+    subsequent distributed generation runs.
+    """
+    version_dir = get_version_directory_path(config)
+    stored_process_dir = version_dir / "madgraph_process"
+    if not stored_process_dir.exists():
+        raise FileNotFoundError(
+            f"madgraph_process not found at {stored_process_dir}. Run madgraph_init first."
+        )
+
+    # Temporarily override events/seed
+    original_events = getattr(config, 'events', None)
+    original_seed = getattr(config, 'seed', None)
+    try:
+        config.events = 1
+        config.seed = 42
+
+        process_type = customize_cards_for_run(stored_process_dir, config, run_id='warmup')
+
+        temp_launch_script_path = version_dir / "warmup_launch.mg5"
+        create_launch_script(temp_launch_script_path, stored_process_dir, process_type, 'warmup', config, logger)
+
+        logger.info(f"Executing MadGraph warmup with script: {temp_launch_script_path}")
+        stdout_event, stderr_event = run_command([str(mg5_exe), str(temp_launch_script_path)], cwd=stored_process_dir)
+        logger.info("--- Warmup STDOUT: ---")
+        logger.info(stdout_event)
+        if stderr_event:
+            logger.warning("--- Warmup STDERR: ---")
+            logger.warning(stderr_event)
+        logger.info("=== Warmup complete. Exiting without file moves/splitting. ===")
+    finally:
+        # Restore config
+        if original_events is not None:
+            config.events = original_events
+        else:
+            if hasattr(config, 'events'):
+                delattr(config, 'events')
+        if original_seed is not None:
+            config.seed = original_seed
+        else:
+            if hasattr(config, 'seed'):
+                delattr(config, 'seed')
+
 def process_output_files(copied_process_dir, effective_output_dir, run_name, splitting_enabled, 
                         split_events_per_file, split_output_filename, logger):
     """Process and move/split output files from MadGraph."""
@@ -460,7 +506,21 @@ def main():
     # Setup splitting configuration
     splitting_enabled, split_events_per_file, split_output_filename = setup_splitting_config(config, logger)
 
+    # Warmup toggle: support either a simple boolean `warmup: true` or legacy dict with `enable`
+    warmup_attr = getattr(config, 'warmup', False)
+    warmup_enabled = False
+    if isinstance(warmup_attr, dict):
+        warmup_enabled = bool(warmup_attr.get('enable', False))
+    else:
+        warmup_enabled = bool(warmup_attr)
+
     try:
+        # Optional warmup path: run in-place on central process dir to build grids, then exit
+        if warmup_enabled:
+            logger.info("=== WARMUP: In-place grid build in central madgraph_process ===")
+            run_warmup_in_place(config, mg5_exe, logger)
+            return
+
         # STEP 1: Copy pre-compiled process directory
         logger.info("=== STEP 1: Copy Pre-compiled Process Directory ===")
         copied_process_dir, job_scratch_dir = copy_process_directory(config)
