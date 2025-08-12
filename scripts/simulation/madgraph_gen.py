@@ -342,10 +342,14 @@ def run_warmup_in_place(config, mg5_exe, logger):
             if hasattr(config, 'seed'):
                 delattr(config, 'seed')
 
-def process_output_files(copied_process_dir, effective_output_dir, run_name, splitting_enabled, 
+def process_output_files(copied_process_dir, effective_output_dir, run_name, splitting_enabled,
                         split_events_per_file, split_output_filename, logger):
     """Process and move/split output files from MadGraph."""
     events_dir_in_process = copied_process_dir / "Events"
+    # If interactive runner used an 'all' subdir, place split chunks in parent runs/ dir
+    split_output_base_dir = (
+        effective_output_dir.parent if effective_output_dir.name == "all" else effective_output_dir
+    )
     
     # Look for run-specific directories
     if run_name:
@@ -384,7 +388,7 @@ def process_output_files(copied_process_dir, effective_output_dir, run_name, spl
                         logger.info(f"Processing HEPMC file for splitting: {event_file_path}")
                         created_split_files = split_hepmc_file(
                             input_hepmc_path=event_file_path,
-                            final_output_base_dir=effective_output_dir,
+                            final_output_base_dir=split_output_base_dir,
                             events_per_file=split_events_per_file,
                             output_filename=split_output_filename
                         )
@@ -398,7 +402,7 @@ def process_output_files(copied_process_dir, effective_output_dir, run_name, spl
                         else:
                             logger.warning(f"HEPMC splitting produced no files for {event_file_path} or was skipped. Attempting to move original.")
                             try:
-                                destination_path = effective_output_dir / event_file_path.name
+                                destination_path = split_output_base_dir / event_file_path.name
                                 shutil.move(str(event_file_path), str(destination_path))
                                 logger.info(f"Moved original HEPMC file {event_file_path.name} to {destination_path} (splitting failed/skipped).")
                                 files_processed_count += 1
