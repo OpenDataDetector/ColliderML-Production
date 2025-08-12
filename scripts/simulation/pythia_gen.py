@@ -247,6 +247,7 @@ def find_hard_scatter_file(output_dir, config, explicit_path=None):
     candidates = [
         output_dir / "events_signal.hepmc3",  # From Pythia8 generation
         output_dir / "events.hepmc3",         # From MadGraph with splitting
+        output_dir / "events.hepmc",          # From MadGraph without splitting
         output_dir / "events.hepmc.gz",      # From MadGraph without splitting
     ]
     
