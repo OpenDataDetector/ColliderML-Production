@@ -21,7 +21,7 @@ GIT_COMMIT_SUCCESS_FILE = ".git_commit_success"
 # Define stage categories
 MADGRAPH_STAGES = ["madgraph_init", "madgraph_generation"]
 SIMULATION_STAGES = MADGRAPH_STAGES + ["pythia_generation", "merge_smear", "simulation", "digitization"]
-POSTPROCESSING_STAGES = ["build_tracks", "build_hits", "build_particles"]
+POSTPROCESSING_STAGES = ["build_tracks", "build_hits", "build_particles", "build_manifest"]
 VALID_STAGES = SIMULATION_STAGES + POSTPROCESSING_STAGES
 
 # Define which stages need shifter container (subset of simulation stages)
@@ -41,7 +41,8 @@ STAGE_SCRIPT_MAP = {
     # Postprocessing scripts
     "build_tracks": "postprocessing/convert_tracks.py",
     "build_hits": "postprocessing/convert_hits.py",
-    "build_particles": "postprocessing/convert_particles.py"
+    "build_particles": "postprocessing/convert_particles.py",
+    "build_manifest": "postprocessing/build_manifest.py",
 }
 
 def get_env_setup_cmds(config):

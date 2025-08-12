@@ -1,0 +1,19 @@
+stage: build_manifest
+
+campaign: full_pileup_pilot
+dataset: ttbar
+version: v4
+
+job_config:
+  n_runs: 1
+  runs_per_node: 1
+  time_limit: "00:10:00"
+  qos: debug
+
+# Optional overrides for file patterns (defaults shown)
+edm4hep_file: edm4hep.root
+tracks_csv_pattern: event{:09d}-tracks_ambi.csv
+simhits_file: simhits.root
+tracksummary_file: tracksummary_ambi.root
+
+
