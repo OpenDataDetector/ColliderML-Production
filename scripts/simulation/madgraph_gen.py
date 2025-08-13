@@ -28,6 +28,7 @@ import argparse
 import yaml
 import re
 import logging
+from tqdm import tqdm 
 from pathlib import Path
 from utils.config import create_base_parser, load_config
 from utils.madgraph_utils import (
@@ -174,74 +175,72 @@ def split_hepmc_file(input_hepmc_path: Path,
         import pyhepmc as hep
         from pyhepmc.io import WriterAscii
     except ImportError:
-        print("Error: pyhepmc library not found. Please install it to use HEPMC splitting (e.g., pip install pyhepmc).")
-        print(f"Skipping splitting of {input_hepmc_path}.")
-        return [] # Indicate no files created
+        print("Error: pyhepmc library not found. Please install it (e.g., pip install pyhepmc). Skipping split.")
+        return []
 
-    try:
-        from tqdm import tqdm
-    except ImportError:
-        print("Warning: tqdm library not found. Progress bar for splitting will not be shown (e.g., pip install tqdm).")
-        def tqdm_dummy(iterable, *args, **kwargs): # Renamed to avoid conflict if tqdm is later imported globally
-            return iterable
-        tqdm_actual = tqdm_dummy # Use the dummy
-    else:
-        tqdm_actual = tqdm # Use the real tqdm
+    if events_per_file <= 0:
+        print("Warning: events_per_file must be > 0. Skipping split.")
+        return []
 
     print(f"--- Splitting HEPMC file: {input_hepmc_path} ---")
     print(f"--- Output base directory for splits: {final_output_base_dir} ---")
     print(f"--- Events per split file: {events_per_file} ---")
 
-    current_f_out = None
     files_created = []
-    event_count_total = 0
-    processed_successfully = False
+    current_writer = None
+    total_events = 0
 
     try:
         with hep.open(str(input_hepmc_path)) as f_in:
-            desc = f"Splitting {input_hepmc_path.name}"
-            iterator = tqdm_actual(enumerate(f_in), desc=desc)
+            iterator = tqdm(enumerate(f_in), desc=f"Splitting {input_hepmc_path.name}")
 
-            for i, event in iterator:                
-                if i % events_per_file == 0:
-                    if current_f_out:
-                        current_f_out.close()
-                    
-                    file_idx = i // events_per_file
-                    # Use just the run number as the directory name
-                    current_split_output_dir = final_output_base_dir / str(file_idx)
-                    os.makedirs(current_split_output_dir, exist_ok=True)
-                    
-                    split_file_path = current_split_output_dir / output_filename
-                    current_f_out = WriterAscii(str(split_file_path)) # Ensure path is string for WriterAscii
-                    files_created.append(split_file_path)
-                
-                if current_f_out:
-                    event.event_number = i % events_per_file
-                    current_f_out.write_event(event)
-                event_count_total = i + 1
-        
-        processed_successfully = True # If loop completes without error
+            for event_index, event in iterator:
+                if event_index % events_per_file == 0:
+                    if current_writer is not None:
+                        try:
+                            current_writer.close()
+                        except Exception:
+                            pass
+                    chunk_index = event_index // events_per_file
+                    split_dir = final_output_base_dir / str(chunk_index)
+                    os.makedirs(split_dir, exist_ok=True)
+                    split_path = split_dir / output_filename
+                    current_writer = WriterAscii(str(split_path))
+                    files_created.append(split_path)
 
+                event.event_number = event_index % events_per_file
+                current_writer.write_event(event)
+                total_events = event_index + 1
     except Exception as e:
         print(f"Error during HEPMC splitting of {input_hepmc_path}: {e}")
     finally:
-        if current_f_out:
+        if current_writer is not None:
             try:
-                current_f_out.close()
-            except Exception as e_close:
-                print(f"Error closing output file during HEPMC splitting: {e_close}")
-        
-    if processed_successfully and event_count_total > 0:
-        print(f"--- Splitting complete. Processed {event_count_total} events from {input_hepmc_path.name} into {len(files_created)} files. ---")
-        return files_created
-    elif processed_successfully and event_count_total == 0:
+                current_writer.close()
+            except Exception:
+                pass
+
+    if total_events == 0:
         print(f"--- No events found or processed in {input_hepmc_path.name}. ---")
         return []
-    else: # Not processed_successfully
-        print(f"--- Splitting failed for {input_hepmc_path.name}. ---")
-        # Clean up any partially created files from this attempt if needed, though current logic doesn't require it.
-        return []
+
+    # Discard final partial chunk
+    remainder = total_events % events_per_file
+    if remainder != 0 and len(files_created) > 0:
+        last_path = files_created[-1]
+        try:
+            Path(last_path).unlink(missing_ok=True)
+        except Exception as e_rm:
+            print(f"Warning: failed to remove partial split file {last_path}: {e_rm}")
+        try:
+            Path(last_path).parent.rmdir()
+        except Exception:
+            pass
+        files_created.pop()
+        print(f"--- Discarded final partial chunk with {remainder} events (< {events_per_file}). ---")
+
+    print(f"--- Splitting complete. Processed {total_events} events from {input_hepmc_path.name} into {len(files_created)} files. ---")
+    return files_created
 
 def normalize_card_customizations(config):
     """Ensure card_customizations exists and all card types are dicts (not None)."""
