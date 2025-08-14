@@ -30,4 +30,4 @@ performance_metrics: True
 output_csv: True
 
 # --- Debugging Commands ---
-debug_output_dir: /pscratch/sd/d/danieltm/ColliderML/simulation/full_pileup_mini_pilot/ttbar/v4/runs/0
+# debug_output_dir: /pscratch/sd/d/danieltm/ColliderML/simulation/full_pileup_mini_pilot/ttbar/v4/runs/0
