@@ -6,6 +6,7 @@ This directory contains scripts for converting EDM4HEP ROOT files into HDF5 form
 
 The scripts convert different components of EDM4HEP data:
 - Tracker hits
+- Digitized tracker measurements (measurements.root)
 - Reconstructed tracks (with states and hit associations)
 - Particle information (including parent/daughter relationships)
 - Calorimeter data
@@ -34,6 +35,12 @@ You can also convert individual components using their specific scripts:
 ```bash
 python convert_hits.py /path/to/edm4hep/files /path/to/output dataset_name
 ```
+
+2. Digitized Measurements:
+```bash
+python convert_digihits.py --config /path/to/config.yaml
+```
+The config should provide at least: base_dir, output_dir, dataset_name, chunk_size, run_size.
 
 2. Reconstructed Tracks:
 ```bash

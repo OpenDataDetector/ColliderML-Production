@@ -1,0 +1,10 @@
+base_dir: /global/cfs/cdirs/m4958/data/ColliderML/outputs/low_pileup_pilot/gg2ttbar/v1
+output_dir: /pscratch/sd/d/danieltm/ColliderML/staging
+dataset_name: low_pileup_pilot/gg2ttbar/v1/reco/digihits
+
+# Write small chunks for a quick test; adjust as needed
+chunk_size: 10
+run_size: 10
+
+
+
