@@ -5,7 +5,7 @@
 # --- Dataset & Version ---
 campaign: "full_pileup_mini_pilot"
 dataset: "ttbar"
-version: "v1"
+version: "v4"
 stage: "digitization"  # One of: generation, merge_smear, simulation, digitization
 
 # --- Job Configuration ---
@@ -30,4 +30,4 @@ performance_metrics: True
 output_csv: True
 
 # --- Debugging Commands ---
-debug_output_dir: /global/cfs/cdirs/m4958/data/ColliderML/simulation/full_pileup_mini_pilot/ttbar/v1/runs/0
+debug_output_dir: /pscratch/sd/d/danieltm/ColliderML/simulation/full_pileup_mini_pilot/ttbar/v4/runs/0

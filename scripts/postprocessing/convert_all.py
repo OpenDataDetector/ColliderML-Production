@@ -11,6 +11,7 @@ from convert_hits import convert_hits
 from convert_particles import convert_particles
 from convert_calorimeter import convert_calorimeter
 from convert_tracks import convert_tracks
+from convert_digihits import convert_digihits
 
 def convert_all(
     base_dir: str,
@@ -31,6 +32,9 @@ def convert_all(
     """
     start_time = time.time()
     
+    print("\n=== Converting Digitized Tracker Measurements ===")
+    convert_digihits(base_dir, output_base_dir, f"{dataset_name}/digihits", chunk_size, run_size)
+
     print("\n=== Converting Tracker Hits ===")
     convert_hits(base_dir, output_base_dir, f"{dataset_name}/hits", chunk_size, run_size)
     
