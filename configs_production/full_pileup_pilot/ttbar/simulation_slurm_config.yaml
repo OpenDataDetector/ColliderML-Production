@@ -9,15 +9,17 @@ job_config:
   runs_per_node: 9  # Number of runs per node
   time_limit: "06:00:00"  # Time limit per job
   qos: "regular"
-  execution_mode: "distributed_slurm"
+  # execution_mode: "distributed_slurm"
+  execution_mode: "interactive"
 
 validation_config:
   # time_limit: "00:10:00"
   # qos: "regular"
 
 # Stage-specific configurations
-events: 128  # Number of events per run, total number of events will be n_runs * events
+events: 8  # Number of events per run, total number of events will be n_runs * events
 threads: 8
 minimalKineticEnergy: 0.001  # Minimum kinetic energy in GeV to register in truth
 truthParticleHandler: "Geant4FullTruthParticleHandler"
 
+debug_output_dir: /pscratch/sd/d/danieltm/ColliderML/simulation/full_pileup_mini_pilot/ttbar/v4/runs/0
