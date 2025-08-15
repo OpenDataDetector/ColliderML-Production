@@ -23,10 +23,6 @@ setup(
     entry_points={
         "console_scripts": [
             "run-stage=scripts.cli.run_stage:main",
-            "run-pythia=colliderml.scripts.simulation.pythia_gen:main",
-            "run-merge=colliderml.scripts.simulation.merge_and_smear:main",
-            "run-ddsim=colliderml.scripts.simulation.ddsim_run:main",
-            "run-reco=colliderml.scripts.simulation.digi_and_reco:main",
         ],
     },
     python_requires=">=3.8",
