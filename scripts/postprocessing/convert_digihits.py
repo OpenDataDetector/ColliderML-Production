@@ -8,6 +8,7 @@ in the measurements file to match to EDM4hep hit x/y/z.
 """
 
 import argparse
+import yaml
 from pathlib import Path
 from typing import List
 
@@ -18,10 +19,9 @@ import uproot
 from tqdm import tqdm
 import logging
 
-# from utils.utils import get_run_paths, ensure_output_dir, get_chunk_info
-# from utils.config import create_base_parser, load_config
-# from utils.track_utils import load_root_file
-# from utils.edm4hep_utils import load_edm4hep_file
+from utils.utils import get_run_paths, ensure_output_dir, get_chunk_info
+from utils.track_utils import load_root_file
+from utils.edm4hep_utils import load_edm4hep_file
 
 
 logging.basicConfig(
@@ -285,21 +285,41 @@ def convert_digihits(
 
 
 def main():
-    parser = create_base_parser("Convert EDM4HEP digitized tracker measurements to HDF5")
+    # Align CLI/config handling and file naming with convert_tracks.py
+    parser = argparse.ArgumentParser(description="Convert EDM4HEP digitized tracker measurements to HDF5")
+    parser.add_argument(
+        "--config",
+        help="Path to YAML config file",
+        type=str,
+        required=True
+    )
     args = parser.parse_args()
-    config = load_config(args)
+
+    with open(args.config) as f:
+        config = yaml.safe_load(f)
+
+    dataset = config["dataset"]
+    version = config["version"]
+
+    input_base_dir = Path(config["common"]["output_base_dir"]) / dataset / version
+    output_base_dir = Path(config["common"]["staging_dir"])
+    output_path = config.get("output_path", f"{dataset}/{version}/reco/digihits")
+
+    chunk_size = config.get("chunk_size", 1000)
+    run_size = config.get("run_size", 10)
 
     logging.info("\nStarting digitized hit conversion with configuration:")
-    for key, value in vars(config).items():
-        if key != 'config':
-            logging.info(f"{key}: {value}")
+    logging.info(f"Dataset: {dataset}, Version: {version}")
+    logging.info(f"Input directory: {input_base_dir}")
+    logging.info(f"Output directory: {output_base_dir}/{output_path}")
+    logging.info(f"Chunk size: {chunk_size}, Run size: {run_size}")
 
     convert_digihits(
-        config.base_dir,
-        config.output_dir,
-        config.dataset_name,
-        config.chunk_size,
-        config.run_size,
+        input_base_dir,
+        output_base_dir,
+        output_path,
+        chunk_size,
+        run_size,
     )
 
 
