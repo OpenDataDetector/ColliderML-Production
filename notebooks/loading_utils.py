@@ -66,7 +66,7 @@ def load_root_file(file_path, event_offset=0, event_id=None):
         df = ak.to_dataframe(data[regular_columns])
             
         # Apply event offset
-        if event_offset:
+        if event_offset and 'event_id' in df.columns:
             df['event_id'] += event_offset
             
         # Filter for specific event if requested

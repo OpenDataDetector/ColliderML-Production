@@ -10,17 +10,17 @@ stage: "digitization"  # One of: generation, merge_smear, simulation, digitizati
 
 # --- Job Configuration ---
 job_config:
-  execution_mode: "interactive"
-  n_runs: 16  # Number of jobs to submit
-  runs_per_node: 8  # Number of runs per node
-  time_limit: "00:05:00"  # Time limit per job
+  execution_mode: "distributed_slurm"
+  n_runs: 9  # Number of jobs to submit
+  runs_per_node: 9  # Number of runs per node
+  time_limit: "00:30:00"  # Time limit per job
   qos: "debug"
 
 # --- Validation Configuration ---
 validation_config:
 
 # --- Stage-specific Configurations ---
-events: 8  # Number of events per run, total number of events will be n_runs * events
+events: 32  # Number of events per run, total number of events will be n_runs * events
 digi: True
 reco: True
 
@@ -30,4 +30,4 @@ performance_metrics: True
 output_csv: True
 
 # --- Debugging Commands ---
-debug_output_dir: /global/cfs/cdirs/m4958/data/ColliderML/public/full_pileup_mini_pilot/ttbar/v4/runs/0
+# debug_output_dir: /global/cfs/cdirs/m4958/data/ColliderML/public/full_pileup_mini_pilot/ttbar/v4/runs/0

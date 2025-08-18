@@ -18,16 +18,41 @@ import h5py
 import uproot
 from tqdm import tqdm
 import logging
+import sys
 
-from utils.utils import get_run_paths, ensure_output_dir, get_chunk_info
+# Use relative imports to avoid conflicts with other utils modules
+from utils.path_utils import get_run_paths, make_dir, get_chunk_info
 from utils.track_utils import load_root_file
-from utils.edm4hep_utils import load_edm4hep_file
+
+sys.path.append("/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/OtherLibraries/pyedm4hep")
+from pyedm4hep import EDM4hepEvent
 
 
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s'
 )
+
+
+def _convert_detector_to_int(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Convert detector column from strings to integers to avoid HDF5 object dtype issues.
+    """
+    if 'detector' not in df.columns:
+        return df
+    
+    detector_mapping = {
+        'PixelBarrelReadout': 0,
+        'PixelEndcapReadout': 1, 
+        'ShortStripBarrelReadout': 2,
+        'ShortStripEndcapReadout': 3,
+        'LongStripBarrelReadout': 4,
+        'LongStripEndcapReadout': 5
+    }
+    
+    df = df.copy()
+    df['detector'] = df['detector'].map(detector_mapping)
+    return df
 
 
 def _merge_measurements_with_tracker(meas_df: pd.DataFrame, tracker_df: pd.DataFrame, include_meas_cols: List[str] = [], include_simhits_cols: List[str] = []) -> pd.DataFrame:
@@ -37,6 +62,9 @@ def _merge_measurements_with_tracker(meas_df: pd.DataFrame, tracker_df: pd.DataF
     Strategy: cast both coordinate sets to float32 and merge on equality.
     This mirrors the notebook exploration where float32 alignment produced
     exact matches. If columns are missing, the merge safely degrades.
+
+    Also brings through selected geometry identifiers from the measurements
+    file (e.g. volume_id, layer_id, surface_id) when present.
     """
     # Guard on required columns
     coord_meas = [c for c in ["true_x", "true_y", "true_z"] if c in meas_df.columns]
@@ -60,7 +88,8 @@ def _merge_measurements_with_tracker(meas_df: pd.DataFrame, tracker_df: pd.DataF
     # Select minimal measurement columns to append
     if not include_meas_cols:
         include_meas_cols = [
-            "true_x", "true_y", "true_z", "rec_x", "rec_y", "rec_z"
+            "true_x", "true_y", "true_z", "rec_x", "rec_y", "rec_z",
+            "volume_id", "layer_id", "surface_id"
         ]
     lhs = meas_df[include_meas_cols].copy()
 
@@ -89,6 +118,9 @@ def _merge_measurements_with_tracker(meas_df: pd.DataFrame, tracker_df: pd.DataF
         "EDep": "e_dep",
         "pathLength": "path_length"
     })
+
+    # Convert detector strings to integers
+    merged = _convert_detector_to_int(merged)
 
     return merged
 
@@ -119,46 +151,25 @@ def process_event_for_digihits(event_id: int, local_event_num: int, measurements
 def build_hdf5_digihits(df: pd.DataFrame, output_file: str) -> None:
     """
     Write digitized measurements to HDF5 under /events/event_#/measurements.
-    Uses a structured dtype inferred from dataframe dtypes, with utf8 strings.
     """
-    # Prepare string dtype helper
-    str_dtype = h5py.string_dtype(encoding='utf8')
-
     with h5py.File(output_file, 'a') as f:
         events_group = f.create_group('events') if 'events' not in f else f['events']
 
         for event_id, event_df in df.groupby('event_id'):
-            event_group = events_group.create_group(f'event_{event_id}')
+            event_group_name = f'event_{event_id}'
+            if event_group_name in events_group:
+                # Remove existing group to avoid conflicts
+                del events_group[event_group_name]
+            event_group = events_group.create_group(event_group_name)
 
             # Drop event_id for storage
             data_df = event_df.drop(columns=['event_id'], errors='ignore')
 
-            # Build a safe dtype mapping
-            name_to_dtype = {}
-            for name, series in data_df.items():
-                if pd.api.types.is_integer_dtype(series):
-                    name_to_dtype[name] = np.int64
-                elif pd.api.types.is_float_dtype(series):
-                    name_to_dtype[name] = np.float64
-                elif pd.api.types.is_bool_dtype(series):
-                    name_to_dtype[name] = np.int8
-                else:
-                    name_to_dtype[name] = str_dtype
-
-            dt = np.dtype([(n, t) for n, t in name_to_dtype.items()])
-            out = np.empty(len(data_df), dtype=dt)
-            for name in data_df.columns:
-                target_t = name_to_dtype[name]
-                if isinstance(target_t, h5py.Datatype) or target_t == str_dtype:
-                    out[name] = data_df[name].astype(str).values
-                else:
-                    out[name] = np.asarray(data_df[name].values, dtype=target_t)
-
             event_group.create_dataset(
                 'measurements',
-                data=out,
-                compression='gzip',
-                compression_opts=9
+                data=data_df.to_records(index=False),
+                # compression='gzip', # TODO: Investigate compression (reduces size by 2x)
+                # compression_opts=9
             )
 
 
@@ -184,14 +195,14 @@ def process_run_for_digihits(run_dir: Path, run_number: int, run_size: int) -> L
     edm_available = edm4hep_path.exists()
 
     run_events: List[pd.DataFrame] = []
-    for local_event_num in range(run_size):
+    for local_event_num in tqdm(range(run_size), desc="Processing events"):
         global_event_num = run_number * run_size + local_event_num
 
         tracker_df = None
         if edm_available:
             try:
-                event = load_edm4hep_file(str(edm4hep_path), event_num=local_event_num, collections=["tracker"])
-                tracker_df = event.get("tracker_df")
+                event = EDM4hepEvent(str(edm4hep_path), event_index=local_event_num)
+                tracker_df = event.get_tracker_hits_df()
             except Exception as e:
                 logging.warning(f"Failed to load tracker for event {local_event_num} in {run_dir}: {e}")
 
@@ -209,6 +220,7 @@ def process_chunk_for_digihits(
     output_dir: Path,
     dataset_name: str,
     run_size: int,
+    force_overwrite: bool = False,
 ) -> None:
     """
     Process a chunk of runs and write one HDF5 file for the chunk.
@@ -220,6 +232,7 @@ def process_chunk_for_digihits(
         output_dir: Directory to write the output HDF5 file
         dataset_name: Name of the dataset
         run_size: Number of events per run
+        force_overwrite: Whether to overwrite existing output file
 
     Returns:
         None
@@ -228,8 +241,8 @@ def process_chunk_for_digihits(
     end_run = min(start_run + runs_per_chunk, len(run_dirs))
     end_event = (end_run * run_size) - 1
 
-    output_file = Path(output_dir) / f"{dataset_name}.events{start_event}-{end_event}.h5"
-    if output_file.exists():
+    output_file = Path(output_dir) / f"{dataset_name}.reco.tracker_hits.events{start_event}-{end_event}.h5"
+    if output_file.exists() and not force_overwrite:
         logging.info(f"Skipping events {start_event}-{end_event} - exists: {output_file}")
         return
 
@@ -257,6 +270,7 @@ def convert_digihits(
     dataset_name: str,
     chunk_size: int = 1000,
     run_size: int = 10,
+    chunk_index: int | None = None,
 ) -> None:
     """
     Convert digitized measurements to HDF5 files grouped by event.
@@ -270,15 +284,29 @@ def convert_digihits(
     num_events, runs_per_chunk, num_chunks = get_chunk_info(num_runs, run_size, chunk_size)
     logging.info(f"Processing {num_runs} runs ({num_events} events), {runs_per_chunk} runs/chunk, {num_chunks} chunks")
 
-    output_dir = ensure_output_dir(str(output_base_dir), dataset_name)
+    output_dir = make_dir(output_base_dir, f"{dataset_name}/reco/tracker_hits")
     dataset_name = dataset_name.replace("/", ".")
-
-    for start_run in tqdm(range(0, num_runs, runs_per_chunk), desc="Processing chunks"):
+    
+    if chunk_index is None:
+        for start_run in tqdm(range(0, num_runs, runs_per_chunk), desc="Processing chunks"):
+            process_chunk_for_digihits(
+                run_dirs,
+                start_run,
+                runs_per_chunk,
+                output_dir,
+                dataset_name,
+                run_size,
+            )
+    else:
+        start_run = chunk_index * runs_per_chunk
+        if start_run >= num_runs:
+            logging.warning(f"Chunk index {chunk_index} out of range. num_runs={num_runs}, runs_per_chunk={runs_per_chunk}")
+            return
         process_chunk_for_digihits(
             run_dirs,
             start_run,
             runs_per_chunk,
-            Path(output_dir),
+            output_dir,
             dataset_name,
             run_size,
         )
@@ -293,23 +321,30 @@ def main():
         type=str,
         required=True
     )
+    parser.add_argument(
+        "--chunk-index",
+        help="Optional chunk index to process (for distributed runs)",
+        type=int,
+        default=None,
+    )
     args = parser.parse_args()
 
     with open(args.config) as f:
         config = yaml.safe_load(f)
 
+    campaign = config["campaign"]
     dataset = config["dataset"]
     version = config["version"]
 
-    input_base_dir = Path(config["common"]["output_base_dir"]) / dataset / version
+    input_base_dir = Path(config["common"]["output_base_dir"]) / campaign / dataset / version
     output_base_dir = Path(config["common"]["staging_dir"])
-    output_path = config.get("output_path", f"{dataset}/{version}/reco/digihits")
+    output_path = config.get("output_path", f"{campaign}/{dataset}/{version}/reco/digihits")
 
     chunk_size = config.get("chunk_size", 1000)
     run_size = config.get("run_size", 10)
 
     logging.info("\nStarting digitized hit conversion with configuration:")
-    logging.info(f"Dataset: {dataset}, Version: {version}")
+    logging.info(f"Campaign: {campaign}, Dataset: {dataset}, Version: {version}")
     logging.info(f"Input directory: {input_base_dir}")
     logging.info(f"Output directory: {output_base_dir}/{output_path}")
     logging.info(f"Chunk size: {chunk_size}, Run size: {run_size}")
@@ -317,9 +352,10 @@ def main():
     convert_digihits(
         input_base_dir,
         output_base_dir,
-        output_path,
+        f"{campaign}/{dataset}/{version}",
         chunk_size,
         run_size,
+        args.chunk_index,
     )
 
 

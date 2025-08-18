@@ -1,103 +1,286 @@
 #!/usr/bin/env python3
 """
-Convert EDM4HEP particle data to HDF5 format.
+Convert EDM4hep particle data to HDF5 format.
+
+This script processes particle information from EDM4hep files and creates
+structured HDF5 files with particle properties and hit count statistics.
 """
 
 import argparse
+import yaml
 from pathlib import Path
-from tqdm import tqdm
+from typing import List
 
-from utils import get_run_paths, ensure_output_dir, get_chunk_info
-from edm4hep_processor import load_edm4hep_event, process_particles_data
-from hdf5_manager import build_hdf5_dataset
+import pandas as pd
+import h5py
+from tqdm import tqdm
+import logging
+import sys
+
+# Use relative imports to avoid conflicts with other utils modules
+from utils.path_utils import get_run_paths, make_dir, get_chunk_info
+
+sys.path.append("/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/OtherLibraries/pyedm4hep")
+from pyedm4hep import EDM4hepEvent
+
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s'
+)
+
+def process_event_for_particles(
+    event_id: int,
+    local_event_num: int,
+    edm4hep_path: str
+) -> pd.DataFrame:
+    """
+    Process particle data for a single event.
+    
+    Args:
+        event_id: Global event number
+        local_event_num: Local event number within the run
+        edm4hep_path: Path to EDM4hep file
+        
+    Returns:
+        DataFrame containing particle data for this event
+    """
+    try:
+        # Load EDM4hep event
+        event = EDM4hepEvent(edm4hep_path, event_index=local_event_num)
+        
+        # Get particle, tracker hit, and calo hit data
+        particles_df = event.get_particles_df()
+        
+        # Reset index and add particle_id
+        particles_df.reset_index(drop=True, inplace=True)
+        particles_df["particle_id"] = particles_df.index
+        
+        # Normalize column names if needed
+        if "pdg_id" not in particles_df.columns and "PDG" in particles_df.columns:
+            particles_df["pdg_id"] = particles_df["PDG"]
+        
+        # Select relevant particle columns
+        desired_columns = [
+            "particle_id",
+            "pdg_id", 
+            "mass",
+            "energy",
+            "charge",
+            "vx", "vy", "vz",
+            "time",
+            "px", "py", "pz",
+            "num_tracker_hits",
+            "num_calo_hits"
+        ]
+        particle_columns = [c for c in desired_columns if c in particles_df.columns]
+        
+        # Create event particles dataframe
+        event_particles = particles_df[particle_columns].copy()
+        
+        # Add event_id
+        event_particles["event_id"] = event_id
+        
+        logging.debug(f"Event {event_id}: processed {len(event_particles)} particles")
+        return event_particles
+        
+    except Exception as e:
+        logging.error(f"Failed to process event {local_event_num} from {edm4hep_path}: {e}")
+        return pd.DataFrame()
+
+
+def build_hdf5_particles(df: pd.DataFrame, output_file: str) -> None:
+    """
+    Write particle data to HDF5 under /events/event_#/particles.
+    """
+    with h5py.File(output_file, 'a') as f:
+        events_group = f.create_group('events') if 'events' not in f else f['events']
+
+        for event_id, event_df in df.groupby('event_id'):
+            event_group_name = f'event_{event_id}'
+            if event_group_name in events_group:
+                # Remove existing group to avoid conflicts
+                del events_group[event_group_name]
+            event_group = events_group.create_group(event_group_name)
+
+            # Drop event_id for storage
+            data_df = event_df.drop(columns=['event_id'], errors='ignore')
+
+            event_group.create_dataset(
+                'particles',
+                data=data_df.to_records(index=False),
+                compression='gzip',
+                compression_opts=9
+            )
+
+
+def process_run_for_particles(run_dir: Path, run_number: int, run_size: int) -> List[pd.DataFrame]:
+    """
+    Process all events in a run directory into a list of dataframes.
+    """
+    run_dir = Path(run_dir)
+    edm4hep_path = run_dir / "edm4hep.root"
+
+    if not edm4hep_path.exists():
+        logging.warning(f"Missing EDM4hep file: {edm4hep_path}")
+        return []
+
+    run_events: List[pd.DataFrame] = []
+    for local_event_num in tqdm(range(run_size), desc="Processing events", leave=False):
+        global_event_num = run_number * run_size + local_event_num
+
+        ev_df = process_event_for_particles(global_event_num, local_event_num, str(edm4hep_path))
+        if not ev_df.empty:
+            run_events.append(ev_df)
+
+    return run_events
+
+
+def process_chunk_for_particles(
+    run_dirs: List[Path],
+    start_run: int,
+    runs_per_chunk: int,
+    output_dir: Path | str,
+    dataset_name: str,
+    run_size: int,
+    force_overwrite: bool = False,
+) -> None:
+    """
+    Process a chunk of runs and write one HDF5 file for the chunk.
+
+    Args:
+        run_dirs: List of run directories to process
+        start_run: Index of the first run to process
+        runs_per_chunk: Number of runs to process in each chunk
+        output_dir: Directory to write the output HDF5 file (Path or str)
+        dataset_name: Name of the dataset
+        run_size: Number of events per run
+        force_overwrite: Whether to overwrite existing output file
+
+    Returns:
+        None
+    """
+    start_event = start_run * run_size
+    end_run = min(start_run + runs_per_chunk, len(run_dirs))
+    end_event = (end_run * run_size) - 1
+
+    output_file = Path(output_dir) / f"{dataset_name}.truth.particles.events{start_event}-{end_event}.h5"
+    if output_file.exists() and not force_overwrite:
+        logging.info(f"Skipping events {start_event}-{end_event} - exists: {output_file}")
+        return
+
+    all_event_dfs: List[pd.DataFrame] = []
+    total_rows = 0
+    for run_idx, run_dir in enumerate(tqdm(run_dirs[start_run:end_run], desc="Processing runs", leave=False)):
+        try:
+            evs = process_run_for_particles(run_dir, start_run + run_idx, run_size)
+            all_event_dfs.extend(evs)
+            total_rows += sum(len(df) for df in evs)
+        except Exception as e:
+            logging.error(f"Error processing run {start_run + run_idx}: {e}")
+
+    if all_event_dfs:
+        all_df = pd.concat(all_event_dfs, ignore_index=True)
+        logging.info(f"Writing {len(all_df)} particles across {all_df.event_id.nunique()} events -> {output_file}")
+        build_hdf5_particles(all_df, str(output_file))
+    else:
+        logging.warning(f"No data to save for events {start_event}-{end_event}")
+
 
 def convert_particles(
-    base_dir: str,
-    output_base_dir: str,
+    input_base_dir: Path | str,
+    output_base_dir: Path | str,
     dataset_name: str,
     chunk_size: int = 1000,
     run_size: int = 10,
+    chunk_index: int | None = None,
 ) -> None:
     """
-    Convert EDM4HEP particle data to HDF5 format.
-    
-    Args:
-        base_dir: Base directory containing EDM4HEP files
-        output_base_dir: Base directory for output files
-        dataset_name: Name of the dataset
-        chunk_size: Number of events per output file
-        run_size: Number of events per run
+    Convert particle data to HDF5 files grouped by event.
     """
-    # Get run directories
-    run_dirs = get_run_paths(base_dir)
+    input_base_dir = Path(input_base_dir)
+    input_dir = make_dir(input_base_dir, dataset_name)
+    output_base_dir = Path(output_base_dir)
+
+    run_dirs = get_run_paths(input_dir)
     num_runs = len(run_dirs)
-    
-    # Calculate chunk information
+
     num_events, runs_per_chunk, num_chunks = get_chunk_info(num_runs, run_size, chunk_size)
-    
-    print(f"Processing {num_runs} runs with {num_events} total events")
-    print(f"Processing {runs_per_chunk} runs per chunk to get ~{chunk_size} events per file")
-    
-    # Create output directory
-    output_dir = ensure_output_dir(output_base_dir, dataset_name)
+    logging.info(f"Processing {num_runs} runs ({num_events} events), {runs_per_chunk} runs/chunk, {num_chunks} chunks")
+
+    output_dir = make_dir(output_base_dir, f"{dataset_name}/truth/particles")
     dataset_name = dataset_name.replace("/", ".")
-    
-    # Process chunks of runs
-    for start_run in tqdm(range(0, num_runs, runs_per_chunk), desc="Processing chunks"):
-        all_events_data = []
-        
-        # Process each run in the chunk
-        for run_idx in range(start_run, min(start_run + runs_per_chunk, len(run_dirs))):
-            run_dir = run_dirs[run_idx]
-            print(f"Processing run {run_idx} at {run_dir}")
-            
-            # Load EDM4HEP file
-            edm4hep_file = f"{run_dir}/edm4hep.root"
-            event = load_edm4hep_event(edm4hep_file, event_num=0)
-            
-            if "particles_df" not in event:
-                print(f"No particle data found in run {run_idx}")
-                continue
-            
-            # Process event
-            event_df = process_particles_data(
-                run_idx * run_size,
-                event["particles_df"],
-                parents_df=event.get("parents_df"),
-                daughters_df=event.get("daughters_df")
+
+    if chunk_index is None:
+        for start_run in tqdm(range(0, num_runs, runs_per_chunk), desc="Processing chunks"):
+            process_chunk_for_particles(
+                run_dirs,
+                start_run,
+                runs_per_chunk,
+                output_dir,
+                dataset_name,
+                run_size,
             )
-            all_events_data.append(event_df)
-            
-        if all_events_data:
-            # Calculate event range for filename
-            start_event = start_run * run_size
-            end_event = min((start_run + runs_per_chunk) * run_size - 1, 
-                           len(run_dirs) * run_size - 1)
-            
-            output_file = f"{output_dir}/{dataset_name}.events{start_event}-{end_event}.h5"
-            build_hdf5_dataset(pd.concat(all_events_data, ignore_index=True), output_file)
-            print(f"Saved {output_file}")
+    else:
+        start_run = chunk_index * runs_per_chunk
+        if start_run >= num_runs:
+            logging.warning(f"Chunk index {chunk_index} out of range. num_runs={num_runs}, runs_per_chunk={runs_per_chunk}")
+            return
+        process_chunk_for_particles(
+            run_dirs,
+            start_run,
+            runs_per_chunk,
+            output_dir,
+            dataset_name,
+            run_size,
+        )
+
 
 def main():
+    # Align CLI/config handling and file naming with convert_tracks.py
     parser = argparse.ArgumentParser(description="Convert EDM4HEP particle data to HDF5")
-    parser.add_argument("base_dir", help="Base directory containing EDM4HEP files")
-    parser.add_argument("output_dir", help="Output directory for HDF5 files")
-    parser.add_argument("dataset_name", help="Name of the dataset")
-    parser.add_argument("--chunk-size", type=int, default=1000,
-                      help="Number of events per output file")
-    parser.add_argument("--run-size", type=int, default=10,
-                      help="Number of events per run")
-    
+    parser.add_argument(
+        "--config",
+        help="Path to YAML config file",
+        type=str,
+        required=True
+    )
+    parser.add_argument(
+        "--chunk-index",
+        help="Optional chunk index to process (for distributed runs)",
+        type=int,
+        default=None,
+    )
     args = parser.parse_args()
-    
+
+    with open(args.config) as f:
+        config = yaml.safe_load(f)
+
+    campaign = config["campaign"]
+    dataset = config["dataset"]
+    version = config["version"]
+
+    input_base_dir = Path(config["common"]["output_base_dir"]) / campaign / dataset / version
+    output_base_dir = Path(config["common"]["staging_dir"])
+    output_path = config.get("output_path", f"{campaign}/{dataset}/{version}/truth/particles")
+
+    chunk_size = config.get("chunk_size", 1000)
+    run_size = config.get("run_size", 10)
+
+    logging.info("\nStarting particle conversion with configuration:")
+    logging.info(f"Campaign: {campaign}, Dataset: {dataset}, Version: {version}")
+    logging.info(f"Input directory: {input_base_dir}")
+    logging.info(f"Output directory: {output_base_dir}/{output_path}")
+    logging.info(f"Chunk size: {chunk_size}, Run size: {run_size}")
+
     convert_particles(
-        args.base_dir,
-        args.output_dir,
-        args.dataset_name,
-        args.chunk_size,
-        args.run_size
+        input_base_dir,
+        output_base_dir,
+        f"{campaign}/{dataset}/{version}",
+        chunk_size,
+        run_size,
+        args.chunk_index,
     )
 
+
 if __name__ == "__main__":
-    import pandas as pd
-    main() 
+    main()
