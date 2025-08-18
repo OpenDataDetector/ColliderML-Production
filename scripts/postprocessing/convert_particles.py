@@ -260,8 +260,8 @@ def main():
     version = config["version"]
 
     input_base_dir = Path(config["common"]["output_base_dir"]) / campaign / dataset / version
-    output_base_dir = Path(config["common"]["staging_dir"])
-    output_path = config.get("output_path", f"{campaign}/{dataset}/{version}/truth/particles")
+    # Use common.output_base_dir for outputs as well (unified root)
+    output_base_dir = Path(config["common"]["output_base_dir"]) 
 
     chunk_size = config.get("chunk_size", 1000)
     run_size = config.get("run_size", 10)
@@ -269,7 +269,7 @@ def main():
     logging.info("\nStarting particle conversion with configuration:")
     logging.info(f"Campaign: {campaign}, Dataset: {dataset}, Version: {version}")
     logging.info(f"Input directory: {input_base_dir}")
-    logging.info(f"Output directory: {output_base_dir}/{output_path}")
+    logging.info(f"Output root: {output_base_dir}")
     logging.info(f"Chunk size: {chunk_size}, Run size: {run_size}")
 
     convert_particles(

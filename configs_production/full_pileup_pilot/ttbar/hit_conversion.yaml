@@ -17,6 +17,3 @@ validation_config:
 # Track conversion specific configuration
 chunk_size: 8  # Number of events per output file
 run_size: 8      # Number of events per run
-
-debug_output_dir: "/global/cfs/cdirs/m4958/data/ColliderML/public/full_pileup_mini_pilot/ttbar/v4/runs"
-
