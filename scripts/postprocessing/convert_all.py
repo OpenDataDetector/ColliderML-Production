@@ -29,8 +29,9 @@ def convert_all_from_config(config_path: str) -> None:
     version = config["version"]
 
     common_cfg = config.get("common", {})
+    # Use a single root for both sim and postprocessing
     input_base_dir = Path(common_cfg["output_base_dir"]) / campaign / dataset / version
-    output_base_dir = Path(common_cfg["staging_dir"]) if "staging_dir" in common_cfg else Path(common_cfg["output_base_dir"]) / "staging"
+    output_base_dir = Path(common_cfg["output_base_dir"]) 
 
     # Chunking
     chunk_size = int(config.get("chunk_size", 1000))

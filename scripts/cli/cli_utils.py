@@ -232,7 +232,7 @@ def build_stage_command(config, config_path, stage_script_path, output_dir, outp
             if not container:
                 raise ValueError(f"Stage '{stage}' requires shifter container but 'common.container' not found in config")
             
-            srun_options = "--exact"
+            srun_options = "--exact --kill-on-bad-exit=0"
             shifter_cmd = f"srun {srun_options} -u shifter --image={container} --module=cvmfs bash -c \""
             
             # Environment setup commands are added inside the shifter container
@@ -246,7 +246,7 @@ def build_stage_command(config, config_path, stage_script_path, output_dir, outp
             }
         else:
             # SLURM without shifter (postprocessing stages)
-            srun_options = "--exact"
+            srun_options = "--exact --kill-on-bad-exit=0"
             srun_cmd = f"srun {srun_options} bash -c \""
             
             return {
