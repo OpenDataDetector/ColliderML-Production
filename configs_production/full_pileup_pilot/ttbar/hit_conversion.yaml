@@ -2,7 +2,7 @@
 campaign: "full_pileup_pilot"
 dataset: "ttbar"
 version: "v4"
-stage: "build_tracks"
+stage: "build_tracker_hits"
 
 # Job submission configuration
 job_config:
@@ -18,6 +18,5 @@ validation_config:
 chunk_size: 8  # Number of events per output file
 run_size: 8      # Number of events per run
 
-# Output configuration
-output_path: "full_pileup_mini_pilot/ttbar/v4/reco/hits"  # Path appended to staging_dir
+debug_output_dir: "/global/cfs/cdirs/m4958/data/ColliderML/public/full_pileup_mini_pilot/ttbar/v4/runs"
 
