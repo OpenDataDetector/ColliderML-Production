@@ -1,5 +1,5 @@
 # Configuration for track conversion postprocessing
-campaign: "full_pileup_pilot"
+campaign: "full_pileup_mini_pilot"
 dataset: "ttbar"
 version: "v4"
 stage: "build_tracker_hits"
