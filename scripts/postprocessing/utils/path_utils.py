@@ -18,7 +18,14 @@ def get_run_paths(base_dir: str | Path) -> List[Path]:
         List of paths to run directories, sorted numerically by directory name
     """
     base_dir = Path(base_dir)
-    run_dirs = [d for d in (base_dir / "runs").glob("*") if d.is_dir()]
+    run_dirs = []
+    for d in (base_dir / "runs").glob("*"):
+        if not d.is_dir():
+            continue
+        # Only consider directories with purely numeric names
+        name = d.name
+        if name.isdigit():
+            run_dirs.append(d)
     run_dirs.sort(key=lambda x: int(x.name))
     return run_dirs
 
