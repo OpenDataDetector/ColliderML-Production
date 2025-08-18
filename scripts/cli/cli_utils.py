@@ -21,7 +21,7 @@ GIT_COMMIT_SUCCESS_FILE = ".git_commit_success"
 # Define stage categories
 MADGRAPH_STAGES = ["madgraph_init", "madgraph_generation"]
 SIMULATION_STAGES = MADGRAPH_STAGES + ["pythia_generation", "merge_smear", "simulation", "digitization"]
-POSTPROCESSING_STAGES = ["build_tracks", "build_hits", "build_particles", "build_manifest"]
+POSTPROCESSING_STAGES = ["build_tracks", "build_tracker_hits", "build_particles", "build_manifest"]
 VALID_STAGES = SIMULATION_STAGES + POSTPROCESSING_STAGES
 
 # Define which stages need shifter container (subset of simulation stages)
