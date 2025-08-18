@@ -187,7 +187,7 @@ def process_chunk_for_particles(
 
 
 def convert_particles(
-    input_base_dir: Path | str,
+    base_dir: Path | str,
     output_base_dir: Path | str,
     dataset_name: str,
     chunk_size: int = 1000,
@@ -197,11 +197,10 @@ def convert_particles(
     """
     Convert particle data to HDF5 files grouped by event.
     """
-    input_base_dir = Path(input_base_dir)
-    input_dir = make_dir(input_base_dir, dataset_name)
+    base_dir = Path(base_dir)
     output_base_dir = Path(output_base_dir)
 
-    run_dirs = get_run_paths(input_dir)
+    run_dirs = get_run_paths(base_dir)
     num_runs = len(run_dirs)
 
     num_events, runs_per_chunk, num_chunks = get_chunk_info(num_runs, run_size, chunk_size)
