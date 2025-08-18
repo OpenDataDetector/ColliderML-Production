@@ -1,0 +1,23 @@
+# Configuration for track conversion postprocessing
+campaign: "full_pileup_pilot"
+dataset: "ttbar"
+version: "v4"
+stage: "build_tracks"
+
+# Job submission configuration
+job_config:
+  n_runs: 128  # Number of jobs to submit
+  runs_per_node: 32  # Number of runs per node
+  time_limit: "04:00:00"  # Time limit per job
+  qos: "regular"
+  execution_mode: "interactive"
+
+validation_config:
+
+# Track conversion specific configuration
+chunk_size: 8  # Number of events per output file
+run_size: 8      # Number of events per run
+
+# Output configuration
+output_path: "full_pileup_mini_pilot/ttbar/v4/reco/hits"  # Path appended to staging_dir
+

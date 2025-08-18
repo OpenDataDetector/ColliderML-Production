@@ -50,39 +50,97 @@ def convert_hit_ids(hit_ids_str: str) -> np.ndarray:
     result = np.array([int(x) for x in hit_ids if x.strip()], dtype=np.int32)
     return result
 
-def load_root_file(file_path: str, tree_name: str = None) -> pd.DataFrame:
-    """
-    Load ROOT file and convert to DataFrame.
+# def load_root_file(file_path: str, tree_name: str = None) -> pd.DataFrame:
+#     """
+#     Load ROOT file and convert to DataFrame.
     
-    Args:
-        file_path: Path to ROOT file
-        tree_name: Name of tree to load. If None, uses first tree found.
+#     Args:
+#         file_path: Path to ROOT file
+#         tree_name: Name of tree to load. If None, uses first tree found.
         
+#     Returns:
+#         DataFrame containing ROOT data
+#     """
+#     root_file = uproot.open(file_path)
+    
+#     if tree_name is None:
+#         # Get the keys and sort them by cycle number
+#         keys = root_file.keys()
+#         cycles = [int(key.split(';')[1]) for key in keys]
+#         tree_name = keys[cycles.index(max(cycles))]
+    
+#     # Get arrays from tree
+#     arrays = root_file[tree_name].arrays()
+    
+#     # Convert to DataFrame
+#     df = ak.to_dataframe(arrays)
+    
+#     if isinstance(df.index, pd.MultiIndex):
+#         df = df.reset_index()
+#         # Remove entry/subentry columns if they exist
+#         drop_cols = [col for col in ['entry', 'subentry'] if col in df.columns]
+#         if drop_cols:
+#             df = df.drop(columns=drop_cols)
+    
+#     return df
+
+def load_root_file(file_path: str, event_offset: int = 0, event_id: int | None = None) -> pd.DataFrame | None:
+    """Load data from a single root file with optional event filtering
+    
+    Parameters:
+    -----------
+    file_path : Path or str
+        Path to the root file
+    event_offset : int
+        Offset to add to event_id (for backwards compatibility)
+    event_id : int, optional
+        If provided, only load this specific event
+    
     Returns:
-        DataFrame containing ROOT data
+    --------
+    pd.DataFrame or None
+        DataFrame containing the loaded data, or None if loading fails
     """
-    root_file = uproot.open(file_path)
-    
-    if tree_name is None:
+    try:
+        tree = uproot.open(file_path)
         # Get the keys and sort them by cycle number
-        keys = root_file.keys()
+        keys = tree.keys()
         cycles = [int(key.split(';')[1]) for key in keys]
-        tree_name = keys[cycles.index(max(cycles))]
+        latest_key = keys[cycles.index(max(cycles))]
+        data = tree[latest_key].arrays()
+        
+        # Separate regular and variable length columns
+        regular_columns = []
+        variable_columns = []
+        for field in data.fields:
+            if 'var' in str(data[field].type):
+                variable_columns.append(field)
+            else:
+                regular_columns.append(field)
+        
+        # Warn about dropped columns
+        if variable_columns:
+            print(f"Warning: Dropping variable length columns: {', '.join(variable_columns)}")
+            
+        # Convert to dataframe using only regular columns
+        df = ak.to_dataframe(data[regular_columns])
+            
+        # Apply event offset
+        if event_offset and 'event_id' in df.columns:
+            df['event_id'] += event_offset
+            
+        # Filter for specific event if requested
+        if event_id is not None:
+            df = df[df['event_id'] == event_id]
+            if len(df) == 0:
+                return None
+                
+        return df
     
-    # Get arrays from tree
-    arrays = root_file[tree_name].arrays()
-    
-    # Convert to DataFrame
-    df = ak.to_dataframe(arrays)
-    
-    if isinstance(df.index, pd.MultiIndex):
-        df = df.reset_index()
-        # Remove entry/subentry columns if they exist
-        drop_cols = [col for col in ['entry', 'subentry'] if col in df.columns]
-        if drop_cols:
-            df = df.drop(columns=drop_cols)
-    
-    return df
+    except (FileNotFoundError, uproot.exceptions.KeyInFileError) as e:
+        print(f"Error loading {file_path}: {str(e)}")
+        return None
+
 
 def load_track_summary(file_path: str) -> Dict[str, Any]:
     """

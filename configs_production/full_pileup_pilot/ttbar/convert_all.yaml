@@ -1,0 +1,15 @@
+# Config to drive convert_all.py
+campaign: "full_pileup_pilot"
+dataset: "ttbar"
+version: "v4"
+
+# Objects to convert (any subset of: digihits, hits, tracks, particles, calorimeter)
+objects:
+  - tracker_hits
+  - tracks
+  - particles
+  - calorimeter
+
+# Chunking
+chunk_size: 8
+run_size: 8

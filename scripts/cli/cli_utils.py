@@ -40,7 +40,7 @@ STAGE_SCRIPT_MAP = {
     
     # Postprocessing scripts
     "build_tracks": "postprocessing/convert_tracks.py",
-    "build_hits": "postprocessing/convert_hits.py",
+    "build_tracker_hits": "postprocessing/convert_digihits.py",
     "build_particles": "postprocessing/convert_particles.py",
     "build_manifest": "postprocessing/build_manifest.py",
 }

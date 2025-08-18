@@ -5,7 +5,7 @@ Common utilities for EDM4HEP to HDF5 conversion and dataset management.
 import os
 import glob
 from pathlib import Path
-from typing import List, Dict, Any, Tuple
+from typing import List, Tuple
 
 def get_run_paths(base_dir: str | Path) -> List[Path]:
     """
@@ -22,19 +22,21 @@ def get_run_paths(base_dir: str | Path) -> List[Path]:
     run_dirs.sort(key=lambda x: int(x.name))
     return run_dirs
 
-def ensure_output_dir(output_base_dir: str, dataset_name: str) -> str:
+def make_dir(base_dir: str | Path, *path_parts: str) -> Path:
     """
     Ensure output directory exists and return full path.
     
     Args:
-        output_base_dir: Base directory for outputs
-        dataset_name: Name of the dataset
+        base_dir: Base directory for outputs
+        *path_parts: Variable number of path components to concatenate
         
     Returns:
         Full path to output directory
     """
-    output_dir = os.path.join(output_base_dir, dataset_name)
-    Path(output_dir).mkdir(parents=True, exist_ok=True)
+    output_dir = Path(base_dir)
+    for part in path_parts:
+        output_dir = output_dir / part
+    output_dir.mkdir(parents=True, exist_ok=True)
     return output_dir
 
 def get_chunk_info(num_runs: int, run_size: int, chunk_size: int) -> Tuple[int, int, int]:
