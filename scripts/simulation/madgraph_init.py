@@ -84,13 +84,9 @@ def generate_madgraph_process(config, scratch_dir, logger):
         f_out.write("exit\n")
 
     logger.info(f"Running MadGraph process generation (script: {temp_proc_script_path})")
-    stdout_proc, stderr_proc = run_command([str(mg5_exe), str(temp_proc_script_path)], cwd=temp_run_dir)
-    
-    logger.info("MadGraph process generation STDOUT:")
-    logger.info(stdout_proc)
-    if stderr_proc:
-        logger.warning("MadGraph process generation STDERR:")
-        logger.warning(stderr_proc)
+    # Stream output in realtime while capturing combined text for later parsing
+    stdout_proc, _ = run_command([str(mg5_exe), str(temp_proc_script_path)], cwd=temp_run_dir,
+                                 stream=True, capture=True, merge_streams=True, logger=logger)
     
     # Verify process directory was created
     generated_process_dir = temp_run_dir / madgraph_proc_output_dirname

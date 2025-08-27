@@ -30,6 +30,7 @@ validation_config:
 # --- Event Generation Parameters ---
 # These follow the exact same pattern as pythia_gen.py and ddsim_run.py
 events: 3000  # Number of events per run, total events = n_runs * events
+# NOTE: ttbar pythia matching survival rate is around 45%
 seed: 42     # Base seed - will be modified per run using run_id
 
 # --- Essential Paths & Environment ---
