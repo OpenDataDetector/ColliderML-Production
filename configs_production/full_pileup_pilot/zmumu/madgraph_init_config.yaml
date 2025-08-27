@@ -12,7 +12,7 @@
 # --- Dataset & Version ---
 campaign: "full_pileup_mini_pilot"
 dataset: "zmumu"
-version: "v2"
+version: "v3"
 stage: "madgraph_init"
 
 # --- Job Configuration ---
@@ -20,8 +20,8 @@ job_config:
   # Number of nodes will be calculated as n_runs / runs_per_node
   n_runs: 1        # Number of runs (where a run produces N events)
   runs_per_node: 1  # Number of runs per node (adjust based on memory/time constraints)
-  time_limit: "00:30:00"  # Time limit per job - MadGraph NLO generation is slower than Pythia
-  qos: "debug"
+  time_limit: "12:00:00"  # Time limit per job - MadGraph NLO generation is slower than Pythia
+  qos: "regular"
   execution_mode: "distributed_slurm"  # Use distributed mode for parallel generation
   # execution_mode: "interactive"
 
@@ -30,8 +30,8 @@ mg_model: "sm-no_b_mass"
 mg_definitions: [] # No specific lepton definitions needed for inclusive ttbar
 mg_generate_command: |
   generate p p > mu+ mu- [QCD]
-# add process p p > mu+ mu- j [QCD]
-# add process p p > mu+ mu- j j [QCD]
+  add process p p > mu+ mu- j [QCD]
+  add process p p > mu+ mu- j j [QCD]
 
 # --- Essential Paths & Environment ---
 # These use variables from env_setup.yaml config_defaults
