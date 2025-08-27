@@ -30,9 +30,8 @@ mg_model: "sm-no_b_mass"
 mg_definitions: [] # No specific lepton definitions needed for inclusive ttbar
 mg_generate_command: |
   generate p p > t t~ [QCD]
-
-# add process p p > t t~ j [QCD]
-# add process p p > t t~ j j [QCD]
+  add process p p > t t~ j [QCD]
+  add process p p > t t~ j j [QCD]
 
 # --- Essential Paths & Environment ---
 # These use variables from env_setup.yaml config_defaults
@@ -52,6 +51,10 @@ card_customizations:
     
     # Generator-level cuts (improves showering acceptance)
     "ptj": 20.0      # Minimum jet pT
+    # Note: During init we will temporarily set
+    #   nevents = 0
+    #   req_acc = 0.001
+    # to force grid/envelope construction without producing events.
 
   # For NLO processes (born), MadGraph creates shower_card.dat
   shower_card: # Use MOSTLY defaults, but override xqcut
@@ -81,9 +84,11 @@ log_level: "INFO"
 
 # --- Documentation ---
 # After running this stage successfully, the compiled process will be stored at:
-# {output_base_dir}/{campaign}/{dataset}/{version}/madgraph_process/{dataset}_{version}/
+# {output_base_dir}/{campaign}/{dataset}/{version}/madgraph_process/
+# and archived as a tarball at:
+# {output_base_dir}/{campaign}/{dataset}/{version}/madgraph_process.tgz
 # 
-# This directory can then be used by multiple parallel madgraph_generation jobs.
+# The tarball is the canonical artifact consumed by madgraph_generation.
 # 
 # Expected runtime: 2-12 hours for NLO ttbar process compilation
 # Expected storage: ~100-500 MB for the compiled process directory

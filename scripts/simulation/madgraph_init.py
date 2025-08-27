@@ -26,6 +26,7 @@ import argparse
 import yaml
 import logging
 from pathlib import Path
+import tarfile
 from utils.config import create_base_parser, load_config
 from utils.madgraph_utils import (
     run_command, 
@@ -156,6 +157,38 @@ def customize_default_cards(process_dir, config, process_generation_stdout, logg
     
     logger.info("Default card customization completed.")
 
+
+def compile_grids_and_envelopes(process_dir: Path, logger: logging.Logger):
+    """
+    Edit cards for a zero-event integration run and execute generate_events to
+    build grids/envelopes inside the process directory.
+
+    This uses nevents=0 and req_acc=0.001 to force grid construction without
+    producing events. The process directory is modified in place.
+    """
+    cards_dir = process_dir / "Cards"
+    run_card_path = cards_dir / "run_card.dat"
+
+    logger.info("Preparing run_card.dat for grid/envelope compilation (nevents=0, req_acc=0.001)")
+    try:
+        compile_settings = {
+            'nevents': 0,
+            'req_acc': 0.001,
+        }
+        customize_card_with_regex(run_card_path, compile_settings)
+    except Exception as e:
+        logger.error(f"Failed to update run_card.dat for grid compilation: {e}")
+        raise
+
+    generate_events_exe = process_dir / "bin" / "generate_events"
+    logger.info(f"Running grid/envelope compilation via {generate_events_exe} (-f)")
+    stdout_evt, stderr_evt = run_command([str(generate_events_exe), "-f"], cwd=process_dir)
+    logger.info("--- generate_events (grid build) STDOUT ---")
+    logger.info(stdout_evt)
+    if stderr_evt:
+        logger.warning("--- generate_events (grid build) STDERR ---")
+        logger.warning(stderr_evt)
+
 def store_process_directory(process_dir, config, logger):
     """
     Store the compiled process directory in the dataset version directory.
@@ -197,6 +230,30 @@ def store_process_directory(process_dir, config, logger):
     
     return final_process_dir
 
+
+def create_tarball_from_directory(source_dir: Path, tar_path: Path, logger: logging.Logger):
+    """
+    Create a gzipped tarball from source_dir at tar_path atomically.
+    """
+    try:
+        tar_tmp_path = tar_path.with_suffix(tar_path.suffix + ".tmp")
+        if tar_tmp_path.exists():
+            try:
+                tar_tmp_path.unlink()
+            except Exception:
+                pass
+        logger.info(f"Creating tarball {tar_path.name} from {source_dir}")
+        with tarfile.open(tar_tmp_path, "w:gz") as tar:
+            # Store the directory with its basename as the top-level folder
+            tar.add(source_dir, arcname=source_dir.name, recursive=True)
+        # Atomic replace
+        tar_tmp_path.replace(tar_path)
+        size_mb = tar_path.stat().st_size / (1024 * 1024)
+        logger.info(f"Tarball created: {tar_path} ({size_mb:.1f} MB)")
+    except Exception as e:
+        logger.error(f"Failed to create tarball {tar_path}: {e}")
+        raise
+
 def main():
     """Main entry point for madgraph_init script"""
     parser = create_base_parser("MadGraph process initialization for ColliderML")
@@ -231,20 +288,31 @@ def main():
         # Step 2: Customize default cards
         logger.info("=== Step 2: Customize Default Cards ===")
         customize_default_cards(process_dir, config, process_stdout, logger)
+
+        # Step 2b: Build grids/envelopes in-place (0 events, req_acc=0.001)
+        logger.info("=== Step 2b: Build Grids/Envelopes (No Events) ===")
+        compile_grids_and_envelopes(process_dir, logger)
         
         # Step 3: Store the process directory
         logger.info("=== Step 3: Store Process Directory ===")
         final_process_dir = store_process_directory(process_dir, config, logger)
-        
-        # Step 4: Cleanup temporary directory
-        logger.info("=== Step 4: Cleanup ===")
+
+        # Step 4: Create tarball artifact from stored directory
+        logger.info("=== Step 4: Create Tarball Artifact ===")
+        version_dir = get_version_directory_path(config)
+        tarball_path = version_dir / "madgraph_process.tgz"
+        create_tarball_from_directory(final_process_dir, tarball_path, logger)
+
+        # Step 5: Cleanup temporary directory
+        logger.info("=== Step 5: Cleanup ===")
         temp_parent = process_dir.parent
         logger.info(f"Cleaning up temporary directory: {temp_parent}")
         shutil.rmtree(temp_parent)
         
         logger.info("=== MadGraph Process Initialization Complete ===")
         logger.info(f"Process '{process_name}' ready for parallel event generation")
-        logger.info(f"Stored at: {final_process_dir}")
+        logger.info(f"Stored directory: {final_process_dir}")
+        logger.info(f"Stored tarball: {tarball_path}")
         
     except Exception as e:
         logger.error(f"MadGraph initialization failed: {e}")
