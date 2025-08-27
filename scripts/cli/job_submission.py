@@ -189,19 +189,33 @@ class JobSubmitter:
             except Exception:
                 logger.warning(f"Invalid depends_on value in job_config: {depends_on}")
 
-        slurm = Slurm(
-            job_name=f"colliderML_{self.config['stage']}_{node_idx}",
-            account=common_cfg["account"],
-            qos=job_cfg["qos"],
-            time=job_cfg["time_limit"],
-            nodes=1,
-            ntasks_per_node=1 if is_monolithic else job_cfg["runs_per_node"],
-            cpus_per_task=job_cfg.get("max_cores", 256) if is_monolithic else job_cfg.get("max_cores", 256)//job_cfg["runs_per_node"],
-            constraint="cpu",
-            output=str(self.log_dir / f"job_{node_idx}_%j.out"),
-            error=str(self.log_dir / f"job_{node_idx}_%j.err"),
-            dependency=dependency_kw
-        )
+        if dependency_kw is not None:
+            slurm = Slurm(
+                job_name=f"colliderML_{self.config['stage']}_{node_idx}",
+                account=common_cfg["account"],
+                qos=job_cfg["qos"],
+                time=job_cfg["time_limit"],
+                nodes=1,
+                ntasks_per_node=1 if is_monolithic else job_cfg["runs_per_node"],
+                cpus_per_task=job_cfg.get("max_cores", 256) if is_monolithic else job_cfg.get("max_cores", 256)//job_cfg["runs_per_node"],
+                constraint="cpu",
+                output=str(self.log_dir / f"job_{node_idx}_%j.out"),
+                error=str(self.log_dir / f"job_{node_idx}_%j.err"),
+                dependency=dependency_kw
+            )
+        else:
+            slurm = Slurm(
+                job_name=f"colliderML_{self.config['stage']}_{node_idx}",
+                account=common_cfg["account"],
+                qos=job_cfg["qos"],
+                time=job_cfg["time_limit"],
+                nodes=1,
+                ntasks_per_node=1 if is_monolithic else job_cfg["runs_per_node"],
+                cpus_per_task=job_cfg.get("max_cores", 256) if is_monolithic else job_cfg.get("max_cores", 256)//job_cfg["runs_per_node"],
+                constraint="cpu",
+                output=str(self.log_dir / f"job_{node_idx}_%j.out"),
+                error=str(self.log_dir / f"job_{node_idx}_%j.err")
+            )
         
         # Calculate run offset based on run range or normal distribution
         if self.run_range:
