@@ -17,22 +17,65 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-def run_command(command, cwd=None, env=None, shell=False):
-    """Execute a command and return stdout, stderr"""
-    process = subprocess.Popen(
-        command,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        universal_newlines=True,
-        cwd=cwd,
-        env=env,
-        shell=shell
-    )
-    stdout, stderr = process.communicate()
-    if process.returncode != 0:
-        print(f"Error running command: {command}\nSTDOUT:\n{stdout}\nSTDERR:\n{stderr}")
-        sys.exit(1)
-    return stdout, stderr
+def run_command(command,
+                cwd=None,
+                env=None,
+                shell=False,
+                stream=False,
+                capture=True,
+                merge_streams=False,
+                raise_on_error=True,
+                logger: logging.Logger = logger):
+    """
+    Execute a command.
+    - When stream=False (default): buffer stdout/stderr and return (stdout, stderr).
+    - When stream=True: stream lines to logger; if capture=True, return (combined_stdout, None) when merge_streams=True.
+      Note: streaming currently merges stdout/stderr; merge_streams is forced True in streaming mode.
+    """
+    if stream:
+        if not merge_streams:
+            # Simpler, robust streaming path: merge to avoid deadlocks
+            logger.debug("merge_streams=False requested with stream=True; forcing merge_streams=True to avoid deadlocks.")
+            merge_streams = True
+        process = subprocess.Popen(
+            command,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT if merge_streams else subprocess.PIPE,
+            universal_newlines=True,
+            cwd=cwd,
+            env=env,
+            shell=shell,
+            bufsize=1,
+        )
+        assert process.stdout is not None
+        combined_text = [] if capture else None
+        for line in process.stdout:
+            logger.info(line.rstrip())
+            if capture:
+                combined_text.append(line)
+        ret = process.wait()
+        if raise_on_error and ret != 0:
+            raise RuntimeError(f"Command failed with exit code {ret}: {command}")
+        return ("".join(combined_text) if capture else None, None)
+    else:
+        process = subprocess.Popen(
+            command,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            universal_newlines=True,
+            cwd=cwd,
+            env=env,
+            shell=shell
+        )
+        stdout, stderr = process.communicate()
+        if raise_on_error and process.returncode != 0:
+            raise RuntimeError(f"Error running command: {command}\nSTDOUT:\n{stdout}\nSTDERR:\n{stderr}")
+        return stdout, stderr
+
+def run_command_streaming(command, cwd=None, env=None, shell=False, logger: logging.Logger = logger, raise_on_error=True):
+    """Compatibility wrapper: prefer run_command(..., stream=True)."""
+    stdout, _ = run_command(command, cwd=cwd, env=env, shell=shell, stream=True, capture=True, merge_streams=True, raise_on_error=raise_on_error, logger=logger)
+    return 0
 
 def customize_card_with_regex(card_path, card_settings):
     """
