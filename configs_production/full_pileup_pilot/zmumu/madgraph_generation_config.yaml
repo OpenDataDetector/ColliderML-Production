@@ -12,7 +12,7 @@
 # --- Dataset & Version ---
 campaign: "full_pileup_mini_pilot"
 dataset: "zmumu"
-version: "v1"
+version: "v3"
 stage: "madgraph_generation"
 
 # --- Job Configuration ---
@@ -20,8 +20,9 @@ job_config:
   # Number of nodes will be calculated as n_runs / runs_per_node
   n_runs: 1        # Number of runs (where a run produces N events)
   runs_per_node: 1  # Number of runs per node (adjust based on memory/time constraints)
-  time_limit: "06:00:00"  # Time limit per job - MadGraph NLO generation is slower than Pythia
-  qos: "regular"
+  time_limit: "00:30:00"  # Time limit per job - MadGraph NLO generation is slower than Pythia
+  qos: "debug"
+  depends_on: "42072037"
   execution_mode: "distributed_slurm"  # Use distributed mode for parallel generation
   # execution_mode: "interactive"
 
@@ -29,7 +30,7 @@ validation_config:
 
 # --- Event Generation Parameters ---
 # These follow the exact same pattern as pythia_gen.py and ddsim_run.py
-events: 128  # Number of events per run, total events = n_runs * events
+events: 3000  # Number of events per run, total events = n_runs * events
 seed: 42     # Base seed - will be modified per run using run_id
 
 # --- Essential Paths & Environment ---
@@ -43,22 +44,12 @@ generation_scratch_dir: "{madgraph.generation_scratch_dir}"
 # but you can override specific run-level parameters here if needed
 card_customizations:
   run_card:
-    # Most settings come from madgraph_init, but you can override run-specific ones
-    # "nevents": # Will be set to config.events automatically
-    # "iseed":   # Will be set to config.seed automatically
-    
-    # Optional: Override specific run-level settings
-    # "lpp1": 1      # Proton beam 1
-    # "lpp2": 1      # Proton beam 2
+    "ptj": 10.0      # Minimum jet pT
     
   # For NLO processes (born), customize shower_card.dat
   shower_card:
-    # Most settings come from madgraph_init, but you can override run-specific ones
-    # "nevents": # Will be set to config.events automatically  
-    # "iseed":   # Will be set to config.seed automatically
-    
-    # Optional: Override specific shower settings per run
-    # "shower_scale_scheme": 1
+    "Qcut": 20.0       # MUST match run_card value for FxFx
+    "time_shower_me_corrections": "F"
     
   # For loop-induced processes (noborn), customize pythia8_card.dat  
   pythia8_card:
@@ -72,10 +63,10 @@ card_customizations:
 # --- HepMC Splitting Configuration (Optional) ---
 # Uncomment to enable splitting of HepMC output into smaller files
 # This follows the same pattern as pythia_generation
-# hepmc_splitting:
-#   enabled: true
-#   events_per_file: 32
-#   output_filename: "events.hepmc"
+splitting_config:
+  enable: true
+  events_per_file: 128
+  output_filename: "events.hepmc"
 
 # --- Logging ---
 log_level: "INFO"
