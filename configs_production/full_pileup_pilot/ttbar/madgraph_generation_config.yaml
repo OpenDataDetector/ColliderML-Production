@@ -12,7 +12,7 @@
 # --- Dataset & Version ---
 campaign: "full_pileup_mini_pilot"
 dataset: "ttbar"
-version: "v3"
+version: "v6"
 stage: "madgraph_generation"
 
 # --- Job Configuration ---
@@ -29,7 +29,7 @@ validation_config:
 
 # --- Event Generation Parameters ---
 # These follow the exact same pattern as pythia_gen.py and ddsim_run.py
-events: 128  # Number of events per run, total events = n_runs * events
+events: 3000  # Number of events per run, total events = n_runs * events
 seed: 42     # Base seed - will be modified per run using run_id
 
 # --- Essential Paths & Environment ---
@@ -43,36 +43,21 @@ generation_scratch_dir: "{madgraph.generation_scratch_dir}"
 # but you can override specific run-level parameters here if needed
 card_customizations:
   run_card:
-    # Most settings come from madgraph_init, but you can override run-specific ones
-    # "nevents": # Will be set to config.events automatically
-    # "iseed":   # Will be set to config.seed automatically
-    
-    # Optional: Override specific run-level settings
-    # "lpp1": 1      # Proton beam 1
-    # "lpp2": 1      # Proton beam 2
-    
+    "ptj": 20.0      # Minimum jet pT
+
   # For NLO processes (born), customize shower_card.dat
   shower_card:
-    # Most settings come from madgraph_init, but you can override run-specific ones
-    # "nevents": # Will be set to config.events automatically  
-    # "iseed":   # Will be set to config.seed automatically
-    
-    # Optional: Override specific shower settings per run
-    # "shower_scale_scheme": 1
-    
+    "Qcut": 40.0       # MUST match run_card value for FxFx
+    "time_shower_me_corrections": "F"
+
   # For loop-induced processes (noborn), customize pythia8_card.dat  
   pythia8_card:
     # Most settings come from madgraph_init, but you can override run-specific ones
-    # "Main:numberOfEvents": # Will be set to config.events automatically
-    # "Random:seed":         # Will be set to config.seed automatically
-    
-    # Optional: Override specific Pythia8 settings per run
-    # "Tune:pp": 14
 
 # --- HepMC Splitting Configuration (Optional) ---
 # Configure splitting with keys expected by the generation script
 splitting_config:
-  enable: false
+  enable: true
   events_per_file: 128
   output_filename: "events.hepmc"
 
@@ -80,10 +65,11 @@ splitting_config:
 log_level: "INFO"
 
 # --- Documentation ---
-# This stage expects that madgraph_init has been run successfully and the 
-# compiled process directory exists at:
-# {output_base_dir}/{campaign}/{dataset}/{version}/madgraph_process/
-# 
+# This stage expects that madgraph_init has been run successfully and the
+# tarball artifact exists at:
+# {output_base_dir}/{campaign}/{dataset}/{version}/madgraph_process.tgz
+# (The process directory may also exist; generation will use the tarball.)
+#
 # Output will be placed at:
 # {output_base_dir}/{campaign}/{dataset}/{version}/runs/
 # with structure: runs/0/events.lhe.gz, runs/1/events.lhe.gz, etc.

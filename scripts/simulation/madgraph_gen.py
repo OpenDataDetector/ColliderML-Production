@@ -44,45 +44,56 @@ logger = logging.getLogger(__name__)
 
 # customize_card_with_regex and detect_process_type_from_files are imported from madgraph_utils
 
-def copy_process_directory(config):
+def stage_tarball_to_scratch(config):
     """
-    Copy the pre-compiled process directory from storage to scratch space.
-    
-    Args:
-        config: Configuration object
-        
+    Copy the tarball artifact to a unique scratch directory and extract it.
+
     Returns:
-        tuple: (copied_process_dir_path, job_scratch_dir_path)
+        tuple: (extracted_process_dir_path, job_scratch_dir_path)
     """
-    # Build path to stored process directory using shared utility
     version_dir = get_version_directory_path(config)
-    stored_process_dir = version_dir / "madgraph_process"
-    
-    if not stored_process_dir.exists():
+    tarball_path = version_dir / "madgraph_process.tgz"
+    if not tarball_path.exists():
         raise FileNotFoundError(
-            f"Pre-compiled process directory not found at {stored_process_dir}. "
-            f"Please run madgraph_init stage first."
+            f"Tarball artifact not found at {tarball_path}. Run madgraph_init to create it."
         )
-    
-    # Create scratch directory for this job
+
     scratch_dir = Path(config.generation_scratch_dir)
     process_name = f"{config.dataset}_{config.version}"
-    job_scratch_dir = scratch_dir / f"mg5_gen_{process_name}_{os.getpid()}"
+    # Make this unique per process/task to avoid collisions
+    uniq = os.environ.get('SLURM_JOB_ID') or 'nojid'
+    proc = os.environ.get('SLURM_PROCID') or os.getpid()
+    job_scratch_dir = scratch_dir / f"mg5_gen_{process_name}_{uniq}_{proc}"
     job_scratch_dir.mkdir(parents=True, exist_ok=True)
-    
-    # Copy process directory to scratch
+
+    # Copy tarball locally per job for safe concurrent access
+    local_tarball = job_scratch_dir / tarball_path.name
+    logger.info(f"Copying tarball: {tarball_path} -> {local_tarball}")
+    shutil.copy2(tarball_path, local_tarball)
+
+    # Extract into 'process' subdir
     copied_process_dir = job_scratch_dir / "process"
-    logger.info(f"Copying process directory: {stored_process_dir} -> {copied_process_dir}")
-    
-    # Preserve symlinks but ignore dangling ones that MadGraph sometimes creates  
-    shutil.copytree(stored_process_dir, copied_process_dir, symlinks=True, ignore_dangling_symlinks=True)
-    
-    # Log copy statistics
+    copied_process_dir.mkdir(exist_ok=True)
+    logger.info(f"Extracting {local_tarball} to {copied_process_dir}")
+    run_command(["tar", "-xzf", str(local_tarball), "-C", str(copied_process_dir)])
+
+    # The tar contains a top-level directory named 'madgraph_process'
+    # Normalize to point at that directory
+    candidate = copied_process_dir / "madgraph_process"
+    if candidate.is_dir():
+        copied_process_dir = candidate
+    else:
+        # Fallback: try single subdir
+        subdirs = [p for p in copied_process_dir.iterdir() if p.is_dir()]
+        if len(subdirs) == 1:
+            copied_process_dir = subdirs[0]
+
+    # Log extracted statistics
     total_size = sum(f.stat().st_size for f in copied_process_dir.rglob('*') if f.is_file())
     total_size_mb = total_size / (1024 * 1024)
     file_count = len(list(copied_process_dir.rglob('*')))
-    logger.info(f"Process directory copied: {total_size_mb:.1f} MB, {file_count} files")
-    
+    logger.info(f"Process directory extracted: {total_size_mb:.1f} MB, {file_count} files")
+
     return copied_process_dir, job_scratch_dir
 
 def customize_cards_for_run(process_dir, config, run_id=None):
@@ -270,76 +281,21 @@ def setup_splitting_config(config, logger):
         logger.warning(f"Error accessing splitting config: {e}. Using defaults")
         return False, 1000, 'events.hepmc'
 
-def create_launch_script(temp_launch_script_path, copied_process_dir, process_type, run_name, config, logger):
-    """Create the MadGraph launch script based on process type."""
-    run_card_settings = config.card_customizations['run_card']
-    parton_shower_mode = run_card_settings.get('parton_shower', 'OFF').upper()
+def run_generate_events_no_compile(process_dir: Path, run_name: str, logger: logging.Logger):
+    """Run ./bin/generate_events in no-compile mode (-oxf) with optional run name."""
+    exe = process_dir / "bin" / "generate_events"
+    cmd = [str(exe), "-oxf"]
+    if run_name:
+        cmd.extend(["--name", run_name])
+    logger.info(f"Executing no-compile generate_events: {' '.join(cmd)}")
+    stdout_evt, stderr_evt = run_command(cmd, cwd=process_dir)
+    logger.info("--- MadGraph generate_events (no-compile) STDOUT: ---")
+    logger.info(stdout_evt)
+    if stderr_evt:
+        logger.warning("--- MadGraph generate_events (no-compile) STDERR: ---")
+        logger.warning(stderr_evt)
 
-    with open(temp_launch_script_path, 'w') as f:
-        if process_type == "noborn" and parton_shower_mode == 'PYTHIA8':
-            logger.info("Loop-induced process with parton showering detected. Generating multi-step launch script.")
-            if run_name:
-                f.write(f"launch {copied_process_dir} --name={run_name}\n")
-            else:
-                f.write(f"launch {copied_process_dir}\n")
-            f.write("shower=Pythia8\n")
-            f.write("0\n")  # Skips card editing prompt, starts event generation
-        else:
-            logger.info("Standard NLO process detected. Generating simple launch script.")
-            if run_name:
-                f.write(f"launch {copied_process_dir} -f --name={run_name}\n")
-            else:
-                f.write(f"launch {copied_process_dir} -f\n")
-            f.write("set automatic_html_opening False\n")
-            f.write("exit\n")
-
-    logger.info(f"Process type: {process_type}, Run name: {run_name}")
-
-def run_warmup_in_place(config, mg5_exe, logger):
-    """Run a tiny in-place warmup (1 event, seed=42) in central madgraph_process, then exit.
-
-    This builds/validates integration grids and compiled objects to be reused by
-    subsequent distributed generation runs.
-    """
-    version_dir = get_version_directory_path(config)
-    stored_process_dir = version_dir / "madgraph_process"
-    if not stored_process_dir.exists():
-        raise FileNotFoundError(
-            f"madgraph_process not found at {stored_process_dir}. Run madgraph_init first."
-        )
-
-    # Temporarily override events/seed
-    original_events = getattr(config, 'events', None)
-    original_seed = getattr(config, 'seed', None)
-    try:
-        config.events = 1
-        config.seed = 42
-
-        process_type = customize_cards_for_run(stored_process_dir, config, run_id='warmup')
-
-        temp_launch_script_path = version_dir / "warmup_launch.mg5"
-        create_launch_script(temp_launch_script_path, stored_process_dir, process_type, 'warmup', config, logger)
-
-        logger.info(f"Executing MadGraph warmup with script: {temp_launch_script_path}")
-        stdout_event, stderr_event = run_command([str(mg5_exe), str(temp_launch_script_path)], cwd=stored_process_dir)
-        logger.info("--- Warmup STDOUT: ---")
-        logger.info(stdout_event)
-        if stderr_event:
-            logger.warning("--- Warmup STDERR: ---")
-            logger.warning(stderr_event)
-        logger.info("=== Warmup complete. Exiting without file moves/splitting. ===")
-    finally:
-        # Restore config
-        if original_events is not None:
-            config.events = original_events
-        else:
-            if hasattr(config, 'events'):
-                delattr(config, 'events')
-        if original_seed is not None:
-            config.seed = original_seed
-        else:
-            if hasattr(config, 'seed'):
-                delattr(config, 'seed')
+    
 
 def process_output_files(copied_process_dir, effective_output_dir, run_name, splitting_enabled,
                         split_events_per_file, split_output_filename, logger):
@@ -518,36 +474,21 @@ def main():
         warmup_enabled = bool(warmup_attr)
 
     try:
-        # Optional warmup path: run in-place on central process dir to build grids, then exit
-        if warmup_enabled:
-            logger.info("=== WARMUP: In-place grid build in central madgraph_process ===")
-            run_warmup_in_place(config, mg5_exe, logger)
-            return
+        # No warmup: grids are built during madgraph_init
 
-        # STEP 1: Copy pre-compiled process directory
-        logger.info("=== STEP 1: Copy Pre-compiled Process Directory ===")
-        copied_process_dir, job_scratch_dir = copy_process_directory(config)
+        # STEP 1: Stage tarball to scratch and extract
+        logger.info("=== STEP 1: Stage Tarball to Scratch and Extract ===")
+        copied_process_dir, job_scratch_dir = stage_tarball_to_scratch(config)
         
         # STEP 2: Customize cards for this specific run
         logger.info("=== STEP 2: Customize Cards for Run ===")
         run_id = os.environ.get('SLURM_PROCID') or os.environ.get('SLURM_ARRAY_TASK_ID') or '0'
         process_type = customize_cards_for_run(copied_process_dir, config, run_id)
         
-        # STEP 3: Launch MadGraph event generation
-        logger.info("=== STEP 3: Launch MadGraph Event Generation ===")
-        temp_launch_script_path = job_scratch_dir / "launch_script.mg5"
+        # STEP 3: Launch MadGraph event generation (no-compile)
+        logger.info("=== STEP 3: Launch MadGraph Event Generation (no-compile) ===")
         run_name = f"run_{run_id}" if run_id else None
-        
-        create_launch_script(temp_launch_script_path, copied_process_dir, process_type, run_name, config, logger)
-        
-        logger.info(f"Executing MadGraph with script: {temp_launch_script_path}")
-        stdout_event, stderr_event = run_command([str(mg5_exe), str(temp_launch_script_path)], cwd=copied_process_dir)
-        logger.info("--- MadGraph event generation STDOUT: ---")
-        logger.info(stdout_event)
-        if stderr_event:
-            logger.warning("--- MadGraph event generation STDERR: ---")
-            logger.warning(stderr_event)
-        logger.info("--- MadGraph event generation complete. ---")
+        run_generate_events_no_compile(copied_process_dir, run_name, logger)
 
         # STEP 4: Process and move/split output files
         logger.info("=== STEP 4: Process and Move/Split Output Files ===")
