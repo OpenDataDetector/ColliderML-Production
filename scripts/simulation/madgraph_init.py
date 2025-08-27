@@ -30,6 +30,7 @@ import tarfile
 from utils.config import create_base_parser, load_config
 from utils.madgraph_utils import (
     run_command, 
+    run_command_streaming,
     customize_card_with_regex, 
     detect_process_type_from_stdout,
     get_version_directory_path,
@@ -181,13 +182,13 @@ def compile_grids_and_envelopes(process_dir: Path, logger: logging.Logger):
         raise
 
     generate_events_exe = process_dir / "bin" / "generate_events"
-    logger.info(f"Running grid/envelope compilation via {generate_events_exe} (-f)")
-    stdout_evt, stderr_evt = run_command([str(generate_events_exe), "-f"], cwd=process_dir)
-    logger.info("--- generate_events (grid build) STDOUT ---")
-    logger.info(stdout_evt)
-    if stderr_evt:
-        logger.warning("--- generate_events (grid build) STDERR ---")
-        logger.warning(stderr_evt)
+    logger.info(f"Running grid/envelope compilation via {generate_events_exe} (-f --name run_build)")
+    # Stream output in real-time for debuggability
+    try:
+        run_command([str(generate_events_exe), "-f", "--name", "run_build"], cwd=str(process_dir), stream=True, capture=False, merge_streams=True, logger=logger)
+    except Exception as e:
+        logger.error(f"Error running generate_events for grid build: {e}")
+        raise
 
 def store_process_directory(process_dir, config, logger):
     """

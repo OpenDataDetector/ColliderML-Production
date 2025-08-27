@@ -33,6 +33,7 @@ from pathlib import Path
 from utils.config import create_base_parser, load_config
 from utils.madgraph_utils import (
     run_command,
+    run_command_streaming,
     customize_card_with_regex,
     detect_process_type_from_files,
     get_version_directory_path
@@ -287,13 +288,12 @@ def run_generate_events_no_compile(process_dir: Path, run_name: str, logger: log
     cmd = [str(exe), "-oxf"]
     if run_name:
         cmd.extend(["--name", run_name])
-    logger.info(f"Executing no-compile generate_events: {' '.join(cmd)}")
-    stdout_evt, stderr_evt = run_command(cmd, cwd=process_dir)
-    logger.info("--- MadGraph generate_events (no-compile) STDOUT: ---")
-    logger.info(stdout_evt)
-    if stderr_evt:
-        logger.warning("--- MadGraph generate_events (no-compile) STDERR: ---")
-        logger.warning(stderr_evt)
+    logger.info(f"Executing no-compile generate_events (streaming): {' '.join(cmd)}")
+    try:
+        run_command(cmd, cwd=str(process_dir), stream=True, capture=False, merge_streams=True, logger=logger)
+    except Exception as e:
+        logger.error(f"Error running generate_events (no-compile): {e}")
+        raise
 
     
 
@@ -487,7 +487,8 @@ def main():
         
         # STEP 3: Launch MadGraph event generation (no-compile)
         logger.info("=== STEP 3: Launch MadGraph Event Generation (no-compile) ===")
-        run_name = f"run_{run_id}" if run_id else None
+        # Use requested canonical run name for reuse of compiled objects
+        run_name = "run_build"
         run_generate_events_no_compile(copied_process_dir, run_name, logger)
 
         # STEP 4: Process and move/split output files
