@@ -12,7 +12,7 @@
 # --- Dataset & Version ---
 campaign: "full_pileup_mini_pilot"
 dataset: "zmumu"
-version: "v1"
+version: "v2"
 stage: "madgraph_init"
 
 # --- Job Configuration ---
@@ -20,9 +20,9 @@ job_config:
   # Number of nodes will be calculated as n_runs / runs_per_node
   n_runs: 1        # Number of runs (where a run produces N events)
   runs_per_node: 1  # Number of runs per node (adjust based on memory/time constraints)
-  time_limit: "04:00:00"  # Time limit per job - MadGraph NLO generation is slower than Pythia
-  qos: "regular"
-  execution_mode: "monolithic_slurm"  # Use distributed mode for parallel generation
+  time_limit: "00:30:00"  # Time limit per job - MadGraph NLO generation is slower than Pythia
+  qos: "debug"
+  execution_mode: "distributed_slurm"  # Use distributed mode for parallel generation
   # execution_mode: "interactive"
 
 # --- MadGraph Process Definition ---
@@ -30,8 +30,8 @@ mg_model: "sm-no_b_mass"
 mg_definitions: [] # No specific lepton definitions needed for inclusive ttbar
 mg_generate_command: |
   generate p p > mu+ mu- [QCD]
-  add process p p > mu+ mu- j [QCD]
-  add process p p > mu+ mu- j j [QCD]
+# add process p p > mu+ mu- j [QCD]
+# add process p p > mu+ mu- j j [QCD]
 
 # --- Essential Paths & Environment ---
 # These use variables from env_setup.yaml config_defaults
@@ -80,9 +80,11 @@ log_level: "INFO"
 
 # --- Documentation ---
 # After running this stage successfully, the compiled process will be stored at:
-# {output_base_dir}/{campaign}/{dataset}/{version}/madgraph_process/{dataset}_{version}/
+# {output_base_dir}/{campaign}/{dataset}/{version}/madgraph_process/
+# and archived as a tarball at:
+# {output_base_dir}/{campaign}/{dataset}/{version}/madgraph_process.tgz
 # 
-# This directory can then be used by multiple parallel madgraph_generation jobs.
+# The tarball is the canonical artifact consumed by madgraph_generation.
 # 
 # Expected runtime: 2-12 hours for NLO ttbar process compilation
 # Expected storage: ~100-500 MB for the compiled process directory
