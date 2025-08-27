@@ -167,6 +167,27 @@ class JobSubmitter:
         is_monolithic = job_cfg.get("execution_mode") == "monolithic_slurm"
         
         # Create basic SLURM job configuration
+        # Optional dependency: allow chaining on a prior SLURM job id
+        dependency_kw = None
+        depends_on = self.config["job_config"].get("depends_on")
+        if depends_on:
+            # Supports a single job id or a list of job ids. Enforce 'afterok'.
+            try:
+                job_ids = []
+                if isinstance(depends_on, (list, tuple, set)):
+                    for jid in depends_on:
+                        s = str(jid).strip()
+                        if s:
+                            job_ids.append(s)
+                else:
+                    s = str(depends_on).strip()
+                    if s:
+                        job_ids.append(s)
+                if job_ids:
+                    dependency_kw = {"afterok": job_ids}
+            except Exception:
+                logger.warning(f"Invalid depends_on value in job_config: {depends_on}")
+
         slurm = Slurm(
             job_name=f"colliderML_{self.config['stage']}_{node_idx}",
             account=common_cfg["account"],
@@ -177,7 +198,8 @@ class JobSubmitter:
             cpus_per_task=job_cfg.get("max_cores", 256) if is_monolithic else job_cfg.get("max_cores", 256)//job_cfg["runs_per_node"],
             constraint="cpu",
             output=str(self.log_dir / f"job_{node_idx}_%j.out"),
-            error=str(self.log_dir / f"job_{node_idx}_%j.err")
+            error=str(self.log_dir / f"job_{node_idx}_%j.err"),
+            dependency=dependency_kw
         )
         
         # Calculate run offset based on run range or normal distribution
