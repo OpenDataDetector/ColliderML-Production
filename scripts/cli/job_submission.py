@@ -227,7 +227,7 @@ class JobSubmitter:
         
         # Use shared command builder for consistency
         execution_mode = "monolithic_slurm" if is_monolithic else "distributed_slurm"
-        output_dir = cli_utils.get_version_directory(self.config) if is_monolithic else self.run_dir
+        output_dir = cli_utils.get_run_directory(self.config) if is_monolithic else self.run_dir
         
         try:
             command_info = cli_utils.build_stage_command(

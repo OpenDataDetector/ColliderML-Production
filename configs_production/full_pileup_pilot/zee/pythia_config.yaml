@@ -5,11 +5,11 @@ version: "v2"
 stage: "pythia_generation"  # One of: generation, merge_smear, simulation, digitization
 job_config:
   # Number of nodes will be calculated as n_runs / runs_per_node
-  n_runs: 10  # Number of runs (where a run produces N events)
-  runs_per_node: 10  # Number of runs per node
+  n_runs: 13  # Number of runs (where a run produces N events)
+  runs_per_node: 13  # Number of runs per node
   time_limit: "00:30:00"  # Time limit per job
   qos: "debug"
-  depends_on: "42071976"
+  depends_on: 
   execution_mode: "distributed_slurm"
 
 validation_config:
