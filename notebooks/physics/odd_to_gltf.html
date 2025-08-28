@@ -1,0 +1,41 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8"/>
+    <script src="https://root.cern/js/latest/scripts/JSRoot.core.js"></script>
+    <script src="https://unpkg.com/three@0.139.1/build/three.min.js"></script>
+    <script src="https://unpkg.com/three@0.139.1/examples/js/exporters/GLTFExporter.js"></script>
+  </head>
+  <body>
+    <script>
+      (async function() {
+        // Adjust path if you saved the ROOT elsewhere
+        const rootPath = 'odd_geometry.root';
+
+        const file = await JSROOT.openFile(rootPath);
+        // TGeoManager is typically stored as TGeoManager;1
+        const obj = await file.readObject('TGeoManager;1');
+
+        // Draw with WebGL to build the three.js scene
+        const handle = await JSROOT.draw(null, obj, 'gl'); // 'gl' or 'opengl'
+        // JSROOT returns a painter with an internal three.js renderer
+        const painter = handle.getPainter ? handle.getPainter() : handle;
+        const threeScene = painter?.renderer?.scene || painter?.scene;
+
+        if (!threeScene) {
+          alert('Failed to obtain three.js scene from JSROOT.');
+          return;
+        }
+
+        const exporter = new THREE.GLTFExporter();
+        exporter.parse(threeScene, (gltf) => {
+          const blob = new Blob([JSON.stringify(gltf)], { type: 'application/json' });
+          const a = document.createElement('a');
+          a.href = URL.createObjectURL(blob);
+          a.download = 'odd_geometry.gltf';
+          a.click();
+        }, { binary: false });
+      })();
+    </script>
+  </body>
+</html>
