@@ -19,7 +19,7 @@ validation_config:
 # Stage-specific configurations
 events: 128  # Number of events per run, total number of events will be n_runs * events
 threads: 8
-minimalKineticEnergy: 0.001  # Minimum kinetic energy in GeV to register in truth
+minimalKineticEnergy: 0.1  # Minimum kinetic energy in GeV to register in truth
 truthParticleHandler: "Geant4FullTruthParticleHandler"
 
 # debug_output_dir: /pscratch/sd/d/danieltm/ColliderML/simulation/full_pileup_mini_pilot/ttbar/v4/runs/0
