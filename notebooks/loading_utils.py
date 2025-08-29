@@ -24,7 +24,7 @@ def load_hepmc_event(filepath):
         return events
 
 
-def load_root_file(file_path, event_offset=0, event_id=None):
+def load_root_file(file_path, event_offset=0, event_id=None, ignore_variable_columns=True):
     """Load data from a single root file with optional event filtering
     
     Parameters:
@@ -48,20 +48,22 @@ def load_root_file(file_path, event_offset=0, event_id=None):
         cycles = [int(key.split(';')[1]) for key in keys]
         latest_key = keys[cycles.index(max(cycles))]
         data = tree[latest_key].arrays()
-        
+
         # Separate regular and variable length columns
-        regular_columns = []
-        variable_columns = []
-        for field in data.fields:
-            if 'var' in str(data[field].type):
-                variable_columns.append(field)
-            else:
-                regular_columns.append(field)
-        
-        # Warn about dropped columns
-        if variable_columns:
-            print(f"Warning: Dropping variable length columns: {', '.join(variable_columns)}")
-            
+        if ignore_variable_columns:
+            regular_columns = []
+            variable_columns = []
+            for field in data.fields:
+                if 'var' in str(data[field].type):
+                    variable_columns.append(field)
+                else:
+                    regular_columns.append(field)            
+            # Warn about dropped columns
+            if variable_columns:
+                print(f"Warning: Dropping variable length columns: {', '.join(variable_columns)}")
+        else:
+            regular_columns = data.fields
+
         # Convert to dataframe using only regular columns
         df = ak.to_dataframe(data[regular_columns])
             
