@@ -73,7 +73,10 @@ def load_root_file(file_path, event_offset=0, event_id=None, ignore_variable_col
             
         # Filter for specific event if requested
         if event_id is not None:
-            df = df[df['event_id'] == event_id]
+            if 'event_id' in df.columns:
+                df = df[df['event_id'] == event_id]
+            elif 'event_nr' in df.columns:
+                df = df[df['event_nr'] == event_id]
             if len(df) == 0:
                 return None
                 
