@@ -59,6 +59,12 @@ python convert_calorimeter.py /path/to/edm4hep/files /path/to/output dataset_nam
 
 Each script accepts the same optional arguments as `convert_all.py`.
 
+### Converting Efficiency Graphs
+
+```bash
+root -l -b -q 'convert_eff_to_graphs.C+("/pscratch/sd/d/danieltm/ColliderML/simulation/full_pileup_mini_pilot/ttbar/v6/runs/0/performance_finding_ckf.root","/pscratch/sd/d/danieltm/ColliderML/simulation/full_pileup_mini_pilot/ttbar/v6/runs/0/performance_finding_ckf_graphs.root","trackeff_vs_pT,trackeff_vs_eta")'
+```
+
 ## Output Structure
 
 The converted data is stored in HDF5 files with the following structure:
