@@ -185,7 +185,6 @@ def setup_acts_reconstruction(input_path, output_dir, config, rnd, logger=None):
         particleRMax=1080 * u.mm,
         particleZ=(-3030 * u.mm, 3030 * u.mm),
         particlePtMin=150 * u.MeV,
-        level=acts.logging.DEBUG,
     )
     s.addAlgorithm(edm4hepConverter)
     s.addWhiteboardAlias("particles", edm4hepConverter.config.outputParticlesSimulation)
