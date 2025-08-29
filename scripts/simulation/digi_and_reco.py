@@ -99,6 +99,14 @@ def parse_args():
         action="store_true",
         default=None
     )
+
+    parser.add_argument(
+        "--threads",
+        help="Number of threads to use",
+        type=int,
+        default=None
+    )
+
     return parser.parse_args()
 
 def setup_acts_reconstruction(input_path, output_dir, config, rnd, logger=None):
@@ -106,8 +114,12 @@ def setup_acts_reconstruction(input_path, output_dir, config, rnd, logger=None):
     logger = logger or setup_logging("ACTSReco")
     
     # Create sequencer
-    s = Sequencer(numThreads=1, events=config.events)
-    s.config.logLevel = acts.logging.DEBUG
+    s = Sequencer(
+        numThreads=config.threads if config.threads is not None else 1,
+        events=config.events,
+        logLevel=acts.logging.DEBUG,
+        trackFpes=False,
+    )
     
     # Get detector and field
     geoDir = getOpenDataDetectorDirectory()
@@ -169,20 +181,19 @@ def setup_acts_reconstruction(input_path, output_dir, config, rnd, logger=None):
         outputSimVertices="simvertices",
         dd4hepDetector=detector,
         trackingGeometry=trackingGeometry,
+        sortSimHitsInTime=False,
+        particleRMax=1080 * u.mm,
+        particleZ=(-3030 * u.mm, 3030 * u.mm),
+        particlePtMin=150 * u.MeV,
+        level=acts.logging.DEBUG,
     )
     s.addAlgorithm(edm4hepConverter)
-    s.addWhiteboardAlias("particles", "particles_input")
+    s.addWhiteboardAlias("particles", edm4hepConverter.config.outputParticlesSimulation)
     
     # Add sim particle selection (filters particles from simulation)
     addSimParticleSelection(
         s,
-        ParticleSelectorConfig(
-            rho=(0.0, 24 * u.mm),
-            absZ=(0.0, 1.0 * u.m),
-            eta=(-4.0, 4.0),
-            pt=(150 * u.MeV, None),
-            removeNeutral=True,
-        ),
+        ParticleSelectorConfig(),
     )
     
     # Add digitization if enabled
@@ -199,15 +210,38 @@ def setup_acts_reconstruction(input_path, output_dir, config, rnd, logger=None):
             rnd=rnd,
             logLevel=acts.logging.DEBUG,
         )
+
+        def make_geoid(vol=None, lay=None):
+            geoid = acts.GeometryIdentifier()
+            if vol is not None:
+                geoid.volume = vol
+            if lay is not None:
+                geoid.layer = lay
+            return geoid
+
+        measurementCounter = acts.examples.ParticleSelector.MeasurementCounter()
+        # At least 3 hits in the pixels
+        measurementCounter.addCounter(
+            [
+                make_geoid(16),
+                make_geoid(17),
+                make_geoid(18),
+            ],
+            3,
+        )
         
         # Add digi particle selection (filters particles with sufficient measurements)
         addDigiParticleSelection(
             s,
             ParticleSelectorConfig(
-                pt=(1.0 * u.GeV, None),
+                rho=(0.0, 24 * u.mm),
+                absZ=(0.0, 1.0 * u.m),
                 eta=(-3.0, 3.0),
-                measurements=(9, None),
+                pt=(0.999 * u.GeV, None),
+                measurements=(6, None),
                 removeNeutral=True,
+                removeSecondaries=False,
+                nMeasurementsGroupMin=measurementCounter,
             ),
         )
     
@@ -220,6 +254,20 @@ def setup_acts_reconstruction(input_path, output_dir, config, rnd, logger=None):
             s,
             trackingGeometry,
             field,
+            seedingAlgorithm=SeedingAlgorithm.Default,
+            particleHypothesis=acts.ParticleHypothesis.pion,
+            seedFinderConfigArg=SeedFinderConfigArg(
+                r=(33 * u.mm, 200 * u.mm),
+                # kills efficiency at |eta|~2
+                deltaR=(1 * u.mm, 300 * u.mm),
+                collisionRegion=(-250 * u.mm, 250 * u.mm),
+                z=(-2000 * u.mm, 2000 * u.mm),
+                maxSeedsPerSpM=3,
+                sigmaScattering=5,
+                radLengthPerSeed=0.1,
+                minPt=0.5 * u.GeV,
+                impactMax=3 * u.mm,
+            ),
             initialSigmas=[
                 1 * u.mm,
                 1 * u.mm,
@@ -240,41 +288,19 @@ def setup_acts_reconstruction(input_path, output_dir, config, rnd, logger=None):
             trackingGeometry,
             field,
             trackSelectorConfig=TrackSelectorConfig(
-                pt=(1.0 * u.GeV, None),
-                absEta=(None, 3.0),
-                loc0=(-4.0 * u.mm, 4.0 * u.mm),
-                nMeasurementsMin=7,
-                maxHoles=2,
-                maxOutliers=2,
+                pt=(0.7 * u.GeV, None),
+                absEta=(None, 3.5),
+                nMeasurementsMin=6,
+                maxHolesAndOutliers=3,
             ),
             ckfConfig=CkfConfig(
                 chi2CutOffMeasurement=15.0,
                 chi2CutOffOutlier=25.0,
-                numMeasurementsCutOff=10,
+                numMeasurementsCutOff=1,
                 seedDeduplication=True,
                 stayOnSeed=True,
-                pixelVolumes=[16, 17, 18],
-                stripVolumes=[23, 24, 25],
-                maxPixelHoles=1,
-                maxStripHoles=2,
-                constrainToVolumes=[
-                    2,  # beam pipe
-                    32,
-                    4,  # beam pip gap
-                    16,
-                    17,
-                    18,  # pixel
-                    20,  # PST
-                    23,
-                    24,
-                    25,  # short strip
-                    26,
-                    8,  # long strip gap
-                    28,
-                    29,
-                    30,  # long strip
-                ],
             ),
+            twoWay=True,
             outputDirRoot=perf_output if getattr(config, 'output_root', True) else None,
             outputDirCsv=perf_output if getattr(config, 'output_csv', False) else None,
             writeCovMat=getattr(config, 'performance_metrics', False),
@@ -353,6 +379,13 @@ def add_root_writers(s, output_dir):
         config=acts.examples.RootSimHitWriter.Config(
             filePath=str(output_dir / "simhits.root"),
             inputSimHits="simhits"
+        ),
+        level=acts.logging.INFO
+    ))
+    s.addWriter(acts.examples.RootParticleWriter(
+        config=acts.examples.RootParticleWriter.Config(
+            filePath=str(output_dir / "particles.root"),
+            inputParticles="particles"
         ),
         level=acts.logging.INFO
     ))
