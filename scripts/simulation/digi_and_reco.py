@@ -13,6 +13,8 @@ from acts.examples.simulation import (
 )
 from acts.examples.reconstruction import (
     addSeeding,
+    SeedingAlgorithm,
+    SeedFinderConfigArg,
     addCKFTracks,
     addVertexFitting,
     addAmbiguityResolution,
