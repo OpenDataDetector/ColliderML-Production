@@ -138,11 +138,11 @@ def setup_acts_reconstruction(input_path, output_dir, config, rnd, logger=None):
     )
 
     digi_config = getattr(config, 'digi_config', None)
-    oddDigiConfig = (
-        geoDir / f"config/{digi_config}"
-        if digi_config
-        else geoDir / "config/odd-digi-smearing-config.json"
-    )
+    if digi_config:
+        dc_path = Path(digi_config)
+        oddDigiConfig = dc_path if dc_path.is_file() else (geoDir / f"config/{digi_config}")
+    else:
+        oddDigiConfig = geoDir / "config/odd-digi-smearing-config.json"
 
     oddSeedingSel = geoDir / "config/odd-seeding-config.json"
     oddMaterialDeco = acts.IMaterialDecorator.fromFile(oddMaterialMap)
