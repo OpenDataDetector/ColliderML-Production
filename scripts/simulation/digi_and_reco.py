@@ -275,11 +275,12 @@ def setup_acts_reconstruction(input_path, output_dir, config, rnd, logger=None):
                 deltaR=(1 * u.mm, 300 * u.mm),
                 collisionRegion=(-250 * u.mm, 250 * u.mm),
                 z=(-2000 * u.mm, 2000 * u.mm),
-                maxSeedsPerSpM=3,
+                maxSeedsPerSpM=40,
                 sigmaScattering=5,
                 radLengthPerSeed=0.1,
                 minPt=0.5 * u.GeV,
                 impactMax=3 * u.mm,
+                zBinEdges=[-1600, -1000, -600, 0, 600, 1000, 1600],
             ),
             initialSigmas=[
                 1 * u.mm,
@@ -289,8 +290,9 @@ def setup_acts_reconstruction(input_path, output_dir, config, rnd, logger=None):
                 0.1 * u.e / u.GeV,
                 1 * u.ns,
             ],
-            initialSigmaPtRel=0.1,
-            initialVarInflation=[1.0] * 6,
+            initialSigmaQoverPt=0.1 * u.e / u.GeV,
+            initialSigmaPtRel = 0.1,
+            initialVarInflation = [1e0, 1e0, 1e0, 1e0, 1e0, 1e0],
             geoSelectionConfigFile=oddSeedingSel,
             outputDirRoot=perf_output if getattr(config, 'output_root', True) else None
         )
