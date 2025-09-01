@@ -188,7 +188,7 @@ def setup_acts_reconstruction(input_path, output_dir, config, rnd, logger=None):
         # particleZ=(-3030 * u.mm, 3030 * u.mm),
         # particlePtMin=150 * u.MeV,
         particleRMax=None,
-        particleZ=None,
+        particleZ=(None, None),
         particlePtMin=None,
     )
     s.addAlgorithm(edm4hepConverter)
