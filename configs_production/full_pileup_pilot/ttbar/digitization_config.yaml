@@ -21,7 +21,7 @@ validation_config:
 
 # --- Stage-specific Configurations ---
 events: 128  # Number of events per run, total number of events will be n_runs * events
-threads: 8
+threads: 32
 digi: True
 reco: True
 
@@ -31,7 +31,7 @@ performance_metrics: True
 output_csv: True
 
 # --- Digitization config ---
-digi_config: /global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml_dev/scripts/simulation/odd-full-geo-digi-config.json
+# digi_config: /global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml_dev/scripts/simulation/odd-full-geo-digi-config.json
 
 # --- Debugging Commands ---
 debug_output_dir: /pscratch/sd/d/danieltm/ColliderML/simulation/full_pileup_mini_pilot/ttbar/v6/runs/2
