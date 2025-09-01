@@ -195,7 +195,7 @@ def setup_acts_reconstruction(input_path, output_dir, config, rnd, logger=None):
     s.addWhiteboardAlias("particles", edm4hepConverter.config.outputParticlesSimulation)
     
     # Add sim particle selection (filters particles from simulation)
-    if not config.get('output_all_particles', False):
+    if not getattr(config, 'output_all_particles', False):
         particle_selection_config = ParticleSelectorConfig(
             rho=(0.0, 1080 * u.mm),
             absZ=(0.0, 3.03 * u.m),
