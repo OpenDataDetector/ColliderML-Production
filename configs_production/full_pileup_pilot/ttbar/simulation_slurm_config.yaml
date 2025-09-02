@@ -1,7 +1,7 @@
 # Example configuration
-campaign: "full_pileup_mini_pilot"
+campaign: "full_pileup_pilot"
 dataset: "ttbar"
-version: "v6"
+version: "v1"
 stage: "simulation"  # One of: generation, merge_smear, simulation, digitization
 job_config:
   # Number of nodes will be calculated as n_runs / runs_per_node
