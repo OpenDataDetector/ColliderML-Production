@@ -128,6 +128,15 @@ class JobSubmitter:
             return self.run_range[0] + (node_idx * self.config["job_config"]["runs_per_node"])
         return node_idx * self.config["job_config"]["runs_per_node"]
 
+    def compute_total_tasks(self):
+        """Compute total number of tasks to run across the job."""
+        if self.run_list:
+            return len(self.run_ids)
+        if self.run_range:
+            start_run, end_run = self.run_range
+            return max(0, end_run - start_run)
+        return int(self.config["job_config"]["n_runs"])
+
     def get_run_id_expr_for_node(self, slurm, node_idx, tasks_for_node, is_monolithic):
         """If using run_list in distributed mode, emit RUN_IDS and return mapping expr; else return None."""
         if (not is_monolithic) and self.run_list:
@@ -140,6 +149,16 @@ class JobSubmitter:
             slurm.add_cmd(f"RUN_IDS=({run_ids_str}) && \\")
             if self.dry_run:
                 logger.info(f"Node {node_idx} RUN_IDS: {node_run_ids}")
+            return "${RUN_IDS[$SLURM_PROCID]}"
+        return None
+
+    def get_run_id_expr_global(self, slurm):
+        """For multi-node single job, emit a single RUN_IDS array for the whole job when using run_list."""
+        if self.run_list:
+            run_ids_str = " ".join(str(r) for r in self.run_ids)
+            slurm.add_cmd(f"RUN_IDS=({run_ids_str}) && \\")
+            if self.dry_run:
+                logger.info(f"Global RUN_IDS: {self.run_ids}")
             return "${RUN_IDS[$SLURM_PROCID]}"
         return None
 
@@ -340,6 +359,80 @@ class JobSubmitter:
                 logger.info(f"Submitted job for node {node_idx}/{self.n_nodes} with ID {job_id}")
         
         return job_ids
+
+    def _add_multinode_commands(self, slurm):
+        """Add commands for a single multi-node job spanning all tasks."""
+        # Basic environment setup
+        slurm.add_cmd(r"cd $HOME")
+        slurm.add_cmd("export SLURM_CPU_BIND=\"cores\"")
+
+        # previous_runs is the range start if using ranges, else 0
+        previous_runs = self.run_range[0] if self.run_range else 0
+        # Global run id expr (for run_list)
+        run_id_expr = self.get_run_id_expr_global(slurm)
+
+        try:
+            # Use shared builder; output_dir is runs dir for simulation, version dir for postprocessing in distributed modes
+            is_post = self.is_postprocessing_stage()
+            execution_mode = "distributed_slurm"  # reuse distributed semantics inside srun
+            output_dir = self.run_dir if not is_post else cli_utils.get_version_directory(self.config)
+
+            command_info = cli_utils.build_stage_command(
+                config=self.config,
+                config_path=self.config_path,
+                stage_script_path=self.get_stage_script(),
+                output_dir=output_dir,
+                execution_mode=execution_mode,
+                slurm_procid_offset=previous_runs,
+                run_id_expr=run_id_expr
+            )
+
+            slurm.add_cmd(command_info["shifter_command"])
+            for cmd in command_info["env_setup_commands"]:
+                slurm.add_cmd(cmd + " && \\")
+            slurm.add_cmd(command_info["python_command"] + "\"")
+
+        except Exception as e:
+            logger.error(f"Error building multinode command: {e}")
+            raise
+
+    def submit_multi_node_job(self):
+        """Submit a single SLURM job across multiple nodes with many tasks."""
+        job_cfg = self.config["job_config"]
+        common_cfg = self.config["common"]
+
+        total_tasks = self.compute_total_tasks()
+        # n_nodes already computed in calculate_job_distribution(); allow override via job_config.nodes
+        n_nodes = int(job_cfg.get("nodes", self.n_nodes))
+
+        # Compute cpus_per_task similar to distributed mode shape
+        runs_per_node = job_cfg["runs_per_node"]
+        cpus_per_task = max(1, job_cfg.get("max_cores", 256)//max(1, runs_per_node))
+
+        slurm = Slurm(
+            job_name=f"colliderML_{self.config['stage']}_mn",
+            account=common_cfg["account"],
+            qos=job_cfg["qos"],
+            time=job_cfg["time_limit"],
+            nodes=n_nodes,
+            ntasks=total_tasks,
+            cpus_per_task=cpus_per_task,
+            constraint="cpu",
+            output=str(self.log_dir / f"job_multinode_%j.out"),
+            error=str(self.log_dir / f"job_multinode_%j.err")
+        )
+
+        # Add srun command invoking tasks across nodes
+        self._add_multinode_commands(slurm)
+
+        if self.dry_run:
+            script_path = self.save_batch_script(slurm, "job_multinode.sh")
+            logger.info(f"Saved multinode batch script to {script_path}")
+            return ["DRY_RUN_JOB_MULTINODE"]
+        else:
+            job_id = slurm.sbatch(shell="/bin/bash", job_file=f"{self.log_dir}/job_multinode.sh", convert=False)
+            logger.info(f"Submitted single multinode job with ID {job_id} spanning {n_nodes} nodes and {total_tasks} tasks")
+            return [job_id]
     
     def submit_validation_jobs(self, job_ids):        
         """Submit validation jobs dependent on stage jobs"""

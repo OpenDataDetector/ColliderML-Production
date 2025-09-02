@@ -174,7 +174,7 @@ def run_interactive(config, config_path_arg, stage_script_path):
 def main():
     parser = argparse.ArgumentParser(description="Run a ColliderML data production stage.")
     parser.add_argument("config", help="Path to the YAML configuration file for the stage.")
-    parser.add_argument("--execution-mode", choices=["interactive", "monolithic_slurm", "distributed_slurm"], 
+    parser.add_argument("--execution-mode", choices=["interactive", "monolithic_slurm", "distributed_slurm", "multi_node_slurm"], 
                         default=None, help="Override execution mode (optional). If not set, derived from config or defaults to distributed_slurm if ambiguous.")
     parser.add_argument("--dry-run", action="store_true", help="Perform a dry run. For SLURM modes, saves batch scripts instead of submitting.")
     parser.add_argument("--force-commit", action="store_true", help="Force git commit even if no changes are detected or if a previous commit marker exists for this version.")
@@ -270,7 +270,7 @@ def main():
             logger.error(f"Failed to locate script for interactive execution: {e}")
             sys.exit(1)
 
-    elif execution_mode in ["monolithic_slurm", "distributed_slurm"]:
+    elif execution_mode in ["monolithic_slurm", "distributed_slurm", "multi_node_slurm"]:
         # For SLURM modes, use JobSubmitter
         try:
             # Pass run_range and run_list from CLI args to JobSubmitter if provided
@@ -334,7 +334,7 @@ def main():
                 else:
                     logger.error("Configuration resulted in n_nodes > 1, which is inconsistent with monolithic_slurm mode.")
                     sys.exit(1)
-            else:  # distributed_slurm
+            elif execution_mode == "distributed_slurm":
                 logger.info(f"Preparing for distributed SLURM submission for stage: {config['stage']}")
                 job_ids = job_submitter.submit_jobs()
                 if not args.dry_run and job_ids:
@@ -344,6 +344,18 @@ def main():
                         logger.info(f"Submitted {len(validation_ids)} validation jobs.")
                 elif args.dry_run:
                     logger.info(f"Dry run for distributed SLURM completed. Scripts saved in: {job_submitter.dry_run_dir}")
+                    if job_submitter.config.get("validation_config"):
+                        logger.info(f"Validation scripts saved in: {job_submitter.validation_dir}")
+            else:  # multi_node_slurm
+                logger.info(f"Preparing for single multinode SLURM submission for stage: {config['stage']}")
+                job_ids = job_submitter.submit_multi_node_job()
+                if not args.dry_run and job_ids:
+                    validation_ids = job_submitter.submit_validation_jobs(job_ids)
+                    logger.info(f"Submitted multinode production job.")
+                    if validation_ids:
+                        logger.info(f"Submitted {len(validation_ids)} validation jobs.")
+                elif args.dry_run:
+                    logger.info(f"Dry run for multinode SLURM completed. Script saved in: {job_submitter.dry_run_dir}")
                     if job_submitter.config.get("validation_config"):
                         logger.info(f"Validation scripts saved in: {job_submitter.validation_dir}")
                         
