@@ -12,7 +12,7 @@
 # --- Dataset & Version ---
 campaign: "full_pileup_pilot"
 dataset: "ttbar"
-version: "v1"
+version: "v2"
 stage: "madgraph_generation"
 
 # --- Job Configuration ---
@@ -20,10 +20,10 @@ job_config:
   # Number of nodes will be calculated as n_runs / runs_per_node
   n_runs: 1        # Number of runs (where a run produces N events)
   runs_per_node: 1  # Number of runs per node (adjust based on memory/time constraints)
-  time_limit: "06:00:00"  # Time limit per job - MadGraph NLO generation is slower than Pythia
+  time_limit: "04:00:00"  # Time limit per job - MadGraph NLO generation is slower than Pythia
   qos: "regular"
-  # execution_mode: "monolithic_slurm"  # Use distributed mode for parallel generation
-  execution_mode: "interactive"
+  execution_mode: "monolithic_slurm"  # Use distributed mode for parallel generation
+  # execution_mode: "interactive"
 
 validation_config:
 
