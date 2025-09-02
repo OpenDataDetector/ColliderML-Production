@@ -102,6 +102,42 @@ class JobSubmitter:
         else:
             self.dry_run_dir = None
 
+    def parse_dependency_kw(self):
+        """Parse job_config.depends_on into Slurm dependency kw dict or None."""
+        depends_on = self.config["job_config"].get("depends_on")
+        if not depends_on:
+            return None
+        try:
+            job_ids = []
+            if isinstance(depends_on, (list, tuple, set)):
+                for jid in depends_on:
+                    s = str(jid).strip()
+                    if s:
+                        job_ids.append(s)
+            else:
+                s = str(depends_on).strip()
+                if s:
+                    job_ids.append(s)
+            if job_ids:
+                logger.info(f"Applying SLURM dependency afterok on: {job_ids}")
+                return {"afterok": job_ids}
+        except Exception:
+            logger.warning(f"Invalid depends_on value in job_config: {depends_on}")
+        return None
+
+    def add_basic_slurm_env_setup(self, slurm):
+        """Emit standard environment setup commands into the slurm script."""
+        slurm.add_cmd(r"cd $HOME")
+        slurm.add_cmd("export SLURM_CPU_BIND=\"cores\"")
+
+    def compute_cpus_per_task(self, is_monolithic, tasks_for_node=None):
+        job_cfg = self.config["job_config"]
+        if is_monolithic:
+            return job_cfg.get("max_cores", 256)
+        runs_per_node = job_cfg["runs_per_node"]
+        denom = tasks_for_node if tasks_for_node is not None else runs_per_node
+        return max(1, job_cfg.get("max_cores", 256)//max(1, denom))
+
     def compute_tasks_for_node(self, node_idx):
         """Compute how many tasks (runs) should be launched on a given node."""
         runs_per_node = self.config["job_config"]["runs_per_node"]
@@ -251,27 +287,8 @@ class JobSubmitter:
         
         # Create basic SLURM job configuration
         # Optional dependency: allow chaining on a prior SLURM job id
-        dependency_kw = None
-        depends_on = self.config["job_config"].get("depends_on")
-        if depends_on:
-            # Supports a single job id or a list of job ids. Enforce 'afterok'.
-            try:
-                job_ids = []
-                if isinstance(depends_on, (list, tuple, set)):
-                    for jid in depends_on:
-                        s = str(jid).strip()
-                        if s:
-                            job_ids.append(s)
-                else:
-                    s = str(depends_on).strip()
-                    if s:
-                        job_ids.append(s)
-                if job_ids:
-                    dependency_kw = {"afterok": job_ids}
-                    logger.info(f"Applying SLURM dependency afterok on: {job_ids}")
-            except Exception:
-                logger.warning(f"Invalid depends_on value in job_config: {depends_on}")
-
+        dependency_kw = self.parse_dependency_kw()
+        
         slurm_kwargs = dict(
             job_name=f"colliderML_{self.config['stage']}_{node_idx}",
             account=common_cfg["account"],
@@ -279,7 +296,7 @@ class JobSubmitter:
             time=job_cfg["time_limit"],
             nodes=1,
             ntasks_per_node=1 if is_monolithic else tasks_for_node,
-            cpus_per_task=job_cfg.get("max_cores", 256) if is_monolithic else max(1, job_cfg.get("max_cores", 256)//max(1, tasks_for_node)),
+            cpus_per_task=self.compute_cpus_per_task(is_monolithic, tasks_for_node),
             constraint="cpu",
             output=str(self.log_dir / f"job_{node_idx}_%j.out"),
             error=str(self.log_dir / f"job_{node_idx}_%j.err")
@@ -301,9 +318,7 @@ class JobSubmitter:
     
     def _add_simulation_commands(self, slurm, previous_runs, is_monolithic=False, node_idx=0, tasks_for_node=None):
         """Add commands for simulation stages using shared command builder for consistency with interactive mode."""
-        # Add basic SLURM environment setup
-        slurm.add_cmd(r"cd $HOME")
-        slurm.add_cmd("export SLURM_CPU_BIND=\"cores\"")
+        self.add_basic_slurm_env_setup(slurm)
         
         try:
             self._build_and_add_commands(
@@ -320,6 +335,8 @@ class JobSubmitter:
     
     def _add_postprocessing_commands(self, slurm, previous_runs, is_monolithic=False, node_idx=0, tasks_for_node=None):
         """Add commands for postprocessing stages using shared command builder for consistency with interactive mode."""
+        self.add_basic_slurm_env_setup(slurm)
+        
         try:
             self._build_and_add_commands(
                 slurm=slurm,
@@ -362,9 +379,7 @@ class JobSubmitter:
 
     def _add_multinode_commands(self, slurm):
         """Add commands for a single multi-node job spanning all tasks."""
-        # Basic environment setup
-        slurm.add_cmd(r"cd $HOME")
-        slurm.add_cmd("export SLURM_CPU_BIND=\"cores\"")
+        self.add_basic_slurm_env_setup(slurm)
 
         # previous_runs is the range start if using ranges, else 0
         previous_runs = self.run_range[0] if self.run_range else 0
@@ -409,7 +424,10 @@ class JobSubmitter:
         runs_per_node = job_cfg["runs_per_node"]
         cpus_per_task = max(1, job_cfg.get("max_cores", 256)//max(1, runs_per_node))
 
-        slurm = Slurm(
+        # Optional dependency: allow chaining on a prior SLURM job id
+        dependency_kw = self.parse_dependency_kw()
+
+        slurm_kwargs = dict(
             job_name=f"colliderML_{self.config['stage']}_mn",
             account=common_cfg["account"],
             qos=job_cfg["qos"],
@@ -421,6 +439,9 @@ class JobSubmitter:
             output=str(self.log_dir / f"job_multinode_%j.out"),
             error=str(self.log_dir / f"job_multinode_%j.err")
         )
+        if dependency_kw is not None:
+            slurm_kwargs["dependency"] = dependency_kw
+        slurm = Slurm(**slurm_kwargs)
 
         # Add srun command invoking tasks across nodes
         self._add_multinode_commands(slurm)
