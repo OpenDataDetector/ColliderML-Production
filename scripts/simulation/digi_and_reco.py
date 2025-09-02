@@ -184,25 +184,25 @@ def setup_acts_reconstruction(input_path, output_dir, config, rnd, logger=None):
         dd4hepDetector=detector,
         trackingGeometry=trackingGeometry,
         sortSimHitsInTime=False,
-        particleRMax=1080 * u.mm,
-        particleZ=(-3030 * u.mm, 3030 * u.mm),
-        particlePtMin=150 * u.MeV,
-        # particleRMax=None,
-        # particleZ=(None, None),
-        # particlePtMin=None,
+        # particleRMax=1080 * u.mm,
+        # particleZ=(-3030 * u.mm, 3030 * u.mm),
+        # particlePtMin=150 * u.MeV,
+        particleRMax=None,
+        particleZ=(None, None),
+        particlePtMin=None,
     )
     s.addAlgorithm(edm4hepConverter)
     s.addWhiteboardAlias("particles", edm4hepConverter.config.outputParticlesSimulation)
     
     # Add sim particle selection (filters particles from simulation)
-    # if not getattr(config, 'output_all_particles', False):
-    #     particle_selection_config = ParticleSelectorConfig(
-    #         rho=(0.0, 1080 * u.mm),
-    #         absZ=(0.0, 3.03 * u.m),
-    #         pt=(150 * u.MeV, None),
-    #     )
-    # else:
-    particle_selection_config = ParticleSelectorConfig()
+    if not getattr(config, 'output_all_particles', False):
+        particle_selection_config = ParticleSelectorConfig(
+            rho=(0.0, 1080 * u.mm),
+            absZ=(0.0, 3.03 * u.m),
+            pt=(150 * u.MeV, None),
+        )
+    else:
+        particle_selection_config = ParticleSelectorConfig()
 
     addSimParticleSelection(
         s,
