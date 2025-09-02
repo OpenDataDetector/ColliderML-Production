@@ -158,7 +158,7 @@ def setup_acts_reconstruction(input_path, output_dir, config, rnd, logger=None):
     # Configure EDM4hep reader and converter
     # Step 1: PodioReader to read the EDM4hep file
     podioReader = PodioReader(
-        # level=acts.logging.DEBUG,
+        level=acts.logging.INFO,
         inputPath=str(input_path),
         outputFrame="events",
         category="events",
@@ -167,7 +167,7 @@ def setup_acts_reconstruction(input_path, output_dir, config, rnd, logger=None):
     
     # Step 2: EDM4hepSimInputConverter algorithm to convert EDM4hep data to ACTS format
     edm4hepConverter = EDM4hepSimInputConverter(
-        level=acts.logging.DEBUG,
+        level=acts.logging.INFO,
         inputFrame="events",
         inputSimHits=[
             "PixelBarrelReadout",
@@ -221,7 +221,7 @@ def setup_acts_reconstruction(input_path, output_dir, config, rnd, logger=None):
             outputDirRoot=perf_output if getattr(config, 'output_root', True) else None,
             outputDirCsv=None,
             rnd=rnd,
-            # logLevel=acts.logging.DEBUG,
+            logLevel=acts.logging.INFO,
         )
 
         def make_geoid(vol=None, lay=None):
