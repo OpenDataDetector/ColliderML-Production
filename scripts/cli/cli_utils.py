@@ -103,7 +103,7 @@ def get_env_setup_cmds(config):
     return processed_cmds
 
 def build_stage_command(config, config_path, stage_script_path, output_dir, output_subdir="0", 
-                       execution_mode="interactive", slurm_procid_offset=0):
+                       execution_mode="interactive", slurm_procid_offset=0, run_id_expr=None):
     """
     Build the complete command setup for running a stage, handling both simulation and postprocessing stages.
     This centralizes environment setup logic to ensure consistency between interactive and batch modes.
@@ -166,14 +166,16 @@ def build_stage_command(config, config_path, stage_script_path, output_dir, outp
                         "--seed", f"{dataset}_{version}_run{output_subdir}"
                     ])
         else:  # distributed_slurm
+            # Allow custom run id expression (e.g., mapping from a provided run list)
+            run_idx_expr = run_id_expr if run_id_expr is not None else f"\$(({slurm_procid_offset} + SLURM_PROCID))"
             python_cmd_parts.extend([
                 "--output", str(output_dir),
-                "--output-subdir", f"\$(({slurm_procid_offset} + SLURM_PROCID))"
+                "--output-subdir", run_idx_expr
             ])
             dataset = config.get("dataset", "unknown")
             version = config.get("version", "unknown")
             python_cmd_parts.extend([
-                "--seed", f"{dataset}_{version}_run\$(({slurm_procid_offset} + SLURM_PROCID))"
+                "--seed", f"{dataset}_{version}_run{run_idx_expr}"
             ])
     else:  # postprocessing stages
         if execution_mode == "interactive":
@@ -181,8 +183,10 @@ def build_stage_command(config, config_path, stage_script_path, output_dir, outp
                 python_cmd_parts.extend(["--chunk-index", str(output_subdir)])
             # For "all" case in postprocessing, we might need special handling
         else:  # distributed_slurm
+            # Allow custom run id expression (e.g., mapping from a provided run list)
+            run_idx_expr = run_id_expr if run_id_expr is not None else f"$(({slurm_procid_offset} + SLURM_PROCID))"
             python_cmd_parts.extend([
-                "--chunk-index", f"$(({slurm_procid_offset} + SLURM_PROCID))"
+                "--chunk-index", run_idx_expr
             ])
     
     python_command = " ".join(python_cmd_parts)

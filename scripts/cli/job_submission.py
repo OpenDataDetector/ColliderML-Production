@@ -165,6 +165,30 @@ class JobSubmitter:
         
         # Determine if this is a monolithic job from execution_mode
         is_monolithic = job_cfg.get("execution_mode") == "monolithic_slurm"
+        runs_per_node = job_cfg["runs_per_node"]
+        
+        # Determine how many tasks should actually run on this node
+        tasks_for_node = runs_per_node
+        if self.run_list:
+            total_runs = len(self.run_ids)
+            started_before = node_idx * runs_per_node
+            remaining = max(0, total_runs - started_before)
+            tasks_for_node = min(runs_per_node, remaining)
+        elif self.run_range:
+            start_run, end_run = self.run_range
+            total_runs = max(0, end_run - start_run)
+            started_before = node_idx * runs_per_node
+            remaining = max(0, total_runs - started_before)
+            tasks_for_node = min(runs_per_node, remaining)
+        else:
+            total_runs = self.config["job_config"]["n_runs"]
+            started_before = node_idx * runs_per_node
+            remaining = max(0, total_runs - started_before)
+            tasks_for_node = min(runs_per_node, remaining)
+
+        # Skip creating a job if there is nothing to run on this node
+        if not is_monolithic and tasks_for_node <= 0:
+            return None
         
         # Create basic SLURM job configuration
         # Optional dependency: allow chaining on a prior SLURM job id
@@ -195,8 +219,8 @@ class JobSubmitter:
             qos=job_cfg["qos"],
             time=job_cfg["time_limit"],
             nodes=1,
-            ntasks_per_node=1 if is_monolithic else job_cfg["runs_per_node"],
-            cpus_per_task=job_cfg.get("max_cores", 256) if is_monolithic else job_cfg.get("max_cores", 256)//job_cfg["runs_per_node"],
+            ntasks_per_node=1 if is_monolithic else tasks_for_node,
+            cpus_per_task=job_cfg.get("max_cores", 256) if is_monolithic else max(1, job_cfg.get("max_cores", 256)//max(1, tasks_for_node)),
             constraint="cpu",
             output=str(self.log_dir / f"job_{node_idx}_%j.out"),
             error=str(self.log_dir / f"job_{node_idx}_%j.err")
@@ -213,13 +237,13 @@ class JobSubmitter:
         
         # Different setup for simulation vs postprocessing stages
         if self.is_simulation_stage():
-            self._add_simulation_commands(slurm, previous_runs, is_monolithic)
+            self._add_simulation_commands(slurm, previous_runs, is_monolithic, node_idx, tasks_for_node)
         else:
-            self._add_postprocessing_commands(slurm, previous_runs, is_monolithic)
+            self._add_postprocessing_commands(slurm, previous_runs, is_monolithic, node_idx, tasks_for_node)
         
         return slurm
     
-    def _add_simulation_commands(self, slurm, previous_runs, is_monolithic=False):
+    def _add_simulation_commands(self, slurm, previous_runs, is_monolithic=False, node_idx=0, tasks_for_node=None):
         """Add commands for simulation stages using shared command builder for consistency with interactive mode."""
         # Add basic SLURM environment setup
         slurm.add_cmd(r"cd $HOME")
@@ -228,6 +252,17 @@ class JobSubmitter:
         # Use shared command builder for consistency
         execution_mode = "monolithic_slurm" if is_monolithic else "distributed_slurm"
         output_dir = cli_utils.get_run_directory(self.config) if is_monolithic else self.run_dir
+        run_id_expr = None
+        
+        # If using run_list, construct a per-node RUN_IDS array and map SLURM_PROCID to actual run ids
+        if (not is_monolithic) and self.run_list:
+            runs_per_node = self.config["job_config"]["runs_per_node"]
+            start_index = node_idx * runs_per_node
+            end_index = start_index + (tasks_for_node if tasks_for_node is not None else runs_per_node)
+            node_run_ids = self.run_ids[start_index:end_index]
+            run_ids_str = " ".join(str(r) for r in node_run_ids)
+            slurm.add_cmd(f"RUN_IDS=({run_ids_str}) && \\")
+            run_id_expr = "${RUN_IDS[$SLURM_PROCID]}"
         
         try:
             command_info = cli_utils.build_stage_command(
@@ -236,7 +271,8 @@ class JobSubmitter:
                 stage_script_path=self.get_stage_script(),
                 output_dir=output_dir,
                 execution_mode=execution_mode,
-                slurm_procid_offset=previous_runs
+                slurm_procid_offset=previous_runs,
+                run_id_expr=run_id_expr
             )
             
             # Add the shifter/srun command prefix
@@ -253,11 +289,20 @@ class JobSubmitter:
             logger.error(f"Error building simulation command: {e}")
             raise
     
-    def _add_postprocessing_commands(self, slurm, previous_runs, is_monolithic=False):
+    def _add_postprocessing_commands(self, slurm, previous_runs, is_monolithic=False, node_idx=0, tasks_for_node=None):
         """Add commands for postprocessing stages using shared command builder for consistency with interactive mode."""
         # Use shared command builder for consistency
         execution_mode = "monolithic_slurm" if is_monolithic else "distributed_slurm"
         output_dir = cli_utils.get_version_directory(self.config) if is_monolithic else self.run_dir
+        run_id_expr = None
+        if (not is_monolithic) and self.run_list:
+            runs_per_node = self.config["job_config"]["runs_per_node"]
+            start_index = node_idx * runs_per_node
+            end_index = start_index + (tasks_for_node if tasks_for_node is not None else runs_per_node)
+            node_run_ids = self.run_ids[start_index:end_index]
+            run_ids_str = " ".join(str(r) for r in node_run_ids)
+            slurm.add_cmd(f"RUN_IDS=({run_ids_str}) && \\")
+            run_id_expr = "${RUN_IDS[$SLURM_PROCID]}"
         
         try:
             command_info = cli_utils.build_stage_command(
@@ -266,7 +311,8 @@ class JobSubmitter:
                 stage_script_path=self.get_stage_script(),
                 output_dir=output_dir,
                 execution_mode=execution_mode,
-                slurm_procid_offset=previous_runs
+                slurm_procid_offset=previous_runs,
+                run_id_expr=run_id_expr
             )
             
             # Add the srun command prefix (no shifter for postprocessing)
@@ -289,6 +335,10 @@ class JobSubmitter:
         
         for node_idx in range(self.n_nodes):
             slurm = self.create_slurm_job(node_idx)
+            
+            # Skip if no job was created (e.g., no runs for this node)
+            if slurm is None:
+                continue
             
             if self.dry_run:
                 script_path = self.save_batch_script(
