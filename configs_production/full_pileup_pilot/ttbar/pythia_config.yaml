@@ -1,15 +1,16 @@
 # Example configuration
-campaign: "full_pileup_mini_pilot"
+campaign: "full_pileup_pilot"
 dataset: "ttbar"
-version: "v6"
+version: "v2"
 stage: "pythia_generation"  # One of: generation, merge_smear, simulation, digitization
 job_config:
   # Number of nodes will be calculated as n_runs / runs_per_node
-  n_runs: 10  # Number of runs (where a run produces N events)
-  runs_per_node: 10  # Number of runs per node
+  n_runs: 100  # Number of runs (where a run produces N events)
+  runs_per_node: 16  # Number of runs per node
   time_limit: "00:30:00"  # Time limit per job
   qos: "debug"
-  execution_mode: "distributed_slurm"
+  depends_on: "42332835"
+  execution_mode: "multi_node_slurm"
 
 validation_config:
   # time_limit: "00:10:00"
