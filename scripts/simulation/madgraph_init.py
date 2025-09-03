@@ -32,9 +32,7 @@ from utils.madgraph_utils import (
     run_command, 
     run_command_streaming,
     customize_card_with_regex, 
-    detect_process_type_from_stdout,
     get_version_directory_path,
-    customize_cards_for_process_type
 )
 
 logger = logging.getLogger(__name__)
@@ -98,7 +96,7 @@ def generate_madgraph_process(config, scratch_dir, logger):
     logger.info("MadGraph process generation complete.")
     return generated_process_dir, stdout_proc
 
-def customize_default_cards(process_dir, config, process_generation_stdout, logger):
+def customize_default_cards(process_dir, config, logger):
     """
     Customize the default cards in the process directory.
     This creates template cards suitable for later per-run customization.
@@ -110,10 +108,6 @@ def customize_default_cards(process_dir, config, process_generation_stdout, logg
         logger: Logger instance
     """
     cards_dir = process_dir / "Cards"
-    
-    # Detect process type (born vs noborn)
-    process_type = detect_process_type_from_stdout(process_generation_stdout)
-    logger.info(f"Detected process type: {process_type}")
     
     # Customize run_card.dat (common to all process types)
     run_card_path = cards_dir / "run_card.dat"
@@ -129,28 +123,33 @@ def customize_default_cards(process_dir, config, process_generation_stdout, logg
             logger.info(f"Applying default run_card customizations: {list(default_run_card_settings.keys())}")
             customize_card_with_regex(run_card_path, default_run_card_settings)
     
-    # Customize shower/pythia card based on process type
-    if process_type == "born":
-        # NLO processes use shower_card.dat
+    # Customize shower/pythia card based solely on run_mode (explicit)
+    run_mode = getattr(config, 'run_mode', 'nlo_fxfx')
+    if str(run_mode).lower() == 'lo_mlm':
+        # For LO+MLM, always ensure pythia8_card.dat gets the JetMatching settings
+        # Prefer pythia8_card.dat; fall back to pythia8_card_default.dat if needed
+        pythia8_card_path = cards_dir / "pythia8_card.dat"
+        if not pythia8_card_path.exists():
+            alt_path = cards_dir / "pythia8_card_default.dat"
+            if alt_path.exists():
+                pythia8_card_path = alt_path
+        pythia8_card_settings = config.card_customizations.get('pythia8_card', {})
+        if pythia8_card_settings:
+            logger.info(f"Applying pythia8_card customizations for run_mode=lo_mlm: {list(pythia8_card_settings.keys())}")
+            customize_card_with_regex(pythia8_card_path, pythia8_card_settings)
+        else:
+            logger.info("No pythia8_card customizations specified for lo_mlm. Using defaults.")
+        logger.info("Default card customization completed (forced pythia8 for lo_mlm).")
+        return
+    else:
+        # NLO/FxFx path: customize shower_card.dat if provided
         shower_card_path = cards_dir / "shower_card.dat"
         shower_card_settings = config.card_customizations.get('shower_card', {})
-        
         if shower_card_settings:
-            logger.info(f"Applying shower_card customizations: {list(shower_card_settings.keys())}")
+            logger.info(f"Applying shower_card customizations for run_mode={run_mode}: {list(shower_card_settings.keys())}")
             customize_card_with_regex(shower_card_path, shower_card_settings)
         else:
             logger.info("No shower_card customizations specified. Using MadGraph defaults.")
-            
-    elif process_type == "noborn":
-        # Loop-induced processes use pythia8_card.dat
-        pythia8_card_path = cards_dir / "pythia8_card.dat"
-        pythia8_card_settings = config.card_customizations.get('pythia8_card', {})
-        
-        if pythia8_card_settings:
-            logger.info(f"Applying pythia8_card customizations: {list(pythia8_card_settings.keys())}")
-            customize_card_with_regex(pythia8_card_path, pythia8_card_settings)
-        else:
-            logger.info("No pythia8_card customizations specified. Using MadGraph defaults.")
     
     logger.info("Default card customization completed.")
 
@@ -284,7 +283,7 @@ def main():
         
         # Step 2: Customize default cards
         logger.info("=== Step 2: Customize Default Cards ===")
-        customize_default_cards(process_dir, config, process_stdout, logger)
+        customize_default_cards(process_dir, config, logger)
 
         # Step 2b: Build grids/envelopes in-place (0 events, req_acc=0.001)
         # For LO+MLM, compilation is cheap and grids are not needed. Keep DRY by

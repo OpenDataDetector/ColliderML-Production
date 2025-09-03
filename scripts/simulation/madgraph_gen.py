@@ -106,7 +106,7 @@ def customize_cards_for_run(process_dir, config, run_id=None):
         run_id: Optional run ID for --name parameter (from SLURM_PROCID or similar)
     
     Returns:
-        str: Process type ("born" or "noborn")
+        None
     """
     cards_dir = process_dir / "Cards"
     
@@ -496,7 +496,7 @@ def main():
         # STEP 2: Customize cards for this specific run
         logger.info("=== STEP 2: Customize Cards for Run ===")
         run_id = os.environ.get('SLURM_PROCID') or os.environ.get('SLURM_ARRAY_TASK_ID') or '0'
-        process_type = customize_cards_for_run(copied_process_dir, config, run_id)
+        customize_cards_for_run(copied_process_dir, config, run_id)
         
         # STEP 3: Launch MadGraph event generation
         run_mode = getattr(config, 'run_mode', 'nlo_fxfx')
@@ -516,6 +516,8 @@ def main():
 
         # STEP 5: Copy final cards
         logger.info("=== STEP 5: Copy Final Cards ===")
+        # Decide which final card(s) to copy based on run_mode
+        process_type = 'born' if str(getattr(config, 'run_mode', 'nlo_fxfx')).lower() != 'lo_mlm' else 'noborn'
         copy_final_cards(copied_process_dir, process_type, process_name, effective_output_dir, config, logger)
 
         logger.info("=== MadGraph event generation completed successfully ===")
