@@ -1,0 +1,45 @@
+#========================================================================
+# YAML Configuration for MadGraph Event Generation (LO+MLM di-Higgs)
+#========================================================================
+
+# --- Dataset & Version ---
+campaign: "full_pileup_pilot"
+dataset: "dihiggs"
+version: "v1"
+stage: "madgraph_generation"
+
+# --- Job Configuration ---
+job_config:
+  n_runs: 1
+  runs_per_node: 1
+  time_limit: "04:00:00"
+  qos: "regular"
+  execution_mode: "monolithic_slurm"
+
+validation_config:
+
+# --- Event Generation Parameters ---
+events: 30000
+seed: 42
+
+# --- Essential Paths & Environment ---
+mg_base_path: "{madgraph.mg_base_path}"
+generation_scratch_dir: "{madgraph.generation_scratch_dir}"
+
+# --- Card Customizations (run-level overrides) ---
+run_mode: "lo_mlm"
+card_customizations:
+  run_card:
+    # leave room for per-run overrides if needed
+  pythia8_card: {}
+
+# --- HepMC Splitting Configuration (Optional) ---
+splitting_config:
+  enable: true
+  events_per_file: 128
+  output_filename: "events.hepmc"
+
+# --- Logging ---
+log_level: "INFO"
+
+

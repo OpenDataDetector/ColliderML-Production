@@ -1,0 +1,61 @@
+#========================================================================
+# YAML Configuration for MadGraph Process Initialization (LO+MLM di-Higgs)
+#========================================================================
+
+# --- Dataset & Version ---
+campaign: "full_pileup_pilot"
+dataset: "dihiggs"
+version: "v1"
+stage: "madgraph_init"
+
+# --- Job Configuration ---
+job_config:
+  n_runs: 1
+  runs_per_node: 1
+  time_limit: "04:00:00"
+  qos: "regular"
+  execution_mode: "monolithic_slurm"
+
+# --- MadGraph Process Definition (HEFT, LO with up to 2 jets) ---
+mg_model: "heft"
+mg_definitions: []
+mg_generate_command: |
+  define p = g u c d s u~ c~ d~ s~
+  define j = p
+  generate p p > h h @0
+  add process p p > h h j @1
+  add process p p > h h j j @2
+
+# --- Essential Paths & Environment ---
+mg_base_path: "{madgraph.mg_base_path}"
+generation_scratch_dir: "{madgraph.generation_scratch_dir}"
+
+# --- Card Customizations (LO+MLM) ---
+run_mode: "lo_mlm"
+card_customizations:
+  run_card:
+    "parton_shower": "PYTHIA8"
+    "ebeam1": 7000.0
+    "ebeam2": 7000.0
+    "ickkw": 1
+    "xqcut": 20.0
+    "auto_ptj_mjj": True
+    "maxjetflavor": 5
+    "use_syst": False
+    systematics_program: none
+  pythia8_card:
+    "JetMatching:merge": on
+    "JetMatching:scheme": 1
+    "JetMatching:jetAlgorithm": 2
+    "JetMatching:coneRadius": 1.0
+    "JetMatching:slowJetPower": 1
+    "JetMatching:nQmatch": 5
+    "JetMatching:nJetMax": 2
+    "JetMatching:doShowerKt": off
+    "JetMatching:setMad": off
+    "UncertaintyBands:doVariations": off
+
+# --- Logging ---
+log_level: "INFO"
+
+
