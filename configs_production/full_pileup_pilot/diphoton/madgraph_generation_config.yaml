@@ -22,6 +22,7 @@ job_config:
   runs_per_node: 1  # Number of runs per node (adjust based on memory/time constraints)
   time_limit: "04:00:00"  # Time limit per job - MadGraph NLO generation is slower than Pythia
   qos: "regular"
+  depends_on: "42376551"
   execution_mode: "monolithic_slurm"  # Use distributed mode for parallel generation
   # execution_mode: "interactive"
 
@@ -38,57 +39,25 @@ mg_base_path: "{madgraph.mg_base_path}"
 generation_scratch_dir: "{madgraph.generation_scratch_dir}" 
 
 # --- Card Customizations (Optional Override) ---
-# These settings will be merged with base settings and run-specific parameters (events, seed)
-# The process directory already contains cards customized during madgraph_init,
-# but you can override specific run-level parameters here if needed
 card_customizations:
   run_card:
-    # Most settings come from madgraph_init, but you can override run-specific ones
-    # "nevents": # Will be set to config.events automatically
-    # "iseed":   # Will be set to config.seed automatically
-    
-    # Optional: Override specific run-level settings
-    # "lpp1": 1      # Proton beam 1
-    # "lpp2": 1      # Proton beam 2
-    
+    "ptj": 10.0      # Minimum jet pT
+
   # For NLO processes (born), customize shower_card.dat
   shower_card:
-    # Most settings come from madgraph_init, but you can override run-specific ones
-    # "nevents": # Will be set to config.events automatically  
-    # "iseed":   # Will be set to config.seed automatically
-    
-    # Optional: Override specific shower settings per run
-    # "shower_scale_scheme": 1
-    
+    "Qcut": 20.0       # MUST match run_card value for FxFx
+    "time_shower_me_corrections": "F"
+
   # For loop-induced processes (noborn), customize pythia8_card.dat  
   pythia8_card:
     # Most settings come from madgraph_init, but you can override run-specific ones
-    # "Main:numberOfEvents": # Will be set to config.events automatically
-    # "Random:seed":         # Will be set to config.seed automatically
-    
-    # Optional: Override specific Pythia8 settings per run
-    # "Tune:pp": 14
 
 # --- HepMC Splitting Configuration (Optional) ---
-# Uncomment to enable splitting of HepMC output into smaller files
-# This follows the same pattern as pythia_generation
-# hepmc_splitting:
-#   enabled: true
-#   events_per_file: 32
-#   output_filename: "events.hepmc"
+# Configure splitting with keys expected by the generation script
+splitting_config:
+  enable: true
+  events_per_file: 128
+  output_filename: "events.hepmc"
 
 # --- Logging ---
 log_level: "INFO"
-
-# --- Documentation ---
-# This stage expects that madgraph_init has been run successfully and the 
-# compiled process directory exists at:
-# {output_base_dir}/{campaign}/{dataset}/{version}/madgraph_process/
-# 
-# Output will be placed at:
-# {output_base_dir}/{campaign}/{dataset}/{version}/runs/
-# with structure: runs/0/events.lhe.gz, runs/1/events.lhe.gz, etc.
-# This matches the same pattern used by pythia_generation, simulation, etc.
-# 
-# Expected runtime per run: 10-60 minutes (depends on events count and process complexity)
-# Expected output per run: ~1-50 MB for LHE files (depends on events count)
