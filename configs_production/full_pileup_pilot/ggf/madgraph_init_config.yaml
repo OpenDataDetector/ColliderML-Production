@@ -10,7 +10,7 @@
 # monolithic job, since the process generation cannot be parallelized.
 
 # --- Dataset & Version ---
-campaign: "full_pileup_pilot"
+campaign: "full_pileup_mini_pilot"
 dataset: "ggf"
 version: "v5"
 stage: "madgraph_init"
@@ -20,10 +20,10 @@ job_config:
   # Number of nodes will be calculated as n_runs / runs_per_node
   n_runs: 1        # Number of runs (where a run produces N events)
   runs_per_node: 1  # Number of runs per node (adjust based on memory/time constraints)
-  time_limit: "04:00:00"  # Time limit per job - MadGraph NLO generation is slower than Pythia
+  time_limit: "02:00:00"  # Time limit per job - MadGraph NLO generation is slower than Pythia
   qos: "regular"
   # execution_mode: "monolithic_slurm"  # Use distributed mode for parallel generation
-  execution_mode: "interactive"
+  execution_mode: "monolithic_slurm"
 
 # --- MadGraph Process Definition ---
 mg_model: "heft"
@@ -49,7 +49,7 @@ card_customizations:
     "ebeam1": 7000.0
     "ebeam2": 7000.0
     "ickkw": 1
-    "xqcut": 25.0
+    "xqcut": 20.0
     "auto_ptj_mjj": True
     "maxjetflavor": 5
     "use_syst": False
@@ -62,7 +62,6 @@ card_customizations:
     "JetMatching:slowJetPower": 1
     "JetMatching:nQmatch": 5
     "JetMatching:nJetMax": 2
-    "JetMatching:qCut": 37.0
     "JetMatching:doShowerKt": off
     "JetMatching:setMad": off
     "UncertaintyBands:doVariations": off
