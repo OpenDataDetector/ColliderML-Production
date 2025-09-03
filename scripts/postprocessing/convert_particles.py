@@ -19,6 +19,7 @@ import sys
 
 # Use relative imports to avoid conflicts with other utils modules
 from utils.path_utils import get_run_paths, make_dir, get_chunk_info
+from utils.track_utils import load_root_file
 
 sys.path.append("/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/OtherLibraries/pyedm4hep")
 from pyedm4hep import EDM4hepEvent
@@ -31,7 +32,8 @@ logging.basicConfig(
 def process_event_for_particles(
     event_id: int,
     local_event_num: int,
-    edm4hep_path: str
+    edm4hep_path: str,
+    digi_particles_df: pd.DataFrame | None = None,
 ) -> pd.DataFrame:
     """
     Process particle data for a single event.
@@ -48,7 +50,7 @@ def process_event_for_particles(
         # Load EDM4hep event
         event = EDM4hepEvent(edm4hep_path, event_index=local_event_num)
         
-        # Get particle, tracker hit, and calo hit data
+        # Get particle data from EDM4hep
         particles_df = event.get_particles_df()
         
         # Reset index and add particle_id
@@ -59,7 +61,33 @@ def process_event_for_particles(
         if "pdg_id" not in particles_df.columns and "PDG" in particles_df.columns:
             particles_df["pdg_id"] = particles_df["PDG"]
         
-        # Select relevant particle columns
+        # If available, merge in vertex_primary from particles.root by matching on phase-space columns
+        if digi_particles_df is not None and not digi_particles_df.empty:
+            # Normalize event id column name
+            if "event_id" not in digi_particles_df.columns and "event_nr" in digi_particles_df.columns:
+                digi_particles_df = digi_particles_df.rename(columns={"event_nr": "event_id"})
+
+            # Select this local event's digi particles
+            local_digi = digi_particles_df[digi_particles_df.get("event_id", -1) == local_event_num].copy()
+
+            # Ensure required merge columns exist
+            merge_cols = ["vx", "vy", "vz", "px", "py", "pz"]
+            if all(col in particles_df.columns for col in merge_cols) and all(col in local_digi.columns for col in merge_cols):
+                # Align dtypes for robust merging
+                for col in merge_cols:
+                    particles_df[col] = particles_df[col].astype("float32")
+                    local_digi[col] = local_digi[col].astype("float32")
+
+                right_cols = merge_cols + [c for c in ["vertex_primary"] if c in local_digi.columns]
+                if right_cols:
+                    particles_df = pd.merge(
+                        particles_df,
+                        local_digi[right_cols],
+                        on=merge_cols,
+                        how="left",
+                    )
+
+        # Select relevant particle columns (include vertex_primary if present)
         desired_columns = [
             "particle_id",
             "pdg_id", 
@@ -70,7 +98,8 @@ def process_event_for_particles(
             "time",
             "px", "py", "pz",
             "num_tracker_hits",
-            "num_calo_hits"
+            "num_calo_hits",
+            "vertex_primary",
         ]
         particle_columns = [c for c in desired_columns if c in particles_df.columns]
         
@@ -119,16 +148,30 @@ def process_run_for_particles(run_dir: Path, run_number: int, run_size: int) -> 
     """
     run_dir = Path(run_dir)
     edm4hep_path = run_dir / "edm4hep.root"
+    particles_root_path = run_dir / "particles.root"
 
     if not edm4hep_path.exists():
         logging.warning(f"Missing EDM4hep file: {edm4hep_path}")
         return []
 
+    # Load particles.root once per run (optional). If missing, continue without vertex info
+    digi_particles_df: pd.DataFrame | None = None
+    if particles_root_path.exists():
+        try:
+            digi_particles_df = load_root_file(str(particles_root_path))
+        except Exception as e:
+            logging.warning(f"Failed to load particles.root at {particles_root_path}: {e}")
+
     run_events: List[pd.DataFrame] = []
     for local_event_num in tqdm(range(run_size), desc="Processing events", leave=False):
         global_event_num = run_number * run_size + local_event_num
 
-        ev_df = process_event_for_particles(global_event_num, local_event_num, str(edm4hep_path))
+        ev_df = process_event_for_particles(
+            global_event_num,
+            local_event_num,
+            str(edm4hep_path),
+            digi_particles_df,
+        )
         if not ev_df.empty:
             run_events.append(ev_df)
 

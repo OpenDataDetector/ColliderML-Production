@@ -10,7 +10,7 @@
 # monolithic job, since the process generation cannot be parallelized.
 
 # --- Dataset & Version ---
-campaign: "full_pileup_mini_pilot"
+campaign: "full_pileup_pilot"
 dataset: "diphoton"
 version: "v1"
 stage: "madgraph_init"

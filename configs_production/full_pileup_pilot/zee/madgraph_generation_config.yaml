@@ -10,9 +10,9 @@
 # directory created by madgraph_init. It follows the same pattern as pythia_generation.
 
 # --- Dataset & Version ---
-campaign: "full_pileup_mini_pilot"
+campaign: "full_pileup_pilot"
 dataset: "zee"
-version: "v2"
+version: "v1"
 stage: "madgraph_generation"
 
 # --- Job Configuration ---
@@ -20,7 +20,7 @@ job_config:
   # Number of nodes will be calculated as n_runs / runs_per_node
   n_runs: 1        # Number of runs (where a run produces N events)
   runs_per_node: 1  # Number of runs per node (adjust based on memory/time constraints)
-  time_limit: "00:30:00"  # Time limit per job - MadGraph NLO generation is slower than Pythia
+  time_limit: "04:00:00"  # Time limit per job - MadGraph NLO generation is slower than Pythia
   qos: "debug"
   depends_on:
   execution_mode: "monolithic_slurm"  # Use distributed mode for parallel generation
@@ -30,7 +30,7 @@ validation_config:
 
 # --- Event Generation Parameters ---
 # These follow the exact same pattern as pythia_gen.py and ddsim_run.py
-events: 3000  # Number of events per run, total events = n_runs * events
+events: 30000  # Number of events per run, total events = n_runs * events
 seed: 42     # Base seed - will be modified per run using run_id
 
 # --- Essential Paths & Environment ---
