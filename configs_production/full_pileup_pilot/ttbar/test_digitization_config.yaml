@@ -10,8 +10,8 @@ stage: "digitization"  # One of: generation, merge_smear, simulation, digitizati
 
 # --- Job Configuration ---
 job_config:
-  n_runs: 4  # Number of jobs to submit
-  runs_per_node: 4  # Number of runs per node
+  n_runs: 1  # Number of jobs to submit
+  runs_per_node: 1  # Number of runs per node
   time_limit: "00:30:00"  # Time limit per job
   qos: "debug"
   execution_mode: "interactive"
@@ -20,12 +20,13 @@ job_config:
 # --- Validation Configuration ---
 validation_config:
 
+
 # --- Stage-specific Configurations ---
 events: 128  # Number of events per run, total number of events will be n_runs * events
 threads: 64
 digi: True
 reco: True
-num_seeds_per_spm: 40
+num_seeds_per_spm: 5
 
 # --- Writing Configuration ---
 output_root: True
