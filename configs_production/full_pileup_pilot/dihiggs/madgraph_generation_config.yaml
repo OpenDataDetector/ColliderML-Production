@@ -19,7 +19,7 @@ job_config:
 validation_config:
 
 # --- Event Generation Parameters ---
-events: 30000
+events: 70000
 seed: 42
 
 # --- Essential Paths & Environment ---
