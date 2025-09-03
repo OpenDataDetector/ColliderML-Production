@@ -9,7 +9,7 @@ job_config:
   runs_per_node: 8  # Number of runs per node
   time_limit: "06:00:00"  # Time limit per job
   qos: "regular"
-  depends_on: "42128591"
+  depends_on:
   execution_mode: "multi_node_slurm"
 
 validation_config:
