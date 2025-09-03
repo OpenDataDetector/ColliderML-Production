@@ -21,10 +21,11 @@ job_config:
 validation_config:
 
 # --- Stage-specific Configurations ---
-events: 1  # Number of events per run, total number of events will be n_runs * events
-threads: 1
+events: 128  # Number of events per run, total number of events will be n_runs * events
+threads: 32
 digi: True
 reco: True
+fast_seeding: True
 
 # --- Writing Configuration ---
 output_root: True

@@ -4,6 +4,7 @@ from pathlib import Path
 import sys
 
 import uproot
+from tqdm import tqdm
 
 # Optional: import loading_utils if available for ROOT loading
 try:
@@ -94,8 +95,8 @@ def main():
 
     runs_with_issues = []
 
-    # Check each run directory
-    for d in run_dirs:
+    # Check each run directory with progress bar
+    for d in tqdm(run_dirs, desc="Validating runs", unit="run"):
         issues = validate_run_dir(d)
         for issue in issues:
             logger.warning(issue)
