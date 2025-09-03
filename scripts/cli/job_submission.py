@@ -456,70 +456,71 @@ class JobSubmitter:
             return [job_id]
     
     def submit_validation_jobs(self, job_ids):        
-        """Submit validation jobs dependent on stage jobs"""
+        """Submit a single-node validation job dependent on all stage jobs"""
 
         if self.config.get("validation_config", None) is None:
             logger.info("No validation config found, skipping validation jobs")
             return []
 
-        validation_ids = []
-        
-        for node_idx, job_id in enumerate(job_ids):
-            slurm = Slurm(
-                job_name=f"validate_{self.config['stage']}_{node_idx}",
-                account=self.config["common"]["account"],
-                qos=self.config["validation_config"]["qos"],
-                time=self.config["validation_config"]["time_limit"],
-                dependency={"afterany": [job_id]} if not self.dry_run else None,
-                output=str(self.validation_dir / f"validation_{node_idx}.out"),
-                error=str(self.validation_dir / f"validation_{node_idx}.err"),
-                constraint="cpu",
-                nodes=1,
-                ntasks=1
-            )
-            
-            slurm.add_cmd("cd /global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software")
-            slurm.add_cmd("eval \"$(conda shell.bash hook)\"")
-            slurm.add_cmd("conda activate collider-env")
+        # Defaults if not provided
+        val_cfg = self.config.get("validation_config", {})
+        val_qos = val_cfg.get("qos", self.config["job_config"].get("qos", "regular"))
+        val_time = val_cfg.get("time_limit", "00:10:00")
 
-            # Get validation script path
-            try:
-                # Check if validation script might be in a standard location
-                base_script_path = Path(__file__).parent.parent
-                validation_script_name = f"validation/validate_{self.config['stage']}.py"
-                validation_script_full_path = str(base_script_path / validation_script_name)
-                
-                # Verify the script exists
-                if not Path(validation_script_full_path).is_file():
-                    raise FileNotFoundError(f"Validation script not found at {validation_script_full_path}")
-            except Exception as e:
-                logger.warning(f"Failed to locate validation script automatically: {e}")
-                # Fall back to assuming standard location
-                validation_script_full_path = f"colliderml_dev/scripts/validation/validate_{self.config['stage']}.py"
+        # Build single validation Slurm job with dependency on all production jobs
+        slurm = Slurm(
+            job_name=f"validate_{self.config['stage']}",
+            account=self.config["common"]["account"],
+            qos=val_qos,
+            time=val_time,
+            dependency={"afterany": job_ids} if (job_ids and not self.dry_run) else None,
+            output=str(self.validation_dir / f"validation_%j.out"),
+            error=str(self.validation_dir / f"validation_%j.err"),
+            constraint="cpu",
+            nodes=1,
+            ntasks=1
+        )
 
-            cmd = (f"python {validation_script_full_path} "
-                  f"--stage {self.config['stage']} "
-                  f"--run-dir {self.run_dir} "
-                  f"--node-idx {node_idx} "
-                  f"--runs-per-node {self.config['job_config']['runs_per_node']}")
-            
-            slurm.add_cmd(cmd)
-            
-            if self.dry_run:
-                script_path = self.save_batch_script(
-                    slurm, f"validation_{node_idx}.sh"
-                )
-                logger.info(f"Saved validation batch script to {script_path}")
-                validation_ids.append(f"DRY_RUN_VALIDATION_{node_idx}")
+        # Basic env setup (reuse production env)
+        slurm.add_cmd("cd /global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software")
+        slurm.add_cmd("eval \"$(conda shell.bash hook)\"")
+        slurm.add_cmd("conda activate collider-env")
+
+        # Locate validation script: prefer simulation/validation then fallback
+        validation_script_full_path = None
+        try:
+            base_script_path = Path(__file__).parent.parent
+            candidate1 = base_script_path / f"simulation/validation/validate_{self.config['stage']}.py"
+            candidate2 = base_script_path / f"validation/validate_{self.config['stage']}.py"
+            if candidate1.is_file():
+                validation_script_full_path = str(candidate1)
+            elif candidate2.is_file():
+                validation_script_full_path = str(candidate2)
             else:
-                validation_id = slurm.sbatch(
-                    shell="/bin/bash", 
-                    job_file=f"{self.validation_dir}/validation_{node_idx}.sh",
-                    convert=False)
-                validation_ids.append(validation_id)
-                logger.info(f"Submitted validation job {validation_id} for production job {job_id}")
-            
-        return validation_ids
+                raise FileNotFoundError(f"Validation script not found at {candidate1} or {candidate2}")
+        except Exception as e:
+            logger.warning(f"Failed to locate validation script automatically: {e}")
+            # Fall back to a standard path; may fail at runtime if not present
+            validation_script_full_path = f"colliderml_dev/scripts/simulation/validation/validate_{self.config['stage']}.py"
+
+        # Validation CLI: stage and runs directory
+        cmd = (f"python {validation_script_full_path} "
+               f"--stage {self.config['stage']} "
+               f"--runs-dir {self.run_dir}")
+
+        slurm.add_cmd(cmd)
+
+        if self.dry_run:
+            script_path = self.save_batch_script(slurm, "validation.sh")
+            logger.info(f"Saved validation batch script to {script_path}")
+            return ["DRY_RUN_VALIDATION"]
+        else:
+            validation_id = slurm.sbatch(
+                shell="/bin/bash", 
+                job_file=f"{self.validation_dir}/validation.sh",
+                convert=False)
+            logger.info(f"Submitted single validation job {validation_id} for production jobs {job_ids}")
+            return [validation_id]
 
     def save_batch_script(self, slurm, script_name):
         """Save the batch script that would be submitted"""
