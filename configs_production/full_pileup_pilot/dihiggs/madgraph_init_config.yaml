@@ -5,7 +5,7 @@
 # --- Dataset & Version ---
 campaign: "full_pileup_pilot"
 dataset: "dihiggs"
-version: "v1"
+version: "v2"
 stage: "madgraph_init"
 
 # --- Job Configuration ---
@@ -20,7 +20,7 @@ job_config:
 mg_model: "heft"
 mg_definitions: []
 mg_generate_command: |
-  define p = g u c d s u~ c~ d~ s~
+  define p = g u c b d s u~ c~ b~ d~ s~
   define j = p
   generate p p > h h @0
   add process p p > h h j @1
@@ -51,6 +51,7 @@ card_customizations:
     "JetMatching:slowJetPower": 1
     "JetMatching:nQmatch": 5
     "JetMatching:nJetMax": 2
+    "JetMatching:qCut": 30.0
     "JetMatching:doShowerKt": off
     "JetMatching:setMad": off
     "UncertaintyBands:doVariations": off

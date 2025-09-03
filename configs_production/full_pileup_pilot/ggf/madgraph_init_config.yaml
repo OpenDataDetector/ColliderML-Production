@@ -10,9 +10,9 @@
 # monolithic job, since the process generation cannot be parallelized.
 
 # --- Dataset & Version ---
-campaign: "full_pileup_mini_pilot"
+campaign: "full_pileup_pilot"
 dataset: "ggf"
-version: "v5"
+version: "v2"
 stage: "madgraph_init"
 
 # --- Job Configuration ---
@@ -29,7 +29,7 @@ job_config:
 mg_model: "heft"
 mg_definitions: []
 mg_generate_command: |
-  define p = g u c d s u~ c~ d~ s~
+  define p = g u c b d s u~ c~ b~ d~ s~
   define j = p
   generate p p > h @0
   add process p p > h j @1
