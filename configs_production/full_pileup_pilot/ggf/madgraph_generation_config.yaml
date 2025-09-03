@@ -10,26 +10,26 @@
 # directory created by madgraph_init. It follows the same pattern as pythia_generation.
 
 # --- Dataset & Version ---
-campaign: "full_pileup_mini_pilot"
-dataset: "ttbar"
-version: "v5"
+campaign: "full_pileup_pilot"
+dataset: "ggf"
+version: "v1"
 stage: "madgraph_generation"
 
 # --- Job Configuration ---
 job_config:
   # Number of nodes will be calculated as n_runs / runs_per_node
-  n_runs: 8        # Number of runs (where a run produces N events)
-  runs_per_node: 8  # Number of runs per node (adjust based on memory/time constraints)
-  time_limit: "00:30:00"  # Time limit per job - MadGraph NLO generation is slower than Pythia
-  qos: "debug"
-  execution_mode: "distributed_slurm"  # Use distributed mode for parallel generation
+  n_runs: 1
+  runs_per_node: 1
+  time_limit: "04:00:00"
+  qos: "regular"
+  execution_mode: "monolithic_slurm"
   # execution_mode: "interactive"
 
 validation_config:
 
 # --- Event Generation Parameters ---
 # These follow the exact same pattern as pythia_gen.py and ddsim_run.py
-events: 128  # Number of events per run, total events = n_runs * events
+events: 30000
 seed: 42     # Base seed - will be modified per run using run_id
 
 # --- Essential Paths & Environment ---
@@ -41,33 +41,11 @@ generation_scratch_dir: "{madgraph.generation_scratch_dir}"
 # These settings will be merged with base settings and run-specific parameters (events, seed)
 # The process directory already contains cards customized during madgraph_init,
 # but you can override specific run-level parameters here if needed
+run_mode: "lo_mlm"
 card_customizations:
   run_card:
-    # Most settings come from madgraph_init, but you can override run-specific ones
-    # "nevents": # Will be set to config.events automatically
-    # "iseed":   # Will be set to config.seed automatically
-    
-    # Optional: Override specific run-level settings
-    # "lpp1": 1      # Proton beam 1
-    # "lpp2": 1      # Proton beam 2
-    
-  # For NLO processes (born), customize shower_card.dat
-  shower_card:
-    # Most settings come from madgraph_init, but you can override run-specific ones
-    # "nevents": # Will be set to config.events automatically  
-    # "iseed":   # Will be set to config.seed automatically
-    
-    # Optional: Override specific shower settings per run
-    # "shower_scale_scheme": 1
-    
-  # For loop-induced processes (noborn), customize pythia8_card.dat  
-  pythia8_card:
-    # Most settings come from madgraph_init, but you can override run-specific ones
-    # "Main:numberOfEvents": # Will be set to config.events automatically
-    # "Random:seed":         # Will be set to config.seed automatically
-    
-    # Optional: Override specific Pythia8 settings per run
-    # "Tune:pp": 14
+    "ptj": 20.0
+  pythia8_card: {}
 
 # --- HepMC Splitting Configuration (Optional) ---
 # Uncomment to enable splitting of HepMC output into smaller files

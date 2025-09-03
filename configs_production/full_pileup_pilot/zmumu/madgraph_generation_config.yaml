@@ -10,7 +10,7 @@
 # directory created by madgraph_init. It follows the same pattern as pythia_generation.
 
 # --- Dataset & Version ---
-campaign: "full_pileup_mini_pilot"
+campaign: "full_pileup_pilot"
 dataset: "zmumu"
 version: "v3"
 stage: "madgraph_generation"
