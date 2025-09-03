@@ -33,9 +33,7 @@ from pathlib import Path
 from utils.config import create_base_parser, load_config
 from utils.madgraph_utils import (
     run_command,
-    run_command_streaming,
     customize_card_with_regex,
-    detect_process_type_from_files,
     get_version_directory_path
 )
 
@@ -112,9 +110,6 @@ def customize_cards_for_run(process_dir, config, run_id=None):
     """
     cards_dir = process_dir / "Cards"
     
-    # Detect process type from existing files using shared utility
-    process_type = detect_process_type_from_files(process_dir)
-    
     # Set up run-specific parameters following pythia_gen.py pattern
     run_params = {}
     
@@ -135,9 +130,24 @@ def customize_cards_for_run(process_dir, config, run_id=None):
     final_run_card_settings = {**base_run_card_settings, **run_params}
     customize_card_with_regex(run_card_path, final_run_card_settings)
     
-    # Customize process-type specific cards (shower_card.dat or pythia8_card.dat)
-    if process_type == "born":
-        # NLO process - customize shower_card.dat if it exists
+    # Customize shower/pythia cards routed by run_mode only
+    run_mode = getattr(config, 'run_mode', None)
+    if str(run_mode).lower() == 'lo_mlm':
+        # Always apply pythia8_card customizations for LO+MLM (MLM JetMatching lives here)
+        pythia8_card_path = cards_dir / "pythia8_card.dat"
+        if pythia8_card_path.exists():
+            p8_params = {}
+            if hasattr(config, 'events'):
+                p8_params['Main:numberOfEvents'] = config.events
+            if hasattr(config, 'seed'):
+                p8_params['Random:seed'] = config.seed
+            base_p8 = config.card_customizations['pythia8_card']
+            final_p8 = {**base_p8, **p8_params}
+            if final_p8:
+                logger.info("Customizing pythia8_card.dat for run_mode=lo_mlm")
+                customize_card_with_regex(pythia8_card_path, final_p8)
+    else:
+        # NLO/FxFx path: customize shower_card if present, or pythia8_card if present
         shower_card_path = cards_dir / "shower_card.dat"
         if shower_card_path.exists():
             shower_params = {}
@@ -145,34 +155,26 @@ def customize_cards_for_run(process_dir, config, run_id=None):
                 shower_params['nevents'] = config.events
             if hasattr(config, 'seed'):
                 shower_params['rnd_seed'] = config.seed
-            
-            # Get base shower_card settings from config (guaranteed to exist and be a dict)
             base_shower_settings = config.card_customizations['shower_card']
             final_shower_settings = {**base_shower_settings, **shower_params}
-            
             if final_shower_settings:
                 logger.info("Customizing shower_card.dat for NLO process")
                 customize_card_with_regex(shower_card_path, final_shower_settings)
-    
-    elif process_type == "noborn":
-        # Loop-induced process - customize pythia8_card.dat if it exists
-        pythia8_card_path = cards_dir / "pythia8_card.dat"
-        if pythia8_card_path.exists():
-            pythia8_params = {}
-            if hasattr(config, 'events'):
-                pythia8_params['Main:numberOfEvents'] = config.events
-            if hasattr(config, 'seed'):
-                pythia8_params['Random:seed'] = config.seed
-            
-            # Get base pythia8_card settings from config (guaranteed to exist and be a dict)
-            base_pythia8_settings = config.card_customizations['pythia8_card']
-            final_pythia8_settings = {**base_pythia8_settings, **pythia8_params}
-            
-            if final_pythia8_settings:
-                logger.info("Customizing pythia8_card.dat for loop-induced process")
-                customize_card_with_regex(pythia8_card_path, final_pythia8_settings)
-    
-    return process_type
+        else:
+            pythia8_card_path = cards_dir / "pythia8_card.dat"
+            if pythia8_card_path.exists():
+                pythia8_params = {}
+                if hasattr(config, 'events'):
+                    pythia8_params['Main:numberOfEvents'] = config.events
+                if hasattr(config, 'seed'):
+                    pythia8_params['Random:seed'] = config.seed
+                base_pythia8_settings = config.card_customizations['pythia8_card']
+                final_pythia8_settings = {**base_pythia8_settings, **pythia8_params}
+                if final_pythia8_settings:
+                    logger.info("Customizing pythia8_card.dat for loop-induced/NLO fallback")
+                    customize_card_with_regex(pythia8_card_path, final_pythia8_settings)
+
+    # No return value needed any more
 
 
 def split_hepmc_file(input_hepmc_path: Path,
@@ -296,6 +298,17 @@ def run_generate_events_no_compile(process_dir: Path, run_name: str, logger: log
         raise
 
     
+
+def run_generate_events_compile(process_dir: Path, run_name: str, logger: logging.Logger):
+    """Run ./bin/generate_events in compile mode with explicit run name (LO+MLM fast path)."""
+    exe = process_dir / "bin" / "generate_events"
+    cmd = [str(exe), run_name, "-f"]
+    logger.info(f"Executing generate_events (compile) for LO+MLM (streaming): {' '.join(cmd)}")
+    try:
+        run_command(cmd, cwd=str(process_dir), stream=True, capture=False, merge_streams=True, logger=logger)
+    except Exception as e:
+        logger.error(f"Error running generate_events (compile): {e}")
+        raise
 
 def process_output_files(copied_process_dir, effective_output_dir, run_name, splitting_enabled,
                         split_events_per_file, split_output_filename, logger):
@@ -485,11 +498,16 @@ def main():
         run_id = os.environ.get('SLURM_PROCID') or os.environ.get('SLURM_ARRAY_TASK_ID') or '0'
         process_type = customize_cards_for_run(copied_process_dir, config, run_id)
         
-        # STEP 3: Launch MadGraph event generation (no-compile)
-        logger.info("=== STEP 3: Launch MadGraph Event Generation (no-compile) ===")
-        # Use requested canonical run name for reuse of compiled objects
-        run_name = "run_build"
-        run_generate_events_no_compile(copied_process_dir, run_name, logger)
+        # STEP 3: Launch MadGraph event generation
+        run_mode = getattr(config, 'run_mode', 'nlo_fxfx')
+        if str(run_mode).lower() == 'lo_mlm':
+            logger.info("=== STEP 3: Launch MadGraph Event Generation (compile, LO+MLM) ===")
+            run_name = "run_build"
+            run_generate_events_compile(copied_process_dir, run_name, logger)
+        else:
+            logger.info("=== STEP 3: Launch MadGraph Event Generation (no-compile, NLO/FxFx) ===")
+            run_name = "run_build"
+            run_generate_events_no_compile(copied_process_dir, run_name, logger)
 
         # STEP 4: Process and move/split output files
         logger.info("=== STEP 4: Process and Move/Split Output Files ===")

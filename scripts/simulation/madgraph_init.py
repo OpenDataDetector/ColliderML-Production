@@ -287,8 +287,14 @@ def main():
         customize_default_cards(process_dir, config, process_stdout, logger)
 
         # Step 2b: Build grids/envelopes in-place (0 events, req_acc=0.001)
-        logger.info("=== Step 2b: Build Grids/Envelopes (No Events) ===")
-        compile_grids_and_envelopes(process_dir, logger)
+        # For LO+MLM, compilation is cheap and grids are not needed. Keep DRY by
+        # gating grid/envelope build behind run_mode.
+        run_mode = getattr(config, 'run_mode', 'nlo_fxfx')
+        if str(run_mode).lower() != 'lo_mlm':
+            logger.info("=== Step 2b: Build Grids/Envelopes (No Events) ===")
+            compile_grids_and_envelopes(process_dir, logger)
+        else:
+            logger.info("=== Step 2b: Skipping grid/envelope build for run_mode=lo_mlm ===")
         
         # Step 3: Store the process directory
         logger.info("=== Step 3: Store Process Directory ===")
