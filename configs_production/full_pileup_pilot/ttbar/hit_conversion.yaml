@@ -6,9 +6,9 @@ stage: "build_tracker_hits"
 
 # Job submission configuration
 job_config:
-  n_runs: 8  # Number of jobs to submit
+  n_runs: 16  # Number of jobs to submit
   runs_per_node: 8  # Number of runs per node
-  time_limit: "00:10:00"  # Time limit per job
+  time_limit: "00:30:00"  # Time limit per job
   qos: "debug"
   # execution_mode: "interactive"
   execution_mode: "multi_node_slurm"
@@ -16,6 +16,6 @@ job_config:
 validation_config:
 
 # Track conversion specific configuration
-chunk_size: 100  # Number of events per output file
+chunk_size: 1000  # Number of events per output file
 run_size: 128      # Number of events per run
-max_chunks: 1
+# max_chunks: 1

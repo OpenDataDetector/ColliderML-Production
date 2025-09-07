@@ -216,18 +216,33 @@ class JobSubmitter:
             slurm_procid_offset=previous_runs,
             run_id_expr=run_id_expr
         )
+        use_shifter = command_info["use_shifter"]
 
-        # Add the shifter/srun command prefix
-        slurm.add_cmd(command_info["shifter_command"])
-        if run_ids_setup_cmd:
-            slurm.add_cmd(run_ids_setup_cmd)
+        if use_shifter:
+            # Original behavior: put env setup and python inside shifter bash -c
+            slurm.add_cmd(command_info["shifter_command"])
+            if run_ids_setup_cmd:
+                slurm.add_cmd(run_ids_setup_cmd)
+            for cmd in command_info["env_setup_commands"]:
+                slurm.add_cmd(cmd + " && \\")
+            slurm.add_cmd(command_info["python_command"] + "\"")
+        else:
+            # For non-shifter (postprocessing): move env setup OUTSIDE srun to avoid inner-quote issues
+            for cmd in command_info["env_setup_commands"]:
+                slurm.add_cmd(cmd)
 
-        # Add environment setup commands
-        for cmd in command_info["env_setup_commands"]:
-            slurm.add_cmd(cmd + " && \\")
-
-        # Add the python command and close the quoted section
-        slurm.add_cmd(command_info["python_command"] + "\"")
+            srun_options = "--exact --kill-on-bad-exit=0 --mpi=none"
+            if run_ids_setup_cmd:
+                # Strip trailing chaining and escapes from RUN_IDS setup (expects format "RUN_IDS=(...) && \\")
+                setup_clean = run_ids_setup_cmd.replace(" && \\", "").strip()
+                srun_cmd = (
+                    f"srun {srun_options} -n $SLURM_NTASKS -N $SLURM_NNODES bash -c \"{setup_clean} && {command_info['python_command']}\""
+                )
+            else:
+                srun_cmd = (
+                    f"srun {srun_options} -n $SLURM_NTASKS -N $SLURM_NNODES {command_info['python_command']}"
+                )
+            slurm.add_cmd(srun_cmd)
     
     def get_run_id(self, node_idx, process_idx):
         """Calculate run ID from node and process indices"""
@@ -405,12 +420,29 @@ class JobSubmitter:
                 run_id_expr=run_id_expr
             )
 
-            slurm.add_cmd(command_info["shifter_command"])
-            if run_ids_setup_cmd:
-                slurm.add_cmd(run_ids_setup_cmd)
-            for cmd in command_info["env_setup_commands"]:
-                slurm.add_cmd(cmd + " && \\")
-            slurm.add_cmd(command_info["python_command"] + "\"")
+            use_shifter = command_info["use_shifter"]
+            if use_shifter:
+                slurm.add_cmd(command_info["shifter_command"])
+                if run_ids_setup_cmd:
+                    slurm.add_cmd(run_ids_setup_cmd)
+                for cmd in command_info["env_setup_commands"]:
+                    slurm.add_cmd(cmd + " && \\")
+                slurm.add_cmd(command_info["python_command"] + "\"")
+            else:
+                # Move env setup outside srun for non-shifter
+                for cmd in command_info["env_setup_commands"]:
+                    slurm.add_cmd(cmd)
+                srun_options = "--exact --kill-on-bad-exit=0 --mpi=none"
+                if run_ids_setup_cmd:
+                    setup_clean = run_ids_setup_cmd.replace(" && \\", "").strip()
+                    srun_cmd = (
+                        f"srun {srun_options} -n $SLURM_NTASKS -N $SLURM_NNODES bash -c \"{setup_clean} && {command_info['python_command']}\""
+                    )
+                else:
+                    srun_cmd = (
+                        f"srun {srun_options} -n $SLURM_NTASKS -N $SLURM_NNODES {command_info['python_command']}"
+                    )
+                slurm.add_cmd(srun_cmd)
 
         except Exception as e:
             logger.error(f"Error building multinode command: {e}")
