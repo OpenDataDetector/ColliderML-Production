@@ -232,16 +232,16 @@ class JobSubmitter:
                 slurm.add_cmd(cmd)
 
             srun_options = "--exact --kill-on-bad-exit=0 --mpi=none"
+            # Always wrap payload in bash -c so shell features (e.g., $((...))) are evaluated per task
             if run_ids_setup_cmd:
-                # Strip trailing chaining and escapes from RUN_IDS setup (expects format "RUN_IDS=(...) && \\")
                 setup_clean = run_ids_setup_cmd.replace(" && \\", "").strip()
-                srun_cmd = (
-                    f"srun {srun_options} -n $SLURM_NTASKS -N $SLURM_NNODES bash -c \"{setup_clean} && {command_info['python_command']}\""
-                )
+                payload = f"{setup_clean} && {command_info['python_command']}"
             else:
-                srun_cmd = (
-                    f"srun {srun_options} -n $SLURM_NTASKS -N $SLURM_NNODES {command_info['python_command']}"
-                )
+                payload = f"{command_info['python_command']}"
+            # Quote payload, escaping any embedded quotes
+            srun_cmd = (
+                f"srun {srun_options} bash -c {payload}"
+            )
             slurm.add_cmd(srun_cmd)
     
     def get_run_id(self, node_idx, process_idx):
@@ -435,13 +435,12 @@ class JobSubmitter:
                 srun_options = "--exact --kill-on-bad-exit=0 --mpi=none"
                 if run_ids_setup_cmd:
                     setup_clean = run_ids_setup_cmd.replace(" && \\", "").strip()
-                    srun_cmd = (
-                        f"srun {srun_options} -n $SLURM_NTASKS -N $SLURM_NNODES bash -c \"{setup_clean} && {command_info['python_command']}\""
-                    )
+                    payload = f"{setup_clean} && {command_info['python_command']}"
                 else:
-                    srun_cmd = (
-                        f"srun {srun_options} -n $SLURM_NTASKS -N $SLURM_NNODES {command_info['python_command']}"
-                    )
+                    payload = f"{command_info['python_command']}"
+                srun_cmd = (
+                    f"srun {srun_options} bash -c {payload}"
+                )
                 slurm.add_cmd(srun_cmd)
 
         except Exception as e:
