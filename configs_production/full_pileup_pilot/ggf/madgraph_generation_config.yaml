@@ -50,10 +50,10 @@ card_customizations:
 # --- HepMC Splitting Configuration (Optional) ---
 # Uncomment to enable splitting of HepMC output into smaller files
 # This follows the same pattern as pythia_generation
-# hepmc_splitting:
-#   enabled: true
-#   events_per_file: 32
-#   output_filename: "events.hepmc"
+splitting_config:
+  enable: true
+  events_per_file: 128
+  output_filename: "events.hepmc"
 
 # --- Logging ---
 log_level: "INFO"
