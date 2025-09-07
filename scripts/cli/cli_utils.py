@@ -184,7 +184,7 @@ def build_stage_command(config, config_path, stage_script_path, output_dir, outp
             # For "all" case in postprocessing, we might need special handling
         else:  # distributed_slurm
             # Allow custom run id expression (e.g., mapping from a provided run list)
-            run_idx_expr = run_id_expr if run_id_expr is not None else f"$(({slurm_procid_offset} + SLURM_PROCID))"
+            run_idx_expr = run_id_expr if run_id_expr is not None else f"\$(({slurm_procid_offset} + SLURM_PROCID))"
             python_cmd_parts.extend([
                 "--chunk-index", run_idx_expr
             ])

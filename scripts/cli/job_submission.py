@@ -173,30 +173,31 @@ class JobSubmitter:
             return max(0, end_run - start_run)
         return int(self.config["job_config"]["n_runs"])
 
-    def get_run_id_expr_for_node(self, slurm, node_idx, tasks_for_node, is_monolithic):
-        """If using run_list in distributed mode, emit RUN_IDS and return mapping expr; else return None."""
+    def get_run_id_expr_for_node(self, node_idx, tasks_for_node, is_monolithic):
+        """If using run_list in distributed mode, return (escaped expr, RUN_IDS setup cmd); else (None, None)."""
         if (not is_monolithic) and self.run_list:
             runs_per_node = self.config["job_config"]["runs_per_node"]
             start_index = node_idx * runs_per_node
             end_index = start_index + (tasks_for_node if tasks_for_node is not None else runs_per_node)
             node_run_ids = self.run_ids[start_index:end_index]
             run_ids_str = " ".join(str(r) for r in node_run_ids)
-            # Emit RUN_IDS assignment so subsequent commands map $SLURM_PROCID -> actual run id
-            slurm.add_cmd(f"RUN_IDS=({run_ids_str}) && \\")
+            run_ids_setup_cmd = f"RUN_IDS=({run_ids_str}) && \\\\" 
+            run_id_expr = r"\${RUN_IDS[\$SLURM_PROCID]}"
             if self.dry_run:
                 logger.info(f"Node {node_idx} RUN_IDS: {node_run_ids}")
-            return "${RUN_IDS[$SLURM_PROCID]}"
-        return None
+            return run_id_expr, run_ids_setup_cmd
+        return None, None
 
-    def get_run_id_expr_global(self, slurm):
-        """For multi-node single job, emit a single RUN_IDS array for the whole job when using run_list."""
+    def get_run_id_expr_global(self):
+        """For multi-node single job, return (escaped expr, RUN_IDS setup cmd) when using run_list; else (None, None)."""
         if self.run_list:
             run_ids_str = " ".join(str(r) for r in self.run_ids)
-            slurm.add_cmd(f"RUN_IDS=({run_ids_str}) && \\")
+            run_ids_setup_cmd = f"RUN_IDS=({run_ids_str}) && \\\\" 
+            run_id_expr = r"\${RUN_IDS[\$SLURM_PROCID]}"
             if self.dry_run:
                 logger.info(f"Global RUN_IDS: {self.run_ids}")
-            return "${RUN_IDS[$SLURM_PROCID]}"
-        return None
+            return run_id_expr, run_ids_setup_cmd
+        return None, None
 
     def _build_and_add_commands(self, slurm, is_monolithic, previous_runs, node_idx, tasks_for_node, is_postprocessing):
         """Common command assembly for both simulation and postprocessing stages."""
@@ -204,7 +205,7 @@ class JobSubmitter:
         output_dir = (cli_utils.get_version_directory(self.config) if is_postprocessing and is_monolithic
                       else cli_utils.get_run_directory(self.config) if is_monolithic
                       else self.run_dir)
-        run_id_expr = self.get_run_id_expr_for_node(slurm, node_idx, tasks_for_node, is_monolithic)
+        run_id_expr, run_ids_setup_cmd = self.get_run_id_expr_for_node(node_idx, tasks_for_node, is_monolithic)
 
         command_info = cli_utils.build_stage_command(
             config=self.config,
@@ -218,6 +219,8 @@ class JobSubmitter:
 
         # Add the shifter/srun command prefix
         slurm.add_cmd(command_info["shifter_command"])
+        if run_ids_setup_cmd:
+            slurm.add_cmd(run_ids_setup_cmd)
 
         # Add environment setup commands
         for cmd in command_info["env_setup_commands"]:
@@ -384,7 +387,7 @@ class JobSubmitter:
         # previous_runs is the range start if using ranges, else 0
         previous_runs = self.run_range[0] if self.run_range else 0
         # Global run id expr (for run_list)
-        run_id_expr = self.get_run_id_expr_global(slurm)
+        run_id_expr, run_ids_setup_cmd = self.get_run_id_expr_global()
 
         try:
             # Use shared builder; output_dir is runs dir for simulation, version dir for postprocessing in distributed modes
@@ -403,6 +406,8 @@ class JobSubmitter:
             )
 
             slurm.add_cmd(command_info["shifter_command"])
+            if run_ids_setup_cmd:
+                slurm.add_cmd(run_ids_setup_cmd)
             for cmd in command_info["env_setup_commands"]:
                 slurm.add_cmd(cmd + " && \\")
             slurm.add_cmd(command_info["python_command"] + "\"")
