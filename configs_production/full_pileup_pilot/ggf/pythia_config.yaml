@@ -1,22 +1,23 @@
 # Example configuration
 campaign: "full_pileup_pilot"
 dataset: "ggf"
-version: "v5"
+version: "v2"
 stage: "pythia_generation"  # One of: generation, merge_smear, simulation, digitization
 job_config:
   # Number of nodes will be calculated as n_runs / runs_per_node
-  n_runs: 128  # Number of runs (where a run produces N events)
-  runs_per_node: 128  # Number of runs per node
+  n_runs: 100  # Number of runs (where a run produces N events)
+  runs_per_node: 16  # Number of runs per node
   time_limit: "00:30:00"  # Time limit per job
-  qos: "regular"
-  execution_mode: "interactive"
+  qos: "debug"
+  depends_on:
+  execution_mode: "multi_node_slurm"
 
 validation_config:
-  time_limit: "00:10:00"
-  qos: "regular"
+  # time_limit: "00:10:00"
+  # qos: "regular"
 
 # Stage-specific configurations
-events: 32  # Number of events per run, total number of events will be n_runs * events
+events: 128  # Number of events per run, total number of events will be n_runs * events
 pileup: 200
 hard_process:
 vertex_sigma_xy: 0.0125 # mm
