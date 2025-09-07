@@ -59,8 +59,10 @@ def get_chunk_info(num_runs: int, run_size: int, chunk_size: int) -> Tuple[int, 
         Tuple of (num_events, runs_per_chunk, num_chunks)
     """
     num_events = num_runs * run_size
-    runs_per_chunk = chunk_size // run_size
-    num_chunks = (num_runs + runs_per_chunk - 1) // runs_per_chunk
+    # Ensure at least one run per chunk; use ceil division for runs_per_chunk
+    runs_per_chunk = max(1, (chunk_size + max(1, run_size) - 1) // max(1, run_size))
+    # Guard against zero by construction; compute chunks with ceil division
+    num_chunks = (num_runs + runs_per_chunk - 1) // runs_per_chunk if runs_per_chunk > 0 else 0
     
     return num_events, runs_per_chunk, num_chunks
 
