@@ -62,6 +62,24 @@ def create_base_parser(description: str) -> argparse.ArgumentParser:
         type=int,
         default=10,
     )
+    parser.add_argument(
+        "--chunk-index",
+        help="Process only this chunk index (0-based); overrides max-chunks",
+        type=int,
+        default=None,
+    )
+    parser.add_argument(
+        "--max-chunks",
+        help="Maximum number of chunks to process in interactive/testing",
+        type=int,
+        default=None,
+    )
+    parser.add_argument(
+        "--max-runs",
+        help="Maximum number of simulation runs to consider (caps input)",
+        type=int,
+        default=None,
+    )
     return parser
 
 def load_config(args: argparse.Namespace) -> argparse.Namespace:

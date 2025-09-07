@@ -262,6 +262,10 @@ def convert_hits(
     dataset_name: str,
     chunk_size: int = 1000,
     run_size: int = 10,
+    *,
+    chunk_index: int | None = None,
+    max_chunks: int | None = None,
+    max_runs: int | None = None,
 ) -> None:
     """
     Convert EDM4HEP tracker hits to HDF5 format.
@@ -283,6 +287,8 @@ def convert_hits(
     
     # Get run directories
     run_dirs = get_run_paths(base_dir)
+    if max_runs is not None:
+        run_dirs = run_dirs[:max(0, int(max_runs))]
     num_runs = len(run_dirs)
     
     # Calculate chunk information
@@ -297,15 +303,36 @@ def convert_hits(
     dataset_name = dataset_name.replace("/", ".")
     
     # Process chunks of runs
+    if chunk_index is not None:
+        # Single specified chunk
+        start_run = chunk_index * runs_per_chunk
+        if start_run < num_runs:
+            process_chunk_for_hits(
+                run_dirs,
+                start_run,
+                runs_per_chunk,
+                Path(output_dir),
+                dataset_name,
+                run_size,
+            )
+        else:
+            logging.warning(f"Requested chunk_index {chunk_index} is out of range; nothing to do.")
+        return
+
+    # Otherwise iterate, possibly capped by max_chunks
+    processed = 0
     for start_run in tqdm(range(0, num_runs, runs_per_chunk), desc="Processing chunks"):
+        if max_chunks is not None and processed >= int(max_chunks):
+            break
         process_chunk_for_hits(
-            run_dirs, 
-            start_run, 
-            runs_per_chunk, 
-            Path(output_dir), 
+            run_dirs,
+            start_run,
+            runs_per_chunk,
+            Path(output_dir),
             dataset_name,
-            run_size
+            run_size,
         )
+        processed += 1
 
 def main():
     # Create parser with common arguments
@@ -333,7 +360,10 @@ def main():
         config.output_dir,
         config.dataset_name,
         config.chunk_size,
-        config.run_size
+        config.run_size,
+        chunk_index=getattr(config, "chunk_index", None),
+        max_chunks=getattr(config, "max_chunks", None),
+        max_runs=getattr(config, "max_runs", None),
     )
 
 if __name__ == "__main__":
