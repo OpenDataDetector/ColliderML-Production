@@ -36,6 +36,9 @@ def process_event_for_particles(
     edm4hep_path: str,
     digi_particles_df: pd.DataFrame | None = None,
     preloaded_particles_df: pd.DataFrame | None = None,
+    preloaded_parents_df: pd.DataFrame | None = None,
+    min_particle_energy: float | None = None,
+    min_tracker_hits: int | None = None,
 ) -> pd.DataFrame:
     """
     Process particle data for a single event.
@@ -90,7 +93,39 @@ def process_event_for_particles(
                         how="left",
                     )
 
-        # Select relevant particle columns (include vertex_primary if present)
+        # Assign parent_id (first parent) when link info is available
+        if preloaded_parents_df is not None and not preloaded_parents_df.empty:
+            # Ensure we have the link-range columns
+            if {"parents_begin", "parents_end"}.issubset(particles_df.columns):
+                parent_id_series = pd.Series([np.nan] * len(particles_df), dtype="float64")
+                # Rows with at least one parent
+                has_parent = particles_df["parents_end"].values > particles_df["parents_begin"].values
+                if has_parent.any():
+                    begin_idx = particles_df.loc[has_parent, "parents_begin"].astype(int).values
+                    try:
+                        # parents df is per-event; iloc indices refer to per-event flattened list
+                        parent_ids = preloaded_parents_df.iloc[begin_idx]["particle_id"].values
+                        parent_id_series.loc[has_parent] = parent_ids
+                    except Exception:
+                        pass
+                particles_df = particles_df.copy()
+                particles_df["parent_id"] = parent_id_series
+
+        # Apply configurable minimum energy filter if requested
+        if min_particle_energy is not None and "energy" in particles_df.columns:
+            try:
+                particles_df = particles_df[particles_df["energy"] >= float(min_particle_energy)]
+            except Exception:
+                pass
+
+        # Apply configurable minimum tracker hits filter if available
+        if min_tracker_hits is not None and "num_tracker_hits" in particles_df.columns:
+            try:
+                particles_df = particles_df[particles_df["num_tracker_hits"] >= int(min_tracker_hits)]
+            except Exception:
+                pass
+
+        # Select relevant particle columns (include vertex_primary/parent_id if present)
         desired_columns = [
             "particle_id",
             "pdg_id", 
@@ -103,6 +138,7 @@ def process_event_for_particles(
             "num_tracker_hits",
             "num_calo_hits",
             "vertex_primary",
+            "parent_id",
         ]
         particle_columns = [c for c in desired_columns if c in particles_df.columns]
         
@@ -169,16 +205,19 @@ def process_run_for_particles(run_dir: Path, run_number: int, run_size: int) -> 
     # Batch load this full run for compatibility
     batch = EDM4hepEventBatch(str(edm4hep_path), events=range(run_size))
     parts_all = batch.get_particles_df()
+    parents_all = batch.get_parents_df()
 
     for local_event_num in tqdm(range(run_size), desc="Processing events", leave=False):
         global_event_num = run_number * run_size + local_event_num
         ev_parts = parts_all[parts_all.event_id == local_event_num] if not parts_all.empty else pd.DataFrame()
+        ev_parents = parents_all[parents_all.event_id == local_event_num] if not parents_all.empty else pd.DataFrame()
         ev_df = process_event_for_particles(
             global_event_num,
             local_event_num,
             str(edm4hep_path),
             digi_particles_df,
             preloaded_particles_df=ev_parts,
+            preloaded_parents_df=ev_parents,
         )
         if not ev_df.empty:
             run_events.append(ev_df)
@@ -198,6 +237,9 @@ def process_chunk_for_particles(
     dataset_name: str,
     run_size: int,
     force_overwrite: bool = False,
+    *,
+    min_particle_energy: float | None = None,
+    min_tracker_hits: int | None = None,
 ) -> None:
     """
     Process a chunk of runs and write one HDF5 file for the chunk.
@@ -267,6 +309,8 @@ def process_chunk_for_particles(
                     str(edm4hep_path),
                     digi_particles_df,
                     preloaded_particles_df=ev_parts,
+                    min_particle_energy=min_particle_energy,
+                    min_tracker_hits=min_tracker_hits,
                 )
                 if not ev_df.empty:
                     evs.append(ev_df)
@@ -292,6 +336,9 @@ def convert_particles(
     chunk_index: int | None = None,
     max_chunks: int | None = None,
     config_for_cap: dict | None = None,
+    *,
+    min_particle_energy: float | None = None,
+    min_tracker_hits: int | None = None,
 ) -> None:
     """
     Convert particle data to HDF5 files grouped by event.
@@ -323,6 +370,8 @@ def convert_particles(
             output_dir,
             dataset_name,
             run_size,
+            min_particle_energy=min_particle_energy,
+            min_tracker_hits=min_tracker_hits,
         ),
     )
 
@@ -373,6 +422,8 @@ def main():
         args.chunk_index,
         config.get("max_chunks"),
         config,
+        min_particle_energy=config.get("min_particle_energy"),
+        min_tracker_hits=config.get("min_tracker_hits"),
     )
 
 

@@ -1,13 +1,13 @@
 # Particle conversion postprocessing configuration
-campaign: "full_pileup_mini_pilot"
+campaign: "full_pileup_pilot"
 dataset: "ttbar"
-version: "v4"
+version: "v2"
 stage: "build_particles"
 
 # Job submission configuration (used by run_stage.py)
 job_config:
-  n_runs: 9
-  runs_per_node: 9
+  n_runs: 100
+  runs_per_node: 100
   time_limit: "04:00:00"
   qos: "regular"
   execution_mode: "interactive"
@@ -15,5 +15,6 @@ job_config:
 validation_config:
 
 # Conversion specifics
-chunk_size: 288   # Events per output file
+chunk_size: 100   # Events per output file
 run_size: 32     # Events per run
+max_chunks: 1

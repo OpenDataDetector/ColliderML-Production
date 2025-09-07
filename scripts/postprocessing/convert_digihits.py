@@ -191,7 +191,7 @@ def build_hdf5_digihits(df: pd.DataFrame, output_file: str) -> None:
                 'measurements',
                 data=records,
                 compression='gzip',
-                compression_opts=9,
+                compression_opts=6,
                 shuffle=True,
                 chunks=(chunk_len,)
             )
