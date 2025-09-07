@@ -15,6 +15,7 @@ import math
 from typing import Dict, List, Any
 
 from utils.utils import get_run_paths, ensure_output_dir, get_chunk_info
+from utils.driver import iterate_and_process_chunks
 from utils.edm4hep_utils import pixel_readouts, strip_readouts
 
 from utils.track_utils import (
@@ -252,8 +253,12 @@ def process_run_for_tracks(
 
 def process_chunk_for_tracks(
     run_dirs: List[Path],
+    start_event: int,
+    end_event: int,
     start_run: int,
-    runs_per_chunk: int,
+    start_local: int,
+    end_run: int,
+    end_local: int,
     output_dir: Path,
     dataset_name: str,
     run_size: int,
@@ -272,9 +277,7 @@ def process_chunk_for_tracks(
         file_patterns: Dictionary of file patterns and names
     """
     # Calculate event range for this chunk
-    start_event = start_run * run_size
-    end_run = min(start_run + runs_per_chunk, len(run_dirs))
-    end_event = (end_run * run_size) - 1
+    end_run = min(end_run, len(run_dirs) - 1)
     
     # Build output filename with event range
     output_file = output_dir / f"{dataset_name}.events{start_event}-{end_event}.h5"
@@ -284,18 +287,30 @@ def process_chunk_for_tracks(
         print(f"\nSkipping events {start_event}-{end_event} - output file already exists: {output_file}")
         return
         
-    chunk_run_dirs = run_dirs[start_run:end_run]
-    
-    # Process each run in chunk
+    # Process each run in chunk (event-sliced)
     all_track_data = []
-    for run_idx, run_dir in enumerate(tqdm(chunk_run_dirs, desc="Processing runs", leave=False)):
+    for abs_run in range(start_run, end_run + 1):
+        run_dir = run_dirs[abs_run]
         try:
-            run_events = process_run_for_tracks(
-                run_dir,
-                start_run + run_idx,
-                run_size,
-                file_patterns
-            )
+            # Determine local slice
+            if abs_run == start_run and abs_run == end_run:
+                local_events = range(start_local, end_local + 1)
+            elif abs_run == start_run:
+                local_events = range(start_local, run_size)
+            elif abs_run == end_run:
+                local_events = range(0, end_local + 1)
+            else:
+                local_events = range(run_size)
+
+            run_events_all = process_run_for_tracks(run_dir, abs_run, run_size, file_patterns)
+            run_events = []
+            for df in run_events_all:
+                if df.empty:
+                    continue
+                first_global = int(df.event_id.iloc[0])
+                local_id = first_global - abs_run * run_size
+                if local_id in local_events:
+                    run_events.append(df)
             all_track_data.extend(run_events)
         except Exception as e:
             print(f"\nSkipping run {start_run + run_idx} due to error: {str(e)}")
@@ -363,41 +378,27 @@ def main():
         
     dataset_name = output_path.replace("/", ".")
     
-    # Process chunks based on argument
-    if args.chunk_index is not None:
-        # Process only the specified chunk
-        chunk_idx = args.chunk_index
-        if chunk_idx < num_chunks:
-            start_run = chunk_idx * runs_per_chunk
-            print(f"Processing chunk {chunk_idx}: runs {start_run} to {min(start_run + runs_per_chunk, num_runs) - 1}")
-            
-            process_chunk_for_tracks(
-                run_dirs, 
-                start_run, 
-                runs_per_chunk, 
-                output_dir, 
-                dataset_name,
-                run_size,
-                file_patterns
-            )
-        else:
-            print(f"Chunk index {chunk_idx} is out of range (0-{num_chunks-1})")
-    else:
-        # Process all chunks sequentially
-        print(f"No chunk index provided - processing all {num_chunks} chunks sequentially")
-        for chunk_idx in range(num_chunks):
-            start_run = chunk_idx * runs_per_chunk
-            print(f"\nProcessing chunk {chunk_idx}/{num_chunks-1}: runs {start_run} to {min(start_run + runs_per_chunk, num_runs) - 1}")
-            
-            process_chunk_for_tracks(
-                run_dirs, 
-                start_run, 
-                runs_per_chunk, 
-                output_dir, 
-                dataset_name,
-                run_size,
-                file_patterns
-            )
+    # Use shared chunk driver with caps reflected in tqdm (supports interactive caps)
+    iterate_and_process_chunks(
+        run_dirs=run_dirs,
+        run_size=run_size,
+        chunk_size=chunk_size,
+        config=config,
+        chunk_index=args.chunk_index,
+        process_chunk_fn=lambda start_event, end_event, start_run, start_local, end_run, end_local: process_chunk_for_tracks(
+            run_dirs,
+            start_event,
+            end_event,
+            start_run,
+            start_local,
+            end_run,
+            end_local,
+            output_dir,
+            dataset_name,
+            run_size,
+            file_patterns,
+        ),
+    )
 
 if __name__ == "__main__":
     main()
