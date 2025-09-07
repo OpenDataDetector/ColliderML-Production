@@ -12,7 +12,7 @@
 # --- Dataset & Version ---
 campaign: "full_pileup_pilot"
 dataset: "ggf"
-version: "v1"
+version: "v2"
 stage: "madgraph_generation"
 
 # --- Job Configuration ---
