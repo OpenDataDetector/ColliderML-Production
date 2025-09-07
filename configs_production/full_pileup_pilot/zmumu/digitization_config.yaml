@@ -15,7 +15,7 @@ job_config:
   time_limit: "00:30:00"  # Time limit per job
   qos: "regular"
   execution_mode: "multi_node_slurm"
-  depends_on: "42402786"
+  depends_on:
 
 # --- Validation Configuration ---
 validation_config:
