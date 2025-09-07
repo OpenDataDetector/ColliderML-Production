@@ -119,8 +119,8 @@ class JobSubmitter:
                 if s:
                     job_ids.append(s)
             if job_ids:
-                logger.info(f"Applying SLURM dependency afterok on: {job_ids}")
-                return {"afterok": job_ids}
+                logger.info(f"Applying SLURM dependency afterany on: {job_ids}")
+                return {"afterany": job_ids}
         except Exception:
             logger.warning(f"Invalid depends_on value in job_config: {depends_on}")
         return None
