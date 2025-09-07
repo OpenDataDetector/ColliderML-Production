@@ -21,7 +21,8 @@ import logging
 import sys
 
 # Use relative imports to avoid conflicts with other utils modules
-from utils.path_utils import get_run_paths, make_dir, get_chunk_info
+from utils.path_utils import get_run_paths, make_dir
+from utils.driver import iterate_and_process_chunks
 from utils.track_utils import load_root_file
 
 sys.path.append("/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/OtherLibraries/pyedm4hep")
@@ -215,8 +216,12 @@ def process_run_for_digihits(run_dir: Path, run_number: int, run_size: int) -> L
 
 def process_chunk_for_digihits(
     run_dirs: List[Path],
+    start_event: int,
+    end_event: int,
     start_run: int,
-    runs_per_chunk: int,
+    start_local: int,
+    end_run: int,
+    end_local: int,
     output_dir: Path,
     dataset_name: str,
     run_size: int,
@@ -237,9 +242,8 @@ def process_chunk_for_digihits(
     Returns:
         None
     """
-    start_event = start_run * run_size
-    end_run = min(start_run + runs_per_chunk, len(run_dirs))
-    end_event = (end_run * run_size) - 1
+    # start_event/end_event precomputed by driver (event-based chunking)
+    end_run = min(end_run, len(run_dirs) - 1)
 
     output_file = Path(output_dir) / f"{dataset_name}.reco.tracker_hits.events{start_event}-{end_event}.h5"
     if output_file.exists() and not force_overwrite:
@@ -248,9 +252,30 @@ def process_chunk_for_digihits(
 
     all_event_dfs: List[pd.DataFrame] = []
     total_rows = 0
-    for run_idx, run_dir in enumerate(tqdm(run_dirs[start_run:end_run], desc="Processing runs", leave=False)):
+    for abs_run in range(start_run, end_run + 1):
+        run_dir = run_dirs[abs_run]
         try:
-            evs = process_run_for_digihits(run_dir, start_run + run_idx, run_size)
+            # Determine local event slice for this run
+            if abs_run == start_run and abs_run == end_run:
+                local_events = range(start_local, end_local + 1)
+            elif abs_run == start_run:
+                local_events = range(start_local, run_size)
+            elif abs_run == end_run:
+                local_events = range(0, end_local + 1)
+            else:
+                local_events = range(run_size)
+
+            # Process only the local slice
+            evs_all = process_run_for_digihits(run_dir, abs_run, run_size)
+            evs = []
+            for df in evs_all:
+                # df carries a single global event_id per call; compute its local id
+                if df.empty:
+                    continue
+                first_global = int(df.event_id.iloc[0])
+                local_id = first_global - abs_run * run_size
+                if local_id in local_events:
+                    evs.append(df)
             all_event_dfs.extend(evs)
             total_rows += sum(len(df) for df in evs)
         except Exception as e:
@@ -271,6 +296,8 @@ def convert_digihits(
     chunk_size: int = 1000,
     run_size: int = 10,
     chunk_index: int | None = None,
+    max_chunks: int | None = None,
+    config_for_cap: dict | None = None,
 ) -> None:
     """
     Convert digitized measurements to HDF5 files grouped by event.
@@ -279,58 +306,31 @@ def convert_digihits(
     output_base_dir = Path(output_base_dir)
 
     run_dirs = get_run_paths(base_dir)
-    num_runs = len(run_dirs)
-
-    num_events, runs_per_chunk, num_chunks = get_chunk_info(num_runs, run_size, chunk_size)
-    logging.info(f"Processing {num_runs} runs ({num_events} events), {runs_per_chunk} runs/chunk, {num_chunks} chunks")
 
     output_dir = make_dir(output_base_dir, f"{dataset_name}/reco/tracker_hits")
     dataset_name = dataset_name.replace("/", ".")
     
-    if chunk_index is None:
-        # Optional cap for interactive/testing: use config max_chunks if available,
-        # else if running interactively treat job_config.n_runs as number of chunks to do
-        max_chunks = None
-        try:
-            # 'config' may be in global scope via main(); if not, skip
-            from typing import Any as _Any  # no-op import to keep linter happy when try fails
-            max_chunks = config.get("max_chunks") if isinstance(config, dict) else None
-            if max_chunks is None:
-                job_cfg = config.get("job_config") if isinstance(config, dict) else None
-                if job_cfg and isinstance(job_cfg, dict):
-                    # Only apply when interactive; run_stage passes execution_mode in job_config
-                    exec_mode = job_cfg.get("execution_mode")
-                    if exec_mode == "interactive":
-                        max_chunks = job_cfg.get("n_runs")
-        except Exception:
-            pass
-
-        produced = 0
-        for start_run in tqdm(range(0, num_runs, runs_per_chunk), desc="Processing chunks"):
-            if max_chunks is not None and produced >= int(max_chunks):
-                break
-            process_chunk_for_digihits(
-                run_dirs,
-                start_run,
-                runs_per_chunk,
-                output_dir,
-                dataset_name,
-                run_size,
-            )
-            produced += 1
-    else:
-        start_run = chunk_index * runs_per_chunk
-        if start_run >= num_runs:
-            logging.warning(f"Chunk index {chunk_index} out of range. num_runs={num_runs}, runs_per_chunk={runs_per_chunk}")
-            return
-        process_chunk_for_digihits(
+    iterate_and_process_chunks(
+        run_dirs=run_dirs,
+        run_size=run_size,
+        chunk_size=chunk_size,
+        config=(
+            {"max_chunks": max_chunks} if config_for_cap is None else {**config_for_cap, **({"max_chunks": max_chunks} if max_chunks is not None else {})}
+        ),
+        chunk_index=chunk_index,
+        process_chunk_fn=lambda start_event, end_event, start_run, start_local, end_run, end_local: process_chunk_for_digihits(
             run_dirs,
+            start_event,
+            end_event,
             start_run,
-            runs_per_chunk,
+            start_local,
+            end_run,
+            end_local,
             output_dir,
             dataset_name,
             run_size,
-        )
+        ),
+    )
 
 
 def main():
@@ -370,6 +370,10 @@ def main():
     logging.info(f"Output root: {output_base_dir}")
     logging.info(f"Chunk size: {chunk_size}, Run size: {run_size}")
 
+    # Save config path for optional cap inference
+    global _CONFIG_PATH_FOR_LOGGING  # type: ignore[declared-but-not-used]
+    _CONFIG_PATH_FOR_LOGGING = args.config
+
     convert_digihits(
         input_base_dir,
         output_base_dir,
@@ -377,6 +381,8 @@ def main():
         chunk_size,
         run_size,
         args.chunk_index,
+        config.get("max_chunks"),
+        config,
     )
 
 
