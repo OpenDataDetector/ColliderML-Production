@@ -310,6 +310,43 @@ def run_generate_events_compile(process_dir: Path, run_name: str, logger: loggin
         logger.error(f"Error running generate_events (compile): {e}")
         raise
 
+
+def run_lo_mlm_with_mg5_script(process_dir: Path, mg5_exe: Path, job_scratch_dir: Path, config, logger: logging.Logger):
+    """Launch LO+MLM with Pythia8 non-interactively via mg5 script.
+
+    This avoids interactive prompts by providing a small command file to mg5_aMC.
+    We rely on pre-customized cards on disk and only direct MG to use Pythia8.
+    """
+    script_path = job_scratch_dir / "mg5_launch_lo_mlm.txt"
+    logger.info(f"Writing MG5 non-interactive launch script at {script_path}")
+
+    lines = []
+    # Point MG5 to the already prepared/compiled process directory
+    lines.append(f"launch {process_dir}")
+    # Force Pythia8 shower step without interactive prompt
+    lines.append("shower=PYTHIA8")
+
+    # Pass run-scoped controls (events/seed) in case MG5 reads them here
+    if hasattr(config, 'events') and config.events is not None:
+        lines.append(f"set nevents {config.events}")
+    if hasattr(config, 'seed') and config.seed is not None:
+        lines.append(f"set iseed {config.seed}")
+
+    try:
+        with open(script_path, 'w') as f:
+            f.write("\n".join(lines) + "\n")
+    except Exception as e:
+        logger.error(f"Failed to write MG5 script: {e}")
+        raise
+
+    cmd = [str(mg5_exe), str(script_path)]
+    logger.info(f"Executing MG5 non-interactive LO+MLM launch: {' '.join(cmd)}")
+    try:
+        run_command(cmd, stream=True, capture=False, merge_streams=True, logger=logger)
+    except Exception as e:
+        logger.error(f"Error running MG5 LO+MLM launch: {e}")
+        raise
+
 def process_output_files(copied_process_dir, effective_output_dir, run_name, splitting_enabled,
                         split_events_per_file, split_output_filename, logger):
     """Process and move/split output files from MadGraph."""
@@ -502,8 +539,9 @@ def main():
         run_mode = getattr(config, 'run_mode', 'nlo_fxfx')
         if str(run_mode).lower() == 'lo_mlm':
             logger.info("=== STEP 3: Launch MadGraph Event Generation (compile, LO+MLM) ===")
-            run_name = "run_build"
-            run_generate_events_compile(copied_process_dir, run_name, logger)
+            # Use MG5 script pathway to trigger Pythia8 shower non-interactively
+            run_name = None
+            run_lo_mlm_with_mg5_script(copied_process_dir, mg5_exe, job_scratch_dir, config, logger)
         else:
             logger.info("=== STEP 3: Launch MadGraph Event Generation (no-compile, NLO/FxFx) ===")
             run_name = "run_build"
