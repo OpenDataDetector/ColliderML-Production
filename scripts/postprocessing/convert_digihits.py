@@ -26,7 +26,7 @@ from utils.driver import iterate_and_process_chunks
 from utils.track_utils import load_root_file
 
 sys.path.append("/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/OtherLibraries/pyedm4hep")
-from pyedm4hep import EDM4hepEvent
+from pyedm4hep import EDM4hepEvent, EDM4hepEventBatch
 
 
 logging.basicConfig(
@@ -166,11 +166,34 @@ def build_hdf5_digihits(df: pd.DataFrame, output_file: str) -> None:
             # Drop event_id for storage
             data_df = event_df.drop(columns=['event_id'], errors='ignore')
 
+            # Downcast numeric dtypes for better compression
+            float_cols = [c for c in data_df.columns if pd.api.types.is_float_dtype(data_df[c])]
+            for c in float_cols:
+                data_df[c] = data_df[c].astype('float32')
+
+            # Cast integer columns to smaller types when safe (keep cell_id as int64)
+            int_cols = [c for c in data_df.columns if pd.api.types.is_integer_dtype(data_df[c])]
+            for c in int_cols:
+                if c == 'cell_id':
+                    continue
+                # prefer int32 to reduce size
+                try:
+                    data_df[c] = data_df[c].astype('int32')
+                except Exception:
+                    # fallback if overflow
+                    data_df[c] = data_df[c].astype('int64')
+
+            # Prepare records and choose chunking
+            records = data_df.to_records(index=False)
+            chunk_len = max(1, min(len(records), 65536))
+
             event_group.create_dataset(
                 'measurements',
-                data=data_df.to_records(index=False),
-                # compression='gzip', # TODO: Investigate compression (reduces size by 2x)
-                # compression_opts=9
+                data=records,
+                compression='gzip',
+                compression_opts=6,
+                shuffle=True,
+                chunks=(chunk_len,)
             )
 
 
@@ -192,22 +215,19 @@ def process_run_for_digihits(run_dir: Path, run_number: int, run_size: int) -> L
         logging.error(f"Failed to load measurements: {e}")
         return []
 
-    # If EDM4hep exists, we will merge per-event with tracker
-    edm_available = edm4hep_path.exists()
+    # Batch approach: caller may still use this legacy function; default to full range
+    if not edm4hep_path.exists():
+        logging.warning(f"Missing EDM4hep file: {edm4hep_path}")
+        return []
+
+    batch = EDM4hepEventBatch(str(edm4hep_path), events=range(run_size))
+    hits_all = batch.get_tracker_hits_df()
 
     run_events: List[pd.DataFrame] = []
     for local_event_num in tqdm(range(run_size), desc="Processing events"):
         global_event_num = run_number * run_size + local_event_num
-
-        tracker_df = None
-        if edm_available:
-            try:
-                event = EDM4hepEvent(str(edm4hep_path), event_index=local_event_num)
-                tracker_df = event.get_tracker_hits_df()
-            except Exception as e:
-                logging.warning(f"Failed to load tracker for event {local_event_num} in {run_dir}: {e}")
-
-        ev_df = process_event_for_digihits(global_event_num, local_event_num, meas_df, tracker_df)
+        ev_hits = hits_all[hits_all.event_id == local_event_num] if not hits_all.empty else None
+        ev_df = process_event_for_digihits(global_event_num, local_event_num, meas_df, ev_hits)
         if not ev_df.empty:
             run_events.append(ev_df)
 
@@ -265,17 +285,34 @@ def process_chunk_for_digihits(
             else:
                 local_events = range(run_size)
 
-            # Process only the local slice
-            evs_all = process_run_for_digihits(run_dir, abs_run, run_size)
+            # Batch load only needed local events from edm4hep once
+            edm4hep_path = run_dir / "edm4hep.root"
+            if not edm4hep_path.exists():
+                logging.warning(f"Missing EDM4hep file: {edm4hep_path}")
+                continue
+
+            batch = EDM4hepEventBatch(str(edm4hep_path), events=list(local_events))
+            hits_all = batch.get_tracker_hits_df()  # load tracker collection lazily
+
             evs = []
-            for df in evs_all:
-                # df carries a single global event_id per call; compute its local id
-                if df.empty:
+            for local_event_num in local_events:
+                global_event_num = abs_run * run_size + local_event_num
+
+                # Use measurements for this local event
+                meas_path = run_dir / "measurements.root"
+                if not meas_path.exists():
+                    logging.warning(f"Missing measurements file: {meas_path}")
                     continue
-                first_global = int(df.event_id.iloc[0])
-                local_id = first_global - abs_run * run_size
-                if local_id in local_events:
-                    evs.append(df)
+                meas_df = load_root_file(str(meas_path))
+                if "event_nr" in meas_df.columns:
+                    ev_meas = meas_df[meas_df.event_nr == local_event_num].copy()
+                else:
+                    ev_meas = meas_df.copy()
+
+                ev_hits = hits_all[hits_all.event_id == local_event_num] if not hits_all.empty else None
+                ev_df = process_event_for_digihits(global_event_num, local_event_num, ev_meas, ev_hits)
+                if not ev_df.empty:
+                    evs.append(ev_df)
             all_event_dfs.extend(evs)
             total_rows += sum(len(df) for df in evs)
         except Exception as e:
