@@ -96,7 +96,7 @@ def main():
 
     if issues_total:
         bad_sorted = sorted(runs_with_issues, key=int)
-        logger.error(f"Runs with issues ({len(bad_sorted)}): {', '.join(bad_sorted)}")
+        logger.error(f"Runs with issues ({len(bad_sorted)}): {' '.join(bad_sorted)}")
         logger.error(f"Validation FAILED with {len(issues_total)} issue(s)")
         sys.exit(1)
     else:
