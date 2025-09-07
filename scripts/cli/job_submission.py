@@ -231,7 +231,7 @@ class JobSubmitter:
             for cmd in command_info["env_setup_commands"]:
                 slurm.add_cmd(cmd)
 
-            srun_options = "--exact --kill-on-bad-exit=0 --mpi=none"
+            srun_options = "--exact --kill-on-bad-exit=0"
             # Always wrap payload in bash -c so shell features (e.g., $((...))) are evaluated per task
             if run_ids_setup_cmd:
                 setup_clean = run_ids_setup_cmd.replace(" && \\", "").strip()
@@ -240,7 +240,7 @@ class JobSubmitter:
                 payload = f"{command_info['python_command']}"
             # Quote payload, escaping any embedded quotes
             srun_cmd = (
-                f"srun {srun_options} bash -c {payload}"
+                f"srun {srun_options} bash -c \"{payload}\""
             )
             slurm.add_cmd(srun_cmd)
     
@@ -432,14 +432,14 @@ class JobSubmitter:
                 # Move env setup outside srun for non-shifter
                 for cmd in command_info["env_setup_commands"]:
                     slurm.add_cmd(cmd)
-                srun_options = "--exact --kill-on-bad-exit=0 --mpi=none"
+                srun_options = "--exact --kill-on-bad-exit=0"
                 if run_ids_setup_cmd:
                     setup_clean = run_ids_setup_cmd.replace(" && \\", "").strip()
                     payload = f"{setup_clean} && {command_info['python_command']}"
                 else:
                     payload = f"{command_info['python_command']}"
                 srun_cmd = (
-                    f"srun {srun_options} bash -c {payload}"
+                    f"srun {srun_options} bash -c \"{payload}\""
                 )
                 slurm.add_cmd(srun_cmd)
 
