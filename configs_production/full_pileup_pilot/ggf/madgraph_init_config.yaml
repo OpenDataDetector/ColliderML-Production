@@ -45,7 +45,6 @@ run_mode: "lo_mlm"
 
 card_customizations:
   run_card:
-    "parton_shower": "PYTHIA8"
     "ebeam1": 7000.0
     "ebeam2": 7000.0
     "ickkw": 1
