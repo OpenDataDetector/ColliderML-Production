@@ -5,7 +5,7 @@
 # --- Dataset & Version ---
 campaign: "full_pileup_pilot"
 dataset: "dihiggs"
-version: "v1"
+version: "v2"
 stage: "madgraph_generation"
 
 # --- Job Configuration ---
@@ -14,7 +14,8 @@ job_config:
   runs_per_node: 1
   time_limit: "04:00:00"
   qos: "regular"
-  execution_mode: "monolithic_slurm"
+  # execution_mode: "monolithic_slurm"
+  execution_mode: "interactive"
 
 validation_config:
 
@@ -30,6 +31,7 @@ generation_scratch_dir: "{madgraph.generation_scratch_dir}"
 run_mode: "lo_mlm"
 card_customizations:
   run_card:
+    "ptj": 20.0
     # leave room for per-run overrides if needed
   pythia8_card: {}
 
