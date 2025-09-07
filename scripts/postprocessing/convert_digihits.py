@@ -285,12 +285,20 @@ def process_chunk_for_digihits(
             else:
                 local_events = range(run_size)
 
+            # Load measurements once per run and (optionally) prefilter to local events
+            meas_path = run_dir / "measurements.root"
+            if not meas_path.exists():
+                logging.warning(f"Missing measurements file: {meas_path}")
+                continue
+            meas_df_all = load_root_file(str(meas_path))
+            if "event_nr" in meas_df_all.columns:
+                meas_df_all = meas_df_all[meas_df_all.event_nr.isin(local_events)].copy()
+
             # Batch load only needed local events from edm4hep once
             edm4hep_path = run_dir / "edm4hep.root"
             if not edm4hep_path.exists():
                 logging.warning(f"Missing EDM4hep file: {edm4hep_path}")
                 continue
-
             batch = EDM4hepEventBatch(str(edm4hep_path), events=list(local_events))
             hits_all = batch.get_tracker_hits_df()  # load tracker collection lazily
 
@@ -298,16 +306,11 @@ def process_chunk_for_digihits(
             for local_event_num in local_events:
                 global_event_num = abs_run * run_size + local_event_num
 
-                # Use measurements for this local event
-                meas_path = run_dir / "measurements.root"
-                if not meas_path.exists():
-                    logging.warning(f"Missing measurements file: {meas_path}")
-                    continue
-                meas_df = load_root_file(str(meas_path))
-                if "event_nr" in meas_df.columns:
-                    ev_meas = meas_df[meas_df.event_nr == local_event_num].copy()
+                # Slice measurements for this local event from in-memory DataFrame
+                if "event_nr" in meas_df_all.columns:
+                    ev_meas = meas_df_all[meas_df_all.event_nr == local_event_num].copy()
                 else:
-                    ev_meas = meas_df.copy()
+                    ev_meas = meas_df_all.copy()
 
                 ev_hits = hits_all[hits_all.event_id == local_event_num] if not hits_all.empty else None
                 ev_df = process_event_for_digihits(global_event_num, local_event_num, ev_meas, ev_hits)
@@ -316,7 +319,7 @@ def process_chunk_for_digihits(
             all_event_dfs.extend(evs)
             total_rows += sum(len(df) for df in evs)
         except Exception as e:
-            logging.error(f"Error processing run {start_run + run_idx}: {e}")
+            logging.error(f"Error processing run {abs_run}: {e}")
 
     if all_event_dfs:
         all_df = pd.concat(all_event_dfs, ignore_index=True)
