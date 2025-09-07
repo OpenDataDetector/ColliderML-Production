@@ -288,7 +288,27 @@ def convert_digihits(
     dataset_name = dataset_name.replace("/", ".")
     
     if chunk_index is None:
+        # Optional cap for interactive/testing: use config max_chunks if available,
+        # else if running interactively treat job_config.n_runs as number of chunks to do
+        max_chunks = None
+        try:
+            # 'config' may be in global scope via main(); if not, skip
+            from typing import Any as _Any  # no-op import to keep linter happy when try fails
+            max_chunks = config.get("max_chunks") if isinstance(config, dict) else None
+            if max_chunks is None:
+                job_cfg = config.get("job_config") if isinstance(config, dict) else None
+                if job_cfg and isinstance(job_cfg, dict):
+                    # Only apply when interactive; run_stage passes execution_mode in job_config
+                    exec_mode = job_cfg.get("execution_mode")
+                    if exec_mode == "interactive":
+                        max_chunks = job_cfg.get("n_runs")
+        except Exception:
+            pass
+
+        produced = 0
         for start_run in tqdm(range(0, num_runs, runs_per_chunk), desc="Processing chunks"):
+            if max_chunks is not None and produced >= int(max_chunks):
+                break
             process_chunk_for_digihits(
                 run_dirs,
                 start_run,
@@ -297,6 +317,7 @@ def convert_digihits(
                 dataset_name,
                 run_size,
             )
+            produced += 1
     else:
         start_run = chunk_index * runs_per_chunk
         if start_run >= num_runs:
