@@ -23,7 +23,7 @@ from utils.driver import iterate_and_process_chunks
 from utils.track_utils import load_root_file
 
 sys.path.append("/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/OtherLibraries/pyedm4hep")
-from pyedm4hep import EDM4hepEvent
+from pyedm4hep import EDM4hepEvent, EDM4hepEventBatch
 
 logging.basicConfig(
     level=logging.INFO,
@@ -35,6 +35,7 @@ def process_event_for_particles(
     local_event_num: int,
     edm4hep_path: str,
     digi_particles_df: pd.DataFrame | None = None,
+    preloaded_particles_df: pd.DataFrame | None = None,
 ) -> pd.DataFrame:
     """
     Process particle data for a single event.
@@ -48,11 +49,12 @@ def process_event_for_particles(
         DataFrame containing particle data for this event
     """
     try:
-        # Load EDM4hep event
-        event = EDM4hepEvent(edm4hep_path, event_index=local_event_num)
-        
-        # Get particle data from EDM4hep
-        particles_df = event.get_particles_df()
+        # Use preloaded per-event slice if provided; otherwise read from file
+        if preloaded_particles_df is not None:
+            particles_df = preloaded_particles_df.copy()
+        else:
+            event = EDM4hepEvent(edm4hep_path, event_index=local_event_num)
+            particles_df = event.get_particles_df()
         
         # Reset index and add particle_id
         particles_df.reset_index(drop=True, inplace=True)
@@ -164,14 +166,19 @@ def process_run_for_particles(run_dir: Path, run_number: int, run_size: int) -> 
             logging.warning(f"Failed to load particles.root at {particles_root_path}: {e}")
 
     run_events: List[pd.DataFrame] = []
+    # Batch load this full run for compatibility
+    batch = EDM4hepEventBatch(str(edm4hep_path), events=range(run_size))
+    parts_all = batch.get_particles_df()
+
     for local_event_num in tqdm(range(run_size), desc="Processing events", leave=False):
         global_event_num = run_number * run_size + local_event_num
-
+        ev_parts = parts_all[parts_all.event_id == local_event_num] if not parts_all.empty else pd.DataFrame()
         ev_df = process_event_for_particles(
             global_event_num,
             local_event_num,
             str(edm4hep_path),
             digi_particles_df,
+            preloaded_particles_df=ev_parts,
         )
         if not ev_df.empty:
             run_events.append(ev_df)
@@ -230,19 +237,43 @@ def process_chunk_for_particles(
             else:
                 local_events = range(run_size)
 
-            evs_all = process_run_for_particles(run_dir, abs_run, run_size)
-            evs = []
-            for df in evs_all:
-                if df.empty:
-                    continue
-                first_global = int(df.event_id.iloc[0])
-                local_id = first_global - abs_run * run_size
-                if local_id in local_events:
-                    evs.append(df)
+            # Optional per-run digi particles (particles.root)
+            particles_root_path = run_dir / "particles.root"
+            digi_particles_df: pd.DataFrame | None = None
+            if particles_root_path.exists():
+                try:
+                    digi_particles_df = load_root_file(str(particles_root_path))
+                    if "event_id" not in digi_particles_df.columns and "event_nr" in digi_particles_df.columns:
+                        digi_particles_df = digi_particles_df.rename(columns={"event_nr": "event_id"})
+                    digi_particles_df = digi_particles_df[digi_particles_df.get("event_id", -1).isin(local_events)].copy()
+                except Exception as e:
+                    logging.warning(f"Failed to load particles.root at {particles_root_path}: {e}")
+
+            # Batch load only the requested events from edm4hep once
+            edm4hep_path = run_dir / "edm4hep.root"
+            if not edm4hep_path.exists():
+                logging.warning(f"Missing EDM4hep file: {edm4hep_path}")
+                continue
+            batch = EDM4hepEventBatch(str(edm4hep_path), events=list(local_events))
+            parts_all = batch.get_particles_df()
+
+            evs: List[pd.DataFrame] = []
+            for local_event_num in local_events:
+                global_event_num = abs_run * run_size + local_event_num
+                ev_parts = parts_all[parts_all.event_id == local_event_num] if not parts_all.empty else pd.DataFrame()
+                ev_df = process_event_for_particles(
+                    global_event_num,
+                    local_event_num,
+                    str(edm4hep_path),
+                    digi_particles_df,
+                    preloaded_particles_df=ev_parts,
+                )
+                if not ev_df.empty:
+                    evs.append(ev_df)
             all_event_dfs.extend(evs)
             total_rows += sum(len(df) for df in evs)
         except Exception as e:
-            logging.error(f"Error processing run {start_run + run_idx}: {e}")
+            logging.error(f"Error processing run {abs_run}: {e}")
 
     if all_event_dfs:
         all_df = pd.concat(all_event_dfs, ignore_index=True)
