@@ -122,6 +122,7 @@ def process_event_for_particles(
         if min_tracker_hits is not None and "num_tracker_hits" in particles_df.columns:
             try:
                 particles_df = particles_df[particles_df["num_tracker_hits"] >= int(min_tracker_hits)]
+                print(f"Event {event_id}: {len(particles_df)} particles after min_tracker_hits filter")
             except Exception:
                 pass
 
@@ -177,7 +178,7 @@ def build_hdf5_particles(df: pd.DataFrame, output_file: str) -> None:
                 'particles',
                 data=data_df.to_records(index=False),
                 compression='gzip',
-                compression_opts=9
+                compression_opts=6
             )
 
 
@@ -266,7 +267,7 @@ def process_chunk_for_particles(
 
     all_event_dfs: List[pd.DataFrame] = []
     total_rows = 0
-    for abs_run in range(start_run, end_run + 1):
+    for abs_run in tqdm(range(start_run, end_run + 1), desc="Processing runs", leave=False):
         run_dir = run_dirs[abs_run]
         try:
             # Determine slice of local events for this run
@@ -300,7 +301,7 @@ def process_chunk_for_particles(
             parts_all = batch.get_particles_df()
 
             evs: List[pd.DataFrame] = []
-            for local_event_num in local_events:
+            for local_event_num in tqdm(local_events, desc="Processing events", leave=False):
                 global_event_num = abs_run * run_size + local_event_num
                 ev_parts = parts_all[parts_all.event_id == local_event_num] if not parts_all.empty else pd.DataFrame()
                 ev_df = process_event_for_particles(
