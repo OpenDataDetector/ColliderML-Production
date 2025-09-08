@@ -197,7 +197,7 @@ def process_run_for_particles(run_dir: Path, run_number: int, run_size: int) -> 
     digi_particles_df: pd.DataFrame | None = None
     if particles_root_path.exists():
         try:
-            digi_particles_df = load_root_file(str(particles_root_path))
+            digi_particles_df = load_root_file(str(particles_root_path), ignore_variable_columns=False)
         except Exception as e:
             logging.warning(f"Failed to load particles.root at {particles_root_path}: {e}")
 

@@ -1,0 +1,17 @@
+# configs_production/full_pileup_pilot/ttbar/tracks_conversion.yaml
+campaign: "full_pileup_pilot"
+dataset: "ttbar"
+version: "v2"
+stage: "build_tracks"
+
+job_config:
+  n_runs: 16            # number of chunk tasks (postprocessing)
+  runs_per_node: 8      # concurrent chunk tasks per node
+  time_limit: "00:30:00"
+  qos: "regular"
+  execution_mode: "interactive"  # use "interactive" for local testing
+
+# Track conversion parameters
+chunk_size: 100         # target events per output HDF5 file
+run_size: 128            # events per simulated run
+max_chunks: 1          # optional cap for interactive tests
