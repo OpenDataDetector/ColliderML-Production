@@ -284,7 +284,7 @@ def process_chunk_for_particles(
             digi_particles_df: pd.DataFrame | None = None
             if particles_root_path.exists():
                 try:
-                    digi_particles_df = load_root_file(str(particles_root_path))
+                    digi_particles_df = load_root_file(str(particles_root_path), ignore_variable_columns=False)
                     if "event_id" not in digi_particles_df.columns and "event_nr" in digi_particles_df.columns:
                         digi_particles_df = digi_particles_df.rename(columns={"event_nr": "event_id"})
                     digi_particles_df = digi_particles_df[digi_particles_df.get("event_id", -1).isin(local_events)].copy()
