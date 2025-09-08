@@ -90,7 +90,7 @@ def process_event_for_particles(
                         particles_df,
                         local_digi[right_cols],
                         on=merge_cols,
-                        how="left",
+                        how="inner",
                     )
 
         # Assign parent_id (first parent) when link info is available
@@ -299,17 +299,20 @@ def process_chunk_for_particles(
                 continue
             batch = EDM4hepEventBatch(str(edm4hep_path), events=list(local_events))
             parts_all = batch.get_particles_df()
+            parents_all = batch.get_parents_df()
 
             evs: List[pd.DataFrame] = []
             for local_event_num in tqdm(local_events, desc="Processing events", leave=False):
                 global_event_num = abs_run * run_size + local_event_num
                 ev_parts = parts_all[parts_all.event_id == local_event_num] if not parts_all.empty else pd.DataFrame()
+                ev_parents = parents_all[parents_all.event_id == local_event_num] if 'parents_all' in locals() and not parents_all.empty else pd.DataFrame()
                 ev_df = process_event_for_particles(
                     global_event_num,
                     local_event_num,
                     str(edm4hep_path),
                     digi_particles_df,
                     preloaded_particles_df=ev_parts,
+                    preloaded_parents_df=ev_parents,
                     min_particle_energy=min_particle_energy,
                     min_tracker_hits=min_tracker_hits,
                 )

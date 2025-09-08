@@ -15,7 +15,7 @@ job_config:
 validation_config:
 
 # Conversion specifics
-chunk_size: 1000   # Events per output file
+chunk_size: 100   # Events per output file
 run_size: 128     # Events per run
 max_chunks: 1
 min_tracker_hits: 1
