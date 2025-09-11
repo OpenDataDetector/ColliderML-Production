@@ -29,10 +29,7 @@ sys.path.append("/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/OtherL
 from pyedm4hep import EDM4hepEvent, EDM4hepEventBatch
 
 
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s'
-)
+logger = logging.getLogger(__name__)
 
 
 def _convert_detector_to_int(df: pd.DataFrame) -> pd.DataFrame:
@@ -56,7 +53,9 @@ def _convert_detector_to_int(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def _merge_measurements_with_tracker(meas_df: pd.DataFrame, tracker_df: pd.DataFrame, include_meas_cols: List[str] = [], include_simhits_cols: List[str] = []) -> pd.DataFrame:
+def _merge_measurements_with_tracker(meas_df: pd.DataFrame, tracker_df: pd.DataFrame,
+                                     include_meas_cols: List[str] = [],
+                                     include_simhits_cols: List[str] = []) -> pd.DataFrame:
     """
     Merge measurements and EDM4hep tracker hits by coordinate matching.
 
@@ -79,20 +78,22 @@ def _merge_measurements_with_tracker(meas_df: pd.DataFrame, tracker_df: pd.DataF
     meas_df.loc[:, ["true_x", "true_y", "true_z"]] = meas_df[["true_x", "true_y", "true_z"]].astype(np.float32)
     tracker_df.loc[:, ["x", "y", "z"]] = tracker_df[["x", "y", "z"]].astype(np.float32)
 
-    # Select minimal simulation hits columns to append
+    # Select minimal simulation hits columns to append (intersect with available)
     if not include_simhits_cols:
         include_simhits_cols = [
             "x", "y", "z", "time", "px", "py", "pz", "particle_id", "cellID", "detector", "EDep", "pathLength"
         ]
-    rhs = tracker_df[include_simhits_cols].copy()
+    rhs_cols = [c for c in include_simhits_cols if c in tracker_df.columns]
+    rhs = tracker_df[rhs_cols].copy() if rhs_cols else pd.DataFrame(index=tracker_df.index)
 
-    # Select minimal measurement columns to append
+    # Select minimal measurement columns to append (intersect with available)
     if not include_meas_cols:
         include_meas_cols = [
             "true_x", "true_y", "true_z", "rec_x", "rec_y", "rec_z",
             "volume_id", "layer_id", "surface_id"
         ]
-    lhs = meas_df[include_meas_cols].copy()
+    lhs_cols = [c for c in include_meas_cols if c in meas_df.columns]
+    lhs = meas_df[lhs_cols].copy() if lhs_cols else meas_df.copy()
 
     merged = pd.merge(
         lhs,
@@ -103,7 +104,7 @@ def _merge_measurements_with_tracker(meas_df: pd.DataFrame, tracker_df: pd.DataF
     )
 
     # Drop the original true_x, true_y, true_z from measurements (now duplicated)
-    merged = merged.drop(columns=["true_x", "true_y", "true_z"])
+    merged = merged.drop(columns=["true_x", "true_y", "true_z"], errors='ignore')
 
     # Rename columns to match final naming convention
     # Simhits x,y,z become true_x, true_y, true_z
@@ -118,7 +119,7 @@ def _merge_measurements_with_tracker(meas_df: pd.DataFrame, tracker_df: pd.DataF
         "cellID": "cell_id",
         "EDep": "e_dep",
         "pathLength": "path_length"
-    })
+    }, errors='ignore')
 
     # Convert detector strings to integers
     merged = _convert_detector_to_int(merged)
@@ -147,6 +148,22 @@ def process_event_for_digihits(event_id: int, local_event_num: int, measurements
     # Event id is the global id passed in
     event_measurements["event_id"] = event_id
     return event_measurements
+
+
+def write_digihits_with_selection(
+    df: pd.DataFrame,
+    output_file: str,
+    columns_keep: List[str] | None = None,
+) -> None:
+    """Write merged digi-hits DataFrame to H5 with optional column selection."""
+    if df.empty:
+        return
+    if columns_keep:
+        cols = [c for c in columns_keep if c in df.columns]
+        if 'event_id' not in cols and 'event_id' in df.columns:
+            cols = cols + ['event_id']
+        df = df[cols].copy()
+    build_hdf5_digihits(df, output_file)
 
 
 def build_hdf5_digihits(df: pd.DataFrame, output_file: str) -> None:
@@ -246,6 +263,7 @@ def process_chunk_for_digihits(
     dataset_name: str,
     run_size: int,
     force_overwrite: bool = False,
+    columns_keep: List[str] | None = None,
 ) -> None:
     """
     Process a chunk of runs and write one HDF5 file for the chunk.
@@ -323,6 +341,11 @@ def process_chunk_for_digihits(
 
     if all_event_dfs:
         all_df = pd.concat(all_event_dfs, ignore_index=True)
+        if columns_keep:
+            cols = [c for c in columns_keep if c in all_df.columns]
+            if 'event_id' not in cols and 'event_id' in all_df.columns:
+                cols = cols + ['event_id']
+            all_df = all_df[cols].copy()
         logging.info(f"Writing {len(all_df)} measurements across {all_df.event_id.nunique()} events -> {output_file}")
         build_hdf5_digihits(all_df, str(output_file))
     else:
@@ -338,6 +361,7 @@ def convert_digihits(
     chunk_index: int | None = None,
     max_chunks: int | None = None,
     config_for_cap: dict | None = None,
+    columns_keep: List[str] | None = None,
 ) -> None:
     """
     Convert digitized measurements to HDF5 files grouped by event.
@@ -369,6 +393,7 @@ def convert_digihits(
             output_dir,
             dataset_name,
             run_size,
+            columns_keep=columns_keep,
         ),
     )
 
@@ -423,6 +448,7 @@ def main():
         args.chunk_index,
         config.get("max_chunks"),
         config,
+        columns_keep=config.get("digihits_columns_keep"),
     )
 
 

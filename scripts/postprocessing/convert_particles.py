@@ -26,10 +26,7 @@ from utils.track_utils import load_root_file
 sys.path.append("/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/OtherLibraries/pyedm4hep")
 from pyedm4hep import EDM4hepEvent, EDM4hepEventBatch
 
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s'
-)
+logger = logging.getLogger(__name__)
 
 def process_event_for_particles(
     event_id: int,
@@ -156,6 +153,65 @@ def process_event_for_particles(
     except Exception as e:
         logging.error(f"Failed to process event {local_event_num} from {edm4hep_path}: {e}")
         return pd.DataFrame()
+def build_particles_df_with_parents_and_vertex(
+    batch: EDM4hepEventBatch,
+    edm4hep_path: str,
+    particles_root_df: pd.DataFrame | None,
+    local_events: range | list,
+    *,
+    min_particle_energy: float | None = None,
+    min_tracker_hits: int | None = None,
+) -> pd.DataFrame:
+    """
+    Build a per-run particles dataframe using preloaded batch collections, with:
+      - parent_id via parents_begin/parents_end + preloaded parents_df
+      - vertex_primary merged from digi particles (particles.root) if provided
+    """
+    parts_all = batch.get_particles_df()
+    parents_all = batch.get_parents_df()
+    frames: List[pd.DataFrame] = []
+    logger.debug(f"Building particles DataFrame with parents and vertex info for {len(local_events)} events")
+    logger.debug(f"Particles DataFrame shape: {parts_all.shape if parts_all is not None else 'None'}, with columns {parts_all.columns if parts_all is not None else 'None'}, and unique events {parts_all.event_id.nunique() if parts_all is not None else 'None'}")
+    logger.debug(f"Parents DataFrame shape: {parents_all.shape if parents_all is not None else 'None'}, with columns {parents_all.columns if parents_all is not None else 'None'}, and unique events {parents_all.event_id.nunique() if parents_all is not None else 'None'}")
+    logger.debug(f"Particles root DataFrame shape: {particles_root_df.shape if particles_root_df is not None else 'None'}, with columns {particles_root_df.columns if particles_root_df is not None else 'None'}, and unique events {particles_root_df.event_id.nunique() if particles_root_df is not None else 'None'}")
+    for local_event_num in local_events:
+        ev_parts = parts_all[parts_all.event_id == local_event_num]
+        ev_parents = parents_all[parents_all.event_id == local_event_num]
+        ev_digi = None
+        if particles_root_df is not None and not particles_root_df.empty:
+            if "event_id" not in particles_root_df.columns and "event_nr" in particles_root_df.columns:
+                particles_root_df = particles_root_df.rename(columns={"event_nr": "event_id"})
+            ev_digi = particles_root_df[particles_root_df.get("event_id", -1) == local_event_num]
+        ev_df = process_event_for_particles(
+            event_id=local_event_num,
+            local_event_num=local_event_num,
+            edm4hep_path=str(edm4hep_path),
+            digi_particles_df=ev_digi,
+            preloaded_particles_df=ev_parts,
+            preloaded_parents_df=ev_parents,
+            min_particle_energy=min_particle_energy,
+            min_tracker_hits=min_tracker_hits,
+        )
+        if not ev_df.empty:
+            frames.append(ev_df)
+    return pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
+
+
+def write_particles_with_selection(
+    df: pd.DataFrame,
+    output_file: str,
+    columns_keep: List[str] | None = None,
+) -> None:
+    """Write particles DataFrame to H5 with optional column selection."""
+    if df.empty:
+        return
+    if columns_keep:
+        cols = [c for c in columns_keep if c in df.columns]
+        if 'event_id' not in cols and 'event_id' in df.columns:
+            cols = cols + ['event_id']
+        df = df[cols].copy()
+    build_hdf5_particles(df, output_file)
+
 
 
 def build_hdf5_particles(df: pd.DataFrame, output_file: str) -> None:
@@ -242,6 +298,7 @@ def process_chunk_for_particles(
     *,
     min_particle_energy: float | None = None,
     min_tracker_hits: int | None = None,
+    columns_keep: List[str] | None = None,
 ) -> None:
     """
     Process a chunk of runs and write one HDF5 file for the chunk.
@@ -326,6 +383,12 @@ def process_chunk_for_particles(
 
     if all_event_dfs:
         all_df = pd.concat(all_event_dfs, ignore_index=True)
+        if columns_keep:
+            # Preserve only requested columns that exist; keep event_id for grouping
+            cols = [c for c in columns_keep if c in all_df.columns]
+            if 'event_id' not in cols and 'event_id' in all_df.columns:
+                cols = cols + ['event_id']
+            all_df = all_df[cols].copy()
         logging.info(f"Writing {len(all_df)} particles across {all_df.event_id.nunique()} events -> {output_file}")
         build_hdf5_particles(all_df, str(output_file))
     else:
@@ -344,6 +407,7 @@ def convert_particles(
     *,
     min_particle_energy: float | None = None,
     min_tracker_hits: int | None = None,
+    columns_keep: List[str] | None = None,
 ) -> None:
     """
     Convert particle data to HDF5 files grouped by event.
@@ -377,6 +441,7 @@ def convert_particles(
             run_size,
             min_particle_energy=min_particle_energy,
             min_tracker_hits=min_tracker_hits,
+            columns_keep=columns_keep,
         ),
     )
 
@@ -429,6 +494,7 @@ def main():
         config,
         min_particle_energy=config.get("min_particle_energy"),
         min_tracker_hits=config.get("min_tracker_hits"),
+        columns_keep=config.get("particles_columns_keep"),
     )
 
 

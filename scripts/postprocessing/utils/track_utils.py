@@ -50,41 +50,7 @@ def convert_hit_ids(hit_ids_str: str) -> np.ndarray:
     result = np.array([int(x) for x in hit_ids if x.strip()], dtype=np.int32)
     return result
 
-# def load_root_file(file_path: str, tree_name: str = None) -> pd.DataFrame:
-#     """
-#     Load ROOT file and convert to DataFrame.
-    
-#     Args:
-#         file_path: Path to ROOT file
-#         tree_name: Name of tree to load. If None, uses first tree found.
-        
-#     Returns:
-#         DataFrame containing ROOT data
-#     """
-#     root_file = uproot.open(file_path)
-    
-#     if tree_name is None:
-#         # Get the keys and sort them by cycle number
-#         keys = root_file.keys()
-#         cycles = [int(key.split(';')[1]) for key in keys]
-#         tree_name = keys[cycles.index(max(cycles))]
-    
-#     # Get arrays from tree
-#     arrays = root_file[tree_name].arrays()
-    
-#     # Convert to DataFrame
-#     df = ak.to_dataframe(arrays)
-    
-#     if isinstance(df.index, pd.MultiIndex):
-#         df = df.reset_index()
-#         # Remove entry/subentry columns if they exist
-#         drop_cols = [col for col in ['entry', 'subentry'] if col in df.columns]
-#         if drop_cols:
-#             df = df.drop(columns=drop_cols)
-    
-#     return df
-
-def load_root_file(file_path, event_offset=0, event_id=None, ignore_variable_columns=True):
+def load_root_file(file_path, event_offset=0, event_id=None, ignore_variable_columns=True, included_columns=None):
     """Load data from a single root file with optional event filtering
     
     Parameters:
@@ -95,6 +61,10 @@ def load_root_file(file_path, event_offset=0, event_id=None, ignore_variable_col
         Offset to add to event_id (for backwards compatibility)
     event_id : int, optional
         If provided, only load this specific event
+    ignore_variable_columns : bool
+        Whether to ignore variable length columns
+    included_columns : list, optional
+        If provided, only load these specific columns
     
     Returns:
     --------
@@ -107,38 +77,46 @@ def load_root_file(file_path, event_offset=0, event_id=None, ignore_variable_col
         keys = tree.keys()
         cycles = [int(key.split(';')[1]) for key in keys]
         latest_key = keys[cycles.index(max(cycles))]
-        data = tree[latest_key].arrays()
-
-        # Separate regular and variable length columns
-        if ignore_variable_columns:
-            regular_columns = []
-            variable_columns = []
-            for field in data.fields:
-                if 'var' in str(data[field].type):
-                    variable_columns.append(field)
-                else:
-                    regular_columns.append(field)            
-            # Warn about dropped columns
-            if variable_columns:
-                print(f"Warning: Dropping variable length columns: {', '.join(variable_columns)}")
-        else:
-            regular_columns = data.fields
-
-        # Convert to dataframe using only regular columns
-        df = ak.to_dataframe(data[regular_columns])
-            
-        # Apply event offset
-        if event_offset and 'event_id' in df.columns:
-            df['event_id'] += event_offset
-            
-        # Filter for specific event if requested
+        
+        # Determine filtering parameters
+        filter_params = {}
+        
+        # Column filtering
+        if included_columns:
+            filter_params['filter_name'] = included_columns
+        elif ignore_variable_columns:
+            def exclude_var_columns(branch_name):
+                branch = tree[latest_key][branch_name]
+                return 'var' not in str(branch.typename)
+            filter_params['filter_name'] = exclude_var_columns
+        
+        # Event filtering - this is the key optimization!
         if event_id is not None:
-            if 'event_id' in df.columns:
-                df = df[df['event_id'] == event_id]
-            elif 'event_nr' in df.columns:
-                df = df[df['event_nr'] == event_id]
-            if len(df) == 0:
-                return None
+            # Check if we have event_id or event_nr column to determine which to filter on
+            available_branches = tree[latest_key].keys()
+            if 'event_id' in available_branches:
+                # Adjust for event_offset if needed
+                target_event = event_id - event_offset if event_offset else event_id
+                filter_params['cut'] = f"event_id == {target_event}"
+            elif 'event_nr' in available_branches:
+                filter_params['cut'] = f"event_nr == {event_id}"
+            else:
+                print("Warning: No event_id or event_nr column found for event filtering")
+        
+        # Load arrays with all filtering applied at once
+        data = tree[latest_key].arrays(**filter_params)
+        
+        # Check if we got any data when filtering for specific event
+        if event_id is not None and len(data) == 0:
+            print(f"No data found for event_id {event_id}")
+            return None
+
+        # Convert to dataframe 
+        df = ak.to_dataframe(data)
+            
+        # Apply event offset (only if we're not filtering to specific event)
+        if event_offset and event_id is None and 'event_id' in df.columns:
+            df['event_id'] += event_offset
                 
         return df
     

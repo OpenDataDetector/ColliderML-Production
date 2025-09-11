@@ -1,7 +1,7 @@
 # Config to drive convert_all.py
-campaign: "full_pileup_mini_pilot"
+campaign: "full_pileup_pilot"
 dataset: "ttbar"
-version: "v4"
+version: "v2"
 
 # Objects to convert (any subset of: digihits, hits, tracks, particles, calorimeter)
 objects:
@@ -11,5 +11,40 @@ objects:
   # - calorimeter
 
 # Chunking
-chunk_size: 288
+chunk_size: 32
 run_size: 32
+
+# Column selection for H5 outputs
+particles_columns_keep:
+  - "particle_id"
+  - "pdg_id"
+  - "mass"
+  - "energy"
+  - "charge"
+  - "vx"
+  - "vy"
+  - "vz"
+  - "time"
+  - "px"
+  - "py"
+  - "pz"
+  - "num_tracker_hits"
+  - "num_calo_hits"
+  - "vertex_primary"
+  - "parent_id"
+
+digihits_columns_keep:
+  - "x"
+  - "y"
+  - "z"
+  - "time"
+  - "particle_id"
+  - "cell_id"
+  - "detector"
+  - "event_id"
+
+# Processing parameters
+max_chunks: 1
+min_tracker_hits: 1
+
+log_level: "DEBUG"

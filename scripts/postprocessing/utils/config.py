@@ -6,11 +6,6 @@ import yaml
 from pathlib import Path
 import argparse
 import logging
-
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
 logger = logging.getLogger(__name__)
 
 def create_base_parser(description: str) -> argparse.ArgumentParser:
