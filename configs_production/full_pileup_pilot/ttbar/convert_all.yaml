@@ -21,7 +21,7 @@ objects:
   # - calorimeter
 
 # Chunking
-chunk_size: 248
+chunk_size: 300
 run_size: 128
 
 # Column selection for H5 outputs

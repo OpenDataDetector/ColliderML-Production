@@ -40,7 +40,8 @@ def convert_all(config: dict, chunk_index: int | None = None) -> None:
     run_size = int(config.get("run_size", 10))
     runs_per_chunk = max(1, chunk_size // run_size)
     max_chunks = config.get("max_chunks")
-    max_runs = runs_per_chunk * int(max_chunks) if max_chunks is not None else None
+    # Event-based totals
+    num_runs = 0
     
     logger.debug(f"Chunk size: {chunk_size}, Run size: {run_size}")
 
@@ -67,6 +68,8 @@ def convert_all(config: dict, chunk_index: int | None = None) -> None:
     logger.debug("Importing required modules completed")
 
     run_dirs = get_run_paths(input_base_dir)
+    num_runs = len(run_dirs)
+    total_events = num_runs * run_size
     logger.debug(f"Retrieved {len(run_dirs)} run directories from {input_base_dir}")
     
     particles_out_dir = make_dir(output_base_dir, f"{dataset_base}/truth/particles")
@@ -79,21 +82,31 @@ def convert_all(config: dict, chunk_index: int | None = None) -> None:
     
     logger.debug(f"Column selection - particles: {particles_columns_keep}, digihits: {digihits_columns_keep}")
 
-    logger.info(f"Found {len(run_dirs)} runs. Processing with run_size={run_size}, runs_per_chunk={runs_per_chunk}, max_chunks={max_chunks}, chunk_index={chunk_index}")
+    logger.info(f"Found {num_runs} runs. Processing with run_size={run_size}, runs_per_chunk={runs_per_chunk}, max_chunks={max_chunks}, chunk_index={chunk_index}")
 
-    # Determine run slice based on optional chunk_index (compat with run_stage/job_submission)
+    # Determine event window based on chunk_index (no overlap across processes)
     if chunk_index is not None:
-        start_run = chunk_index * runs_per_chunk
-        end_run = min(start_run + runs_per_chunk, len(run_dirs))
-        run_iter = range(start_run, end_run)
-        logger.info(f"Processing only chunk_index={chunk_index}: runs {start_run}..{end_run-1}")
+        start_event = chunk_index * chunk_size
+        if start_event >= total_events:
+            logger.info(f"Chunk {chunk_index} start_event {start_event} >= total_events {total_events}; nothing to do")
+            return
+        end_event = min(total_events - 1, start_event + chunk_size - 1)
+        logger.info(f"Processing chunk_index={chunk_index}: events {start_event}-{end_event}")
     else:
-        run_iter = range(len(run_dirs))
+        start_event = 0
+        end_event = total_events - 1
+        logger.info(f"Processing full range of events {start_event}-{end_event}")
 
-    for abs_run in run_iter:
-        if max_runs is not None and chunk_index is None and abs_run >= max_runs:
-            logger.info(f"Reached max_chunks limit: processed {abs_run} runs (runs_per_chunk={runs_per_chunk}, max_chunks={max_chunks})")
-            break
+    # Map event window to runs and local event ranges
+    start_run, start_local = divmod(start_event, run_size)
+    end_run, end_local = divmod(end_event, run_size)
+    logger.debug(f"Event window maps to runs {start_run}..{end_run}, start_local={start_local}, end_local={end_local}")
+
+    # Accumulators for this chunk
+    particles_frames = []
+    digihits_frames = []
+
+    for abs_run in range(start_run, end_run + 1):
         run_dir = run_dirs[abs_run]
         logger.debug(f"Processing run {abs_run}: {run_dir}")
         
@@ -111,7 +124,6 @@ def convert_all(config: dict, chunk_index: int | None = None) -> None:
         # Preload collections lazily when getters are called
 
         # Particles: optional digi merge
-        particles_df_all = pd.DataFrame()
         if "particles" in objects:
             logger.debug("Processing particles object")
             particles_root_path = Path(run_dir) / "particles.root"
@@ -133,27 +145,32 @@ def convert_all(config: dict, chunk_index: int | None = None) -> None:
             else:
                 logger.debug(f"No particles.root file found at: {particles_root_path}")
                 
-            logger.debug("Building particles DataFrame with parents and vertex info")
-            particles_df_all = build_particles_df_with_parents_and_vertex(
-                batch,
-                str(edm4hep_path),
-                digi_particles_df_run,
-                local_events=range(run_size),
-                min_particle_energy=config.get("min_particle_energy"),
-                min_tracker_hits=config.get("min_tracker_hits"),
-            )
-            logger.debug(f"Built particles DataFrame, shape: {particles_df_all.shape}")
-            
-            start_event = abs_run * run_size
-            end_event = start_event + run_size - 1
-            # Match convert_particles.py naming:
-            #   <dataset_name>.truth.particles.events<start>-<end>.h5
-            particles_out = Path(particles_out_dir) / (
-                f"{dataset_name_dot}.truth.particles.events{start_event}-{end_event}.h5"
-            )
-            logger.debug(f"Writing particles to: {particles_out}")
-            write_particles_with_selection(particles_df_all, str(particles_out), columns_keep=particles_columns_keep)
-            logger.debug(f"Successfully wrote particles file")
+            # Determine local events for this run within the event window
+            if start_run == end_run:
+                local_events = range(start_local, end_local + 1)
+            elif abs_run == start_run:
+                local_events = range(start_local, run_size)
+            elif abs_run == end_run:
+                local_events = range(0, end_local + 1)
+            else:
+                local_events = range(0, run_size)
+            logger.debug(f"Particles local_events for run {abs_run}: {list(local_events)[:3]}... (len={len(list(local_events))})")
+
+            if len(list(local_events)) > 0:
+                logger.debug("Building particles DataFrame with parents and vertex info")
+                df_run = build_particles_df_with_parents_and_vertex(
+                    batch,
+                    str(edm4hep_path),
+                    digi_particles_df_run,
+                    local_events=local_events,
+                    min_particle_energy=config.get("min_particle_energy"),
+                    min_tracker_hits=config.get("min_tracker_hits"),
+                )
+                if not df_run.empty and "event_id" in df_run.columns:
+                    df_run = df_run.copy()
+                    df_run["event_id"] = df_run["event_id"] + abs_run * run_size
+                if not df_run.empty:
+                    particles_frames.append(df_run)
 
         # Digi hits: needs measurements merge per event
         if "tracker_hits" in objects:
@@ -181,11 +198,20 @@ def convert_all(config: dict, chunk_index: int | None = None) -> None:
                 logger.debug("Getting tracker hits DataFrame from batch")
                 hits_all = batch.get_tracker_hits_df()
                 logger.debug(f"Retrieved tracker hits DataFrame, shape: {hits_all.shape if not hits_all.empty else 'Empty'}")
-                
+
+                # Determine local events for this run within the event window
+                if start_run == end_run:
+                    local_events = range(start_local, end_local + 1)
+                elif abs_run == start_run:
+                    local_events = range(start_local, run_size)
+                elif abs_run == end_run:
+                    local_events = range(0, end_local + 1)
+                else:
+                    local_events = range(0, run_size)
+
                 # Build per-event merged frames
-                merged_frames = []
-                logger.debug(f"Processing {run_size} events for tracker hits merge")
-                for local_event_num in range(run_size):
+                logger.debug(f"Processing {len(list(local_events))} events for tracker hits merge in run {abs_run}")
+                for local_event_num in local_events:
                     logger.debug(f"Processing local event {local_event_num}")
                     ev_hits = hits_all[hits_all.event_id == local_event_num] if not hits_all.empty else None
                     ev_meas = digi_measurements_df_all[digi_measurements_df_all.event_nr == local_event_num].copy() if 'event_nr' in digi_measurements_df_all.columns else digi_measurements_df_all.copy()
@@ -196,29 +222,42 @@ def convert_all(config: dict, chunk_index: int | None = None) -> None:
                     logger.debug(f"Event {local_event_num}: merged DataFrame shape={ev_df.shape}")
                     
                     if not ev_df.empty:
-                        merged_frames.append(ev_df)
-                        logger.debug(f"Added event {local_event_num} to merged frames")
-                
-                if merged_frames:
-                    logger.debug(f"Concatenating {len(merged_frames)} merged frames")
-                    merged_all = pd.concat(merged_frames, ignore_index=True)
-                    logger.debug(f"Final merged DataFrame shape: {merged_all.shape}")
-                    
-                    start_event = abs_run * run_size
-                    end_event = start_event + run_size - 1
-                    # Match convert_digihits.py naming:
-                    #   <dataset_name>.reco.tracker_hits.events<start>-<end>.h5
-                    trkhits_out = Path(trkhits_out_dir) / (
-                        f"{dataset_name_dot}.reco.tracker_hits.events{start_event}-{end_event}.h5"
-                    )
-                    logger.debug(f"Writing tracker hits to: {trkhits_out}")
-                    write_digihits_with_selection(merged_all, str(trkhits_out), columns_keep=digihits_columns_keep)
-                    logger.debug(f"Successfully wrote tracker hits file")
-                else:
-                    logger.debug("No merged frames to write for tracker hits")
+                        digihits_frames.append(ev_df)
+                        logger.debug(f"Added event {local_event_num} from run {abs_run} to merged frames")
 
         # Other objects can be integrated similarly into this single-pass if needed
         logger.debug(f"Completed processing run {abs_run}")
+
+    # After all runs for this chunk, write combined outputs
+    if "particles" in objects:
+        if particles_frames:
+            particles_all = pd.concat(particles_frames, ignore_index=True)
+            particles_out = Path(particles_out_dir) / (
+                f"{dataset_name_dot}.truth.particles.events{start_event}-{end_event}.h5"
+            )
+            logger.info(f"Writing particles to: {particles_out} (rows={len(particles_all)})")
+            write_particles_with_selection(particles_all, str(particles_out), columns_keep=particles_columns_keep)
+            if particles_out.exists():
+                logger.info(f"Wrote particles file: {particles_out}")
+            else:
+                logger.warning(f"Particles file not created (possibly filtered to empty): {particles_out}")
+        else:
+            logger.info("No particles to write for this chunk")
+
+    if "tracker_hits" in objects:
+        if digihits_frames:
+            digihits_all = pd.concat(digihits_frames, ignore_index=True)
+            trkhits_out = Path(trkhits_out_dir) / (
+                f"{dataset_name_dot}.reco.tracker_hits.events{start_event}-{end_event}.h5"
+            )
+            logger.info(f"Writing tracker hits to: {trkhits_out} (rows={len(digihits_all)})")
+            write_digihits_with_selection(digihits_all, str(trkhits_out), columns_keep=digihits_columns_keep)
+            if trkhits_out.exists():
+                logger.info(f"Wrote tracker hits file: {trkhits_out}")
+            else:
+                logger.warning(f"Tracker hits file not created (possibly filtered to empty): {trkhits_out}")
+        else:
+            logger.info("No tracker hits to write for this chunk")
 
     end_time = time.time()
     logger.info(f"\nTotal conversion time: {end_time - start_time:.2f} seconds")
