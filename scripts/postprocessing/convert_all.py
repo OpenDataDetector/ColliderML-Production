@@ -51,6 +51,7 @@ def convert_all(config: dict) -> None:
     logger.debug(f"Objects to convert: {objects}")
 
     dataset_base = f"{campaign}/{dataset}/{version}"
+    dataset_name_dot = dataset_base.replace("/", ".")
     logger.debug(f"Dataset base path: {dataset_base}")
 
     start_time = time.time()
@@ -134,7 +135,11 @@ def convert_all(config: dict) -> None:
             
             start_event = abs_run * run_size
             end_event = start_event + run_size - 1
-            particles_out = Path(particles_out_dir) / f"{campaign}.{dataset}.{version}.events{start_event}-{end_event}.h5"
+            # Match convert_particles.py naming:
+            #   <dataset_name>.truth.particles.events<start>-<end>.h5
+            particles_out = Path(particles_out_dir) / (
+                f"{dataset_name_dot}.truth.particles.events{start_event}-{end_event}.h5"
+            )
             logger.debug(f"Writing particles to: {particles_out}")
             write_particles_with_selection(particles_df_all, str(particles_out), columns_keep=particles_columns_keep)
             logger.debug(f"Successfully wrote particles file")
@@ -190,7 +195,11 @@ def convert_all(config: dict) -> None:
                     
                     start_event = abs_run * run_size
                     end_event = start_event + run_size - 1
-                    trkhits_out = Path(trkhits_out_dir) / f"{campaign}.{dataset}.{version}.events{start_event}-{end_event}.h5"
+                    # Match convert_digihits.py naming:
+                    #   <dataset_name>.reco.tracker_hits.events<start>-<end>.h5
+                    trkhits_out = Path(trkhits_out_dir) / (
+                        f"{dataset_name_dot}.reco.tracker_hits.events{start_event}-{end_event}.h5"
+                    )
                     logger.debug(f"Writing tracker hits to: {trkhits_out}")
                     write_digihits_with_selection(merged_all, str(trkhits_out), columns_keep=digihits_columns_keep)
                     logger.debug(f"Successfully wrote tracker hits file")

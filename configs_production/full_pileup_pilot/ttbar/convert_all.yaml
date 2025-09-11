@@ -21,8 +21,8 @@ objects:
   # - calorimeter
 
 # Chunking
-chunk_size: 32
-run_size: 32
+chunk_size: 128
+run_size: 128
 
 # Column selection for H5 outputs
 particles_columns_keep:
