@@ -105,6 +105,8 @@ def convert_all(config: dict, chunk_index: int | None = None) -> None:
     # Accumulators for this chunk
     particles_frames = []
     digihits_frames = []
+    seen_pairs_particles: set[tuple[int,int]] = set()
+    seen_pairs_hits: set[tuple[int,int]] = set()
 
     for abs_run in range(start_run, end_run + 1):
         run_dir = run_dirs[abs_run]
@@ -170,6 +172,12 @@ def convert_all(config: dict, chunk_index: int | None = None) -> None:
                     df_run = df_run.copy()
                     df_run["event_id"] = df_run["event_id"] + abs_run * run_size
                 if not df_run.empty:
+                    # Overlap guard for particles: ensure no duplicate (run,local_event)
+                    for le in local_events:
+                        pair = (abs_run, le)
+                        if pair in seen_pairs_particles:
+                            logger.error(f"Overlap detected for particles on (run,local_event)=({abs_run},{le})")
+                        seen_pairs_particles.add(pair)
                     particles_frames.append(df_run)
 
         # Digi hits: needs measurements merge per event
@@ -222,6 +230,11 @@ def convert_all(config: dict, chunk_index: int | None = None) -> None:
                     logger.debug(f"Event {local_event_num}: merged DataFrame shape={ev_df.shape}")
                     
                     if not ev_df.empty:
+                        # Overlap guard for hits
+                        pair = (abs_run, local_event_num)
+                        if pair in seen_pairs_hits:
+                            logger.error(f"Overlap detected for tracker_hits on (run,local_event)=({abs_run},{local_event_num})")
+                        seen_pairs_hits.add(pair)
                         digihits_frames.append(ev_df)
                         logger.debug(f"Added event {local_event_num} from run {abs_run} to merged frames")
 
@@ -229,12 +242,17 @@ def convert_all(config: dict, chunk_index: int | None = None) -> None:
         logger.debug(f"Completed processing run {abs_run}")
 
     # After all runs for this chunk, write combined outputs
+    expected_events = end_event - start_event + 1
     if "particles" in objects:
         if particles_frames:
             particles_all = pd.concat(particles_frames, ignore_index=True)
             particles_out = Path(particles_out_dir) / (
                 f"{dataset_name_dot}.truth.particles.events{start_event}-{end_event}.h5"
             )
+            # Validate expected events vs processed set
+            processed_events_particles = len(seen_pairs_particles)
+            if processed_events_particles != expected_events:
+                logger.warning(f"Particles chunk events expected={expected_events}, processed={processed_events_particles}")
             logger.info(f"Writing particles to: {particles_out} (rows={len(particles_all)})")
             write_particles_with_selection(particles_all, str(particles_out), columns_keep=particles_columns_keep)
             if particles_out.exists():
@@ -250,6 +268,9 @@ def convert_all(config: dict, chunk_index: int | None = None) -> None:
             trkhits_out = Path(trkhits_out_dir) / (
                 f"{dataset_name_dot}.reco.tracker_hits.events{start_event}-{end_event}.h5"
             )
+            processed_events_hits = len(seen_pairs_hits)
+            if processed_events_hits != expected_events:
+                logger.warning(f"Tracker hits chunk events expected={expected_events}, processed={processed_events_hits}")
             logger.info(f"Writing tracker hits to: {trkhits_out} (rows={len(digihits_all)})")
             write_digihits_with_selection(digihits_all, str(trkhits_out), columns_keep=digihits_columns_keep)
             if trkhits_out.exists():
