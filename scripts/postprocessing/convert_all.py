@@ -20,7 +20,7 @@ from utils.path_utils import make_dir
 logger = logging.getLogger(__name__)
 
 
-def convert_all(config: dict) -> None:
+def convert_all(config: dict, chunk_index: int | None = None) -> None:
     campaign = config["campaign"]
     dataset = config["dataset"]
     version = config["version"]
@@ -79,11 +79,22 @@ def convert_all(config: dict) -> None:
     
     logger.debug(f"Column selection - particles: {particles_columns_keep}, digihits: {digihits_columns_keep}")
 
-    logger.info(f"Found {len(run_dirs)} runs. Processing with run_size={run_size}, runs_per_chunk={runs_per_chunk}, max_chunks={max_chunks}")
-    for abs_run, run_dir in enumerate(run_dirs):
-        if max_runs is not None and abs_run >= max_runs:
+    logger.info(f"Found {len(run_dirs)} runs. Processing with run_size={run_size}, runs_per_chunk={runs_per_chunk}, max_chunks={max_chunks}, chunk_index={chunk_index}")
+
+    # Determine run slice based on optional chunk_index (compat with run_stage/job_submission)
+    if chunk_index is not None:
+        start_run = chunk_index * runs_per_chunk
+        end_run = min(start_run + runs_per_chunk, len(run_dirs))
+        run_iter = range(start_run, end_run)
+        logger.info(f"Processing only chunk_index={chunk_index}: runs {start_run}..{end_run-1}")
+    else:
+        run_iter = range(len(run_dirs))
+
+    for abs_run in run_iter:
+        if max_runs is not None and chunk_index is None and abs_run >= max_runs:
             logger.info(f"Reached max_chunks limit: processed {abs_run} runs (runs_per_chunk={runs_per_chunk}, max_chunks={max_chunks})")
             break
+        run_dir = run_dirs[abs_run]
         logger.debug(f"Processing run {abs_run}: {run_dir}")
         
         edm4hep_path = Path(run_dir) / "edm4hep.root"
@@ -217,6 +228,7 @@ def convert_all(config: dict) -> None:
 def main():
     parser = argparse.ArgumentParser(description="Convert all EDM4HEP data to HDF5 (config-driven)")
     parser.add_argument("--config", required=True, help="Path to YAML configuration file")
+    parser.add_argument("--chunk-index", type=int, default=None, help="Optional chunk index to process (for distributed runs)")
     args = parser.parse_args()
     
     logger.debug(f"Loading config from: {args.config}")
@@ -234,7 +246,7 @@ def main():
     )
     
     logger.debug("Starting convert_all function")
-    convert_all(config)
+    convert_all(config, chunk_index=args.chunk_index)
     logger.debug("convert_all function completed")
 
 if __name__ == "__main__":
