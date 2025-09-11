@@ -2,6 +2,16 @@
 campaign: "full_pileup_pilot"
 dataset: "ttbar"
 version: "v2"
+stage: "convert_all"
+
+# Job submission configuration
+job_config:
+  n_runs: 14  # Number of jobs to submit
+  runs_per_node: 4  # Number of runs per node
+  time_limit: "00:30:00"  # Time limit per job
+  qos: "debug"
+  execution_mode: "interactive"
+  # execution_mode: "multi_node_slurm"
 
 # Objects to convert (any subset of: digihits, hits, tracks, particles, calorimeter)
 objects:
