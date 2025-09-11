@@ -38,6 +38,9 @@ def convert_all(config: dict) -> None:
     # Chunking
     chunk_size = int(config.get("chunk_size", 1000))
     run_size = int(config.get("run_size", 10))
+    runs_per_chunk = max(1, chunk_size // run_size)
+    max_chunks = config.get("max_chunks")
+    max_runs = runs_per_chunk * int(max_chunks) if max_chunks is not None else None
     
     logger.debug(f"Chunk size: {chunk_size}, Run size: {run_size}")
 
@@ -75,8 +78,11 @@ def convert_all(config: dict) -> None:
     
     logger.debug(f"Column selection - particles: {particles_columns_keep}, digihits: {digihits_columns_keep}")
 
-    logger.info(f"Found {len(run_dirs)} runs. Processing with run_size={run_size}")
+    logger.info(f"Found {len(run_dirs)} runs. Processing with run_size={run_size}, runs_per_chunk={runs_per_chunk}, max_chunks={max_chunks}")
     for abs_run, run_dir in enumerate(run_dirs):
+        if max_runs is not None and abs_run >= max_runs:
+            logger.info(f"Reached max_chunks limit: processed {abs_run} runs (runs_per_chunk={runs_per_chunk}, max_chunks={max_chunks})")
+            break
         logger.debug(f"Processing run {abs_run}: {run_dir}")
         
         edm4hep_path = Path(run_dir) / "edm4hep.root"
