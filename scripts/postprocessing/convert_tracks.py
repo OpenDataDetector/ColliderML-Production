@@ -14,7 +14,7 @@ import uproot
 import math
 from typing import Dict, List, Any
 
-from utils.utils import get_run_paths, ensure_output_dir, get_chunk_info
+from utils.path_utils import get_run_paths, make_dir
 from utils.driver import iterate_and_process_chunks
 from utils.edm4hep_utils import pixel_readouts, strip_readouts
 
@@ -78,7 +78,7 @@ def process_event_for_tracks(
     # Get track summary data for this event
     arrays = tracksummary_arrays[local_event_num]
     track_data = {}
-    for field in arrays.fields:
+    for field in getattr(arrays, 'fields', []):
         if field == 'event_nr':
             continue
         try:
@@ -92,7 +92,12 @@ def process_event_for_tracks(
 
     # Get this local event hits
     local_event_edm4hep_hits = edm4hep_hits_df[edm4hep_hits_df.event_id == local_event_num]
-    local_event_simhits = simhits_df[simhits_df.event_id == local_event_num]
+    if 'event_id' in simhits_df.columns:
+        local_event_simhits = simhits_df[simhits_df.event_id == local_event_num]
+    elif 'event_nr' in simhits_df.columns:
+        local_event_simhits = simhits_df[simhits_df.event_nr == local_event_num]
+    else:
+        local_event_simhits = simhits_df.copy()
 
     # Build particle ID - particle barcode mapping
     particle_barcode_map = create_particle_barcode_map(local_event_edm4hep_hits, local_event_simhits)
@@ -313,7 +318,7 @@ def process_chunk_for_tracks(
                     run_events.append(df)
             all_track_data.extend(run_events)
         except Exception as e:
-            print(f"\nSkipping run {start_run + run_idx} due to error: {str(e)}")
+            print(f"\nSkipping run {abs_run} due to error: {str(e)}")
             continue
             
     # Save chunk to HDF5
@@ -333,13 +338,14 @@ def main():
         config = yaml.safe_load(f)
     
     # Extract parameters from config
+    campaign = config["campaign"]
     dataset = config["dataset"]
     version = config["version"]
     
     # Build paths from config
-    input_base_dir = Path(config["common"]["output_base_dir"]) / dataset / version
-    output_base_dir = Path(config["common"]["staging_dir"])
-    output_path = config.get("output_path", f"{dataset}/{version}/reco/tracks")
+    input_base_dir = Path(config["common"]["output_base_dir"]) / campaign / dataset / version
+    output_base_dir = Path(config["common"]["output_base_dir"]) 
+    output_path = config.get("output_path", f"{campaign}/{dataset}/{version}/reco/tracks")
     
     # Processing parameters
     chunk_size = config.get("chunk_size", 1000)
@@ -354,7 +360,7 @@ def main():
     }
     
     print("\nStarting track conversion with configuration:")
-    print(f"Dataset: {dataset}, Version: {version}")
+    print(f"Campaign: {campaign}, Dataset: {dataset}, Version: {version}")
     print(f"Input directory: {input_base_dir}")
     print(f"Output directory: {output_base_dir}/{output_path}")
     print(f"Chunk size: {chunk_size}, Run size: {run_size}")
@@ -372,7 +378,7 @@ def main():
     print(f"Total number of chunks: {num_chunks}")
     
     # Create output directory and ensure it's a Path object
-    output_dir = ensure_output_dir(output_base_dir, output_path)
+    output_dir = make_dir(output_base_dir, output_path)
     if not isinstance(output_dir, Path):
         output_dir = Path(output_dir)
         
