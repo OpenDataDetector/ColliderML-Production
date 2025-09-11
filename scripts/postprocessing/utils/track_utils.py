@@ -6,6 +6,7 @@ import numpy as np
 import pandas as pd
 import uproot
 import awkward as ak
+import h5py
 from typing import Dict, Any, List, Tuple
 
 def get_particle_ids_from_events(events, tracker_readouts):
@@ -259,3 +260,34 @@ def get_majority_particle_id(hit_ids, simhits_root_df, particle_barcode_map):
         return track_hits.particle_id.map(particle_barcode_map).mode()[0]
     except:
         raise
+
+
+def build_hdf5_tracks(df: pd.DataFrame, output_file: str) -> None:
+    """
+    Build HDF5 file with event/track/hit hierarchy.
+    Matches the structure used by standalone track conversion.
+    """
+    if df is None or df.empty:
+        return
+    with h5py.File(output_file, 'a') as f:
+        events_group = f.create_group('events') if 'events' not in f else f['events']
+        for event_id, event_df in df.groupby('event_id'):
+            event_group_name = f'event_{event_id}'
+            if event_group_name in events_group:
+                del events_group[event_group_name]
+            event_group = events_group.create_group(event_group_name)
+
+            # Store track-level data (exclude variable-length hit_ids and event_id)
+            track_data = event_df.drop(columns=['hit_ids', 'event_id'], errors='ignore')
+            event_group.create_dataset('tracks', data=track_data.to_records(index=False))
+
+            # Store variable-length hit_ids per track
+            hit_arrays = event_df['hit_ids'].values if 'hit_ids' in event_df.columns else []
+            vlen_dtype = h5py.vlen_dtype(np.dtype('int32'))
+            event_group.create_dataset(
+                'hit_ids',
+                data=hit_arrays,
+                dtype=vlen_dtype,
+                compression='gzip',
+                compression_opts=6,
+            )
