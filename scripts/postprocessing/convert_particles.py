@@ -167,8 +167,10 @@ def build_particles_df_with_parents_and_vertex(
       - parent_id via parents_begin/parents_end + preloaded parents_df
       - vertex_primary merged from digi particles (particles.root) if provided
     """
+    batch._ensure_loaded("tracker_hits") #Since we will need to count the hits per particle
     parts_all = batch.get_particles_df()
     parents_all = batch.get_parents_df()
+    
     frames: List[pd.DataFrame] = []
     logger.debug(f"Building particles DataFrame with parents and vertex info for {len(local_events)} events")
     logger.debug(f"Particles DataFrame shape: {parts_all.shape if parts_all is not None else 'None'}, with columns {parts_all.columns if parts_all is not None else 'None'}, and unique events {parts_all.event_id.nunique() if parts_all is not None else 'None'}")

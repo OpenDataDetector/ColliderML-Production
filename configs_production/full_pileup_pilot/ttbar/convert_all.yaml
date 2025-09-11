@@ -38,8 +38,6 @@ particles_columns_keep:
   - "px"
   - "py"
   - "pz"
-  - "num_tracker_hits"
-  - "num_calo_hits"
   - "vertex_primary"
   - "parent_id"
 
@@ -51,6 +49,9 @@ digihits_columns_keep:
   - "particle_id"
   - "cell_id"
   - "detector"
+  - "volume_id"
+  - "layer_id"
+  - "surface_id"
   - "event_id"
 
 # Processing parameters
