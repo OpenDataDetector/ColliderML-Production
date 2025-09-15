@@ -262,6 +262,63 @@ def get_majority_particle_id(hit_ids, simhits_root_df, particle_barcode_map):
         raise
 
 
+def _compute_csr_from_hit_lists(hit_lists: List[np.ndarray]) -> tuple[np.ndarray, np.ndarray]:
+    """Compute CSR data and indptr arrays from per-track hit id lists."""
+    if not hit_lists:
+        return np.array([], dtype=np.int32), np.array([0], dtype=np.int64)
+    lengths = np.fromiter(
+        (len(a) if a is not None else 0 for a in hit_lists),
+        dtype=np.int64,
+        count=len(hit_lists)
+    )
+    indptr = np.empty(len(lengths) + 1, dtype=np.int64)
+    indptr[0] = 0
+    if len(lengths) > 0:
+        np.cumsum(lengths, out=indptr[1:])
+    data = (
+        np.concatenate([
+            np.asarray(a, dtype=np.int32) for a in hit_lists if a is not None and len(a) > 0
+        ]) if indptr[-1] > 0 else np.array([], dtype=np.int32)
+    )
+    return data, indptr
+
+
+def _write_tracks_table(event_group: h5py.Group, event_df: pd.DataFrame) -> None:
+    """Write the per-event tracks fixed table (excluding hit_ids and event_id)."""
+    track_data = event_df.drop(columns=['hit_ids', 'event_id'], errors='ignore')
+    event_group.create_dataset(
+        'tracks',
+        data=track_data.to_records(index=False),
+        compression='gzip',
+        compression_opts=6,
+        shuffle=True,
+    )
+
+
+def _write_csr_arrays(event_group: h5py.Group, data: np.ndarray, indptr: np.ndarray) -> None:
+    """Write CSR arrays for hit ids with reasonable chunking and compression."""
+    data_chunk = (min(max(1, data.size), 65536),) if data.size > 0 else (1,)
+    ptr_chunk = (min(max(1, indptr.size), 65536),)
+    event_group.create_dataset(
+        'hit_ids_data',
+        data=data,
+        dtype='int32',
+        compression='gzip',
+        compression_opts=6,
+        shuffle=True,
+        chunks=data_chunk,
+    )
+    event_group.create_dataset(
+        'hit_ids_indptr',
+        data=indptr,
+        dtype='int64',
+        compression='gzip',
+        compression_opts=6,
+        shuffle=True,
+        chunks=ptr_chunk,
+    )
+
+
 def build_hdf5_tracks(df: pd.DataFrame, output_file: str) -> None:
     """
     Build HDF5 file with event/track/hit hierarchy.
@@ -277,58 +334,15 @@ def build_hdf5_tracks(df: pd.DataFrame, output_file: str) -> None:
                 del events_group[event_group_name]
             event_group = events_group.create_group(event_group_name)
 
-            # Prepare CSR components from hit_ids lists
-            hit_lists = (
-                event_df['hit_ids'].tolist() if 'hit_ids' in event_df.columns else []
-            )
-            lengths = np.fromiter(
-                (len(a) if a is not None else 0 for a in hit_lists),
-                dtype=np.int64,
-                count=len(hit_lists)
-            ) if hit_lists else np.array([], dtype=np.int64)
-            indptr = np.empty(len(lengths) + 1, dtype=np.int64)
-            indptr[0] = 0
-            if len(lengths) > 0:
-                np.cumsum(lengths, out=indptr[1:])
-            data = (
-                np.concatenate([
-                    np.asarray(a, dtype=np.int32) for a in hit_lists if a is not None and len(a) > 0
-                ]) if indptr[-1] > 0 else np.array([], dtype=np.int32)
-            )
+            # CSR from hit_ids
+            hit_lists = event_df['hit_ids'].tolist() if 'hit_ids' in event_df.columns else []
+            data, indptr = _compute_csr_from_hit_lists(hit_lists)
 
-            # Store track-level data (exclude hit_ids and event_id)
-            track_data = event_df.drop(columns=['hit_ids', 'event_id'], errors='ignore')
-            tracks_ds = event_group.create_dataset(
-                'tracks',
-                data=track_data.to_records(index=False),
-                compression='gzip',
-                compression_opts=6,
-                shuffle=True,
-            )
+            # Write tables
+            _write_tracks_table(event_group, event_df)
+            _write_csr_arrays(event_group, data, indptr)
 
-            # Store CSR arrays for hit ids
-            data_chunk = (min(max(1, data.size), 65536),) if data.size > 0 else (1,)
-            ptr_chunk = (min(max(1, indptr.size), 65536),)
-            event_group.create_dataset(
-                'hit_ids_data',
-                data=data,
-                dtype='int32',
-                compression='gzip',
-                compression_opts=6,
-                shuffle=True,
-                chunks=data_chunk,
-            )
-            event_group.create_dataset(
-                'hit_ids_indptr',
-                data=indptr,
-                dtype='int64',
-                compression='gzip',
-                compression_opts=6,
-                shuffle=True,
-                chunks=ptr_chunk,
-            )
-
-            # Minimal metadata for readers
+            # Metadata
             event_group.attrs['encoding'] = 'csr_v1'
             event_group.attrs['nnz'] = int(data.size)
 

@@ -12,18 +12,18 @@ job_config:
   # runs_per_node: 1
   time_limit: "02:00:00"  # Time limit per job
   qos: "regular"
-  # execution_mode: "interactive"
-  execution_mode: "multi_node_slurm"
+  execution_mode: "interactive"
+  # execution_mode: "multi_node_slurm"
 
 # Objects to convert (any subset of: digihits, hits, tracks, particles, calorimeter)
 objects:
   - tracker_hits
-  # - tracks
-  - particles
+  - tracks
+  # - particles
   # - calorimeter
 
 # Chunking
-chunk_size: 1000
+chunk_size: 100
 # chunk_size: 100
 run_size: 128
 
@@ -57,8 +57,17 @@ digihits_columns_keep:
   - "surface_id"
   - "event_id"
 
+tracks_columns_keep:
+  - "event_id"
+  - "majority_particle_id"
+  - "d0"
+  - "z0"
+  - "phi"
+  - "theta"
+  - "qop"
+
 # Processing parameters
-max_chunks: 8
+max_chunks: 1
 min_tracker_hits: 1
 
 log_level: "INFO"
