@@ -20,9 +20,9 @@ from utils.edm4hep_utils import pixel_readouts, strip_readouts
 
 from utils.track_utils import (
     convert_hit_ids, load_track_summary,
-    create_particle_barcode_map, get_majority_particle_id, load_root_file,
-    get_particle_ids_from_events
+    write_tracks_with_selection,
 )
+from convert_digihits import process_event_for_digihits
 
 import awkward as ak
 
@@ -54,8 +54,8 @@ def process_event_for_tracks(
     global_event_num: int,
     tracksummary_arrays: Any,
     tracks_csv_pattern: str,
-    simhits_df: pd.DataFrame,
-    edm4hep_hits_df: pd.DataFrame
+    *,
+    digihits_run_df: pd.DataFrame,
 ) -> pd.DataFrame:
     """
     Process a single event.
@@ -90,20 +90,26 @@ def process_event_for_tracks(
             
     track_fitting_df = pd.DataFrame(track_data).rename(columns={"track_nr": "track_id"})
 
-    # Get this local event hits
-    local_event_edm4hep_hits = edm4hep_hits_df[edm4hep_hits_df.event_id == local_event_num]
-    if 'event_id' in simhits_df.columns:
-        local_event_simhits = simhits_df[simhits_df.event_id == local_event_num]
-    elif 'event_nr' in simhits_df.columns:
-        local_event_simhits = simhits_df[simhits_df.event_nr == local_event_num]
-    else:
-        local_event_simhits = simhits_df.copy()
+    # Compute majority particle_id using Measurements_ID indexing into per-event measurements
+    if 'Measurements_ID' not in tracks_csv.columns:
+        raise ValueError("Tracks CSV missing Measurements_ID column; cannot compute majority_particle_id")
 
-    # Build particle ID - particle barcode mapping
-    particle_barcode_map = create_particle_barcode_map(local_event_edm4hep_hits, local_event_simhits)
+    ev_meas = digihits_run_df[digihits_run_df.event_id == global_event_num].reset_index(drop=True)
 
-    # Get majority particle ID for each track
-    majority_particle_ids = tracks_csv.Hits_ID.apply(get_majority_particle_id, args=(local_event_simhits, particle_barcode_map))    
+    def majority_from_measurements_id(ids_str: str) -> int | float:
+        ids = convert_hit_ids(ids_str)
+        if ids is None or len(ids) == 0:
+            return np.nan
+        try:
+            labels = ev_meas.loc[ids, 'particle_id']
+        except Exception:
+            return np.nan
+        if len(labels) == 0:
+            return np.nan
+        mode_vals = labels.mode()
+        return mode_vals.iat[0] if len(mode_vals) else np.nan
+
+    majority_particle_ids = tracks_csv.Measurements_ID.apply(majority_from_measurements_id)
     
     # Combine data
     track_finding_data = {
@@ -114,7 +120,7 @@ def process_event_for_tracks(
         "num_holes": tracks_csv.nHoles.values,
         "num_shared_hits": tracks_csv.nSharedHits.values,
         "chi2": tracks_csv.chi2.values,
-        "hit_ids": tracks_csv.Hits_ID.apply(convert_hit_ids).values,
+        "hit_ids": tracks_csv.Measurements_ID.apply(convert_hit_ids).values,
         "majority_particle_id": majority_particle_ids.values,
     }
     
@@ -196,15 +202,15 @@ def process_run_for_tracks(
     try:
         # Verify files exist before attempting to process
         tracksummary_path = run_dir / file_patterns["tracksummary_file"]
-        simhits_path = run_dir / file_patterns["simhits_file"]
         edm4hep_path = run_dir / file_patterns["edm4hep_file"]
+        measurements_path = run_dir / "measurements.root"
         
         if not tracksummary_path.exists():
             raise FileNotFoundError(f"Track summary file not found: {tracksummary_path}")
-        if not simhits_path.exists():
-            raise FileNotFoundError(f"Simhits file not found: {simhits_path}")
         if not edm4hep_path.exists():
             raise FileNotFoundError(f"EDM4hep file not found: {edm4hep_path}")
+        if not measurements_path.exists():
+            raise FileNotFoundError(f"Measurements file not found: {measurements_path}")
         
         # Load track summary data once for the whole run
         try:
@@ -212,17 +218,29 @@ def process_run_for_tracks(
         except Exception as e:
             raise ValueError(f"Failed to load track summary: {str(e)}")
 
-        # Load simulated hits and EDM4hep data
+        # Build run-level digihits by merging measurements with tracker hits once per run
         try:
-            simhits_df = load_root_file(simhits_path)
-        except Exception as e:
-            raise ValueError(f"Failed to load simhits: {str(e)}")
-        
-        try:
-            edm4hep_events = uproot.open(edm4hep_path)["events"]
-            edm4hep_hits_df = get_particle_ids_from_events(edm4hep_events, pixel_readouts + strip_readouts)
-        except Exception as e:
-            raise ValueError(f"Failed to load EDM4hep data: {str(e)}")
+            meas_df_all = uproot.open(measurements_path)
+        except Exception:
+            # Fallback to track_utils helper if needed
+            from utils.track_utils import load_root_file as _load
+            meas_df_all = _load(measurements_path)
+        from pyedm4hep import EDM4hepEventBatch
+        batch = EDM4hepEventBatch(str(edm4hep_path), events=range(run_size))
+        hits_all = batch.get_tracker_hits_df()
+        evs_for_run: List[pd.DataFrame] = []
+        for local_event_for_merge in range(run_size):
+            ev_hits = hits_all[hits_all.event_id == local_event_for_merge] if not hits_all.empty else None
+            if isinstance(meas_df_all, pd.DataFrame):
+                ev_meas = meas_df_all[meas_df_all.event_nr == local_event_for_merge].copy() if 'event_nr' in meas_df_all.columns else meas_df_all.copy()
+            else:
+                # If uproot file-like, fallback to helper
+                from utils.track_utils import load_root_file as _load
+                ev_meas = _load(measurements_path, event_id=local_event_for_merge)
+            ev_df = process_event_for_digihits(run_number * run_size + local_event_for_merge, local_event_for_merge, ev_meas, ev_hits)
+            if not ev_df.empty:
+                evs_for_run.append(ev_df)
+        digihits_run_df = pd.concat(evs_for_run, ignore_index=True) if evs_for_run else pd.DataFrame()
         
         run_events = []
         for local_event_num in range(run_size):
@@ -242,8 +260,7 @@ def process_run_for_tracks(
                     global_event_num,
                     tracksummary_arrays,
                     file_patterns["tracks_csv_pattern"],
-                    simhits_df,
-                    edm4hep_hits_df
+                    digihits_run_df=digihits_run_df,
                 )
                 run_events.append(event_df)
                 
@@ -267,7 +284,9 @@ def process_chunk_for_tracks(
     output_dir: Path,
     dataset_name: str,
     run_size: int,
-    file_patterns: dict
+    file_patterns: dict,
+    *,
+    columns_keep: List[str] | None = None,
 ) -> None:
     """
     Process a chunk of runs.
@@ -324,7 +343,7 @@ def process_chunk_for_tracks(
     # Save chunk to HDF5
     if all_track_data:
         all_events_df = pd.concat(all_track_data, ignore_index=True)
-        build_hdf5_tracks(all_events_df, str(output_file))  # Convert Path to string for h5py
+        write_tracks_with_selection(all_events_df, str(output_file), columns_keep=columns_keep)
         print(f"\nSaved events {start_event}-{end_event} to {output_file}")
     else:
         print(f"\nNo data to save for events {start_event}-{end_event}")
@@ -336,25 +355,25 @@ def main():
     # Load config file
     with open(args.config) as f:
         config = yaml.safe_load(f)
-    
+
     # Extract parameters from config
     campaign = config["campaign"]
     dataset = config["dataset"]
     version = config["version"]
-    
+
     # Build paths from config
     input_base_dir = Path(config["common"]["output_base_dir"]) / campaign / dataset / version
     output_base_dir = Path(config["common"]["output_base_dir"]) 
     output_path = config.get("output_path", f"{campaign}/{dataset}/{version}/reco/tracks")
-    
+
     # Processing parameters
     chunk_size = config.get("chunk_size", 1000)
     run_size = config.get("run_size", 10)
-    
+
     # File patterns
     file_patterns = {
-        "tracks_csv_pattern": config.get("tracks_csv_pattern", "event{:09d}-tracks_ambi.csv"),
-        "tracksummary_file": config.get("tracksummary_file", "tracksummary_ambi.root"),
+        "tracks_csv_pattern": config.get("tracks_csv_pattern", "event{:09d}-tracks_ckf.csv"),
+        "tracksummary_file": config.get("tracksummary_file", "tracksummary_ckf.root"),
         "simhits_file": config.get("simhits_file", "simhits.root"),
         "edm4hep_file": config.get("edm4hep_file", "edm4hep.root")
     }

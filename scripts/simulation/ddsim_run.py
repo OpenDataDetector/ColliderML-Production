@@ -132,7 +132,7 @@ def configure_detector(ddsim):
     odd_dir = getOpenDataDetectorDirectory()
     odd_xml = odd_dir / "xml" / "OpenDataDetector.xml"
     
-    # Configure DD4hep
+    # Configure DD4hep # TODO: This logic is probably backwards!!
     if isinstance(ddsim.compactFile, list):
         ddsim.compactFile = [str(odd_xml)]
     else:
@@ -178,6 +178,42 @@ def configure_physics(ddsim, config, logger):
 
     return ddsim
 
+def configure_verbosity_and_ui(ddsim, config, logger):
+    """Configure DDSim verbosity and Geant4 UI commands to reduce log volume
+    
+    Args:
+        ddsim: DD4hepSimulation instance
+        config: Configuration object
+        logger: Logger instance
+        
+    Returns:
+        DD4hepSimulation: Configured DD4hepSimulation instance
+    """
+    # Set DDSim print level (default to WARNING=4 for quieter logs)
+    if hasattr(config, 'ddsim_printLevel'):
+        ddsim.printLevel = config.ddsim_printLevel
+        logger.info(f"Setting DDSim printLevel to {config.ddsim_printLevel}")
+    else:
+        ddsim.printLevel = 4  # WARNING level by default (was 3=INFO)
+        logger.info(f"Setting DDSim printLevel to default WARNING level (4)")
+    
+    # Add Geant4 UI commands to reduce verbosity and suppress mass tolerance warnings
+    ui_commands = [
+        '/process/setPrimaryTransformerKETolerance 100 MeV',  # Suppress mass tolerance warnings
+        '/run/verbose 0',        # Reduce run manager verbosity
+        '/event/verbose 0',      # Reduce event manager verbosity
+        '/tracking/verbose 0'    # Reduce tracking verbosity
+    ]
+    
+    # Add any additional UI commands from config
+    if hasattr(config, 'ui_commands') and config.ui_commands:
+        ui_commands.extend(config.ui_commands)
+    
+    ddsim.ui.commandsConfigure = ui_commands
+    logger.info(f"Added {len(ui_commands)} Geant4 UI commands to reduce verbosity")
+    
+    return ddsim
+
 def run_ddsim(input_path, output_path, config, logger=None):
     """Run DD4hep simulation
     
@@ -214,6 +250,9 @@ def run_ddsim(input_path, output_path, config, logger=None):
     
     # Configure physics
     ddsim = configure_physics(ddsim, config, logger)
+    
+    # Configure verbosity and UI commands
+    ddsim = configure_verbosity_and_ui(ddsim, config, logger)
     
     # Log configuration
     logger.info(f"Running DD4hep simulation with {ddsim.numberOfEvents} events")

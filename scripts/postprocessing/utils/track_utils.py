@@ -291,3 +291,29 @@ def build_hdf5_tracks(df: pd.DataFrame, output_file: str) -> None:
                 compression='gzip',
                 compression_opts=6,
             )
+
+
+def write_tracks_with_selection(
+    df: pd.DataFrame,
+    output_file: str,
+    columns_keep: List[str] | None = None,
+) -> None:
+    """
+    Write tracks DataFrame to H5 with optional column selection.
+
+    Ensures required columns for storage are present:
+      - 'event_id' (for grouping)
+      - 'hit_ids' (stored separately under /events/event_#/hit_ids)
+    """
+    if df is None or df.empty:
+        return
+    filtered = df
+    if columns_keep:
+        cols = [c for c in columns_keep if c in df.columns]
+        # Ensure required columns are present
+        if 'event_id' not in cols and 'event_id' in df.columns:
+            cols = cols + ['event_id']
+        if 'hit_ids' not in cols and 'hit_ids' in df.columns:
+            cols = cols + ['hit_ids']
+        filtered = df[cols].copy()
+    build_hdf5_tracks(filtered, output_file)

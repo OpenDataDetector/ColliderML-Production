@@ -113,3 +113,27 @@ def iterate_and_process_chunks(
         process_chunk_fn(start_event, end_event, start_run, start_local, end_run, end_local)
 
 
+
+
+def local_events_for_run(
+    *,
+    start_run: int,
+    start_local: int,
+    end_run: int,
+    end_local: int,
+    abs_run: int,
+    run_size: int,
+):
+    """
+    Compute the range of local event indices for a given run within an event window.
+
+    Returns a range object covering [start_local, end_local] for boundary runs,
+    or full [0, run_size) for interior runs.
+    """
+    if start_run == end_run:
+        return range(start_local, end_local + 1)
+    if abs_run == start_run:
+        return range(start_local, run_size)
+    if abs_run == end_run:
+        return range(0, end_local + 1)
+    return range(0, run_size)

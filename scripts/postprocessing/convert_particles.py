@@ -90,6 +90,8 @@ def process_event_for_particles(
                         on=merge_cols,
                         how="inner",
                     )
+                    # Drop duplicates
+                    particles_df = particles_df.drop_duplicates(subset="particle_id")
 
         # Assign parent_id (first parent) when link info is available
         if preloaded_parents_df is not None and not preloaded_parents_df.empty:
@@ -153,6 +155,8 @@ def process_event_for_particles(
     except Exception as e:
         logging.error(f"Failed to process event {local_event_num} from {edm4hep_path}: {e}")
         return pd.DataFrame()
+
+        
 def build_particles_df_with_parents_and_vertex(
     batch: EDM4hepEventBatch,
     edm4hep_path: str,
