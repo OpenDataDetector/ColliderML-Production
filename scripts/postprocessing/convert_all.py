@@ -308,8 +308,8 @@ def convert_all(config: dict, chunk_index: int | None = None) -> None:
 
     particles_columns_keep = config.get("particles_columns_keep")
     digihits_columns_keep = config.get("digihits_columns_keep")
-    tracks_csv_pattern = config.get("tracks_csv_pattern", "event{:09d}-tracks_ckf.csv")
-    tracksummary_file = config.get("tracksummary_file", "tracksummary_ckf.root")
+    tracks_csv_pattern = config.get("tracks_csv_pattern", "event{:09d}-tracks_ambi.csv")
+    tracksummary_file = config.get("tracksummary_file", "tracksummary_ambi.root")
     simhits_file = config.get("simhits_file", "simhits.root")
     tracks_columns_keep = config.get("tracks_columns_keep")
     min_particle_energy = config.get("min_particle_energy")

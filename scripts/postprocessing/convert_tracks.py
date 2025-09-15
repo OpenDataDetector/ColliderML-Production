@@ -372,8 +372,8 @@ def main():
 
     # File patterns
     file_patterns = {
-        "tracks_csv_pattern": config.get("tracks_csv_pattern", "event{:09d}-tracks_ckf.csv"),
-        "tracksummary_file": config.get("tracksummary_file", "tracksummary_ckf.root"),
+        "tracks_csv_pattern": config.get("tracks_csv_pattern", "event{:09d}-tracks_ambi.csv"),
+        "tracksummary_file": config.get("tracksummary_file", "tracksummary_ambi.root"),
         "simhits_file": config.get("simhits_file", "simhits.root"),
         "edm4hep_file": config.get("edm4hep_file", "edm4hep.root")
     }
