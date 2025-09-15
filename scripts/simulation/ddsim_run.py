@@ -189,6 +189,8 @@ def configure_verbosity_and_ui(ddsim, config, logger):
     Returns:
         DD4hepSimulation: Configured DD4hepSimulation instance
     """
+    import logging as py_logging
+    
     # Set DDSim print level (default to WARNING=4 for quieter logs)
     if hasattr(config, 'ddsim_printLevel'):
         ddsim.printLevel = config.ddsim_printLevel
@@ -196,6 +198,26 @@ def configure_verbosity_and_ui(ddsim, config, logger):
     else:
         ddsim.printLevel = 4  # WARNING level by default (was 3=INFO)
         logger.info(f"Setting DDSim printLevel to default WARNING level (4)")
+    
+    # Map DDSim printLevel to Python logging levels and configure DDSim loggers
+    ddsim_to_python_level = {
+        1: py_logging.DEBUG,    # VERBOSE
+        2: py_logging.DEBUG,    # DEBUG  
+        3: py_logging.INFO,     # INFO
+        4: py_logging.WARNING,  # WARNING
+        5: py_logging.ERROR,    # ERROR
+        6: py_logging.CRITICAL, # FATAL
+        7: py_logging.CRITICAL  # ALWAYS
+    }
+    
+    python_level = ddsim_to_python_level.get(ddsim.printLevel, py_logging.WARNING)
+    
+    # Configure DDSim-related loggers using existing setup_logging functionality
+    ddsim_loggers = ['DDSim', 'DDSim.Helper.Filter', 'DDG4']
+    for logger_name in ddsim_loggers:
+        setup_logging(logger_name, python_level)
+    
+    logger.info(f"Set Python logging level to {py_logging.getLevelName(python_level)} for DDSim modules")
     
     # Add Geant4 UI commands to reduce verbosity
     ui_commands = [

@@ -4,15 +4,24 @@ import time
 import traceback
 from contextlib import contextmanager
 
-def setup_logging(name="PDA_Chain"):
-    """Configure logging for the chain"""
+def setup_logging(name="PDA_Chain", level=logging.INFO):
+    """Configure logging for the chain
+    
+    Args:
+        name: Logger name
+        level: Logging level (logging.INFO, logging.WARNING, etc.)
+    """
     logger = logging.getLogger(name)
-    handler = logging.StreamHandler()
-    handler.setFormatter(logging.Formatter(
-        '%(asctime)s %(levelname)-8s %(name)-12s %(message)s'
-    ))
-    logger.addHandler(handler)
-    logger.setLevel(logging.INFO)
+    
+    # Avoid adding duplicate handlers
+    if not logger.handlers:
+        handler = logging.StreamHandler()
+        handler.setFormatter(logging.Formatter(
+            '%(asctime)s %(levelname)-8s %(name)-12s %(message)s'
+        ))
+        logger.addHandler(handler)
+    
+    logger.setLevel(level)
     return logger
 
 class TimingRecorder:
