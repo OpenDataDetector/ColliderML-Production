@@ -223,11 +223,7 @@ def configure_verbosity_and_ui(ddsim, config, logger):
     ui_commands = [
         '/run/verbose 0',        # Reduce run manager verbosity
         '/event/verbose 0',      # Reduce event manager verbosity
-        '/tracking/verbose 0',   # Reduce tracking verbosity
-        '/control/verbose 0',    # Reduce control verbosity
-        '/hits/verbose 0',       # Reduce hits verbosity
-        '/run/particle/verbose 0',  # Reduce particle verbosity
-        '/geometry/navigator/verbose 0'  # Reduce geometry navigator verbosity
+        '/tracking/verbose 0'    # Reduce tracking verbosity
     ]
     
     # Add any additional UI commands from config
