@@ -81,6 +81,7 @@ def _process_chunk_for_all(
 ) -> None:
     import pandas as pd
     from pyedm4hep import EDM4hepEventBatch
+    import awkward as ak
 
     particles_frames: list[pd.DataFrame] = []
     digihits_frames: list[pd.DataFrame] = []
@@ -108,11 +109,15 @@ def _process_chunk_for_all(
         batch = EDM4hepEventBatch(str(edm4hep_path), events=range(run_size))
 
         tracksummary_arrays = None
+        track_fitting_df_run = None
         if "tracks" in objects:
             ts_path = Path(run_dir) / tracksummary_file
             if ts_path.exists():
                 try:
                     tracksummary_arrays = load_track_summary(str(ts_path))
+                    # Normalize into a per-run DataFrame with event linkage
+                    import pandas as pd
+                    track_fitting_df_run = _build_track_fitting_df_run(tracksummary_arrays, run_size)
                 except Exception as e:
                     logger.warning(f"Failed to load tracksummary at {ts_path}: {e}")
 
@@ -164,7 +169,7 @@ def _process_chunk_for_all(
                         digihits_measurements_columns
                         if digihits_measurements_columns is not None
                         else [
-                            "event_nr",
+                        "event_nr",
                             "volume_id",
                             "layer_id",
                             "surface_id",
@@ -204,7 +209,7 @@ def _process_chunk_for_all(
             else:
                 logger.warning(f"Missing measurements file: {measurements_path}")
 
-        if "tracks" in objects and tracksummary_arrays is not None and digihits_run_df is not None:
+        if "tracks" in objects and track_fitting_df_run is not None and digihits_run_df is not None:
             for local_event_num in local_events:
                 global_event_num = abs_run * run_size + local_event_num
                 try:
@@ -212,7 +217,7 @@ def _process_chunk_for_all(
                         run_dir=Path(run_dir),
                         local_event_num=local_event_num,
                         global_event_num=global_event_num,
-                        tracksummary_arrays=tracksummary_arrays,
+                        track_fitting_df_event=track_fitting_df_run[track_fitting_df_run.get('event_nr', -1) == local_event_num].copy(),
                         tracks_csv_pattern=tracks_csv_pattern,
                         digihits_run_df=digihits_run_df,
                     )
@@ -233,36 +238,36 @@ def _process_chunk_for_all(
 
     expected_events = end_event - start_event + 1
     if "particles" in objects and particles_frames:
-        particles_all = pd.concat(particles_frames, ignore_index=True)
-        particles_out = Path(particles_out_dir) / (
-            f"{dataset_name_dot}.truth.particles.events{start_event}-{end_event}.h5"
-        )
-        processed_events_particles = len(seen_pairs_particles)
-        if processed_events_particles != expected_events:
+            particles_all = pd.concat(particles_frames, ignore_index=True)
+            particles_out = Path(particles_out_dir) / (
+                f"{dataset_name_dot}.truth.particles.events{start_event}-{end_event}.h5"
+            )
+            processed_events_particles = len(seen_pairs_particles)
+            if processed_events_particles != expected_events:
             logger.warning(
                 f"Particles chunk events expected={expected_events}, processed={processed_events_particles}"
             )
-        logger.info(f"Writing particles to: {particles_out} (rows={len(particles_all)})")
-        write_particles_with_selection(particles_all, str(particles_out), columns_keep=particles_columns_keep)
-        if particles_out.exists():
-            logger.info(f"Wrote particles file: {particles_out}")
-        else:
-            logger.warning(f"Particles file not created (possibly filtered to empty): {particles_out}")
+            logger.info(f"Writing particles to: {particles_out} (rows={len(particles_all)})")
+            write_particles_with_selection(particles_all, str(particles_out), columns_keep=particles_columns_keep)
+            if particles_out.exists():
+                logger.info(f"Wrote particles file: {particles_out}")
+            else:
+                logger.warning(f"Particles file not created (possibly filtered to empty): {particles_out}")
     if "tracker_hits" in objects and digihits_frames:
-        digihits_all = pd.concat(digihits_frames, ignore_index=True)
-        trkhits_out = Path(trkhits_out_dir) / (
-            f"{dataset_name_dot}.reco.tracker_hits.events{start_event}-{end_event}.h5"
-        )
-        processed_events_hits = len(seen_pairs_hits)
-        if processed_events_hits != expected_events:
+            digihits_all = pd.concat(digihits_frames, ignore_index=True)
+            trkhits_out = Path(trkhits_out_dir) / (
+                f"{dataset_name_dot}.reco.tracker_hits.events{start_event}-{end_event}.h5"
+            )
+            processed_events_hits = len(seen_pairs_hits)
+            if processed_events_hits != expected_events:
             logger.warning(
                 f"Tracker hits chunk events expected={expected_events}, processed={processed_events_hits}"
             )
-        logger.info(f"Writing tracker hits to: {trkhits_out} (rows={len(digihits_all)})")
-        write_digihits_with_selection(digihits_all, str(trkhits_out), columns_keep=digihits_columns_keep)
-        if trkhits_out.exists():
-            logger.info(f"Wrote tracker hits file: {trkhits_out}")
-        else:
+            logger.info(f"Writing tracker hits to: {trkhits_out} (rows={len(digihits_all)})")
+            write_digihits_with_selection(digihits_all, str(trkhits_out), columns_keep=digihits_columns_keep)
+            if trkhits_out.exists():
+                logger.info(f"Wrote tracker hits file: {trkhits_out}")
+            else:
             logger.warning(
                 f"Tracker hits file not created (possibly filtered to empty): {trkhits_out}"
             )
@@ -283,6 +288,47 @@ def _process_chunk_for_all(
             logger.info(f"Wrote tracks file: {tracks_out}")
         else:
             logger.warning(f"Tracks file not created (possibly filtered to empty): {tracks_out}")
+
+
+def _build_track_fitting_df_run(tracksummary_arrays, run_size: int):
+    import pandas as pd
+    import awkward as ak
+    per_event_frames: list[pd.DataFrame] = []
+    for idx in range(run_size):
+        if idx >= len(tracksummary_arrays):
+            break
+        entry = tracksummary_arrays[idx]
+        if not hasattr(entry, 'fields'):
+            continue
+        row_dict = {}
+        for field in entry.fields:
+            if field == 'event_nr':
+                continue
+            try:
+                row_dict[field] = ak.to_numpy(entry[field])
+            except Exception:
+                continue
+        if not row_dict:
+            continue
+        df_entry = pd.DataFrame(row_dict)
+        # Prefer event_nr from entry; fallback to loop index
+        evnr_val = None
+        try:
+            ev_field = entry['event_nr']
+            ev_arr = ak.to_numpy(ev_field)
+            if getattr(ev_arr, 'ndim', 0) == 0:
+                evnr_val = int(ev_arr)
+            elif len(ev_arr) > 0:
+                evnr_val = int(ev_arr[0])
+        except Exception:
+            pass
+        if evnr_val is None:
+            evnr_val = idx
+        df_entry['event_nr'] = evnr_val
+        if 'track_nr' in df_entry.columns:
+            df_entry = df_entry.rename(columns={'track_nr': 'track_id'})
+        per_event_frames.append(df_entry)
+    return pd.concat(per_event_frames, ignore_index=True) if per_event_frames else pd.DataFrame()
 
 
 def convert_all(config: dict, chunk_index: int | None = None) -> None:
@@ -344,6 +390,7 @@ def convert_all(config: dict, chunk_index: int | None = None) -> None:
             tracks_csv_pattern=tracks_csv_pattern,
             tracksummary_file=tracksummary_file,
             simhits_file=simhits_file,
+            tracks_columns_keep=tracks_columns_keep,
         ),
     )
 

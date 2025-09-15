@@ -364,10 +364,18 @@ def write_tracks_with_selection(
     filtered = df
     if columns_keep:
         cols = [c for c in columns_keep if c in df.columns]
-        # Ensure required columns are present
-        if 'event_id' not in cols and 'event_id' in df.columns:
-            cols = cols + ['event_id']
-        if 'hit_ids' not in cols and 'hit_ids' in df.columns:
-            cols = cols + ['hit_ids']
+        # Ensure required columns are present for writing and linking
+        required = []
+        if 'event_id' in df.columns and 'event_id' not in cols:
+            required.append('event_id')
+        if 'hit_ids' in df.columns and 'hit_ids' not in cols:
+            required.append('hit_ids')
+        if 'track_id' in df.columns and 'track_id' not in cols:
+            required.append('track_id')
+        if required:
+            cols = cols + required
+        # Deduplicate while keeping order
+        seen = set()
+        cols = [c for c in cols if not (c in seen or seen.add(c))]
         filtered = df[cols].copy()
     build_hdf5_tracks(filtered, output_file)

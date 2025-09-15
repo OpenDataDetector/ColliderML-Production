@@ -204,10 +204,11 @@ def build_stage_command(config, config_path, stage_script_path, output_dir, outp
     filter_g4_warnings = config.get("filter_g4_warnings", False)
     if filter_g4_warnings and stage == "simulation":
         logger.info("Applying shell-level stdout filtering for Geant4 warnings.")
-        filter_pattern = "G4Exception|deltaMass|Primary particle PDG"
+        # Use awk for robust multi-line block filtering.
+        # This script stops printing when it sees START and resumes after END.
+        awk_filter_script = "BEGIN{p=1} /G4Exception-START/{p=0} /G4Exception-END/{p=1;next} p"
         # 'set -o pipefail' ensures that if the python script fails, the job fails.
-        # The grep command filters out the unwanted Geant4 warning lines from stdout.
-        python_command = f"set -o pipefail; {python_command} | grep -v -E '{filter_pattern}'"
+        python_command = f"set -o pipefail; {python_command} | awk '{awk_filter_script}'"
 
     # Build the complete command based on execution mode and shifter usage
     if execution_mode == "interactive":

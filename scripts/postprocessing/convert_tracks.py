@@ -25,6 +25,46 @@ from utils.track_utils import (
 from convert_digihits import process_event_for_digihits
 
 import awkward as ak
+def build_track_fitting_df_run(tracksummary_arrays: Any, run_size: int) -> pd.DataFrame:
+    """Flatten tracksummary uproot arrays into one DataFrame with event_nr per row."""
+    per_event_frames: List[pd.DataFrame] = []
+    for idx in range(run_size):
+        if idx >= len(tracksummary_arrays):
+            break
+        entry = tracksummary_arrays[idx]
+        if not hasattr(entry, 'fields'):
+            continue
+        row_dict = {}
+        for field in entry.fields:
+            # Skip event_nr here; handle explicitly below
+            if field == 'event_nr':
+                continue
+            try:
+                row_dict[field] = ak.to_numpy(entry[field])
+            except Exception:
+                continue
+        if not row_dict:
+            continue
+        df_entry = pd.DataFrame(row_dict)
+        # Prefer event_nr from entry; fallback to loop index
+        evnr_val = None
+        try:
+            ev_field = entry['event_nr']
+            ev_arr = ak.to_numpy(ev_field)
+            if getattr(ev_arr, 'ndim', 0) == 0:
+                evnr_val = int(ev_arr)
+            elif len(ev_arr) > 0:
+                evnr_val = int(ev_arr[0])
+        except Exception:
+            pass
+        if evnr_val is None:
+            evnr_val = idx
+        df_entry['event_nr'] = evnr_val
+        if 'track_nr' in df_entry.columns:
+            df_entry = df_entry.rename(columns={'track_nr': 'track_id'})
+        per_event_frames.append(df_entry)
+    return pd.concat(per_event_frames, ignore_index=True) if per_event_frames else pd.DataFrame()
+
 
 def parse_args():
     """Parse command line arguments"""
@@ -52,7 +92,7 @@ def process_event_for_tracks(
     run_dir: Path,
     local_event_num: int,
     global_event_num: int,
-    tracksummary_arrays: Any,
+    track_fitting_df_event: pd.DataFrame,
     tracks_csv_pattern: str,
     *,
     digihits_run_df: pd.DataFrame,
@@ -75,20 +115,8 @@ def process_event_for_tracks(
     # Load tracks CSV
     tracks_csv = pd.read_csv(run_dir / tracks_csv_pattern.format(local_event_num))
     
-    # Get track summary data for this event
-    arrays = tracksummary_arrays[local_event_num]
-    track_data = {}
-    for field in getattr(arrays, 'fields', []):
-        if field == 'event_nr':
-            continue
-        try:
-            array = ak.to_numpy(arrays[field])
-            assert len(array.shape) == 1
-            track_data[field] = array
-        except Exception:
-            continue
-            
-    track_fitting_df = pd.DataFrame(track_data).rename(columns={"track_nr": "track_id"})
+    # Use prebuilt per-event slice of track fitting summary
+    track_fitting_df = track_fitting_df_event.rename(columns={"track_nr": "track_id"}) if 'track_nr' in track_fitting_df_event.columns else track_fitting_df_event.copy()
 
     # Compute majority particle_id using Measurements_ID indexing into per-event measurements
     if 'Measurements_ID' not in tracks_csv.columns:
@@ -126,21 +154,21 @@ def process_event_for_tracks(
     
     track_fitting_data = {
         "event_id": global_event_num,
-        "track_id": track_fitting_df.track_id.values,
-        "d0": track_fitting_df.eLOC0_fit.values,
-        "z0": track_fitting_df.eLOC1_fit.values,
-        "phi": track_fitting_df.ePHI_fit.values,
-        "theta": track_fitting_df.eTHETA_fit.values,
-        "qop": track_fitting_df.eQOP_fit.values,
-        "time": track_fitting_df.eT_fit.values,
-        "d0_truth": track_fitting_df.t_d0.values,
-        "z0_truth": track_fitting_df.t_z0.values,
-        "phi_truth": track_fitting_df.t_phi.values,
-        "theta_truth": track_fitting_df.t_theta.values,
-        "charge_truth": track_fitting_df.t_charge.values,
-        "p_truth": track_fitting_df.t_p.values,
-        "pT_truth": track_fitting_df.t_pT.values,
-        "time_truth": track_fitting_df.t_time.values,
+        "track_id": track_fitting_df.track_id.values if 'track_id' in track_fitting_df else [],
+        "d0": track_fitting_df.eLOC0_fit.values if 'eLOC0_fit' in track_fitting_df else [],
+        "z0": track_fitting_df.eLOC1_fit.values if 'eLOC1_fit' in track_fitting_df else [],
+        "phi": track_fitting_df.ePHI_fit.values if 'ePHI_fit' in track_fitting_df else [],
+        "theta": track_fitting_df.eTHETA_fit.values if 'eTHETA_fit' in track_fitting_df else [],
+        "qop": track_fitting_df.eQOP_fit.values if 'eQOP_fit' in track_fitting_df else [],
+        "time": track_fitting_df.eT_fit.values if 'eT_fit' in track_fitting_df else [],
+        "d0_truth": track_fitting_df.t_d0.values if 't_d0' in track_fitting_df else [],
+        "z0_truth": track_fitting_df.t_z0.values if 't_z0' in track_fitting_df else [],
+        "phi_truth": track_fitting_df.t_phi.values if 't_phi' in track_fitting_df else [],
+        "theta_truth": track_fitting_df.t_theta.values if 't_theta' in track_fitting_df else [],
+        "charge_truth": track_fitting_df.t_charge.values if 't_charge' in track_fitting_df else [],
+        "p_truth": track_fitting_df.t_p.values if 't_p' in track_fitting_df else [],
+        "pT_truth": track_fitting_df.t_pT.values if 't_pT' in track_fitting_df else [],
+        "time_truth": track_fitting_df.t_time.values if 't_time' in track_fitting_df else [],
     }
     
     full_track_df = pd.DataFrame(track_finding_data)
@@ -212,11 +240,12 @@ def process_run_for_tracks(
         if not measurements_path.exists():
             raise FileNotFoundError(f"Measurements file not found: {measurements_path}")
         
-        # Load track summary data once for the whole run
+        # Load and normalize track summary data once for the whole run into a per-run DataFrame
         try:
-            tracksummary_arrays = load_track_summary(tracksummary_path)
+            arrays = load_track_summary(tracksummary_path)
         except Exception as e:
             raise ValueError(f"Failed to load track summary: {str(e)}")
+        track_fitting_df_run = build_track_fitting_df_run(arrays, run_size)
 
         # Build run-level digihits by merging measurements with tracker hits once per run
         try:
@@ -254,11 +283,16 @@ def process_run_for_tracks(
                     print(f"  Skipping missing tracks CSV for event {local_event_num} in run {run_number}")
                     continue
                 
+                # Slice per-event fitting rows by event_nr == local_event_num
+                if not track_fitting_df_run.empty:
+                    per_event_fit = track_fitting_df_run[track_fitting_df_run.get('event_nr', -1) == local_event_num].copy()
+                else:
+                    per_event_fit = pd.DataFrame()
                 event_df = process_event_for_tracks(
                     run_dir,
                     local_event_num,
                     global_event_num,
-                    tracksummary_arrays,
+                    per_event_fit,
                     file_patterns["tracks_csv_pattern"],
                     digihits_run_df=digihits_run_df,
                 )
