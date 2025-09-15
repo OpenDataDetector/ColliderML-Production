@@ -5,7 +5,7 @@ from DDSim.DD4hepSimulation import DD4hepSimulation
 from g4units import GeV
 import traceback
 from acts.examples.odd import getOpenDataDetectorDirectory
-from utils.app_logging import setup_logging, TimingRecorder
+from utils.app_logging import setup_logging, TimingRecorder, suppress_geant4_warning_exceptions
 from utils.config import create_base_parser, load_config
 
 def parse_args():
@@ -284,73 +284,13 @@ def run_ddsim(input_path, output_path, config, logger=None):
     
     # Run simulation with optional G4 warning filtering
     if getattr(config, 'filter_g4_warnings', False):
-        _run_ddsim_with_filtered_output(ddsim, logger)
+        logger.info("Running DDSim with Geant4 warning suppression enabled")
+        with suppress_geant4_warning_exceptions():
+            ddsim.run()
     else:
         ddsim.run()
 
-def _run_ddsim_with_filtered_output(ddsim, logger):
-    """Run DDSim with filtered stderr to suppress G4Exception warnings"""
-    import sys
-    import io
-    import threading
-    import re
     
-    # Patterns to filter out
-    filter_patterns = [
-        r'G4WT\d+ > \s*-------- WWWW ------- G4Exception-START',
-        r'\*\*\* G4Exception : part\d+',
-        r'Primary particle PDG=\d+ deltaMass\(MeV\)=[\d.]+',
-        r'Specified mass\(MeV\)=[\d.]+.*PDG mass',
-        r'To change the tolerance or the exception severity',
-        r'\*\*\* This is just a warning message\.',
-        r'-------- WWWW -------- G4Exception-END'
-    ]
-    
-    compiled_patterns = [re.compile(pattern) for pattern in filter_patterns]
-    
-    def filter_stderr_line(line):
-        """Return True if line should be filtered out"""
-        for pattern in compiled_patterns:
-            if pattern.search(line):
-                return True
-        return False
-    
-    class FilteredStderr:
-        def __init__(self, original_stderr):
-            self.original_stderr = original_stderr
-            self.buffer = ""
-            self.in_g4_warning = False
-            
-        def write(self, text):
-            self.buffer += text
-            lines = self.buffer.split('\n')
-            self.buffer = lines[-1]  # Keep incomplete line
-            
-            for line in lines[:-1]:
-                if not filter_stderr_line(line):
-                    self.original_stderr.write(line + '\n')
-                else:
-                    # Optionally log that we filtered something
-                    pass
-                    
-        def flush(self):
-            if self.buffer and not filter_stderr_line(self.buffer):
-                self.original_stderr.write(self.buffer)
-                self.buffer = ""
-            self.original_stderr.flush()
-            
-        def __getattr__(self, name):
-            return getattr(self.original_stderr, name)
-    
-    # Temporarily replace stderr
-    original_stderr = sys.stderr
-    try:
-        sys.stderr = FilteredStderr(original_stderr)
-        logger.info("Running DDSim with G4Exception warning filtering enabled")
-        ddsim.run()
-    finally:
-        # Restore original stderr
-        sys.stderr = original_stderr
 
 def main():
     timer = None  # Initialize timer to None

@@ -87,3 +87,126 @@ class TimingRecorder:
         except Exception as e:
             print(f"Error writing timing report: {str(e)}")
             print(traceback.format_exc())
+
+
+# ------------------------------
+# Stderr filtering utilities
+# ------------------------------
+
+@contextmanager
+def filter_stderr(patterns):
+    """Context manager to filter sys.stderr lines matching any regex patterns.
+
+    Args:
+        patterns: Iterable of compiled regex patterns or pattern strings.
+    """
+    import sys
+    import re
+
+    compiled_patterns = [re.compile(p) if isinstance(p, str) else p for p in patterns]
+
+    def should_filter(line: str) -> bool:
+        for pat in compiled_patterns:
+            if pat.search(line):
+                return True
+        return False
+
+    class _FilteredStderr:
+        def __init__(self, original_stderr):
+            self._original = original_stderr
+            self._buffer = ""
+
+        def write(self, text):
+            self._buffer += text
+            lines = self._buffer.split('\n')
+            self._buffer = lines[-1]
+            for line in lines[:-1]:
+                if not should_filter(line):
+                    self._original.write(line + '\n')
+
+        def flush(self):
+            if self._buffer and not should_filter(self._buffer):
+                self._original.write(self._buffer)
+                self._buffer = ""
+            self._original.flush()
+
+        def __getattr__(self, name):
+            return getattr(self._original, name)
+
+    original_stderr = sys.stderr
+    try:
+        sys.stderr = _FilteredStderr(original_stderr)
+        yield
+    finally:
+        sys.stderr = original_stderr
+
+
+def geant4_warning_filter_patterns():
+    """Return regex patterns that match noisy Geant4 G4Exception warnings to suppress."""
+    return [
+        r'G4WT\d+ > \s*-------- WWWW ------- G4Exception-START',
+        r'\*\*\* G4Exception : part\d+',
+        r'Primary particle PDG=\d+ deltaMass\(MeV\)=[\d.]+',
+        r'Specified mass\(MeV\)=[\d.]+.*PDG mass',
+        r'To change the tolerance or the exception severity',
+        r'\*\*\* This is just a warning message\.',
+        r'-------- WWWW -------- G4Exception-END'
+    ]
+
+
+@contextmanager
+def suppress_geant4_warning_exceptions():
+    """Context manager to suppress common Geant4 G4Exception warning blocks.
+
+    Usage:
+        with suppress_geant4_warning_exceptions():
+            ddsim.run()
+    """
+    import sys
+    import re
+
+    # Match either with or without G4WT prefix; tolerate variable dashes/spaces
+    start_re = re.compile(r"(?:G4WT\d+\s*>\s*)?-+\s*WWWW\s*-+\s*G4Exception-START", re.IGNORECASE)
+    end_re = re.compile(r"-+\s*WWWW\s*-+\s*G4Exception-END", re.IGNORECASE)
+    header_re = re.compile(r"\*\*\*\s*G4Exception\s*:\s*", re.IGNORECASE)
+
+    class _G4FilteredStderr:
+        def __init__(self, original_stderr):
+            self._original = original_stderr
+            self._buffer = ""
+            self._in_block = False
+
+        def write(self, text):
+            self._buffer += text
+            lines = self._buffer.split('\n')
+            self._buffer = lines[-1]
+            for line in lines[:-1]:
+                if self._in_block:
+                    # If inside a block, suppress lines until END
+                    if end_re.search(line):
+                        self._in_block = False
+                    # Do not write block lines
+                    continue
+                else:
+                    # Detect start of a block either at banner or header line
+                    if start_re.search(line) or header_re.search(line):
+                        self._in_block = True
+                        continue
+                    self._original.write(line + '\n')
+
+        def flush(self):
+            if self._buffer and not self._in_block:
+                self._original.write(self._buffer)
+                self._buffer = ""
+            # If in block, drop buffer silently
+            self._original.flush()
+
+        def __getattr__(self, name):
+            return getattr(self._original, name)
+
+    original_stderr = sys.stderr
+    try:
+        sys.stderr = _G4FilteredStderr(original_stderr)
+        yield
+    finally:
+        sys.stderr = original_stderr
