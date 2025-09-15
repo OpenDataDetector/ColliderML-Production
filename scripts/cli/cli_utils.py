@@ -142,8 +142,6 @@ def build_stage_command(config, config_path, stage_script_path, output_dir, outp
     if not (is_simulation or is_postprocessing):
         raise ValueError(f"Unknown stage category for stage: {stage}")
     
-    filter_g4_warnings = config.get("filter_g4_warnings", False)
-
     # Get environment setup commands
     env_setup_cmds = get_env_setup_cmds(config)
     
@@ -200,14 +198,16 @@ def build_stage_command(config, config_path, stage_script_path, output_dir, outp
     
     python_command = " ".join(python_cmd_parts)
     
-    # If G4 warning filtering is enabled, wrap the command in a shell construct
-    # that filters stderr through grep. This is more robust for Slurm jobs.
+    # If G4 warning filtering is enabled, wrap the command to filter stdout.
+    # This is the only robust way to catch the G4Exception warnings, which
+    # are unexpectedly routed to stdout in the production environment.
+    filter_g4_warnings = config.get("filter_g4_warnings", False)
     if filter_g4_warnings and stage == "simulation":
-        logger.info("Applying shell-level stderr filtering for Geant4 warnings.")
-        # Use process substitution. The regex is combined to match key parts of the block.
+        logger.info("Applying shell-level stdout filtering for Geant4 warnings.")
         filter_pattern = "G4Exception|deltaMass|Primary particle PDG"
-        # Using exec redirects stderr for the remainder of the shell's execution.
-        python_command = f"exec 2> >(grep -v -E '{filter_pattern}' >&2); {python_command}"
+        # 'set -o pipefail' ensures that if the python script fails, the job fails.
+        # The grep command filters out the unwanted Geant4 warning lines from stdout.
+        python_command = f"set -o pipefail; {python_command} | grep -v -E '{filter_pattern}'"
 
     # Build the complete command based on execution mode and shifter usage
     if execution_mode == "interactive":

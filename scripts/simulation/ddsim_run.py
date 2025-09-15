@@ -281,9 +281,7 @@ def run_ddsim(input_path, output_path, config, logger=None):
         logger.info(f"Input: {input_path}")
     logger.info(f"Output: {output_path}")
     logger.info(f"Random seed: {ddsim.random.seed}")
-    
-    # The actual run call. G4 warning filtering is now handled at the shell level
-    # by the cli_utils.build_stage_command function.
+ 
     ddsim.run()
 
     
