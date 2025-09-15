@@ -5,7 +5,7 @@ from DDSim.DD4hepSimulation import DD4hepSimulation
 from g4units import GeV
 import traceback
 from acts.examples.odd import getOpenDataDetectorDirectory
-from utils.app_logging import setup_logging, TimingRecorder, suppress_geant4_warning_exceptions
+from utils.app_logging import setup_logging, TimingRecorder, suppress_geant4_warning_exceptions, suppress_geant4_warning_exceptions_fd
 from utils.config import create_base_parser, load_config
 
 def parse_args():
@@ -285,7 +285,8 @@ def run_ddsim(input_path, output_path, config, logger=None):
     # Run simulation with optional G4 warning filtering
     if getattr(config, 'filter_g4_warnings', False):
         logger.info("Running DDSim with Geant4 warning suppression enabled")
-        with suppress_geant4_warning_exceptions():
+        # Use FD-level suppression to catch C++ writes (needed for Slurm runs)
+        with suppress_geant4_warning_exceptions_fd():
             ddsim.run()
     else:
         ddsim.run()

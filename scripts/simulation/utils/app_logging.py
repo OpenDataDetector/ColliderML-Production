@@ -210,3 +210,75 @@ def suppress_geant4_warning_exceptions():
         yield
     finally:
         sys.stderr = original_stderr
+
+
+@contextmanager
+def suppress_geant4_warning_exceptions_fd():
+    """FD-level variant to suppress Geant4 G4Exception warning blocks (captures C++ writes).
+
+    This redirects file descriptor 2 (stderr) to a pipe and filters lines in a reader thread.
+    """
+    import os
+    import sys
+    import threading
+    import re
+
+    start_re = re.compile(r"(?:G4WT\d+\s*>\s*)?-+\s*WWWW\s*-+\s*G4Exception-START", re.IGNORECASE)
+    end_re = re.compile(r"-+\s*WWWW\s*-+\s*G4Exception-END", re.IGNORECASE)
+    header_re = re.compile(r"\*\*\*\s*G4Exception\s*:\s*", re.IGNORECASE)
+
+    # Duplicate original stderr FD to restore later
+    orig_fd = os.dup(2)
+    r_fd, w_fd = os.pipe()
+
+    # Make FD 2 point to write end of our pipe
+    os.dup2(w_fd, 2)
+    os.close(w_fd)
+
+    # Reader thread: read lines from r_fd, filter, and write to orig_fd
+    stop_evt = threading.Event()
+
+    def reader():
+        with os.fdopen(r_fd, 'rb', buffering=0) as rfp, os.fdopen(orig_fd, 'wb', buffering=0) as ofp:
+            buf = bytearray()
+            in_block = False
+            while not stop_evt.is_set():
+                chunk = rfp.read(1024)
+                if not chunk:
+                    break
+                buf.extend(chunk)
+                while True:
+                    nl = buf.find(b'\n')
+                    if nl < 0:
+                        break
+                    line = bytes(buf[:nl]).decode(errors='replace')
+                    del buf[:nl+1]
+                    if in_block:
+                        if end_re.search(line):
+                            in_block = False
+                        continue
+                    else:
+                        if start_re.search(line) or header_re.search(line):
+                            in_block = True
+                            continue
+                        ofp.write(line.encode('utf-8', errors='replace') + b'\n')
+            # Flush any remaining non-block buffered content
+            if buf and not in_block:
+                try:
+                    ofp.write(bytes(buf))
+                except Exception:
+                    pass
+
+    t = threading.Thread(target=reader, name="stderr-g4-filter", daemon=True)
+    t.start()
+    try:
+        yield
+    finally:
+        # Restore FD 2
+        os.dup2(orig_fd, 2)
+        # Signal and join reader
+        stop_evt.set()
+        try:
+            t.join(timeout=1.0)
+        except Exception:
+            pass
