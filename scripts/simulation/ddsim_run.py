@@ -197,9 +197,8 @@ def configure_verbosity_and_ui(ddsim, config, logger):
         ddsim.printLevel = 4  # WARNING level by default (was 3=INFO)
         logger.info(f"Setting DDSim printLevel to default WARNING level (4)")
     
-    # Add Geant4 UI commands to reduce verbosity and suppress mass tolerance warnings
+    # Add Geant4 UI commands to reduce verbosity
     ui_commands = [
-        '/process/setPrimaryTransformerKETolerance 100 MeV',  # Suppress mass tolerance warnings
         '/run/verbose 0',        # Reduce run manager verbosity
         '/event/verbose 0',      # Reduce event manager verbosity
         '/tracking/verbose 0'    # Reduce tracking verbosity
