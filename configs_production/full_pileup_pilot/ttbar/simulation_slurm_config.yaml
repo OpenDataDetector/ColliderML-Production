@@ -9,9 +9,9 @@ job_config:
   runs_per_node: 8  # Number of runs per node
   time_limit: "06:00:00"  # Time limit per job
   qos: "regular"
-  # execution_mode: "multi_node_slurm"
+  execution_mode: "multi_node_slurm"
   depends_on:
-  execution_mode: "interactive"
+  # execution_mode: "interactive"
 
 validation_config:
   time_limit: "01:00:00"
@@ -29,4 +29,4 @@ ddsim_printLevel: 6  # 1=VERBOSE, 2=DEBUG, 3=INFO, 4=WARNING(default), 5=ERROR, 
 # Filter out specific Geant4 warnings (optional)
 filter_g4_warnings: true  # Filter out mass tolerance and other G4Exception warnings
 
-debug_output_dir: /global/cfs/cdirs/m4958/data/ColliderML/simulation/full_pileup_pilot/ttbar/v3/runs/0
+# debug_output_dir: /global/cfs/cdirs/m4958/data/ColliderML/simulation/full_pileup_pilot/ttbar/v3/runs/0
