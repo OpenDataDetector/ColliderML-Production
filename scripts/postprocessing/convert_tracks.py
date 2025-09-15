@@ -20,50 +20,12 @@ from utils.edm4hep_utils import pixel_readouts, strip_readouts
 
 from utils.track_utils import (
     convert_hit_ids, load_track_summary,
-    write_tracks_with_selection,
+    write_tracks_with_selection, build_track_fitting_df_run,
 )
 from convert_digihits import process_event_for_digihits
 
 import awkward as ak
-def build_track_fitting_df_run(tracksummary_arrays: Any, run_size: int) -> pd.DataFrame:
-    """Flatten tracksummary uproot arrays into one DataFrame with event_nr per row."""
-    per_event_frames: List[pd.DataFrame] = []
-    for idx in range(run_size):
-        if idx >= len(tracksummary_arrays):
-            break
-        entry = tracksummary_arrays[idx]
-        if not hasattr(entry, 'fields'):
-            continue
-        row_dict = {}
-        for field in entry.fields:
-            # Skip event_nr here; handle explicitly below
-            if field == 'event_nr':
-                continue
-            try:
-                row_dict[field] = ak.to_numpy(entry[field])
-            except Exception:
-                continue
-        if not row_dict:
-            continue
-        df_entry = pd.DataFrame(row_dict)
-        # Prefer event_nr from entry; fallback to loop index
-        evnr_val = None
-        try:
-            ev_field = entry['event_nr']
-            ev_arr = ak.to_numpy(ev_field)
-            if getattr(ev_arr, 'ndim', 0) == 0:
-                evnr_val = int(ev_arr)
-            elif len(ev_arr) > 0:
-                evnr_val = int(ev_arr[0])
-        except Exception:
-            pass
-        if evnr_val is None:
-            evnr_val = idx
-        df_entry['event_nr'] = evnr_val
-        if 'track_nr' in df_entry.columns:
-            df_entry = df_entry.rename(columns={'track_nr': 'track_id'})
-        per_event_frames.append(df_entry)
-    return pd.concat(per_event_frames, ignore_index=True) if per_event_frames else pd.DataFrame()
+ 
 
 
 def parse_args():

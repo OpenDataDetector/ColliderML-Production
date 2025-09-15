@@ -379,3 +379,47 @@ def write_tracks_with_selection(
         cols = [c for c in cols if not (c in seen or seen.add(c))]
         filtered = df[cols].copy()
     build_hdf5_tracks(filtered, output_file)
+
+
+def build_track_fitting_df_run(tracksummary_arrays: Any, run_size: int) -> pd.DataFrame:
+    """Flatten tracksummary uproot arrays into one DataFrame with event_nr per row.
+
+    - Skips event_nr field in the value columns and assigns it explicitly
+    - Renames track_nr -> track_id when present
+    """
+    per_event_frames: List[pd.DataFrame] = []
+    for idx in range(run_size):
+        if idx >= len(tracksummary_arrays):
+            break
+        entry = tracksummary_arrays[idx]
+        if not hasattr(entry, 'fields'):
+            continue
+        row_dict = {}
+        for field in entry.fields:
+            if field == 'event_nr':
+                continue
+            try:
+                row_dict[field] = ak.to_numpy(entry[field])
+            except Exception:
+                continue
+        if not row_dict:
+            continue
+        df_entry = pd.DataFrame(row_dict)
+        # Extract event_nr from entry - required field
+        try:
+            ev_field = entry['event_nr']
+            ev_arr = ak.to_numpy(ev_field)
+            if getattr(ev_arr, 'ndim', 0) == 0:
+                evnr_val = int(ev_arr)
+            elif len(ev_arr) > 0:
+                evnr_val = int(ev_arr[0])
+            else:
+                raise ValueError(f"event_nr field is empty for entry {idx}")
+        except Exception as e:
+            raise ValueError(f"event_nr field not available or invalid for entry {idx}: {e}")
+        
+        df_entry['event_nr'] = evnr_val
+        if 'track_nr' in df_entry.columns:
+            df_entry = df_entry.rename(columns={'track_nr': 'track_id'})
+        per_event_frames.append(df_entry)
+    return pd.concat(per_event_frames, ignore_index=True) if per_event_frames else pd.DataFrame()

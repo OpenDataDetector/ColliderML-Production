@@ -208,7 +208,8 @@ def build_stage_command(config, config_path, stage_script_path, output_dir, outp
         # This script stops printing when it sees START and resumes after END.
         awk_filter_script = "BEGIN{p=1} /G4Exception-START/{p=0} /G4Exception-END/{p=1;next} p"
         # 'set -o pipefail' ensures that if the python script fails, the job fails.
-        python_command = f"set -o pipefail; {python_command} | awk '{awk_filter_script}'"
+        # First, awk removes the multi-line block. Then, grep removes the empty thread prefixes.
+        python_command = f"set -o pipefail; {python_command} | awk '{awk_filter_script}' | grep -v -E '^G4WT[0-9]+ >\\s*$'"
 
     # Build the complete command based on execution mode and shifter usage
     if execution_mode == "interactive":
