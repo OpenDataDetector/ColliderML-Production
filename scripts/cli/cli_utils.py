@@ -199,17 +199,12 @@ def build_stage_command(config, config_path, stage_script_path, output_dir, outp
     python_command = " ".join(python_cmd_parts)
     
     # If G4 warning filtering is enabled, wrap the command to filter stdout.
-    # This is the only robust way to catch the G4Exception warnings, which
-    # are unexpectedly routed to stdout in the production environment.
+    # This is the only robust way to catch the G4Exception warnings
     filter_g4_warnings = config.get("filter_g4_warnings", False)
     if filter_g4_warnings and stage == "simulation":
         logger.info("Applying shell-level stdout filtering for Geant4 warnings.")
-        # Use awk for robust multi-line block filtering.
-        # This script stops printing when it sees START and resumes after END.
         awk_filter_script = "BEGIN{p=1} /G4Exception-START/{p=0} /G4Exception-END/{p=1;next} p"
-        # 'set -o pipefail' ensures that if the python script fails, the job fails.
-        # First, awk removes the multi-line block. Then, grep removes the empty thread prefixes.
-        python_command = f"set -o pipefail; {python_command} | awk '{awk_filter_script}' | grep -v -E '^G4WT[0-9]+ >\\s*$'"
+        python_command = f"set -o pipefail; {python_command} | awk '{awk_filter_script}' | grep -v -E '^G4WT[0-9]+ >\\s*$' | grep -v -E '^[[:space:]]*$'"
 
     # Build the complete command based on execution mode and shifter usage
     if execution_mode == "interactive":
