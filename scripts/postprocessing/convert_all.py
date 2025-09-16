@@ -118,7 +118,7 @@ def _process_chunk_for_all(
                     tracksummary_arrays = load_track_summary(str(ts_path))
                     # Normalize into a per-run DataFrame with event linkage
                     import pandas as pd
-                    track_fitting_df_run = _build_track_fitting_df_run(tracksummary_arrays, run_size)
+                    track_fitting_df_run = build_track_fitting_df_run(tracksummary_arrays, run_size)
                 except Exception as e:
                     logger.warning(f"Failed to load tracksummary at {ts_path}: {e}")
 
