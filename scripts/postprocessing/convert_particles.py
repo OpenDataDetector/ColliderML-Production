@@ -17,6 +17,7 @@ import h5py
 from tqdm import tqdm
 import logging
 import sys
+import time
 
 # Use relative imports to avoid conflicts with other utils modules
 from utils.path_utils import get_run_paths, make_dir
@@ -50,12 +51,15 @@ def process_event_for_particles(
         DataFrame containing particle data for this event
     """
     try:
+        t0 = time.time()
         # Use preloaded per-event slice if provided; otherwise read from file
         if preloaded_particles_df is not None:
             particles_df = preloaded_particles_df.copy()
         else:
+            _t_ev_load = time.time()
             event = EDM4hepEvent(edm4hep_path, event_index=local_event_num)
             particles_df = event.get_particles_df()
+            logger.debug(f"Particles event load local={local_event_num} time={time.time() - _t_ev_load:.3f}s")
         
         # Reset index and add particle_id
         particles_df.reset_index(drop=True, inplace=True)
@@ -84,6 +88,7 @@ def process_event_for_particles(
 
                 right_cols = merge_cols + [c for c in ["vertex_primary"] if c in local_digi.columns]
                 if right_cols:
+                    _t_merge = time.time()
                     particles_df = pd.merge(
                         particles_df,
                         local_digi[right_cols],
@@ -92,6 +97,7 @@ def process_event_for_particles(
                     )
                     # Drop duplicates
                     particles_df = particles_df.drop_duplicates(subset="particle_id")
+                    logger.debug(f"Merged vertex_primary for local={local_event_num} time={time.time() - _t_merge:.3f}s")
 
         # Assign parent_id (first parent) when link info is available
         if preloaded_parents_df is not None and not preloaded_parents_df.empty:
@@ -149,7 +155,7 @@ def process_event_for_particles(
         # Add event_id
         event_particles["event_id"] = event_id
         
-        logging.debug(f"Event {event_id}: processed {len(event_particles)} particles")
+        logging.debug(f"Event {event_id}: processed {len(event_particles)} particles in {time.time() - t0:.3f}s")
         return event_particles
         
     except Exception as e:
@@ -176,6 +182,7 @@ def build_particles_df_with_parents_and_vertex(
     parents_all = batch.get_parents_df()
     
     frames: List[pd.DataFrame] = []
+    t_start = time.time()
     logger.debug(f"Building particles DataFrame with parents and vertex info for {len(local_events)} events")
     logger.debug(f"Particles DataFrame shape: {parts_all.shape if parts_all is not None else 'None'}, with columns {parts_all.columns if parts_all is not None else 'None'}, and unique events {parts_all.event_id.nunique() if parts_all is not None else 'None'}")
     logger.debug(f"Parents DataFrame shape: {parents_all.shape if parents_all is not None else 'None'}, with columns {parents_all.columns if parents_all is not None else 'None'}, and unique events {parents_all.event_id.nunique() if parents_all is not None else 'None'}")
@@ -200,7 +207,9 @@ def build_particles_df_with_parents_and_vertex(
         )
         if not ev_df.empty:
             frames.append(ev_df)
-    return pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
+    out = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
+    logger.debug(f"Built run-level particles df rows={len(out)} time={time.time() - t_start:.3f}s")
+    return out
 
 
 def write_particles_with_selection(
@@ -325,6 +334,7 @@ def process_chunk_for_particles(
     end_run = min(end_run, len(run_dirs) - 1)
 
     output_file = Path(output_dir) / f"{dataset_name}.truth.particles.events{start_event}-{end_event}.h5"
+    chunk_start = time.time()
     if output_file.exists() and not force_overwrite:
         logging.info(f"Skipping events {start_event}-{end_event} - exists: {output_file}")
         return
@@ -349,7 +359,9 @@ def process_chunk_for_particles(
             digi_particles_df: pd.DataFrame | None = None
             if particles_root_path.exists():
                 try:
+                    _t_digi = time.time()
                     digi_particles_df = load_root_file(str(particles_root_path), ignore_variable_columns=False)
+                    logger.debug(f"Loaded particles.root for run {abs_run} in {time.time() - _t_digi:.3f}s")
                     if "event_id" not in digi_particles_df.columns and "event_nr" in digi_particles_df.columns:
                         digi_particles_df = digi_particles_df.rename(columns={"event_nr": "event_id"})
                     digi_particles_df = digi_particles_df[digi_particles_df.get("event_id", -1).isin(local_events)].copy()
@@ -361,9 +373,11 @@ def process_chunk_for_particles(
             if not edm4hep_path.exists():
                 logging.warning(f"Missing EDM4hep file: {edm4hep_path}")
                 continue
+            _t_batch = time.time()
             batch = EDM4hepEventBatch(str(edm4hep_path), events=list(local_events))
             parts_all = batch.get_particles_df()
             parents_all = batch.get_parents_df()
+            logger.debug(f"Loaded particles+parents batch for run {abs_run} in {time.time() - _t_batch:.3f}s")
 
             evs: List[pd.DataFrame] = []
             for local_event_num in tqdm(local_events, desc="Processing events", leave=False):
@@ -395,7 +409,7 @@ def process_chunk_for_particles(
             if 'event_id' not in cols and 'event_id' in all_df.columns:
                 cols = cols + ['event_id']
             all_df = all_df[cols].copy()
-        logging.info(f"Writing {len(all_df)} particles across {all_df.event_id.nunique()} events -> {output_file}")
+        logging.info(f"Writing {len(all_df)} particles across {all_df.event_id.nunique()} events -> {output_file} (chunk_time={time.time() - chunk_start:.3f}s)")
         build_hdf5_particles(all_df, str(output_file))
     else:
         logging.warning(f"No data to save for events {start_event}-{end_event}")

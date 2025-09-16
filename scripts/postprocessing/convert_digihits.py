@@ -19,6 +19,7 @@ import uproot
 from tqdm import tqdm
 import logging
 import sys
+import time
 
 # Use relative imports to avoid conflicts with other utils modules
 from utils.path_utils import get_run_paths, make_dir
@@ -139,10 +140,11 @@ def process_event_for_digihits(event_id: int, local_event_num: int, measurements
         ev_meas = measurements_df.copy()
 
     measurements_length = len(ev_meas)
+    _t_merge = time.time()
     event_measurements = _merge_measurements_with_tracker(ev_meas, tracker_df)
     merged_length = len(event_measurements)
     logging.debug(
-        f"Event {event_id}: merged measurements {measurements_length} -> {merged_length}"
+        f"Event {event_id}: merged measurements {measurements_length} -> {merged_length} in {time.time() - _t_merge:.3f}s"
     )
 
     # Event id is the global id passed in
@@ -284,6 +286,7 @@ def process_chunk_for_digihits(
     end_run = min(end_run, len(run_dirs) - 1)
 
     output_file = Path(output_dir) / f"{dataset_name}.reco.tracker_hits.events{start_event}-{end_event}.h5"
+    chunk_start = time.time()
     if output_file.exists() and not force_overwrite:
         logging.info(f"Skipping events {start_event}-{end_event} - exists: {output_file}")
         return
@@ -308,7 +311,9 @@ def process_chunk_for_digihits(
             if not meas_path.exists():
                 logging.warning(f"Missing measurements file: {meas_path}")
                 continue
+            _t_meas = time.time()
             meas_df_all = load_root_file(str(meas_path))
+            logger.debug(f"Loaded measurements.root for run {abs_run} in {time.time() - _t_meas:.3f}s")
             if "event_nr" in meas_df_all.columns:
                 meas_df_all = meas_df_all[meas_df_all.event_nr.isin(local_events)].copy()
 
@@ -317,8 +322,10 @@ def process_chunk_for_digihits(
             if not edm4hep_path.exists():
                 logging.warning(f"Missing EDM4hep file: {edm4hep_path}")
                 continue
+            _t_batch = time.time()
             batch = EDM4hepEventBatch(str(edm4hep_path), events=list(local_events))
             hits_all = batch.get_tracker_hits_df()  # load tracker collection lazily
+            logger.debug(f"Loaded tracker hits batch for run {abs_run} in {time.time() - _t_batch:.3f}s")
 
             evs = []
             for local_event_num in local_events:
@@ -346,7 +353,7 @@ def process_chunk_for_digihits(
             if 'event_id' not in cols and 'event_id' in all_df.columns:
                 cols = cols + ['event_id']
             all_df = all_df[cols].copy()
-        logging.info(f"Writing {len(all_df)} measurements across {all_df.event_id.nunique()} events -> {output_file}")
+        logging.info(f"Writing {len(all_df)} measurements across {all_df.event_id.nunique()} events -> {output_file} (chunk_time={time.time() - chunk_start:.3f}s)")
         build_hdf5_digihits(all_df, str(output_file))
     else:
         logging.warning(f"No data to save for events {start_event}-{end_event}")

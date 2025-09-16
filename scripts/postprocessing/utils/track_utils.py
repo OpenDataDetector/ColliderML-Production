@@ -8,6 +8,9 @@ import uproot
 import awkward as ak
 import h5py
 from typing import Dict, Any, List, Tuple
+import logging
+
+logger = logging.getLogger(__name__)
 
 def get_particle_ids_from_events(events, tracker_readouts):
     """Get particle IDs from events for each tracker readout.
@@ -325,10 +328,14 @@ def build_hdf5_tracks(df: pd.DataFrame, output_file: str) -> None:
     Uses CSR ragged encoding for hit ids: hit_ids_data (int32) and hit_ids_indptr (int64).
     """
     if df is None or df.empty:
+        logger.debug(f"build_hdf5_tracks skipped empty dataframe for {output_file}")
         return
+    _t_total = logging.RootLogger if False else None  # placeholder to keep lints calm about unused vars if logging disabled
+    t_start = pd.Timestamp.now().timestamp()
     with h5py.File(output_file, 'a') as f:
         events_group = f.create_group('events') if 'events' not in f else f['events']
         for event_id, event_df in df.groupby('event_id'):
+            ev_start = pd.Timestamp.now().timestamp()
             event_group_name = f'event_{event_id}'
             if event_group_name in events_group:
                 del events_group[event_group_name]
@@ -345,6 +352,12 @@ def build_hdf5_tracks(df: pd.DataFrame, output_file: str) -> None:
             # Metadata
             event_group.attrs['encoding'] = 'csr_v1'
             event_group.attrs['nnz'] = int(data.size)
+            logger.debug(
+                f"Wrote event={event_id} tracks rows={len(event_df)} nnz={int(data.size)} time={pd.Timestamp.now().timestamp() - ev_start:.3f}s"
+            )
+    logger.debug(
+        f"build_hdf5_tracks file={output_file} total_time={pd.Timestamp.now().timestamp() - t_start:.3f}s"
+    )
 
 
 def write_tracks_with_selection(
@@ -360,7 +373,9 @@ def write_tracks_with_selection(
       - 'hit_ids' (used to build CSR arrays hit_ids_data/indptr under /events/event_#)
     """
     if df is None or df.empty:
+        logger.debug(f"write_tracks_with_selection skipped empty dataframe for {output_file}")
         return
+    t_start = pd.Timestamp.now().timestamp()
     filtered = df
     if columns_keep:
         cols = [c for c in columns_keep if c in df.columns]
@@ -378,6 +393,9 @@ def write_tracks_with_selection(
         seen = set()
         cols = [c for c in cols if not (c in seen or seen.add(c))]
         filtered = df[cols].copy()
+    logger.debug(
+        f"write_tracks_with_selection file={output_file} input_rows={len(df)} output_rows={len(filtered)} cols={list(filtered.columns)} time={pd.Timestamp.now().timestamp() - t_start:.3f}s"
+    )
     build_hdf5_tracks(filtered, output_file)
 
 
@@ -388,6 +406,7 @@ def build_track_fitting_df_run(tracksummary_arrays: Any, run_size: int) -> pd.Da
     - Renames track_nr -> track_id when present
     """
     per_event_frames: List[pd.DataFrame] = []
+    t_start = pd.Timestamp.now().timestamp()
     for idx in range(run_size):
         if idx >= len(tracksummary_arrays):
             break
@@ -422,4 +441,8 @@ def build_track_fitting_df_run(tracksummary_arrays: Any, run_size: int) -> pd.Da
         if 'track_nr' in df_entry.columns:
             df_entry = df_entry.rename(columns={'track_nr': 'track_id'})
         per_event_frames.append(df_entry)
-    return pd.concat(per_event_frames, ignore_index=True) if per_event_frames else pd.DataFrame()
+    out = pd.concat(per_event_frames, ignore_index=True) if per_event_frames else pd.DataFrame()
+    logger.debug(
+        f"build_track_fitting_df_run events={len(per_event_frames)} output_shape={out.shape if hasattr(out, 'shape') else None} time={pd.Timestamp.now().timestamp() - t_start:.3f}s"
+    )
+    return out
