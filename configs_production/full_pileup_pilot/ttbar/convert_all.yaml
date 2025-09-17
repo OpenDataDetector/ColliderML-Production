@@ -10,10 +10,20 @@ job_config:
   # n_runs: 1
   runs_per_node: 4  # Number of runs per node
   # runs_per_node: 1
-  time_limit: "00:30:00"  # Time limit per job
+  # time_limit: "04:00:00"  # Time limit per job
+  # qos: "regular"
+  time_limit: "00:30:00"
   qos: "debug"
   # execution_mode: "interactive"
   execution_mode: "multi_node_slurm"
+
+# Optional validation job to run after convert_all
+validation_config:
+  qos: "debug"
+  time_limit: "00:30:00"
+  publish_after_validation: true
+  publish_mode: hardlink
+  public_output_base_dir: "/global/cfs/cdirs/m4958/data/ColliderML/public/testing"
 
 # Objects to convert (any subset of: digihits, hits, tracks, particles, calorimeter)
 objects:
@@ -24,7 +34,7 @@ objects:
 
 # Chunking
 # chunk_size: 1000
-chunk_size: 256
+chunk_size: 128
 run_size: 128
 
 # Column selection for H5 outputs
