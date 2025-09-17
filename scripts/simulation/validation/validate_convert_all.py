@@ -29,11 +29,9 @@ import argparse
 import sys
 from pathlib import Path
 import logging
-import re
 import yaml
 import h5py
 import os
-import stat
 
 
 logger = logging.getLogger(__name__)
@@ -56,58 +54,66 @@ def _load_config_snapshot(version_dir: Path) -> dict | None:
         return None
 
 
-def _infer_dataset_name_dot(version_dir: Path) -> str:
-    """Infer campaign.dataset.version from directory tail components."""
+def _infer_dataset_name_dot(version_dir: Path, cfg: dict | None) -> str:
+    """Infer campaign.dataset.version from config when available, else from directory."""
+    if isinstance(cfg, dict):
+        c = cfg.get("campaign")
+        d = cfg.get("dataset")
+        v = cfg.get("version")
+        if all(isinstance(x, str) for x in (c, d, v)):
+            return f"{c}.{d}.{v}"
     try:
         campaign, dataset, version = version_dir.parts[-3:]
         return f"{campaign}.{dataset}.{version}"
     except Exception:
-        # Fallback to dot-joined last three parts if unusual layout
         return ".".join(version_dir.parts[-3:])
 
 
-def _parse_chunks_from_log(version_dir: Path) -> list[tuple[int, int]]:
-    """Parse event chunk ranges from convert_all log file.
+def _expected_chunks_from_config(cfg: dict | None) -> list[tuple[int, int]]:
+    """Compute expected event chunk ranges from config (no log parsing).
 
-    Looks for lines like: "Chunk X-Y timing summary:" under logs/stage_convert_all.
+    Uses: job_config.n_runs, run_size, chunk_size.
     """
-    logs_dir = version_dir / "logs" / "stage_convert_all"
-    if not logs_dir.exists():
+    if not isinstance(cfg, dict):
         return []
-    # Prefer a consolidated log.txt if present
-    log_candidates = []
-    txt_path = logs_dir / "log.txt"
-    if txt_path.exists():
-        log_candidates.append(txt_path)
-    # Also consider *.out files
-    log_candidates.extend(sorted(logs_dir.glob("*.out"), key=lambda p: p.stat().st_mtime, reverse=True))
-    if not log_candidates:
-        return []
-
-    chunk_ranges: list[tuple[int, int]] = []
-    pat = re.compile(r"Chunk\s+(\d+)-(\d+)\s+timing summary:")
+    job_cfg = cfg.get("job_config", {}) if isinstance(cfg.get("job_config"), dict) else {}
     try:
-        # Scan a few largest/most recent files first
-        for path in log_candidates[:5]:
-            with open(path, "r", errors="ignore") as f:
-                for line in f:
-                    m = pat.search(line)
-                    if m:
-                        a, b = int(m.group(1)), int(m.group(2))
-                        chunk_ranges.append((a, b))
-        # Deduplicate
-        chunk_ranges = sorted(set(chunk_ranges))
+        n_runs = int(job_cfg.get("n_runs"))
+        run_size = int(cfg.get("run_size"))
+        chunk_size = int(cfg.get("chunk_size"))
+        if n_runs <= 0 or run_size <= 0 or chunk_size <= 0:
+            return []
+    except Exception:
+        return []
+    num_events = n_runs * run_size
+    num_chunks = (num_events + chunk_size - 1) // chunk_size
+    # Apply optional cap if present
+    try:
+        cap = cfg.get("max_chunks")
+        if cap is None:
+            # driver.determine_chunk_cap also allows interactive cap via job_config.n_runs; here we honor explicit max_chunks only
+            cap_int = None
+        else:
+            cap_int = int(cap)
+        if cap_int is not None and cap_int >= 0:
+            num_chunks = min(num_chunks, cap_int)
     except Exception:
         pass
-    return chunk_ranges
+    ranges: list[tuple[int, int]] = []
+    for idx in range(num_chunks):
+        start_event = idx * chunk_size
+        end_event = min(num_events, start_event + chunk_size) - 1
+        ranges.append((start_event, end_event))
+    return ranges
 
 
-def _check_particles_file(h5_path: Path) -> list[str]:
+def _validate_h5_file(file_path: Path, required_dataset: str, *, require_csr: bool = False) -> list[str]:
+    """Generic HDF5 validator for convert_all outputs under /events/event_*/..."""
     errors: list[str] = []
     try:
-        with h5py.File(h5_path, "r") as f:
+        with h5py.File(file_path, "r") as f:
             if "events" not in f:
-                errors.append(f"missing group /events in {h5_path}")
+                errors.append(f"missing group /events in {file_path}")
                 return errors
             events = f["events"]
             has_any = False
@@ -116,72 +122,23 @@ def _check_particles_file(h5_path: Path) -> list[str]:
                     continue
                 has_any = True
                 grp = events[name]
-                if "particles" not in grp:
-                    errors.append(f"{h5_path}:{name} missing dataset 'particles'")
+                if required_dataset not in grp:
+                    errors.append(f"{file_path}:{name} missing dataset '{required_dataset}'")
+                if require_csr:
+                    if "hit_ids_data" not in grp or "hit_ids_indptr" not in grp:
+                        errors.append(f"{file_path}:{name} missing CSR datasets 'hit_ids_data'/'hit_ids_indptr'")
             if not has_any:
-                errors.append(f"{h5_path} has no event_* groups")
+                errors.append(f"{file_path} has no event_* groups")
     except Exception as e:
-        errors.append(f"failed to open {h5_path}: {e}")
-    return errors
-
-
-def _check_tracker_hits_file(h5_path: Path) -> list[str]:
-    errors: list[str] = []
-    try:
-        with h5py.File(h5_path, "r") as f:
-            if "events" not in f:
-                errors.append(f"missing group /events in {h5_path}")
-                return errors
-            events = f["events"]
-            has_any = False
-            for name in events.keys():
-                if not name.startswith("event_"):
-                    continue
-                has_any = True
-                grp = events[name]
-                if "measurements" not in grp:
-                    errors.append(f"{h5_path}:{name} missing dataset 'measurements'")
-            if not has_any:
-                errors.append(f"{h5_path} has no event_* groups")
-    except Exception as e:
-        errors.append(f"failed to open {h5_path}: {e}")
-    return errors
-
-
-def _check_tracks_file(h5_path: Path) -> list[str]:
-    errors: list[str] = []
-    try:
-        with h5py.File(h5_path, "r") as f:
-            if "events" not in f:
-                errors.append(f"missing group /events in {h5_path}")
-                return errors
-            events = f["events"]
-            has_any = False
-            for name in events.keys():
-                if not name.startswith("event_"):
-                    continue
-                has_any = True
-                grp = events[name]
-                if "tracks" not in grp:
-                    errors.append(f"{h5_path}:{name} missing dataset 'tracks'")
-                # CSR arrays are recommended; warn if missing but do not hard-fail
-                if "hit_ids_data" not in grp or "hit_ids_indptr" not in grp:
-                    errors.append(f"{h5_path}:{name} missing CSR datasets 'hit_ids_data'/'hit_ids_indptr'")
-            if not has_any:
-                errors.append(f"{h5_path} has no event_* groups")
-    except Exception as e:
-        errors.append(f"failed to open {h5_path}: {e}")
+        errors.append(f"failed to open {file_path}: {e}")
     return errors
 
 
 def _parse_args():
-    """Parse CLI arguments for validation."""
+    """Parse CLI arguments for validation (minimal args)."""
     parser = argparse.ArgumentParser(description="Validate convert_all outputs")
     parser.add_argument("--stage", required=True, help="Stage name (expected: convert_all)")
     parser.add_argument("--runs-dir", required=True, help="Path to <version_dir>/runs")
-    parser.add_argument("--publish", action="store_true", help="Publish (link) outputs to public directory after validation")
-    parser.add_argument("--public-root", default=None, help="Public output base dir (overrides config common.public_output_base_dir)")
-    parser.add_argument("--publish-mode", default=None, choices=["hardlink"], help="Publish mode; currently supports 'hardlink' only")
     return parser.parse_args()
 
 
@@ -196,102 +153,76 @@ def _infer_objects_from_config(cfg: dict | None) -> list[str]:
     return default_objs
 
 
+def _resolve_data_root(version_dir: Path) -> Path:
+    """Return base directory where outputs live: new fixed structure under 'hdf5/'"""
+    return version_dir / "hdf5"
+
+
 def _validate_for_objects(version_dir: Path, dataset_name_dot: str, objects: list[str], chunks: list[tuple[int, int]]) -> list[str]:
     """Validate existence and structure for produced files; return list of error messages."""
     errors: list[str] = []
+    base_root = _resolve_data_root(version_dir)
     if chunks:
         for (start_event, end_event) in chunks:
             if "particles" in objects:
-                p = version_dir / "truth" / "particles" / f"{dataset_name_dot}.truth.particles.events{start_event}-{end_event}.h5"
+                p = base_root / "truth" / "particles" / f"{dataset_name_dot}.truth.particles.events{start_event}-{end_event}.h5"
                 if not p.exists():
                     errors.append(f"missing particles file: {p}")
                 else:
-                    errors.extend(_check_particles_file(p))
+                    errors.extend(_validate_h5_file(p, "particles"))
             if "tracker_hits" in objects:
-                h = version_dir / "reco" / "tracker_hits" / f"{dataset_name_dot}.reco.tracker_hits.events{start_event}-{end_event}.h5"
+                h = base_root / "reco" / "tracker_hits" / f"{dataset_name_dot}.reco.tracker_hits.events{start_event}-{end_event}.h5"
                 if not h.exists():
                     errors.append(f"missing tracker_hits file: {h}")
                 else:
-                    errors.extend(_check_tracker_hits_file(h))
+                    errors.extend(_validate_h5_file(h, "measurements"))
             if "tracks" in objects:
-                t = version_dir / "reco" / "tracks" / f"{dataset_name_dot}.reco.tracks.events{start_event}-{end_event}.h5"
+                t = base_root / "reco" / "tracks" / f"{dataset_name_dot}.reco.tracks.events{start_event}-{end_event}.h5"
                 if not t.exists():
                     errors.append(f"missing tracks file: {t}")
                 else:
-                    errors.extend(_check_tracks_file(t))
+                    errors.extend(_validate_h5_file(t, "tracks", require_csr=True))
     else:
-        # Fallback: scan files directly
-        if "particles" in objects:
-            for p in sorted((version_dir / "truth" / "particles").glob(f"{dataset_name_dot}.truth.particles.events*.h5")):
-                errors.extend(_check_particles_file(p))
-        if "tracker_hits" in objects:
-            for h in sorted((version_dir / "reco" / "tracker_hits").glob(f"{dataset_name_dot}.reco.tracker_hits.events*.h5")):
-                errors.extend(_check_tracker_hits_file(h))
-        if "tracks" in objects:
-            for t in sorted((version_dir / "reco" / "tracks").glob(f"{dataset_name_dot}.reco.tracks.events*.h5")):
-                errors.extend(_check_tracks_file(t))
+        # Without chunks, do not guess; prefer explicit ranges to avoid picking up stale files
+        errors.append("no expected chunk ranges available from config; aborting to avoid stale files")
     return errors
 
 
-def _resolve_publish_settings(args, cfg: dict | None) -> tuple[bool, str | None, str]:
-    """Determine whether to publish and resolve public root and mode.
-
-    Returns (do_publish, public_root, publish_mode)
-    """
-    want_publish = bool(args.publish)
-    publish_mode = args.publish_mode
-    public_root_cli = args.public_root
-    public_root_cfg = None
-    public_root_override = None
-    publish_cfg_flag = False
-    if isinstance(cfg, dict):
-        common_cfg = cfg.get("common", {})
-        public_root_cfg = common_cfg.get("public_output_base_dir")
-        val_cfg = cfg.get("validation_config", {})
-        publish_cfg_flag = bool(val_cfg.get("publish_after_validation", False))
-        # Allow validation_config to override the public root
-        public_root_override = val_cfg.get("public_output_base_dir")
-        if publish_mode is None:
-            publish_mode = val_cfg.get("publish_mode")
-    do_publish = want_publish or publish_cfg_flag
-    public_root = public_root_cli or public_root_override or public_root_cfg
-    if publish_mode is None:
-        publish_mode = "hardlink"
-    return do_publish, public_root, publish_mode
+def _resolve_publish_settings(cfg: dict | None) -> tuple[bool, str | None]:
+    """Determine whether to publish and resolve public root from config only."""
+    if not isinstance(cfg, dict):
+        return False, None
+    val_cfg = cfg.get("validation_config", {}) if isinstance(cfg.get("validation_config"), dict) else {}
+    do_publish = bool(val_cfg.get("publish_after_validation", False))
+    public_root = val_cfg.get("public_output_base_dir")
+    if not public_root:
+        common_cfg = cfg.get("common", {}) if isinstance(cfg.get("common"), dict) else {}
+        public_root = common_cfg.get("public_output_base_dir")
+    return do_publish, public_root
 
 
 def _collect_produced_files(version_dir: Path, dataset_name_dot: str, objects: list[str], chunks: list[tuple[int, int]], public_root_path: Path) -> list[tuple[Path, Path]]:
     """Build list of (src, dst) files for publishing under public_root."""
     produced_files: list[tuple[Path, Path]] = []
-    base_truth = version_dir / "truth" / "particles"
-    base_hits = version_dir / "reco" / "tracker_hits"
-    base_tracks = version_dir / "reco" / "tracks"
+    base_root = _resolve_data_root(version_dir)
+    base_truth = base_root / "truth" / "particles"
+    base_hits = base_root / "reco" / "tracker_hits"
+    base_tracks = base_root / "reco" / "tracks"
     target_base = public_root_path / version_dir.parts[-3] / version_dir.parts[-2] / version_dir.parts[-1]
     target_truth = target_base / "truth" / "particles"
     target_hits = target_base / "reco" / "tracker_hits"
     target_tracks = target_base / "reco" / "tracks"
 
-    if chunks:
-        for (start_event, end_event) in chunks:
-            if "particles" in objects:
-                src = base_truth / f"{dataset_name_dot}.truth.particles.events{start_event}-{end_event}.h5"
-                produced_files.append((src, target_truth / src.name))
-            if "tracker_hits" in objects:
-                src = base_hits / f"{dataset_name_dot}.reco.tracker_hits.events{start_event}-{end_event}.h5"
-                produced_files.append((src, target_hits / src.name))
-            if "tracks" in objects:
-                src = base_tracks / f"{dataset_name_dot}.reco.tracks.events{start_event}-{end_event}.h5"
-                produced_files.append((src, target_tracks / src.name))
-    else:
-        if "particles" in objects and base_truth.exists():
-            for p in base_truth.glob(f"{dataset_name_dot}.truth.particles.events*.h5"):
-                produced_files.append((p, target_truth / p.name))
-        if "tracker_hits" in objects and base_hits.exists():
-            for h in base_hits.glob(f"{dataset_name_dot}.reco.tracker_hits.events*.h5"):
-                produced_files.append((h, target_hits / h.name))
-        if "tracks" in objects and base_tracks.exists():
-            for t in base_tracks.glob(f"{dataset_name_dot}.reco.tracks.events*.h5"):
-                produced_files.append((t, target_tracks / t.name))
+    for (start_event, end_event) in chunks:
+        if "particles" in objects:
+            src = base_truth / f"{dataset_name_dot}.truth.particles.events{start_event}-{end_event}.h5"
+            produced_files.append((src, target_truth / src.name))
+        if "tracker_hits" in objects:
+            src = base_hits / f"{dataset_name_dot}.reco.tracker_hits.events{start_event}-{end_event}.h5"
+            produced_files.append((src, target_hits / src.name))
+        if "tracks" in objects:
+            src = base_tracks / f"{dataset_name_dot}.reco.tracks.events{start_event}-{end_event}.h5"
+            produced_files.append((src, target_tracks / src.name))
     return produced_files
 
 
@@ -305,21 +236,7 @@ def _publish_hardlinks(file_pairs: list[tuple[Path, Path]]) -> list[str]:
                 continue
             dst.parent.mkdir(parents=True, exist_ok=True)
             if dst.exists():
-                try:
-                    if src.stat().st_size == dst.stat().st_size:
-                        logger.info(f"Publish exists (size match), skipping: {dst}")
-                        os.chmod(dst, 0o775)
-                        for parent in [dst.parent, dst.parent.parent, dst.parent.parent.parent]:
-                            if parent and parent.exists():
-                                os.chmod(parent, 0o775)
-                        continue
-                    else:
-                        dst.unlink()
-                except Exception:
-                    try:
-                        dst.unlink()
-                    except Exception:
-                        pass
+                dst.unlink()
             os.link(src, dst)
             os.chmod(dst, 0o775)
             for parent in [dst.parent, dst.parent.parent, dst.parent.parent.parent]:
@@ -352,10 +269,11 @@ def main():
 
         cfg = _load_config_snapshot(version_dir)
         objects = _infer_objects_from_config(cfg)
-        dataset_name_dot = _infer_dataset_name_dot(version_dir)
-        chunks = _parse_chunks_from_log(version_dir)
+        dataset_name_dot = _infer_dataset_name_dot(version_dir, cfg)
+        chunks = _expected_chunks_from_config(cfg)
         if not chunks:
-            logger.warning("No chunk ranges found in logs. Will attempt to infer from files.")
+            logger.error("Could not derive expected chunk ranges from config. Ensure job_config.n_runs, run_size, and chunk_size are present.")
+            sys.exit(1)
 
         errors = _validate_for_objects(version_dir, dataset_name_dot, objects, chunks)
         if errors:
@@ -366,15 +284,12 @@ def main():
 
         logger.info("convert_all validation passed: all expected outputs found and structurally sound.")
 
-        do_publish, public_root, publish_mode = _resolve_publish_settings(args, cfg)
+        do_publish, public_root = _resolve_publish_settings(cfg)
         if not do_publish:
             sys.exit(0)
 
         if not public_root:
             logger.error("Publish requested but public_output_base_dir not provided (neither CLI nor config).")
-            sys.exit(3)
-        if publish_mode != "hardlink":
-            logger.error(f"Unsupported publish_mode: {publish_mode}")
             sys.exit(3)
 
         public_root_path = Path(public_root)
