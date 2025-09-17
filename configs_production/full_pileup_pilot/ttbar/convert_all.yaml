@@ -6,14 +6,14 @@ stage: "convert_all"
 
 # Job submission configuration
 job_config:
-  n_runs: 10  # Number of jobs to submit
+  n_runs: 4  # Number of jobs to submit
   # n_runs: 1
   runs_per_node: 4  # Number of runs per node
   # runs_per_node: 1
-  time_limit: "02:00:00"  # Time limit per job
-  qos: "regular"
-  execution_mode: "interactive"
-  # execution_mode: "multi_node_slurm"
+  time_limit: "00:30:00"  # Time limit per job
+  qos: "debug"
+  # execution_mode: "interactive"
+  execution_mode: "multi_node_slurm"
 
 # Objects to convert (any subset of: digihits, hits, tracks, particles, calorimeter)
 objects:
@@ -23,8 +23,8 @@ objects:
   # - calorimeter
 
 # Chunking
-chunk_size: 100
-# chunk_size: 100
+# chunk_size: 1000
+chunk_size: 256
 run_size: 128
 
 # Column selection for H5 outputs
@@ -55,11 +55,8 @@ digihits_columns_keep:
   - "volume_id"
   - "layer_id"
   - "surface_id"
-  - "event_id"
 
 tracks_columns_keep:
-  - "event_id"
-  - "majority_particle_id"
   - "d0"
   - "z0"
   - "phi"
@@ -70,4 +67,4 @@ tracks_columns_keep:
 max_chunks: 1
 min_tracker_hits: 1
 
-log_level: "DEBUG"
+log_level: "INFO"

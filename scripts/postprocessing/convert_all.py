@@ -48,9 +48,9 @@ def _compute_paths(config: dict) -> tuple[Path, Path, str, str]:
 
 
 def _prepare_output_dirs(output_base_dir: Path, dataset_base: str) -> tuple[Path, Path, Path]:
-    particles_out_dir = make_dir(output_base_dir, f"{dataset_base}/truth/particles")
-    trkhits_out_dir = make_dir(output_base_dir, f"{dataset_base}/reco/tracker_hits")
-    tracks_out_dir = make_dir(output_base_dir, f"{dataset_base}/reco/tracks")
+    particles_out_dir = make_dir(output_base_dir, f"{dataset_base}/hdf5/truth/particles")
+    trkhits_out_dir = make_dir(output_base_dir, f"{dataset_base}/hdf5/reco/tracker_hits")
+    tracks_out_dir = make_dir(output_base_dir, f"{dataset_base}/hdf5/reco/tracks")
     return particles_out_dir, trkhits_out_dir, tracks_out_dir
 
 

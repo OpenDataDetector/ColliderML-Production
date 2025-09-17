@@ -125,6 +125,9 @@ def _merge_measurements_with_tracker(meas_df: pd.DataFrame, tracker_df: pd.DataF
     # Convert detector strings to integers
     merged = _convert_detector_to_int(merged)
 
+    # Drop duplicated x, y, z, particle_id (this appears during the merge, if there are duplicate x,y,z points)
+    merged = merged.drop_duplicates(subset=["x", "y", "z", "particle_id"])
+
     return merged
 
 
