@@ -32,6 +32,7 @@ import logging
 import yaml
 import h5py
 import os
+import json
 
 
 logger = logging.getLogger(__name__)
@@ -188,17 +189,23 @@ def _validate_for_objects(version_dir: Path, dataset_name_dot: str, objects: lis
     return errors
 
 
-def _resolve_publish_settings(cfg: dict | None) -> tuple[bool, str | None]:
-    """Determine whether to publish and resolve public root from config only."""
+def _resolve_publish_settings(cfg: dict | None) -> tuple[bool, str | None, bool, bool, str | None]:
+    """Determine publish settings from config only.
+
+    Returns: (do_publish, public_root, overwrite, update_manifest, manifest_path)
+    """
     if not isinstance(cfg, dict):
-        return False, None
+        return False, None, False, False, None
     val_cfg = cfg.get("validation_config", {}) if isinstance(cfg.get("validation_config"), dict) else {}
     do_publish = bool(val_cfg.get("publish_after_validation", False))
     public_root = val_cfg.get("public_output_base_dir")
+    overwrite = bool(val_cfg.get("publish_overwrite", False))
+    update_manifest = bool(val_cfg.get("update_manifest", False))
+    manifest_path = val_cfg.get("manifest_path")
     if not public_root:
         common_cfg = cfg.get("common", {}) if isinstance(cfg.get("common"), dict) else {}
         public_root = common_cfg.get("public_output_base_dir")
-    return do_publish, public_root
+    return do_publish, public_root, overwrite, update_manifest, manifest_path
 
 
 def _collect_produced_files(version_dir: Path, dataset_name_dot: str, objects: list[str], chunks: list[tuple[int, int]], public_root_path: Path) -> list[tuple[Path, Path]]:
@@ -226,8 +233,8 @@ def _collect_produced_files(version_dir: Path, dataset_name_dot: str, objects: l
     return produced_files
 
 
-def _publish_hardlinks(file_pairs: list[tuple[Path, Path]]) -> list[str]:
-    """Publish via hardlinks and set perms; return list of error messages."""
+def _publish_hardlinks(file_pairs: list[tuple[Path, Path]], public_root_path: Path, *, overwrite: bool) -> list[str]:
+    """Publish via hardlinks and set perms up to public root; return list of error messages."""
     failed: list[str] = []
     for src, dst in file_pairs:
         try:
@@ -236,18 +243,97 @@ def _publish_hardlinks(file_pairs: list[tuple[Path, Path]]) -> list[str]:
                 continue
             dst.parent.mkdir(parents=True, exist_ok=True)
             if dst.exists():
-                dst.unlink()
+                if overwrite:
+                    dst.unlink()
+                else:
+                    logger.warning(f"Target exists, skipping (publish_overwrite=false): {dst}")
+                    # Still ensure directory perms up to public root
+                    parent = dst.parent
+                    while True:
+                        if parent.exists():
+                            os.chmod(parent, 0o775)
+                        if parent == public_root_path or parent.parent == parent:
+                            break
+                        parent = parent.parent
+                    continue
             os.link(src, dst)
             os.chmod(dst, 0o775)
-            for parent in [dst.parent, dst.parent.parent, dst.parent.parent.parent]:
-                if parent and parent.exists():
+            # Ensure directory permissions up to the public root
+            parent = dst.parent
+            while True:
+                if parent.exists():
                     os.chmod(parent, 0o775)
+                if parent == public_root_path or parent.parent == parent:
+                    break
+                parent = parent.parent
             logger.info(f"Published (hardlink): {dst} -> {src}")
         except OSError as e:
             failed.append(f"link failed: {src} -> {dst}: {e}")
         except Exception as e:
             failed.append(f"unexpected: {src} -> {dst}: {e}")
     return failed
+
+
+def _update_manifest(public_root_path: Path, cfg: dict, objects: list[str], chunks: list[tuple[int, int]], *, manifest_path_override: str | None = None) -> list[str]:
+    """Update manifest.json with newly published files. Returns list of warnings/errors."""
+    msgs: list[str] = []
+    campaign = str(cfg.get("campaign"))
+    dataset = str(cfg.get("dataset"))
+    version = str(cfg.get("version"))
+    obj_key_map = {"tracker_hits": "hits", "particles": "particles", "tracks": "tracks"}
+
+    manifest_path = Path(manifest_path_override) if manifest_path_override else (public_root_path / "manifest.json")
+    manifest = {"campaigns": {}}
+    if manifest_path.exists():
+        try:
+            with open(manifest_path, "r") as f:
+                manifest = json.load(f)
+        except Exception as e:
+            msgs.append(f"failed to read manifest: {e}")
+            # proceed with empty manifest structure
+
+    def ensure_path():
+        campaigns = manifest.setdefault("campaigns", {})
+        camp = campaigns.setdefault(campaign, {"default": False, "datasets": {}})
+        datasets = camp.setdefault("datasets", {})
+        ds = datasets.setdefault(dataset, {"default_version": version, "versions": {}})
+        versions = ds.setdefault("versions", {})
+        ver = versions.setdefault(version, {"objects": {"hits": [], "particles": [], "tracks": [], "calo_hits": [], "calo_clusters": []}})
+        return ver["objects"]
+
+    objects_node = ensure_path()
+
+    # Build entries and insert with dedup and sort
+    for (start_event, end_event) in chunks:
+        if "particles" in objects:
+            rel = f"{campaign}/{dataset}/{version}/truth/particles/{campaign}.{dataset}.{version}.truth.particles.events{start_event}-{end_event}.h5"
+            arr = objects_node["particles"]
+            if not any(item.get("path") == rel for item in arr):
+                arr.append({"path": rel, "start_event": start_event, "end_event": end_event})
+                arr.sort(key=lambda x: int(x.get("start_event", 0)))
+        if "tracker_hits" in objects:
+            rel = f"{campaign}/{dataset}/{version}/reco/tracker_hits/{campaign}.{dataset}.{version}.reco.tracker_hits.events{start_event}-{end_event}.h5"
+            arr = objects_node["hits"]
+            if not any(item.get("path") == rel for item in arr):
+                arr.append({"path": rel, "start_event": start_event, "end_event": end_event})
+                arr.sort(key=lambda x: int(x.get("start_event", 0)))
+        if "tracks" in objects:
+            rel = f"{campaign}/{dataset}/{version}/reco/tracks/{campaign}.{dataset}.{version}.reco.tracks.events{start_event}-{end_event}.h5"
+            arr = objects_node["tracks"]
+            if not any(item.get("path") == rel for item in arr):
+                arr.append({"path": rel, "start_event": start_event, "end_event": end_event})
+                arr.sort(key=lambda x: int(x.get("start_event", 0)))
+
+    # Atomic write
+    try:
+        tmp_path = manifest_path.with_suffix(".tmp")
+        with open(tmp_path, "w") as f:
+            json.dump(manifest, f, indent=2, sort_keys=False)
+        os.replace(tmp_path, manifest_path)
+        msgs.append(f"manifest updated: {manifest_path}")
+    except Exception as e:
+        msgs.append(f"failed to write manifest: {e}")
+    return msgs
 
 
 def main():
@@ -284,7 +370,7 @@ def main():
 
         logger.info("convert_all validation passed: all expected outputs found and structurally sound.")
 
-        do_publish, public_root = _resolve_publish_settings(cfg)
+        do_publish, public_root, overwrite, update_manifest, manifest_path_override = _resolve_publish_settings(cfg)
         if not do_publish:
             sys.exit(0)
 
@@ -294,7 +380,7 @@ def main():
 
         public_root_path = Path(public_root)
         file_pairs = _collect_produced_files(version_dir, dataset_name_dot, objects, chunks, public_root_path)
-        publish_errors = _publish_hardlinks(file_pairs)
+        publish_errors = _publish_hardlinks(file_pairs, public_root_path, overwrite=overwrite)
         if publish_errors:
             logger.error("Publishing encountered errors:")
             for m in publish_errors:
@@ -302,6 +388,13 @@ def main():
             sys.exit(3)
 
         logger.info("Publishing completed successfully.")
+
+        if update_manifest:
+            msgs = _update_manifest(public_root_path, cfg, objects, chunks, manifest_path_override=manifest_path_override)
+            for m in msgs:
+                # Use info for success notes, error keyword to stderr-like logs
+                level = logging.ERROR if m.startswith("failed") else logging.INFO
+                logger.log(level, m)
         sys.exit(0)
 
     except SystemExit:

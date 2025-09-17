@@ -24,6 +24,9 @@ validation_config:
   publish_after_validation: true
   publish_mode: hardlink
   public_output_base_dir: "/global/cfs/cdirs/m4958/data/ColliderML/public/testing"
+  publish_overwrite: true
+  update_manifest: true
+  manifest_path: "/global/cfs/cdirs/m4958/data/ColliderML/public/manifest.json"
 
 # Objects to convert (any subset of: digihits, hits, tracks, particles, calorimeter)
 objects:
