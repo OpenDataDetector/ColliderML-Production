@@ -88,18 +88,6 @@ def _expected_chunks_from_config(cfg: dict | None) -> list[tuple[int, int]]:
         return []
     num_events = n_runs * run_size
     num_chunks = (num_events + chunk_size - 1) // chunk_size
-    # Apply optional cap if present
-    try:
-        cap = cfg.get("max_chunks")
-        if cap is None:
-            # driver.determine_chunk_cap also allows interactive cap via job_config.n_runs; here we honor explicit max_chunks only
-            cap_int = None
-        else:
-            cap_int = int(cap)
-        if cap_int is not None and cap_int >= 0:
-            num_chunks = min(num_chunks, cap_int)
-    except Exception:
-        pass
     ranges: list[tuple[int, int]] = []
     for idx in range(num_chunks):
         start_event = idx * chunk_size
