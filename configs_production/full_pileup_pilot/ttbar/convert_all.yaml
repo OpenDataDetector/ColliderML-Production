@@ -6,14 +6,12 @@ stage: "convert_all"
 
 # Job submission configuration
 job_config:
-  n_runs: 4  # Number of jobs to submit
+  n_runs: 10  # Number of jobs to submit
   # n_runs: 1
-  runs_per_node: 4  # Number of runs per node
+  runs_per_node: 1  # Number of runs per node
   # runs_per_node: 1
-  # time_limit: "04:00:00"  # Time limit per job
-  # qos: "regular"
-  time_limit: "00:30:00"
-  qos: "debug"
+  time_limit: "03:00:00"  # Time limit per job
+  qos: "regular"
   # execution_mode: "interactive"
   execution_mode: "multi_node_slurm"
 
@@ -36,8 +34,8 @@ objects:
   # - calorimeter
 
 # Chunking
-# chunk_size: 1000
-chunk_size: 128
+chunk_size: 1000
+# chunk_size: 128
 run_size: 128
 
 # Column selection for H5 outputs
