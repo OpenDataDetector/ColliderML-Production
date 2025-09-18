@@ -13,6 +13,7 @@ import h5py
 import uproot
 import math
 from typing import Dict, List, Any
+import logging
 
 from utils.path_utils import get_run_paths, make_dir
 from utils.driver import iterate_and_process_chunks
@@ -322,6 +323,15 @@ def process_chunk_for_tracks(
             else:
                 local_events = range(run_size)
 
+            local_events_list = list(local_events)
+            local_events_str = (
+                f"{local_events_list[0]}-{local_events_list[-1]} (n={len(local_events_list)})"
+                if len(local_events_list) > 0 else "<empty>"
+            )
+            logging.info(
+                f"Run {abs_run}: dir={run_dir} local_events={local_events_str}"
+            )
+
             run_events_all = process_run_for_tracks(run_dir, abs_run, run_size, file_patterns)
             run_events = []
             for df in run_events_all:
@@ -329,9 +339,13 @@ def process_chunk_for_tracks(
                     continue
                 first_global = int(df.event_id.iloc[0])
                 local_id = first_global - abs_run * run_size
-                if local_id in local_events:
+                if local_id in local_events_list:
                     run_events.append(df)
             all_track_data.extend(run_events)
+            rows_run = sum(len(df) for df in run_events)
+            logging.info(
+                f"Run {abs_run}: tracks rows={rows_run} events={len(run_events)}"
+            )
         except Exception as e:
             print(f"\nSkipping run {abs_run} due to error: {str(e)}")
             continue

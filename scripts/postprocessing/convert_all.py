@@ -112,10 +112,24 @@ def _process_chunk_for_all(
             abs_run=abs_run,
             run_size=run_size,
         )
+        # Materialize local events once for safe reuse and logging
+        local_events_list = list(local_events)
+
+        # Info log: per-run context
+        try:
+            local_events_str = (
+                f"{local_events_list[0]}-{local_events_list[-1]} (n={len(local_events_list)})"
+                if len(local_events_list) > 0 else "<empty>"
+            )
+        except Exception:
+            local_events_str = "<unavailable>"
+        logger.info(
+            f"Run {abs_run}: dir={run_dir} edm4hep={edm4hep_path} local_events={local_events_str}"
+        )
 
         # Load only local events for this run to reduce I/O
         batch_load_start = time.time()
-        batch = EDM4hepEventBatch(str(edm4hep_path), events=list(local_events))
+        batch = EDM4hepEventBatch(str(edm4hep_path), events=local_events_list)
         logger.debug(
             f"EDM4hep batch load for run {abs_run} (events={len(list(local_events))}): {time.time() - batch_load_start:.3f}s"
         )
@@ -156,12 +170,12 @@ def _process_chunk_for_all(
                 except Exception as e:
                     logger.warning(f"Failed to load particles.root at {particles_root_path}: {e}")
 
-            if len(list(local_events)) > 0:
+            if len(local_events_list) > 0:
                 df_run = build_particles_df_with_parents_and_vertex(
                     batch,
                     str(edm4hep_path),
                     digi_particles_df_run,
-                    local_events=local_events,
+                    local_events=local_events_list,
                     min_particle_energy=min_particle_energy,
                     min_tracker_hits=min_tracker_hits,
                 )
@@ -169,12 +183,15 @@ def _process_chunk_for_all(
                     df_run = df_run.copy()
                     df_run["event_id"] = df_run["event_id"] + abs_run * run_size
                 if not df_run.empty:
-                    for le in local_events:
+                    for le in local_events_list:
                         pair = (abs_run, le)
                         if pair in seen_pairs_particles:
                             logger.error(f"Overlap detected for particles on (run,local_event)=({abs_run},{le})")
                         seen_pairs_particles.add(pair)
                     particles_frames.append(df_run)
+                    logger.info(
+                        f"Run {abs_run}: particles rows={len(df_run)} events={df_run.event_id.nunique() if 'event_id' in df_run.columns else 'n/a'}"
+                    )
             particles_time = time.time() - particles_start_time
             logger.debug(f"Particles processing for run {abs_run}: {particles_time:.3f}s")
 
@@ -208,7 +225,7 @@ def _process_chunk_for_all(
                 hits_all = batch.get_tracker_hits_df()
                 logger.debug(f"Loaded tracker hits DataFrame for run {abs_run} in {time.time() - hits_fetch_start:.3f}s")
                 evs_for_run = []
-                for local_event_num in local_events:
+                for local_event_num in local_events_list:
                     ev_hits = hits_all[hits_all.event_id == local_event_num] if not hits_all.empty else None
                     ev_meas = (
                         digi_measurements_df_all[digi_measurements_df_all.event_nr == local_event_num].copy()
@@ -227,6 +244,9 @@ def _process_chunk_for_all(
                         evs_for_run.append(ev_df)
                 if evs_for_run:
                     digihits_run_df = pd.concat(evs_for_run, ignore_index=True)
+                    logger.info(
+                        f"Run {abs_run}: tracker_hits rows={len(digihits_run_df)} events={len(evs_for_run)}"
+                    )
             else:
                 logger.warning(f"Missing measurements file: {measurements_path}")
             digihits_time = time.time() - digihits_start_time
@@ -234,7 +254,8 @@ def _process_chunk_for_all(
 
         if "tracks" in objects and track_fitting_df_run is not None and digihits_run_df is not None:
             tracks_proc_start_time = time.time()
-            for local_event_num in local_events:
+            run_tracks_rows = 0
+            for local_event_num in local_events_list:
                 global_event_num = abs_run * run_size + local_event_num
                 try:
                     per_ev_start = time.time()
@@ -263,8 +284,12 @@ def _process_chunk_for_all(
                     )
                 seen_pairs_tracks.add(pair)
                 tracks_frames.append(event_df)
+                run_tracks_rows += len(event_df)
             tracks_proc_time = time.time() - tracks_proc_start_time
             logger.debug(f"Tracks processing for run {abs_run}: {tracks_proc_time:.3f}s")
+            logger.info(
+                f"Run {abs_run}: tracks rows={run_tracks_rows} events={len(local_events_list)}"
+            )
         
         run_time = time.time() - run_start_time
         run_processing_time += run_time

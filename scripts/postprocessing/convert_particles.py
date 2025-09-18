@@ -354,6 +354,8 @@ def process_chunk_for_particles(
             else:
                 local_events = range(run_size)
 
+            local_events_list = list(local_events)
+
             # Optional per-run digi particles (particles.root)
             particles_root_path = run_dir / "particles.root"
             digi_particles_df: pd.DataFrame | None = None
@@ -364,7 +366,7 @@ def process_chunk_for_particles(
                     logger.debug(f"Loaded particles.root for run {abs_run} in {time.time() - _t_digi:.3f}s")
                     if "event_id" not in digi_particles_df.columns and "event_nr" in digi_particles_df.columns:
                         digi_particles_df = digi_particles_df.rename(columns={"event_nr": "event_id"})
-                    digi_particles_df = digi_particles_df[digi_particles_df.get("event_id", -1).isin(local_events)].copy()
+                    digi_particles_df = digi_particles_df[digi_particles_df.get("event_id", -1).isin(local_events_list)].copy()
                 except Exception as e:
                     logging.warning(f"Failed to load particles.root at {particles_root_path}: {e}")
 
@@ -373,14 +375,23 @@ def process_chunk_for_particles(
             if not edm4hep_path.exists():
                 logging.warning(f"Missing EDM4hep file: {edm4hep_path}")
                 continue
+            local_events_str = (
+                f"{local_events_list[0]}-{local_events_list[-1]} (n={len(local_events_list)})"
+                if len(local_events_list) > 0 else "<empty>"
+            )
+            logging.info(
+                f"Run {abs_run}: dir={run_dir} edm4hep={edm4hep_path} particles.root={particles_root_path if particles_root_path.exists() else '<missing>'} local_events={local_events_str}"
+            )
             _t_batch = time.time()
-            batch = EDM4hepEventBatch(str(edm4hep_path), events=list(local_events))
+            batch = EDM4hepEventBatch(str(edm4hep_path), events=local_events_list)
             parts_all = batch.get_particles_df()
             parents_all = batch.get_parents_df()
             logger.debug(f"Loaded particles+parents batch for run {abs_run} in {time.time() - _t_batch:.3f}s")
 
             evs: List[pd.DataFrame] = []
-            for local_event_num in tqdm(local_events, desc="Processing events", leave=False):
+            rows_run = 0
+            ev_count = 0
+            for local_event_num in tqdm(local_events_list, desc="Processing events", leave=False):
                 global_event_num = abs_run * run_size + local_event_num
                 ev_parts = parts_all[parts_all.event_id == local_event_num] if not parts_all.empty else pd.DataFrame()
                 ev_parents = parents_all[parents_all.event_id == local_event_num] if 'parents_all' in locals() and not parents_all.empty else pd.DataFrame()
@@ -396,8 +407,13 @@ def process_chunk_for_particles(
                 )
                 if not ev_df.empty:
                     evs.append(ev_df)
+                    rows_run += len(ev_df)
+                    ev_count += 1
             all_event_dfs.extend(evs)
             total_rows += sum(len(df) for df in evs)
+            logging.info(
+                f"Run {abs_run}: particles rows={rows_run} events={ev_count}"
+            )
         except Exception as e:
             logging.error(f"Error processing run {abs_run}: {e}")
 
