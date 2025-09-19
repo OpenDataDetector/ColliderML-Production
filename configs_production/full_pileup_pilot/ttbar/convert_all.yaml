@@ -12,8 +12,8 @@ job_config:
   # runs_per_node: 1
   time_limit: "02:00:00"  # Time limit per job
   qos: "regular"
-  # execution_mode: "interactive"
-  execution_mode: "multi_node_slurm"
+  execution_mode: "interactive"
+  # execution_mode: "multi_node_slurm"
 
 # Optional validation job to run after convert_all
 validation_config:
@@ -34,8 +34,8 @@ objects:
   # - calorimeter
 
 # Chunking
-chunk_size: 1000
-# chunk_size: 128
+# chunk_size: 1000
+chunk_size: 128
 run_size: 128
 
 # Column selection for H5 outputs
