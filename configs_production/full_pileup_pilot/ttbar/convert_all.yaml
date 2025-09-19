@@ -81,4 +81,4 @@ tracks_columns_keep:
 max_chunks: 1
 min_tracker_hits: 1
 
-log_level: "INFO"
+log_level: "DEBUG"
