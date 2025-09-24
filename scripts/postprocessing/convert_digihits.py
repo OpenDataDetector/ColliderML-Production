@@ -338,7 +338,12 @@ def process_chunk_for_digihits(
                 logging.warning(f"Missing EDM4hep file: {edm4hep_path}")
                 continue
             _t_batch = time.time()
-            batch = EDM4hepEventBatch(str(edm4hep_path), events=local_events_list)
+            # Prefer passing a range to activate entry_start/stop in the loader
+            events_selector = (
+                range(local_events_list[0], local_events_list[-1] + 1)
+                if len(local_events_list) > 0 else range(0)
+            )
+            batch = EDM4hepEventBatch(str(edm4hep_path), events=events_selector)
             hits_all = batch.get_tracker_hits_df()  # load tracker collection lazily
             logger.debug(f"Loaded tracker hits batch for run {abs_run} in {time.time() - _t_batch:.3f}s")
 

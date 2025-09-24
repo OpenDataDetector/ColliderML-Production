@@ -29,6 +29,7 @@ scripts/cli/env_setup.yaml
 **/*.lhe.bz2
 **/*.lhe.xz
 **/*.lhe.lzma
+**/*.h5
 
 # Pycache
 __pycache__/

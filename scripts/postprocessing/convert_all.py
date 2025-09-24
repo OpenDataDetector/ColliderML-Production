@@ -10,6 +10,9 @@ import yaml
 import logging
 import logging.config
 from tqdm import tqdm
+import pandas as pd
+from pyedm4hep import EDM4hepEventBatch
+import awkward as ak
 
 from convert_particles import convert_particles, build_particles_df_with_parents_and_vertex, write_particles_with_selection
 # from convert_calorimeter import convert_calorimeter
@@ -82,10 +85,6 @@ def _process_chunk_for_all(
 ) -> None:
     chunk_start_time = time.time()
     logger.info(f"Starting chunk processing for events {start_event}-{end_event}")
-    
-    import pandas as pd
-    from pyedm4hep import EDM4hepEventBatch
-    import awkward as ak
 
     particles_frames: list[pd.DataFrame] = []
     digihits_frames: list[pd.DataFrame] = []
@@ -129,26 +128,19 @@ def _process_chunk_for_all(
 
         # Load only local events for this run to reduce I/O
         batch_load_start = time.time()
-        batch = EDM4hepEventBatch(str(edm4hep_path), events=local_events_list)
+        # Prefer passing a range to activate entry_start/stop in the loader
+        events_selector = (
+            range(local_events_list[0], local_events_list[-1] + 1)
+            if len(local_events_list) > 0 else range(0)
+        )
+        batch = EDM4hepEventBatch(str(edm4hep_path), events=events_selector)
         logger.debug(
             f"EDM4hep batch load for run {abs_run} (events={len(list(local_events))}): {time.time() - batch_load_start:.3f}s"
         )
 
         tracksummary_arrays = None
         track_fitting_df_run = None
-        if "tracks" in objects:
-            tracks_load_start = time.time()
-            ts_path = Path(run_dir) / tracksummary_file
-            if ts_path.exists():
-                try:
-                    tracksummary_arrays = load_track_summary(str(ts_path))
-                    # Normalize into a per-run DataFrame with event linkage
-                    import pandas as pd
-                    track_fitting_df_run = build_track_fitting_df_run(tracksummary_arrays, run_size)
-                except Exception as e:
-                    logger.warning(f"Failed to load tracksummary at {ts_path}: {e}")
-            tracks_load_time = time.time() - tracks_load_start
-            logger.debug(f"Track summary loading for run {abs_run}: {tracks_load_time:.3f}s")
+        digihits_run_df = None
 
         if "particles" in objects:
             particles_start_time = time.time()
@@ -195,7 +187,7 @@ def _process_chunk_for_all(
             particles_time = time.time() - particles_start_time
             logger.debug(f"Particles processing for run {abs_run}: {particles_time:.3f}s")
 
-        digihits_run_df = None
+        
         if "tracker_hits" in objects:
             digihits_start_time = time.time()
             measurements_path = Path(run_dir) / "measurements.root"
@@ -253,6 +245,17 @@ def _process_chunk_for_all(
             logger.debug(f"Digihits processing for run {abs_run}: {digihits_time:.3f}s")
 
         if "tracks" in objects and track_fitting_df_run is not None and digihits_run_df is not None:
+            tracks_load_start = time.time()
+            ts_path = Path(run_dir) / tracksummary_file
+            if ts_path.exists():
+                try:
+                    tracksummary_arrays = load_track_summary(str(ts_path))
+                    track_fitting_df_run = build_track_fitting_df_run(tracksummary_arrays, run_size)
+                except Exception as e:
+                    logger.warning(f"Failed to load tracksummary at {ts_path}: {e}")
+            tracks_load_time = time.time() - tracks_load_start
+            logger.debug(f"Track summary loading for run {abs_run}: {tracks_load_time:.3f}s")
+
             tracks_proc_start_time = time.time()
             run_tracks_rows = 0
             for local_event_num in local_events_list:
@@ -343,7 +346,6 @@ def _process_chunk_for_all(
         
     if "tracks" in objects and tracks_frames:
         tracks_write_start = time.time()
-        import pandas as pd
         tracks_all = pd.concat(tracks_frames, ignore_index=True)
         tracks_out = Path(tracks_out_dir) / (
             f"{dataset_name_dot}.reco.tracks.events{start_event}-{end_event}.h5"
