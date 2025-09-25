@@ -16,7 +16,7 @@ from typing import Dict, List, Any
 import logging
 
 from utils.path_utils import get_run_paths, make_dir
-from utils.driver import iterate_and_process_chunks
+from utils.driver import iterate_and_process_chunks, local_events_for_run
 from utils.edm4hep_utils import pixel_readouts, strip_readouts
 
 from utils.track_utils import (
@@ -174,7 +174,8 @@ def process_run_for_tracks(
     run_dir: str | Path,
     run_number: int,
     run_size: int,
-    file_patterns: dict
+    file_patterns: dict,
+    local_range: tuple[int, int] | None = None,
 ) -> List[pd.DataFrame]:
     """
     Process all events in a single run.
@@ -218,7 +219,7 @@ def process_run_for_tracks(
             from utils.track_utils import load_root_file as _load
             meas_df_all = _load(measurements_path)
         from pyedm4hep import EDM4hepEventBatch
-        batch = EDM4hepEventBatch(str(edm4hep_path), events=range(run_size))
+        batch = EDM4hepEventBatch(str(edm4hep_path), events=local_range)
         hits_all = batch.get_tracker_hits_df()
         evs_for_run: List[pd.DataFrame] = []
         for local_event_for_merge in range(run_size):
@@ -235,7 +236,8 @@ def process_run_for_tracks(
         digihits_run_df = pd.concat(evs_for_run, ignore_index=True) if evs_for_run else pd.DataFrame()
         
         run_events = []
-        for local_event_num in range(run_size):
+        start_ev, stop_ev = (0, run_size) if local_range is None else local_range
+        for local_event_num in range(start_ev, stop_ev):
             try:
                 # Calculate global event number
                 global_event_num = run_number * run_size + local_event_num
@@ -313,26 +315,25 @@ def process_chunk_for_tracks(
     for abs_run in range(start_run, end_run + 1):
         run_dir = run_dirs[abs_run]
         try:
-            # Determine local slice
-            if abs_run == start_run and abs_run == end_run:
-                local_events = range(start_local, end_local + 1)
-            elif abs_run == start_run:
-                local_events = range(start_local, run_size)
-            elif abs_run == end_run:
-                local_events = range(0, end_local + 1)
-            else:
-                local_events = range(run_size)
-
+            local_start, local_stop = local_events_for_run(
+                start_run=start_run,
+                start_local=start_local,
+                end_run=end_run,
+                end_local=end_local,
+                abs_run=abs_run,
+                run_size=run_size,
+            )
+            local_events = range(local_start, local_stop)
             local_events_list = list(local_events)
+            local_count = len(local_events_list)
             local_events_str = (
-                f"{local_events_list[0]}-{local_events_list[-1]} (n={len(local_events_list)})"
-                if len(local_events_list) > 0 else "<empty>"
+                f"{local_start}-{local_stop-1} (n={local_count})" if local_count > 0 else "<empty>"
             )
             logging.info(
                 f"Run {abs_run}: dir={run_dir} local_events={local_events_str}"
             )
 
-            run_events_all = process_run_for_tracks(run_dir, abs_run, run_size, file_patterns)
+            run_events_all = process_run_for_tracks(run_dir, abs_run, run_size, file_patterns, (local_start, local_stop))
             run_events = []
             for df in run_events_all:
                 if df.empty:

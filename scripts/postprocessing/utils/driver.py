@@ -125,15 +125,12 @@ def local_events_for_run(
     run_size: int,
 ):
     """
-    Compute the range of local event indices for a given run within an event window.
-
-    Returns a range object covering [start_local, end_local] for boundary runs,
-    or full [0, run_size) for interior runs.
+    Compute the [start, stop) local event window for a given run.
     """
     if start_run == end_run:
-        return range(start_local, end_local + 1)
+        return start_local, end_local + 1
     if abs_run == start_run:
-        return range(start_local, run_size)
+        return start_local, run_size
     if abs_run == end_run:
-        return range(0, end_local + 1)
-    return range(0, run_size)
+        return 0, end_local + 1
+    return 0, run_size

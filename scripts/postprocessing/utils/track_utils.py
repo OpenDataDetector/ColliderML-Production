@@ -7,7 +7,7 @@ import pandas as pd
 import uproot
 import awkward as ak
 import h5py
-from typing import Dict, Any, List, Tuple
+from typing import Dict, Any, List, Tuple, Optional
 import logging
 
 logger = logging.getLogger(__name__)
@@ -54,7 +54,14 @@ def convert_hit_ids(hit_ids_str: str) -> np.ndarray:
     result = np.array([int(x) for x in hit_ids if x.strip()], dtype=np.int32)
     return result
 
-def load_root_file(file_path, event_offset=0, event_id=None, ignore_variable_columns=True, included_columns=None):
+def load_root_file(
+    file_path,
+    event_offset: int = 0,
+    event_id: Optional[int] = None,
+    events: Optional[Tuple[int, int]] = None,
+    ignore_variable_columns: bool = True,
+    included_columns: Optional[List[str]] = None,
+):
     """Load data from a single root file with optional event filtering
     
     Parameters:
@@ -65,6 +72,8 @@ def load_root_file(file_path, event_offset=0, event_id=None, ignore_variable_col
         Offset to add to event_id (for backwards compatibility)
     event_id : int, optional
         If provided, only load this specific event
+    events : tuple, optional
+        Non-inclusive event range (start, stop) to load
     ignore_variable_columns : bool
         Whether to ignore variable length columns
     included_columns : list, optional
@@ -93,22 +102,33 @@ def load_root_file(file_path, event_offset=0, event_id=None, ignore_variable_col
                 branch = tree[latest_key][branch_name]
                 return 'var' not in str(branch.typename)
             filter_params['filter_name'] = exclude_var_columns
+
+        available_branches = tree[latest_key].keys()
+        event_branch = None
+        if "event_id" in available_branches:
+            event_branch = "event_id"
+        elif "event_nr" in available_branches:
+            event_branch = "event_nr"
         
+        event_indices = None
+        if event_branch:
+            event_indices = tree[latest_key][event_branch].arrays(library="np")[event_branch]
+            event_indices = np.sort(event_indices)
+
         # Event filtering - this is the key optimization!
         if event_id is not None:
-            # Check if we have event_id or event_nr column to determine which to filter on
-            available_branches = tree[latest_key].keys()
-            if 'event_id' in available_branches:
-                # Adjust for event_offset if needed
+            if event_branch:
                 target_event = event_id - event_offset if event_offset else event_id
-                filter_params['cut'] = f"event_id == {target_event}"
-            elif 'event_nr' in available_branches:
-                filter_params['cut'] = f"event_nr == {event_id}"
+                filter_params['cut'] = f"{event_branch} == {target_event}"
             else:
                 print("Warning: No event_id or event_nr column found for event filtering")
-        
+
+        # Filter by event range IF the range is not simply all events (that's a waste of time)
+        if events and event_indices is not None and (events[0], events[-1]) != (0, len(event_indices)-1):
+            filter_params['cut'] = f"({event_branch} >= {events[0]}) & ({event_branch} < {events[-1]})"
+
         # Load arrays with all filtering applied at once
-        data = tree[latest_key].arrays(**filter_params)
+        data = tree[latest_key].arrays(**filter_params, library="ak")
         
         # Check if we got any data when filtering for specific event
         if event_id is not None and len(data) == 0:
@@ -117,6 +137,10 @@ def load_root_file(file_path, event_offset=0, event_id=None, ignore_variable_col
 
         # Convert to dataframe 
         df = ak.to_dataframe(data)
+
+        # Ensure we have event_id column (rename from event_nr if needed)
+        if 'event_nr' in df.columns and 'event_id' not in df.columns:
+            df = df.rename(columns={'event_nr': 'event_id'})
             
         # Apply event offset (only if we're not filtering to specific event)
         if event_offset and event_id is None and 'event_id' in df.columns:

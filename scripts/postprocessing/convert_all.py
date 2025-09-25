@@ -103,7 +103,7 @@ def _process_chunk_for_all(
             logger.warning(f"Missing EDM4hep file: {edm4hep_path}")
             continue
 
-        local_events = local_events_for_run(
+        local_start, local_stop = local_events_for_run(
             start_run=start_run,
             start_local=start_local,
             end_run=end_run,
@@ -111,17 +111,14 @@ def _process_chunk_for_all(
             abs_run=abs_run,
             run_size=run_size,
         )
-        # Materialize local events once for safe reuse and logging
-        local_events_list = list(local_events)
+        local_count = max(0, local_stop - local_start)
+        local_events = (local_start, local_stop)
 
         # Info log: per-run context
-        try:
-            local_events_str = (
-                f"{local_events_list[0]}-{local_events_list[-1]} (n={len(local_events_list)})"
-                if len(local_events_list) > 0 else "<empty>"
-            )
-        except Exception:
-            local_events_str = "<unavailable>"
+        if local_count > 0:
+            local_events_str = f"{local_start}-{local_stop-1} (n={local_count})"
+        else:
+            local_events_str = "<empty>"
         logger.info(
             f"Run {abs_run}: dir={run_dir} edm4hep={edm4hep_path} local_events={local_events_str}"
         )
@@ -129,13 +126,9 @@ def _process_chunk_for_all(
         # Load only local events for this run to reduce I/O
         batch_load_start = time.time()
         # Prefer passing a range to activate entry_start/stop in the loader
-        events_selector = (
-            range(local_events_list[0], local_events_list[-1] + 1)
-            if len(local_events_list) > 0 else range(0)
-        )
-        batch = EDM4hepEventBatch(str(edm4hep_path), events=events_selector)
+        batch = EDM4hepEventBatch(str(edm4hep_path), events=local_events)
         logger.debug(
-            f"EDM4hep batch load for run {abs_run} (events={len(list(local_events))}): {time.time() - batch_load_start:.3f}s"
+            f"EDM4hep batch load for run {abs_run} (events={local_count}): {time.time() - batch_load_start:.3f}s"
         )
 
         tracksummary_arrays = None
@@ -158,24 +151,25 @@ def _process_chunk_for_all(
                         "pz",
                         "vertex_primary",
                     ]
-                    digi_particles_df_run = load_root_file(str(particles_root_path), included_columns=included_columns)
+                    digi_particles_df_run = load_root_file(str(particles_root_path), included_columns=included_columns, events=local_events)
                 except Exception as e:
                     logger.warning(f"Failed to load particles.root at {particles_root_path}: {e}")
 
-            if len(local_events_list) > 0:
+            if local_count > 0:
                 df_run = build_particles_df_with_parents_and_vertex(
                     batch,
                     str(edm4hep_path),
                     digi_particles_df_run,
-                    local_events=local_events_list,
+                    local_events=local_events,
                     min_particle_energy=min_particle_energy,
                     min_tracker_hits=min_tracker_hits,
                 )
                 if not df_run.empty and "event_id" in df_run.columns:
                     df_run = df_run.copy()
-                    df_run["event_id"] = df_run["event_id"] + abs_run * run_size
+                    global_event_nums = df_run["event_id"] + abs_run * run_size
+                    df_run["event_id"] = global_event_nums
                 if not df_run.empty:
-                    for le in local_events_list:
+                    for le in range(local_events[0], local_events[1]):
                         pair = (abs_run, le)
                         if pair in seen_pairs_particles:
                             logger.error(f"Overlap detected for particles on (run,local_event)=({abs_run},{le})")
@@ -186,7 +180,6 @@ def _process_chunk_for_all(
                     )
             particles_time = time.time() - particles_start_time
             logger.debug(f"Particles processing for run {abs_run}: {particles_time:.3f}s")
-
         
         if "tracker_hits" in objects:
             digihits_start_time = time.time()
@@ -217,13 +210,9 @@ def _process_chunk_for_all(
                 hits_all = batch.get_tracker_hits_df()
                 logger.debug(f"Loaded tracker hits DataFrame for run {abs_run} in {time.time() - hits_fetch_start:.3f}s")
                 evs_for_run = []
-                for local_event_num in local_events_list:
+                for local_event_num in range(local_events[0], local_events[1]):
                     ev_hits = hits_all[hits_all.event_id == local_event_num] if not hits_all.empty else None
-                    ev_meas = (
-                        digi_measurements_df_all[digi_measurements_df_all.event_nr == local_event_num].copy()
-                        if "event_nr" in getattr(digi_measurements_df_all, "columns", [])
-                        else digi_measurements_df_all.copy()
-                    )
+                    ev_meas = digi_measurements_df_all[digi_measurements_df_all.event_id == local_event_num].copy()
                     ev_df = process_event_for_digihits(abs_run * run_size + local_event_num, local_event_num, ev_meas, ev_hits)
                     if not ev_df.empty:
                         pair = (abs_run, local_event_num)
@@ -244,13 +233,30 @@ def _process_chunk_for_all(
             digihits_time = time.time() - digihits_start_time
             logger.debug(f"Digihits processing for run {abs_run}: {digihits_time:.3f}s")
 
-        if "tracks" in objects and track_fitting_df_run is not None and digihits_run_df is not None:
+        if "tracks" in objects and digihits_run_df is not None:
             tracks_load_start = time.time()
             ts_path = Path(run_dir) / tracksummary_file
             if ts_path.exists():
                 try:
-                    tracksummary_arrays = load_track_summary(str(ts_path))
-                    track_fitting_df_run = build_track_fitting_df_run(tracksummary_arrays, run_size)
+                    included_tracksummary_columns = [
+                        "event_nr",
+                        "track_nr",
+                        "eLOC0_fit",
+                        "eLOC1_fit",
+                        "ePHI_fit",
+                        "eTHETA_fit",
+                        "eQOP_fit",
+                        "eT_fit",
+                        "t_d0",
+                        "t_z0",
+                        "t_phi",
+                        "t_theta",
+                        "t_charge",
+                        "t_p",
+                        "t_pT",
+                        "t_time",
+                    ]
+                    track_fitting_df_run = load_root_file(str(ts_path), included_columns=included_tracksummary_columns, events=local_events)
                 except Exception as e:
                     logger.warning(f"Failed to load tracksummary at {ts_path}: {e}")
             tracks_load_time = time.time() - tracks_load_start
@@ -258,7 +264,7 @@ def _process_chunk_for_all(
 
             tracks_proc_start_time = time.time()
             run_tracks_rows = 0
-            for local_event_num in local_events_list:
+            for local_event_num in range(local_events[0], local_events[1]):
                 global_event_num = abs_run * run_size + local_event_num
                 try:
                     per_ev_start = time.time()
@@ -266,7 +272,7 @@ def _process_chunk_for_all(
                         run_dir=Path(run_dir),
                         local_event_num=local_event_num,
                         global_event_num=global_event_num,
-                        track_fitting_df_event=track_fitting_df_run[track_fitting_df_run.get('event_nr', -1) == local_event_num].copy(),
+                        track_fitting_df_event=track_fitting_df_run[track_fitting_df_run.event_id == local_event_num].copy(),
                         tracks_csv_pattern=tracks_csv_pattern,
                         digihits_run_df=digihits_run_df,
                     )
@@ -291,7 +297,7 @@ def _process_chunk_for_all(
             tracks_proc_time = time.time() - tracks_proc_start_time
             logger.debug(f"Tracks processing for run {abs_run}: {tracks_proc_time:.3f}s")
             logger.info(
-                f"Run {abs_run}: tracks rows={run_tracks_rows} events={len(local_events_list)}"
+                f"Run {abs_run}: tracks rows={run_tracks_rows} events={local_count}"
             )
         
         run_time = time.time() - run_start_time

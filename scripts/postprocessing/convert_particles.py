@@ -21,7 +21,7 @@ import time
 
 # Use relative imports to avoid conflicts with other utils modules
 from utils.path_utils import get_run_paths, make_dir
-from utils.driver import iterate_and_process_chunks
+from utils.driver import iterate_and_process_chunks, local_events_for_run
 from utils.track_utils import load_root_file
 
 sys.path.append("/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/OtherLibraries/pyedm4hep")
@@ -117,20 +117,30 @@ def process_event_for_particles(
                 particles_df = particles_df.copy()
                 particles_df["parent_id"] = parent_id_series
 
+        # Start particle cut mask as all True
+        particle_cut_mask = np.ones(len(particles_df), dtype=bool)
+
         # Apply configurable minimum energy filter if requested
         if min_particle_energy is not None and "energy" in particles_df.columns:
             try:
-                particles_df = particles_df[particles_df["energy"] >= float(min_particle_energy)]
+                particle_cut_mask = particle_cut_mask & (particles_df["energy"] >= float(min_particle_energy))
             except Exception:
                 pass
 
         # Apply configurable minimum tracker hits filter if available
         if min_tracker_hits is not None and "num_tracker_hits" in particles_df.columns:
             try:
-                particles_df = particles_df[particles_df["num_tracker_hits"] >= int(min_tracker_hits)]
-                print(f"Event {event_id}: {len(particles_df)} particles after min_tracker_hits filter")
+                particle_cut_mask = particle_cut_mask & (particles_df["num_tracker_hits"] >= int(min_tracker_hits))
+                logger.debug(f"Event {event_id}: {particle_cut_mask.sum()} particles after min_tracker_hits filter ")
             except Exception:
                 pass
+
+        # Also ensure all generator particles are included
+        particle_cut_mask = particle_cut_mask | (particles_df["created_in_simulation"] == False)
+        
+        # Apply particle cut mask
+        logger.debug(f"Event {event_id}: {particle_cut_mask.sum()} particles after particle cut mask")
+        particles_df = particles_df[particle_cut_mask]
 
         # Select relevant particle columns (include vertex_primary/parent_id if present)
         desired_columns = [
@@ -167,7 +177,7 @@ def build_particles_df_with_parents_and_vertex(
     batch: EDM4hepEventBatch,
     edm4hep_path: str,
     particles_root_df: pd.DataFrame | None,
-    local_events: range | list,
+    local_events: tuple[int, int],
     *,
     min_particle_energy: float | None = None,
     min_tracker_hits: int | None = None,
@@ -187,7 +197,7 @@ def build_particles_df_with_parents_and_vertex(
     logger.debug(f"Particles DataFrame shape: {parts_all.shape if parts_all is not None else 'None'}, with columns {parts_all.columns if parts_all is not None else 'None'}, and unique events {parts_all.event_id.nunique() if parts_all is not None else 'None'}")
     logger.debug(f"Parents DataFrame shape: {parents_all.shape if parents_all is not None else 'None'}, with columns {parents_all.columns if parents_all is not None else 'None'}, and unique events {parents_all.event_id.nunique() if parents_all is not None else 'None'}")
     logger.debug(f"Particles root DataFrame shape: {particles_root_df.shape if particles_root_df is not None else 'None'}, with columns {particles_root_df.columns if particles_root_df is not None else 'None'}, and unique events {particles_root_df.event_id.nunique() if particles_root_df is not None else 'None'}")
-    for local_event_num in local_events:
+    for local_event_num in range(local_events[0], local_events[1]):
         ev_parts = parts_all[parts_all.event_id == local_event_num]
         ev_parents = parents_all[parents_all.event_id == local_event_num]
         ev_digi = None
@@ -195,6 +205,7 @@ def build_particles_df_with_parents_and_vertex(
             if "event_id" not in particles_root_df.columns and "event_nr" in particles_root_df.columns:
                 particles_root_df = particles_root_df.rename(columns={"event_nr": "event_id"})
             ev_digi = particles_root_df[particles_root_df.get("event_id", -1) == local_event_num]
+        print("Particles event: ", local_event_num, ev_parts.shape, ev_digi.shape)
         ev_df = process_event_for_particles(
             event_id=local_event_num,
             local_event_num=local_event_num,
@@ -344,17 +355,17 @@ def process_chunk_for_particles(
     for abs_run in tqdm(range(start_run, end_run + 1), desc="Processing runs", leave=False):
         run_dir = run_dirs[abs_run]
         try:
-            # Determine slice of local events for this run
-            if abs_run == start_run and abs_run == end_run:
-                local_events = range(start_local, end_local + 1)
-            elif abs_run == start_run:
-                local_events = range(start_local, run_size)
-            elif abs_run == end_run:
-                local_events = range(0, end_local + 1)
-            else:
-                local_events = range(run_size)
-
+            local_start, local_stop = local_events_for_run(
+                start_run=start_run,
+                start_local=start_local,
+                end_run=end_run,
+                end_local=end_local,
+                abs_run=abs_run,
+                run_size=run_size,
+            )
+            local_events = range(local_start, local_stop)
             local_events_list = list(local_events)
+            local_count = len(local_events_list)
 
             # Optional per-run digi particles (particles.root)
             particles_root_path = run_dir / "particles.root"
@@ -366,7 +377,8 @@ def process_chunk_for_particles(
                     logger.debug(f"Loaded particles.root for run {abs_run} in {time.time() - _t_digi:.3f}s")
                     if "event_id" not in digi_particles_df.columns and "event_nr" in digi_particles_df.columns:
                         digi_particles_df = digi_particles_df.rename(columns={"event_nr": "event_id"})
-                    digi_particles_df = digi_particles_df[digi_particles_df.get("event_id", -1).isin(local_events_list)].copy()
+                    if local_events_list:
+                        digi_particles_df = digi_particles_df[digi_particles_df.get("event_id", -1).isin(local_events_list)].copy()
                 except Exception as e:
                     logging.warning(f"Failed to load particles.root at {particles_root_path}: {e}")
 
@@ -376,14 +388,14 @@ def process_chunk_for_particles(
                 logging.warning(f"Missing EDM4hep file: {edm4hep_path}")
                 continue
             local_events_str = (
-                f"{local_events_list[0]}-{local_events_list[-1]} (n={len(local_events_list)})"
-                if len(local_events_list) > 0 else "<empty>"
+                f"{local_start}-{local_stop-1} (n={local_count})" if local_count > 0 else "<empty>"
             )
             logging.info(
                 f"Run {abs_run}: dir={run_dir} edm4hep={edm4hep_path} particles.root={particles_root_path if particles_root_path.exists() else '<missing>'} local_events={local_events_str}"
             )
             _t_batch = time.time()
-            batch = EDM4hepEventBatch(str(edm4hep_path), events=local_events_list)
+            events_selector = (local_start, local_stop) if local_count > 0 else None
+            batch = EDM4hepEventBatch(str(edm4hep_path), events=events_selector)
             parts_all = batch.get_particles_df()
             parents_all = batch.get_parents_df()
             logger.debug(f"Loaded particles+parents batch for run {abs_run} in {time.time() - _t_batch:.3f}s")
@@ -391,7 +403,7 @@ def process_chunk_for_particles(
             evs: List[pd.DataFrame] = []
             rows_run = 0
             ev_count = 0
-            for local_event_num in tqdm(local_events_list, desc="Processing events", leave=False):
+            for local_event_num in tqdm(local_events, desc="Processing events", leave=False):
                 global_event_num = abs_run * run_size + local_event_num
                 ev_parts = parts_all[parts_all.event_id == local_event_num] if not parts_all.empty else pd.DataFrame()
                 ev_parents = parents_all[parents_all.event_id == local_event_num] if 'parents_all' in locals() and not parents_all.empty else pd.DataFrame()

@@ -23,7 +23,7 @@ import time
 
 # Use relative imports to avoid conflicts with other utils modules
 from utils.path_utils import get_run_paths, make_dir
-from utils.driver import iterate_and_process_chunks
+from utils.driver import iterate_and_process_chunks, local_events_for_run
 from utils.track_utils import load_root_file
 
 sys.path.append("/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/OtherLibraries/pyedm4hep")
@@ -60,12 +60,13 @@ def _merge_measurements_with_tracker(meas_df: pd.DataFrame, tracker_df: pd.DataF
     """
     Merge measurements and EDM4hep tracker hits by coordinate matching.
 
-    Strategy: cast both coordinate sets to float32 and merge on equality.
-    This mirrors the notebook exploration where float32 alignment produced
-    exact matches. If columns are missing, the merge safely degrades.
+    Requirements handled:
+    - Preserve the original order and length of the measurements rows.
+    - Allow duplicate coordinates on both sides without producing a cartesian product.
+      Achieved by stable 1:1 pairing within each duplicate (x,y,z) group using
+      a per-group sequence number (cumcount) on both sides.
 
-    Also brings through selected geometry identifiers from the measurements
-    file (e.g. volume_id, layer_id, surface_id) when present.
+    If required coordinate columns are missing, return the measurements unchanged.
     """
     # Guard on required columns
     coord_meas = [c for c in ["true_x", "true_y", "true_z"] if c in meas_df.columns]
@@ -73,11 +74,18 @@ def _merge_measurements_with_tracker(meas_df: pd.DataFrame, tracker_df: pd.DataF
     if len(coord_meas) != 3 or len(coord_trk) != 3:
         return meas_df
 
-    # Cast to float32 for stable equality
+    # Prepare copies and cast to float32 for stable equality
     meas_df = meas_df.copy()
     tracker_df = tracker_df.copy()
-    meas_df.loc[:, ["true_x", "true_y", "true_z"]] = meas_df[["true_x", "true_y", "true_z"]].astype(np.float32)
-    tracker_df.loc[:, ["x", "y", "z"]] = tracker_df[["x", "y", "z"]].astype(np.float32)
+    meas_df.loc[:, ["true_x", "true_y", "true_z"]] = (
+        meas_df[["true_x", "true_y", "true_z"]].astype(np.float32)
+    )
+    tracker_df.loc[:, ["x", "y", "z"]] = (
+        tracker_df[["x", "y", "z"]].astype(np.float32)
+    )
+
+    # Preserve original measurement order explicitly
+    meas_df["_orig_pos"] = np.arange(len(meas_df), dtype=np.int64)
 
     # Select minimal simulation hits columns to append (intersect with available)
     if not include_simhits_cols:
@@ -85,50 +93,56 @@ def _merge_measurements_with_tracker(meas_df: pd.DataFrame, tracker_df: pd.DataF
             "x", "y", "z", "time", "px", "py", "pz", "particle_id", "cellID", "detector", "EDep", "pathLength"
         ]
     rhs_cols = [c for c in include_simhits_cols if c in tracker_df.columns]
-    rhs = tracker_df[rhs_cols].copy() if rhs_cols else pd.DataFrame(index=tracker_df.index)
+    rhs = tracker_df[rhs_cols].copy() if rhs_cols else tracker_df.copy()
 
-    # Select minimal measurement columns to append (intersect with available)
+    # Select minimal measurement columns to bring through (intersect with available)
     if not include_meas_cols:
         include_meas_cols = [
             "true_x", "true_y", "true_z", "rec_x", "rec_y", "rec_z",
             "volume_id", "layer_id", "surface_id"
         ]
-    lhs_cols = [c for c in include_meas_cols if c in meas_df.columns]
-    lhs = meas_df[lhs_cols].copy() if lhs_cols else meas_df.copy()
+    lhs_cols = [c for c in include_meas_cols if c in meas_df.columns] + ["_orig_pos"]
+    lhs = meas_df[lhs_cols].copy() if lhs_cols else meas_df[["_orig_pos"]].copy()
 
+    # Create per-key sequence numbers to avoid cartesian product on duplicates
+    lhs["_seq"] = lhs.groupby(["true_x", "true_y", "true_z"], dropna=False).cumcount()
+    rhs["_seq"] = rhs.groupby(["x", "y", "z"], dropna=False).cumcount()
+
+    # Perform LEFT merge on keys + sequence number (stable 1:1 pairing)
     merged = pd.merge(
         lhs,
         rhs,
-        left_on=["true_x", "true_y", "true_z"],
-        right_on=["x", "y", "z"],
-        how="left"
+        left_on=["true_x", "true_y", "true_z", "_seq"],
+        right_on=["x", "y", "z", "_seq"],
+        how="left",
+        sort=False,
+        copy=False,
     )
 
-    # Drop the original true_x, true_y, true_z from measurements (now duplicated)
-    merged = merged.drop(columns=["true_x", "true_y", "true_z"], errors='ignore')
+    # Drop helper columns and the measurement-side true_* prior to renaming to avoid duplicates
+    merged = merged.drop(columns=["_seq", "true_x", "true_y", "true_z"], errors='ignore')
 
-    # Rename columns to match final naming convention
     # Simhits x,y,z become true_x, true_y, true_z
     # Measurements rec_x, rec_y, rec_z become x, y, z
     merged = merged.rename(columns={
         "x": "true_x",
-        "y": "true_y", 
+        "y": "true_y",
         "z": "true_z",
         "rec_x": "x",
         "rec_y": "y",
         "rec_z": "z",
         "cellID": "cell_id",
         "EDep": "e_dep",
-        "pathLength": "path_length"
+        "pathLength": "path_length",
     }, errors='ignore')
 
     # Convert detector strings to integers
     merged = _convert_detector_to_int(merged)
 
-    logger.debug(f"Merged columns: {merged.columns}")
+    # Restore original measurement order explicitly
+    merged = merged.sort_values("_orig_pos", kind="stable").drop(columns=["_orig_pos"], errors='ignore')
 
-    # Drop duplicated x, y, z, particle_id (this appears during the merge, if there are duplicate x,y,z points)
-    merged = merged.drop_duplicates(subset=["x", "y", "z", "particle_id"])
+    logger.debug(f"Merged columns: {merged.columns}")
 
     return merged
 
@@ -138,8 +152,8 @@ def process_event_for_digihits(event_id: int, local_event_num: int, measurements
     Build per-event digitized measurements dataframe, merged with tracker.
     """
     # Filter event slice
-    if "event_nr" in measurements_df.columns:
-        ev_meas = measurements_df[measurements_df.event_nr == local_event_num].copy()
+    if "event_id" in measurements_df.columns:
+        ev_meas = measurements_df[measurements_df.event_id == local_event_num].copy()
     else:
         # Assume the file is already a single-event view
         ev_meas = measurements_df.copy()
@@ -301,17 +315,16 @@ def process_chunk_for_digihits(
     for abs_run in range(start_run, end_run + 1):
         run_dir = run_dirs[abs_run]
         try:
-            # Determine local event slice for this run
-            if abs_run == start_run and abs_run == end_run:
-                local_events = range(start_local, end_local + 1)
-            elif abs_run == start_run:
-                local_events = range(start_local, run_size)
-            elif abs_run == end_run:
-                local_events = range(0, end_local + 1)
-            else:
-                local_events = range(run_size)
-
-            local_events_list = list(local_events)
+            local_start, local_stop = local_events_for_run(
+                start_run=start_run,
+                start_local=start_local,
+                end_run=end_run,
+                end_local=end_local,
+                abs_run=abs_run,
+                run_size=run_size,
+            )
+            local_events = (local_start, local_stop)
+            local_count = local_stop - local_start
 
             # Load measurements once per run and (optionally) prefilter to local events
             meas_path = run_dir / "measurements.root"
@@ -320,8 +333,7 @@ def process_chunk_for_digihits(
                 continue
             edm4hep_path = run_dir / "edm4hep.root"
             local_events_str = (
-                f"{local_events_list[0]}-{local_events_list[-1]} (n={len(local_events_list)})"
-                if len(local_events_list) > 0 else "<empty>"
+                f"{local_start}-{local_stop-1} (n={local_count})" if local_count > 0 else "<empty>"
             )
             logging.info(
                 f"Run {abs_run}: dir={run_dir} edm4hep={edm4hep_path} measurements={meas_path} local_events={local_events_str}"
@@ -330,7 +342,7 @@ def process_chunk_for_digihits(
             meas_df_all = load_root_file(str(meas_path))
             logger.debug(f"Loaded measurements.root for run {abs_run} in {time.time() - _t_meas:.3f}s")
             if "event_nr" in meas_df_all.columns:
-                meas_df_all = meas_df_all[meas_df_all.event_nr.isin(local_events_list)].copy()
+                meas_df_all = meas_df_all[meas_df_all.event_nr.isin(range(local_events[0], local_events[1]))].copy()
 
             # Batch load only needed local events from edm4hep once
             edm4hep_path = run_dir / "edm4hep.root"
@@ -338,18 +350,13 @@ def process_chunk_for_digihits(
                 logging.warning(f"Missing EDM4hep file: {edm4hep_path}")
                 continue
             _t_batch = time.time()
-            # Prefer passing a range to activate entry_start/stop in the loader
-            events_selector = (
-                range(local_events_list[0], local_events_list[-1] + 1)
-                if len(local_events_list) > 0 else range(0)
-            )
-            batch = EDM4hepEventBatch(str(edm4hep_path), events=events_selector)
+            batch = EDM4hepEventBatch(str(edm4hep_path), events=local_events)
             hits_all = batch.get_tracker_hits_df()  # load tracker collection lazily
             logger.debug(f"Loaded tracker hits batch for run {abs_run} in {time.time() - _t_batch:.3f}s")
 
             evs = []
             rows_run = 0
-            for local_event_num in local_events_list:
+            for local_event_num in range(local_events[0], local_events[1]):
                 global_event_num = abs_run * run_size + local_event_num
 
                 # Slice measurements for this local event from in-memory DataFrame
