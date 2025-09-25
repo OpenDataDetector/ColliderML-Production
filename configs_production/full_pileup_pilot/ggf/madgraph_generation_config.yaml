@@ -12,7 +12,7 @@
 # --- Dataset & Version ---
 campaign: "full_pileup_pilot"
 dataset: "ggf"
-version: "v2"
+version: "v3"
 stage: "madgraph_generation"
 
 # --- Job Configuration ---
@@ -20,10 +20,10 @@ job_config:
   # Number of nodes will be calculated as n_runs / runs_per_node
   n_runs: 1
   runs_per_node: 1
-  time_limit: "04:00:00"
-  qos: "regular"
-  # execution_mode: "monolithic_slurm"
-  execution_mode: "interactive"
+  time_limit: "00:30:00"
+  qos: "debug"
+  execution_mode: "distributed_slurm"
+  # execution_mode: "interactive"
 
 validation_config:
 
