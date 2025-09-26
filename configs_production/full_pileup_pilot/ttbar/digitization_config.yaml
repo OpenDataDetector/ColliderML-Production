@@ -10,12 +10,12 @@ stage: "digitization"  # One of: generation, merge_smear, simulation, digitizati
 
 # --- Job Configuration ---
 job_config:
-  n_runs: 100  # Number of jobs to submit
+  n_runs: 1  # Number of jobs to submit
   runs_per_node: 1  # Number of runs per node
-  time_limit: "00:30:00"  # Time limit per job
+  time_limit: "02:00:00"  # Time limit per job
   qos: "regular"
-  # execution_mode: "multi_node_slurm"
-  execution_mode: "interactive"
+  execution_mode: "multi_node_slurm"
+  # execution_mode: "interactive"
   depends_on:
 
 # --- Validation Configuration ---
@@ -25,7 +25,7 @@ validation_config:
 
 # --- Stage-specific Configurations ---
 events: 128  # Number of events per run, total number of events will be n_runs * events
-threads: 1
+threads: 32
 digi: True
 reco: True
 num_seeds_per_spm: 20
@@ -40,4 +40,4 @@ output_all_particles: True
 digi_config: /global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml_dev/scripts/simulation/odd-full-geo-digi-config.json
 
 # --- Debugging Commands ---
-debug_output_dir: /global/cfs/cdirs/m4958/data/ColliderML/simulation/full_pileup_pilot/ttbar/v3/runs/0
+# debug_output_dir: /global/cfs/cdirs/m4958/data/ColliderML/simulation/full_pileup_pilot/ttbar/v3/runs/0
