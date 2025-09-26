@@ -5,7 +5,7 @@
 # --- Dataset & Version ---
 campaign: "full_pileup_pilot"
 dataset: "ttbar"
-version: "v2"
+version: "v3"
 stage: "digitization"  # One of: generation, merge_smear, simulation, digitization
 
 # --- Job Configuration ---
@@ -14,7 +14,8 @@ job_config:
   runs_per_node: 1  # Number of runs per node
   time_limit: "00:30:00"  # Time limit per job
   qos: "regular"
-  execution_mode: "multi_node_slurm"
+  # execution_mode: "multi_node_slurm"
+  execution_mode: "interactive"
   depends_on:
 
 # --- Validation Configuration ---
@@ -36,7 +37,7 @@ output_csv: True
 output_all_particles: True
 
 # --- Digitization config ---
-# digi_config: /global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml_dev/scripts/simulation/odd-full-geo-digi-config.json
+digi_config: /global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml_dev/scripts/simulation/odd-full-geo-digi-config.json
 
 # --- Debugging Commands ---
-# debug_output_dir: /pscratch/sd/d/danieltm/ColliderML/simulation/full_pileup_mini_pilot/ttbar/v6/runs/3
+debug_output_dir: /global/cfs/cdirs/m4958/data/ColliderML/simulation/full_pileup_pilot/ttbar/v3/runs/0
