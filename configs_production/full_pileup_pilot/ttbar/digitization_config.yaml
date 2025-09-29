@@ -20,12 +20,12 @@ job_config:
 
 # --- Validation Configuration ---
 validation_config:
-  time_limit: "00:60:00"
-  qos: "regular"
+  # time_limit: "00:60:00"
+  # qos: "regular"
 
 # --- Stage-specific Configurations ---
 events: 1  # Number of events per run, total number of events will be n_runs * events
-threads: 1
+threads: 2
 digi: True
 reco: True
 num_seeds_per_spm: 20

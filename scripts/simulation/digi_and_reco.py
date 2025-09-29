@@ -119,7 +119,7 @@ def setup_acts_reconstruction(input_path, output_dir, config, rnd, logger=None):
     s = Sequencer(
         numThreads=config.threads if config.threads is not None else 1,
         events=config.events,
-        # logLevel=acts.logging.DEBUG,
+        logLevel=acts.logging.DEBUG,
         trackFpes=False,
     )
     
