@@ -1,0 +1,94 @@
+#========================================================================
+# YAML Configuration for MadGraph Process Initialization (NLO ttbar)
+#========================================================================
+# 
+# This configuration is for the first step of the two-step MadGraph workflow:
+# 1. madgraph_init: Generate and compile the process (this config)
+# 2. madgraph_generation: Parallel event generation using the compiled process
+#
+# The madgraph_init stage is typically run once per dataset version as a 
+# monolithic job, since the process generation cannot be parallelized.
+
+# --- Dataset & Version ---
+campaign: "full_pileup_pilot"
+dataset: "ttbar"
+version: "v1"
+stage: "madgraph_init"
+
+# --- Job Configuration ---
+job_config:
+  # Number of nodes will be calculated as n_runs / runs_per_node
+  n_runs: 1        # Number of runs (where a run produces N events)
+  runs_per_node: 1  # Number of runs per node (adjust based on memory/time constraints)
+  time_limit: "04:00:00"  # Time limit per job - MadGraph NLO generation is slower than Pythia
+  qos: "regular"
+  # execution_mode: "monolithic_slurm"  # Use distributed mode for parallel generation
+  execution_mode: "interactive"
+
+# --- MadGraph Process Definition ---
+mg_model: "sm-no_b_mass"
+mg_definitions: [] # No specific lepton definitions needed for inclusive ttbar
+mg_generate_command: |
+  generate p p > t t~ [QCD]
+  add process p p > t t~ j [QCD]
+  add process p p > t t~ j j [QCD]
+
+# --- Essential Paths & Environment ---
+# These use variables from env_setup.yaml config_defaults
+mg_base_path: "{madgraph.mg_base_path}"
+generation_scratch_dir: "{madgraph.generation_scratch_dir}" 
+
+# --- Card Customizations ---
+card_customizations:
+  run_card:
+    # Physics settings
+    "parton_shower": "PYTHIA8" 
+    "ebeam1": 7000.0 # 14 TeV centre of mass energy
+    "ebeam2": 7000.0 # 14 TeV centre of mass energy
+    # "ickkw": 0       # FxFx merging scheme for NLO - This is set automatically by MadGraph
+    
+    # Scale and PDF settings - use defaults
+    
+    # Generator-level cuts (improves showering acceptance)
+    "ptj": 20.0      # Minimum jet pT
+    # Note: During init we will temporarily set
+    #   nevents = 0
+    #   req_acc = 0.001
+    # to force grid/envelope construction without producing events.
+
+  # For NLO processes (born), MadGraph creates shower_card.dat
+  shower_card: # Use MOSTLY defaults, but override xqcut
+    # Shower settings that will be applied if this is an NLO process
+    # "nevents": -1    # Will be set per-run during event generation
+    # "iseed": 0       # Will be set per-run during event generation
+    "Qcut": 40.0       # MUST match run_card value for FxFx
+    "time_shower_me_corrections": "F"
+    # "njmax": 2         # For t t~ + 0,1 jet ME from NLO process - This is set automatically by MadGraph
+    # "tune": 14         # Pythia8 Monash 2013 tune
+    # "jet_matching": "True"
+    # "matching_mode": 0  # FxFx mode
+    
+  # For loop-induced processes (noborn), MadGraph creates pythia8_card.dat  
+  pythia8_card: # Use all defaults
+    # Pythia8 settings that will be applied if this is a loop-induced process
+    # "Main:numberOfEvents": -1      # Will be set per-run during event generation
+    # "Random:setSeed": "on"
+    # "Random:seed": 0               # Will be set per-run during event generation
+    # "Tune:pp": 14                    # Monash 2013 tune
+    # "PDF:pSet": "LHAPDF6:NNPDF31_nlo_as_0118"
+    # "PartonLevel:MPI": "on"          # Multiple parton interactions
+    # "HadronLevel:all": "on"          # Full hadronization
+
+# --- Logging ---
+log_level: "INFO"
+
+# --- Documentation ---
+# After running this stage successfully, the compiled process will be stored at:
+# {output_base_dir}/{campaign}/{dataset}/{version}/madgraph_process/
+# and archived as a tarball at:
+# {output_base_dir}/{campaign}/{dataset}/{version}/madgraph_process.tgz
+# 
+# The tarball is the canonical artifact consumed by madgraph_generation.
+# 
+# Expected runtime: 2-12 hours for NLO ttbar process compilation
+# Expected storage: ~100-500 MB for the compiled process directory
