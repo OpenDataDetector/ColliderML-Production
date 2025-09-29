@@ -1,4 +1,5 @@
 import time
+import math
 from pathlib import Path
 import acts
 import acts.examples
@@ -191,12 +192,22 @@ def generate_pileup(output_dir, config, logger):
     Returns:
         Path: Path to generated pileup file
     """
-    # Calculate total pileup events needed
-    pileup_multiplicity = getattr(config, 'pileup', 1)
-    total_pileup_events = config.events * pileup_multiplicity
-    
-    logger.info(f"Generating {total_pileup_events} individual pileup events "
-                f"({config.events} signal events × {pileup_multiplicity} pileup per signal)")
+    # Calculate total pileup events to generate
+    pileup_mu = getattr(config, 'pileup', 1)
+    if getattr(config, 'poisson_sample', False):
+        expected = config.events * pileup_mu
+        z_sigma = getattr(config, 'poisson_buffer_sigma', 5.0)
+        total_pileup_events = int(math.ceil(expected + z_sigma * math.sqrt(expected)))
+        logger.info(
+            "Generating %d individual pileup events using Poisson buffer (E=%d, mu=%d, z=%.2f)"
+            % (total_pileup_events, config.events, pileup_mu, z_sigma)
+        )
+    else:
+        total_pileup_events = config.events * pileup_mu
+        logger.info(
+            f"Generating {total_pileup_events} individual pileup events "
+            f"({config.events} signal events × {pileup_mu} pileup per signal)"
+        )
     
     s = Sequencer(numThreads=1, events=total_pileup_events)
     s.config.logLevel = acts.logging.INFO
@@ -300,19 +311,26 @@ def merge_events(hard_scatter_file, pileup_file, output_dir, config, logger):
     rng = acts.examples.RandomNumbers(seed=config.seed or 42)
     
     # ACTS HepMC3Reader with merging
-    s.addReader(
-        HepMC3Reader(
-            inputPaths=[
-                (hard_scatter_file, 1),               # Read each signal event once
-                (pileup_file, pileup_multiplicity),   # Read pileup with multiplicity
-            ],
-            level=acts.logging.INFO,
-            outputEvent="merged_events",
-            randomNumbers=rng,
-            vertexGenerator=vtxGen,
-            numEvents=config.events,  # Specify number of events to avoid auto-detection
-        )
+    reader_kwargs = dict(
+        inputPaths=[
+            (hard_scatter_file, 1),
+            (pileup_file, max(1, int(pileup_multiplicity))),
+        ],
+        level=acts.logging.INFO,
+        outputEvent="merged_events",
+        randomNumbers=rng,
+        vertexGenerator=vtxGen,
+        numEvents=config.events,
     )
+
+    if getattr(config, 'poisson_sample', False):
+        # Apply per-event Poisson sampling to the pileup input (index 1)
+        reader_kwargs.update(
+            multiplicityGenerator=acts.examples.PoissonMultiplicityGenerator(mean=float(pileup_multiplicity)),
+            multiplicityInputIndex=1,
+        )
+
+    s.addReader(HepMC3Reader(**reader_kwargs))
     
     # Output merged file
     merged_path = output_dir / "merged_events.hepmc3"
