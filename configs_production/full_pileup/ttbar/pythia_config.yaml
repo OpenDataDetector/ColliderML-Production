@@ -1,0 +1,33 @@
+# Example configuration
+campaign: "full_pileup"
+dataset: "ttbar"
+version: "v1"
+stage: "pythia_generation"  # One of: generation, merge_smear, simulation, digitization
+job_config:
+  # Number of nodes will be calculated as n_runs / runs_per_node
+  n_runs: 1000  # Number of runs (where a run produces N events)
+  runs_per_node: 16  # Number of runs per node
+  time_limit: "01:00:00"  # Time limit per job
+  qos: "regular"
+  depends_on: "43307798"
+  execution_mode: "multi_node_slurm"
+
+validation_config:
+  time_limit: "00:60:00"
+  qos: "regular"
+
+# Stage-specific configurations
+events: 128  # Number of events per run, total number of events will be n_runs * events
+pileup: 200
+hard_process:
+vertex_sigma_xy: 0.0125 # mm
+vertex_sigma_z: 55.5 # mm
+vertex_sigma_t: 5.0 # ns
+
+merge: true  # Merge with existing signal file (events.hepmc3 or events.hepmc.gz) in output directory
+
+# Enable Poisson sampling of pileup multiplicity during merge, and buffer generation in pileup stage
+poisson_sample: true
+poisson_buffer_sigma: 5.0 # Used to generate the buffer for the Poisson sampling
+
+# debug_output_dir: /global/cfs/cdirs/m4958/data/ColliderML/simulation/full_pileup_pilot/ttbar/v4/runs/0
