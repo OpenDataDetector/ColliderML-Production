@@ -25,10 +25,10 @@ validation_config:
 
 # --- Stage-specific Configurations ---
 events: 32  # Number of events per run, total number of events will be n_runs * events
-threads: 16
+threads: 8
 digi: True
 reco: True
-num_seeds_per_spm: 20
+num_seeds_per_spm: 40
 
 # --- Writing Configuration ---
 output_root: True
