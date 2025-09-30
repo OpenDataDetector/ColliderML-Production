@@ -311,26 +311,43 @@ def merge_events(hard_scatter_file, pileup_file, output_dir, config, logger):
     rng = acts.examples.RandomNumbers(seed=config.seed or 42)
     
     # ACTS HepMC3Reader with merging
-    reader_kwargs = dict(
-        inputPaths=[
-            (hard_scatter_file, 1),
-            (pileup_file, max(1, int(pileup_multiplicity))),
-        ],
-        level=acts.logging.INFO,
-        outputEvent="merged_events",
-        randomNumbers=rng,
-        vertexGenerator=vtxGen,
-        numEvents=config.events,
-    )
-
+    # Build inputs using new Config::Input API
     if getattr(config, 'poisson_sample', False):
-        # Apply per-event Poisson sampling to the pileup input (index 1)
-        reader_kwargs.update(
-            multiplicityGenerator=acts.examples.PoissonMultiplicityGenerator(mean=float(pileup_multiplicity)),
-            multiplicityInputIndex=1,
-        )
+        # Use Poisson sampling for pileup
+        inputs = [
+            acts.examples.hepmc3.Input(
+                path=hard_scatter_file,
+                numEvents=1
+            ),
+            acts.examples.hepmc3.Input(
+                path=pileup_file,
+                numEvents=1,  # ignored when multiplicityGenerator is set
+                multiplicityGenerator=acts.examples.PoissonMultiplicityGenerator(mean=float(pileup_multiplicity))
+            )
+        ]
+    else:
+        # Use fixed multiplicity (backward compatible)
+        inputs = [
+            acts.examples.hepmc3.Input(
+                path=hard_scatter_file,
+                numEvents=1
+            ),
+            acts.examples.hepmc3.Input(
+                path=pileup_file,
+                numEvents=max(1, int(pileup_multiplicity))
+            )
+        ]
 
-    s.addReader(HepMC3Reader(**reader_kwargs))
+    s.addReader(
+        HepMC3Reader(
+            inputs=inputs,
+            level=acts.logging.INFO,
+            outputEvent="merged_events",
+            randomNumbers=rng,
+            vertexGenerator=vtxGen,
+            numEvents=config.events,
+        )
+    )
     
     # Output merged file
     merged_path = output_dir / "merged_events.hepmc3"
