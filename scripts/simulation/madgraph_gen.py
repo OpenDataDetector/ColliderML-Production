@@ -180,10 +180,14 @@ def customize_cards_for_run(process_dir, config, run_id=None):
 def split_hepmc_file(input_hepmc_path: Path,
                      final_output_base_dir: Path,
                      events_per_file: int,
-                     output_filename: str = "events.hepmc"):
+                     output_filename: str = "events.hepmc",
+                     global_run_offset: int = 0):
     """
     Splits a single (potentially gzipped) HEPMC file into multiple smaller HEPMC files,
     each in its own subdirectory (0, 1, 2, etc.) under final_output_base_dir.
+    
+    Args:
+        global_run_offset: Offset to add to chunk indices for global run numbering (multi-node mode)
     """
     try:
         import pyhepmc as hep
@@ -216,7 +220,8 @@ def split_hepmc_file(input_hepmc_path: Path,
                         except Exception:
                             pass
                     chunk_index = event_index // events_per_file
-                    split_dir = final_output_base_dir / str(chunk_index)
+                    global_run_index = global_run_offset + chunk_index
+                    split_dir = final_output_base_dir / str(global_run_index)
                     os.makedirs(split_dir, exist_ok=True)
                     split_path = split_dir / output_filename
                     current_writer = WriterAscii(str(split_path))
@@ -348,13 +353,27 @@ def run_lo_mlm_with_mg5_script(process_dir: Path, mg5_exe: Path, job_scratch_dir
         raise
 
 def process_output_files(copied_process_dir, effective_output_dir, run_name, splitting_enabled,
-                        split_events_per_file, split_output_filename, logger):
+                        split_events_per_file, split_output_filename, mg_run_id, events_per_mg_run, logger):
     """Process and move/split output files from MadGraph."""
     events_dir_in_process = copied_process_dir / "Events"
-    # If interactive runner used an 'all' subdir, place split chunks in parent runs/ dir
-    split_output_base_dir = (
-        effective_output_dir.parent if effective_output_dir.name == "all" else effective_output_dir
-    )
+    
+    # Determine split output directory and global run offset
+    # Multi-node SLURM: effective_output_dir = runs/0, runs/1, etc. → split to parent with offset
+    # Monolithic/Interactive: effective_output_dir = runs/ → split directly there
+    is_multinode = mg_run_id is not None and mg_run_id >= 0
+    
+    if is_multinode:
+        # Multi-node: output to parent (runs/) with global numbering
+        split_output_base_dir = effective_output_dir.parent
+        # Calculate global run offset for this MadGraph job
+        runs_per_mg_job = events_per_mg_run // split_events_per_file if events_per_mg_run and split_events_per_file else 0
+        global_run_offset = mg_run_id * runs_per_mg_job
+        logger.info(f"Multi-node mode: MG run {mg_run_id}, global offset {global_run_offset}, splitting to {split_output_base_dir}")
+    else:
+        # Monolithic/interactive: use effective_output_dir as-is
+        split_output_base_dir = effective_output_dir
+        global_run_offset = 0
+        logger.info(f"Monolithic mode: splitting to {split_output_base_dir}")
     
     # Look for run-specific directories
     if run_name:
@@ -395,7 +414,8 @@ def process_output_files(copied_process_dir, effective_output_dir, run_name, spl
                             input_hepmc_path=event_file_path,
                             final_output_base_dir=split_output_base_dir,
                             events_per_file=split_events_per_file,
-                            output_filename=split_output_filename
+                            output_filename=split_output_filename,
+                            global_run_offset=global_run_offset
                         )
                         if created_split_files:
                             files_processed_count += len(created_split_files)
@@ -549,8 +569,18 @@ def main():
 
         # STEP 4: Process and move/split output files
         logger.info("=== STEP 4: Process and Move/Split Output Files ===")
+        
+        # Detect multi-node mode: if output_subdir is numeric, extract mg_run_id
+        mg_run_id = None
+        if args.output_subdir and args.output_subdir.isdigit():
+            mg_run_id = int(args.output_subdir)
+            logger.info(f"Detected multi-node SLURM mode with MG run ID: {mg_run_id}")
+        
+        events_per_mg_run = getattr(config, 'events', None)
+        
         process_output_files(copied_process_dir, effective_output_dir, run_name, 
-                           splitting_enabled, split_events_per_file, split_output_filename, logger)
+                           splitting_enabled, split_events_per_file, split_output_filename,
+                           mg_run_id, events_per_mg_run, logger)
 
         # STEP 5: Copy final cards
         logger.info("=== STEP 5: Copy Final Cards ===")
