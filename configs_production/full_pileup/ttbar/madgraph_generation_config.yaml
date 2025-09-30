@@ -20,8 +20,10 @@ job_config:
   # Number of nodes will be calculated as n_runs / runs_per_node
   n_runs: 1        # Number of runs (where a run produces N events)
   runs_per_node: 1  # Number of runs per node (adjust based on memory/time constraints)
-  time_limit: "08:00:00"  # Time limit per job - MadGraph NLO generation is slower than Pythia
-  qos: "regular"
+  # time_limit: "08:00:00"  # Time limit per job - MadGraph NLO generation is slower than Pythia
+  # qos: "regular"
+  time_limit: "00:30:00"
+  qos: "debug"
   execution_mode: "monolithic_slurm"  # Use distributed mode for parallel generation
   # execution_mode: "interactive"
 
@@ -45,6 +47,7 @@ generation_scratch_dir: "{madgraph.generation_scratch_dir}"
 card_customizations:
   run_card:
     "ptj": 20.0      # Minimum jet pT
+    "event_norm": "sum"
 
   # For NLO processes (born), customize shower_card.dat
   shower_card:
