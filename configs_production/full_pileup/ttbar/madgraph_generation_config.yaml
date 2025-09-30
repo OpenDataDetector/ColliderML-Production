@@ -18,20 +18,22 @@ stage: "madgraph_generation"
 # --- Job Configuration ---
 job_config:
   # Number of nodes will be calculated as n_runs / runs_per_node
-  n_runs: 1        # Number of runs (where a run produces N events)
+  n_runs: 4        # Number of runs (where a run produces N events)
   runs_per_node: 1  # Number of runs per node (adjust based on memory/time constraints)
   # time_limit: "08:00:00"  # Time limit per job - MadGraph NLO generation is slower than Pythia
   # qos: "regular"
   time_limit: "00:30:00"
   qos: "debug"
-  execution_mode: "monolithic_slurm"  # Use distributed mode for parallel generation
+  # execution_mode: "monolithic_slurm"  # Use distributed mode for parallel generation
+  execution_mode: "multi_node_slurm"
   # execution_mode: "interactive"
 
 validation_config:
 
 # --- Event Generation Parameters ---
 # These follow the exact same pattern as pythia_gen.py and ddsim_run.py
-events: 300000  # Number of events per run, total events = n_runs * events
+# events: 300000  # Number of events per run, total events = n_runs * events
+events: 10000
 # NOTE: ttbar pythia matching survival rate is around 45%
 seed: 42     # Base seed - will be modified per run using run_id
 
