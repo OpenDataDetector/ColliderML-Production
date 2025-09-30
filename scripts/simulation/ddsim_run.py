@@ -13,7 +13,7 @@ def parse_args():
     parser = create_base_parser("DD4hep simulation for ACTS")
     parser.add_argument(
         "--input-file",
-        help="Input HepMC3 file (default: {output_dir}/merged_events.hepmc3)",
+        help="Input HepMC3 file (overrides config input_filename; default: merged_events.hepmc3)",
         type=Path,
         default=None
     )
@@ -303,7 +303,10 @@ def main():
         # Set default input path if not specified and not in single particle mode
         input_path = None
         if not getattr(config, 'single_particle', False):
-            input_path = args.input_file or output_dir / "merged_events.hepmc3"
+            # Priority: 1) command-line arg, 2) config file, 3) default
+            input_filename = getattr(config, 'input_filename', 'merged_events.hepmc3')
+            input_path = args.input_file or output_dir / input_filename
+            logger.info(f"Using input filename: {input_filename} (from {'command-line' if args.input_file else 'config' if hasattr(config, 'input_filename') else 'default'})")
         output_path = output_dir / "edm4hep.root"
         
         # Initialize timing recorder
