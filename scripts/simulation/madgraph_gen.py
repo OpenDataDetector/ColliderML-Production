@@ -368,29 +368,38 @@ def run_lo_mlm_with_mg5_script(process_dir: Path, mg5_exe: Path, job_scratch_dir
         logger.error(f"Error running MG5 LO+MLM launch: {e}")
         raise
 
-def process_output_files(copied_process_dir, effective_output_dir, run_name, splitting_enabled,
+def process_output_files(copied_process_dir, staging_output_dir, run_name, splitting_enabled,
                         split_events_per_file, split_output_filename, mg_run_id, events_per_mg_run, 
                         max_files_per_mg_run, logger):
-    """Process and move/split output files from MadGraph."""
+    """Process and move/split output files from MadGraph.
+    
+    Args:
+        staging_output_dir: Directory for MG staging files (LHE, cards). For multi-node: runs/all/X/
+    """
     events_dir_in_process = copied_process_dir / "Events"
     
     # Determine split output directory and global run offset
-    # Multi-node SLURM: effective_output_dir = runs/0, runs/1, etc. → split to parent with offset
-    # Monolithic/Interactive: effective_output_dir = runs/ → split directly there
+    # Multi-node SLURM: staging_output_dir = runs/all/X/ → split to runs/ with offset
+    # Monolithic/Interactive: staging_output_dir = runs/ → split directly there
     is_multinode = mg_run_id is not None and mg_run_id >= 0
     
     if is_multinode:
-        # Multi-node: output to parent (runs/) with global numbering
-        split_output_base_dir = effective_output_dir.parent
+        # Multi-node: staging is runs/all/X/, split goes to runs/
+        # Navigate: runs/all/X/ -> runs/all/ -> runs/
+        split_output_base_dir = staging_output_dir.parent.parent
         # Calculate global run offset for this MadGraph job
-        runs_per_mg_job = events_per_mg_run // split_events_per_file if events_per_mg_run and split_events_per_file else 0
+        # Use max_files_per_mg_run if capping is enabled, otherwise use theoretical file count
+        if max_files_per_mg_run is not None:
+            runs_per_mg_job = max_files_per_mg_run
+        else:
+            runs_per_mg_job = events_per_mg_run // split_events_per_file if events_per_mg_run and split_events_per_file else 0
         global_run_offset = mg_run_id * runs_per_mg_job
-        logger.info(f"Multi-node mode: MG run {mg_run_id}, global offset {global_run_offset}, splitting to {split_output_base_dir}")
+        logger.info(f"Multi-node mode: MG run {mg_run_id}, staging to {staging_output_dir}, {runs_per_mg_job} files/run, global offset {global_run_offset}, splitting to {split_output_base_dir}")
     else:
-        # Monolithic/interactive: use effective_output_dir as-is
-        split_output_base_dir = effective_output_dir
+        # Monolithic/interactive: use staging_output_dir as-is
+        split_output_base_dir = staging_output_dir
         global_run_offset = 0
-        logger.info(f"Monolithic mode: splitting to {split_output_base_dir}")
+        logger.info(f"Monolithic mode: staging and splitting to {split_output_base_dir}")
     
     # Look for run-specific directories
     if run_name:
@@ -411,11 +420,11 @@ def process_output_files(copied_process_dir, effective_output_dir, run_name, spl
 
     for events_subdir_path in actual_events_subdirs:
         if events_subdir_path.is_dir():
-            # Process LHE files: move them directly
+            # Process LHE files: move them to staging directory
             for pattern in ["*.lhe", "*.lhe.gz"]:
                 for event_file_path in events_subdir_path.glob(pattern):
                     try:
-                        destination_path = effective_output_dir / event_file_path.name
+                        destination_path = staging_output_dir / event_file_path.name
                         shutil.move(str(event_file_path), str(destination_path))
                         logger.info(f"Moved LHE file {event_file_path.name} to {destination_path}")
                         files_processed_count += 1
@@ -452,12 +461,12 @@ def process_output_files(copied_process_dir, effective_output_dir, run_name, spl
                             except Exception as e:
                                 logger.error(f"Error moving original HEPMC file {event_file_path.name} after failed/skipped split: {e}")
                     else:
-                        # Splitting not enabled, move the HEPMC file directly
+                        # Splitting not enabled, move the HEPMC file to staging directory
                         try:
                             if event_file_path.name.endswith('.hepmc.gz'):
-                                destination_path = effective_output_dir / "events.hepmc.gz"
+                                destination_path = staging_output_dir / "events.hepmc.gz"
                             else:
-                                destination_path = effective_output_dir / "events.hepmc3"
+                                destination_path = staging_output_dir / "events.hepmc3"
                             shutil.move(str(event_file_path), str(destination_path))
                             logger.info(f"Moved HEPMC file {event_file_path.name} to {destination_path} (splitting disabled, ACTS-compatible name).")
                             files_processed_count += 1
@@ -467,9 +476,12 @@ def process_output_files(copied_process_dir, effective_output_dir, run_name, spl
     if files_processed_count == 0:
         logger.warning("No event files were found, moved, or split from the MadGraph run.")
 
-def copy_final_cards(copied_process_dir, process_type, process_name, effective_output_dir, config, logger):
+def copy_final_cards(copied_process_dir, process_type, process_name, staging_output_dir, config, logger):
     """
     Copy final cards to both the per-run output directory and central version directory.
+    
+    Args:
+        staging_output_dir: Directory for MG staging files (for multi-node: runs/all/X/)
     """
     try:
         cards_dir = copied_process_dir / "Cards"
@@ -483,8 +495,8 @@ def copy_final_cards(copied_process_dir, process_type, process_name, effective_o
         elif process_type == "noborn":
             cards_to_copy.append(("pythia8_card.dat", "pythia8_card"))
         
-        # Copy to per-run directory (runs/X/final_cards/)
-        run_cards_dir = effective_output_dir / "final_cards"
+        # Copy to per-run staging directory (runs/all/X/final_cards/)
+        run_cards_dir = staging_output_dir / "final_cards"
         run_cards_dir.mkdir(exist_ok=True)
         
         # Copy to central version directory (version/final_cards/)
@@ -590,13 +602,20 @@ def main():
         
         # Detect multi-node mode: if output_subdir is numeric, extract mg_run_id
         mg_run_id = None
+        staging_output_dir = effective_output_dir  # Default: same as effective_output_dir
+        
         if args.output_subdir and args.output_subdir.isdigit():
             mg_run_id = int(args.output_subdir)
             logger.info(f"Detected multi-node SLURM mode with MG run ID: {mg_run_id}")
+            
+            # For multi-node: stage MG files to runs/all/X/ to avoid collision with split runs/X/
+            staging_output_dir = effective_output_dir.parent / "all" / args.output_subdir
+            staging_output_dir.mkdir(parents=True, exist_ok=True)
+            logger.info(f"Multi-node staging directory: {staging_output_dir}")
         
         events_per_mg_run = getattr(config, 'events', None)
         
-        process_output_files(copied_process_dir, effective_output_dir, run_name, 
+        process_output_files(copied_process_dir, staging_output_dir, run_name, 
                            splitting_enabled, split_events_per_file, split_output_filename,
                            mg_run_id, events_per_mg_run, max_files_per_mg_run, logger)
 
@@ -604,7 +623,7 @@ def main():
         logger.info("=== STEP 5: Copy Final Cards ===")
         # Decide which final card(s) to copy based on run_mode
         process_type = 'born' if str(getattr(config, 'run_mode', 'nlo_fxfx')).lower() != 'lo_mlm' else 'noborn'
-        copy_final_cards(copied_process_dir, process_type, process_name, effective_output_dir, config, logger)
+        copy_final_cards(copied_process_dir, process_type, process_name, staging_output_dir, config, logger)
 
         logger.info("=== MadGraph event generation completed successfully ===")
         
