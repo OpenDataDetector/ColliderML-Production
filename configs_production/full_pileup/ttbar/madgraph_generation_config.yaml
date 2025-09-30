@@ -33,7 +33,7 @@ validation_config:
 # --- Event Generation Parameters ---
 # These follow the exact same pattern as pythia_gen.py and ddsim_run.py
 # events: 300000  # Number of events per run, total events = n_runs * events
-events: 10000
+events: 5000
 # NOTE: ttbar pythia matching survival rate is around 45%
 seed: 42     # Base seed - will be modified per run using run_id
 
@@ -65,6 +65,7 @@ card_customizations:
 splitting_config:
   enable: true
   events_per_file: 128
+  max_files_per_mg_run: 4
   output_filename: "events.hepmc"
 
 # --- Logging ---

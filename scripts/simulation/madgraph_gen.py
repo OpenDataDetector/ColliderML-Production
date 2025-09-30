@@ -181,14 +181,16 @@ def split_hepmc_file(input_hepmc_path: Path,
                      final_output_base_dir: Path,
                      events_per_file: int,
                      output_filename: str = "events.hepmc",
-                     global_run_offset: int = 0):
+                     global_run_offset: int = 0,
+                     max_files_per_mg_run: int = None):
     """
     Splits a single (potentially gzipped) HEPMC file into multiple smaller HEPMC files,
     each in its own subdirectory (0, 1, 2, etc.) under final_output_base_dir.
     
     Args:
         global_run_offset: Offset to add to chunk indices for global run numbering (multi-node mode)
-    """
+        max_files_per_mg_run: Maximum number of split files to keep per MadGraph run (caps output)
+    ""
     try:
         import pyhepmc as hep
         from pyhepmc.io import WriterAscii
@@ -258,6 +260,18 @@ def split_hepmc_file(input_hepmc_path: Path,
         files_created.pop()
         print(f"--- Discarded final partial chunk with {remainder} events (< {events_per_file}). ---")
 
+    # Cap to max_files_per_mg_run if specified (for multi-node deterministic output)
+    if max_files_per_mg_run is not None and len(files_created) > max_files_per_mg_run:
+        excess_files = files_created[max_files_per_mg_run:]
+        files_created = files_created[:max_files_per_mg_run]
+        print(f"--- Capping output to {max_files_per_mg_run} files per MG run (discarding {len(excess_files)} excess files). ---")
+        for excess_path in excess_files:
+            try:
+                Path(excess_path).unlink(missing_ok=True)
+                Path(excess_path).parent.rmdir()
+            except Exception as e_rm:
+                print(f"Warning: failed to remove excess file {excess_path}: {e_rm}")
+
     print(f"--- Splitting complete. Processed {total_events} events from {input_hepmc_path.name} into {len(files_created)} files. ---")
     return files_created
 
@@ -282,12 +296,14 @@ def setup_splitting_config(config, logger):
         
         split_events_per_file = splitting_config.get('events_per_file', 1000)
         split_output_filename = splitting_config.get('output_filename', 'events.hepmc')
-        logger.info(f"Splitting config: enable={splitting_enabled}, events_per_file={split_events_per_file}")
+        max_files_per_mg_run = splitting_config.get('max_files_per_mg_run', None)
         
-        return splitting_enabled, split_events_per_file, split_output_filename
+        logger.info(f"Splitting config: enable={splitting_enabled}, events_per_file={split_events_per_file}, max_files_per_mg_run={max_files_per_mg_run}")
+        
+        return splitting_enabled, split_events_per_file, split_output_filename, max_files_per_mg_run
     except Exception as e:
         logger.warning(f"Error accessing splitting config: {e}. Using defaults")
-        return False, 1000, 'events.hepmc'
+        return False, 1000, 'events.hepmc', None
 
 def run_generate_events_no_compile(process_dir: Path, run_name: str, logger: logging.Logger):
     """Run ./bin/generate_events in no-compile mode (-oxf) with optional run name."""
@@ -353,7 +369,8 @@ def run_lo_mlm_with_mg5_script(process_dir: Path, mg5_exe: Path, job_scratch_dir
         raise
 
 def process_output_files(copied_process_dir, effective_output_dir, run_name, splitting_enabled,
-                        split_events_per_file, split_output_filename, mg_run_id, events_per_mg_run, logger):
+                        split_events_per_file, split_output_filename, mg_run_id, events_per_mg_run, 
+                        max_files_per_mg_run, logger):
     """Process and move/split output files from MadGraph."""
     events_dir_in_process = copied_process_dir / "Events"
     
@@ -415,7 +432,8 @@ def process_output_files(copied_process_dir, effective_output_dir, run_name, spl
                             final_output_base_dir=split_output_base_dir,
                             events_per_file=split_events_per_file,
                             output_filename=split_output_filename,
-                            global_run_offset=global_run_offset
+                            global_run_offset=global_run_offset,
+                            max_files_per_mg_run=max_files_per_mg_run
                         )
                         if created_split_files:
                             files_processed_count += len(created_split_files)
@@ -533,7 +551,7 @@ def main():
     effective_output_dir.mkdir(parents=True, exist_ok=True)
 
     # Setup splitting configuration
-    splitting_enabled, split_events_per_file, split_output_filename = setup_splitting_config(config, logger)
+    splitting_enabled, split_events_per_file, split_output_filename, max_files_per_mg_run = setup_splitting_config(config, logger)
 
     # Warmup toggle: support either a simple boolean `warmup: true` or legacy dict with `enable`
     warmup_attr = getattr(config, 'warmup', False)
@@ -580,7 +598,7 @@ def main():
         
         process_output_files(copied_process_dir, effective_output_dir, run_name, 
                            splitting_enabled, split_events_per_file, split_output_filename,
-                           mg_run_id, events_per_mg_run, logger)
+                           mg_run_id, events_per_mg_run, max_files_per_mg_run, logger)
 
         # STEP 5: Copy final cards
         logger.info("=== STEP 5: Copy Final Cards ===")
