@@ -177,7 +177,8 @@ def split_hepmc_file(input_hepmc_path: Path,
                      events_per_file: int,
                      output_filename: str = "events.hepmc",
                      global_run_offset: int = 0,
-                     max_files_per_mg_run: int = None):
+                     max_files_per_mg_run: int = None,
+                     logger = None):
     """
     Splits a single (potentially gzipped) HEPMC file into multiple smaller HEPMC files,
     each in its own subdirectory (0, 1, 2, etc.) under final_output_base_dir.
@@ -185,31 +186,47 @@ def split_hepmc_file(input_hepmc_path: Path,
     Args:
         global_run_offset: Offset to add to chunk indices for global run numbering (multi-node mode)
         max_files_per_mg_run: Maximum number of split files to keep per MadGraph run (caps output)
+        logger: Logger instance for output (uses module logger if None)
     """
+    if logger is None:
+        import logging
+        logger = logging.getLogger(__name__)
+    
     try:
         import pyhepmc as hep
         from pyhepmc.io import WriterAscii
     except ImportError:
-        print("Error: pyhepmc library not found. Please install it (e.g., pip install pyhepmc). Skipping split.")
+        logger.error("pyhepmc library not found. Please install it (e.g., pip install pyhepmc). Skipping split.")
         return []
 
     if events_per_file <= 0:
-        print("Warning: events_per_file must be > 0. Skipping split.")
+        logger.warning("events_per_file must be > 0. Skipping split.")
         return []
 
-    print(f"--- Splitting HEPMC file: {input_hepmc_path} ---")
-    print(f"--- Output base directory for splits: {final_output_base_dir} ---")
-    print(f"--- Events per split file: {events_per_file} ---")
+    logger.info(f"Splitting HEPMC file: {input_hepmc_path}")
+    logger.info(f"Output base directory for splits: {final_output_base_dir}")
+    logger.info(f"Events per split file: {events_per_file}")
 
     files_created = []
     current_writer = None
     total_events = 0
+    
+    # Calculate maximum events to process if capping is enabled
+    max_events_to_process = None
+    if max_files_per_mg_run is not None:
+        max_events_to_process = max_files_per_mg_run * events_per_file
+        logger.info(f"Capping at {max_files_per_mg_run} files ({max_events_to_process} events max)")
 
     try:
         with hep.open(str(input_hepmc_path)) as f_in:
             iterator = tqdm(enumerate(f_in), desc=f"Splitting {input_hepmc_path.name}")
 
             for event_index, event in iterator:
+                # Stop if we've hit the cap
+                if max_events_to_process is not None and event_index >= max_events_to_process:
+                    logger.info(f"Reached cap at {max_events_to_process} events, stopping early")
+                    break
+                    
                 if event_index % events_per_file == 0:
                     if current_writer is not None:
                         try:
@@ -228,7 +245,7 @@ def split_hepmc_file(input_hepmc_path: Path,
                 current_writer.write_event(event)
                 total_events = event_index + 1
     except Exception as e:
-        print(f"Error during HEPMC splitting of {input_hepmc_path}: {e}")
+        logger.error(f"Error during HEPMC splitting of {input_hepmc_path}: {e}")
     finally:
         if current_writer is not None:
             try:
@@ -237,7 +254,7 @@ def split_hepmc_file(input_hepmc_path: Path,
                 pass
 
     if total_events == 0:
-        print(f"--- No events found or processed in {input_hepmc_path.name}. ---")
+        logger.warning(f"No events found or processed in {input_hepmc_path.name}")
         return []
 
     # Discard final partial chunk
@@ -246,28 +263,12 @@ def split_hepmc_file(input_hepmc_path: Path,
         last_path = files_created[-1]
         try:
             Path(last_path).unlink(missing_ok=True)
+            files_created.pop()
+            logger.info(f"Discarded final partial chunk with {remainder} events (< {events_per_file})")
         except Exception as e_rm:
-            print(f"Warning: failed to remove partial split file {last_path}: {e_rm}")
-        try:
-            Path(last_path).parent.rmdir()
-        except Exception:
-            pass
-        files_created.pop()
-        print(f"--- Discarded final partial chunk with {remainder} events (< {events_per_file}). ---")
+            logger.warning(f"Failed to remove partial split file {last_path}: {e_rm}")
 
-    # Cap to max_files_per_mg_run if specified (for multi-node deterministic output)
-    if max_files_per_mg_run is not None and len(files_created) > max_files_per_mg_run:
-        excess_files = files_created[max_files_per_mg_run:]
-        files_created = files_created[:max_files_per_mg_run]
-        print(f"--- Capping output to {max_files_per_mg_run} files per MG run (discarding {len(excess_files)} excess files). ---")
-        for excess_path in excess_files:
-            try:
-                Path(excess_path).unlink(missing_ok=True)
-                Path(excess_path).parent.rmdir()
-            except Exception as e_rm:
-                print(f"Warning: failed to remove excess file {excess_path}: {e_rm}")
-
-    print(f"--- Splitting complete. Processed {total_events} events from {input_hepmc_path.name} into {len(files_created)} files. ---")
+    logger.info(f"Splitting complete. Processed {total_events} events from {input_hepmc_path.name} into {len(files_created)} files")
     return files_created
 
 def normalize_card_customizations(config):
@@ -415,7 +416,8 @@ def _process_hepmc_file(event_file_path, splitting_enabled, split_output_base_di
             events_per_file=split_events_per_file,
             output_filename=split_output_filename,
             global_run_offset=global_run_offset,
-            max_files_per_mg_run=max_files_per_mg_run
+            max_files_per_mg_run=max_files_per_mg_run,
+            logger=logger
         )
         if created_split_files:
             try:
