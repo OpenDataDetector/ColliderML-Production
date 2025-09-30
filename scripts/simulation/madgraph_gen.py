@@ -190,7 +190,7 @@ def split_hepmc_file(input_hepmc_path: Path,
     Args:
         global_run_offset: Offset to add to chunk indices for global run numbering (multi-node mode)
         max_files_per_mg_run: Maximum number of split files to keep per MadGraph run (caps output)
-    ""
+    """
     try:
         import pyhepmc as hep
         from pyhepmc.io import WriterAscii
