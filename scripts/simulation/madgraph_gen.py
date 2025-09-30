@@ -39,9 +39,10 @@ from utils.madgraph_utils import (
 
 logger = logging.getLogger(__name__)
 
-# run_command is imported from madgraph_utils
-
-# customize_card_with_regex and detect_process_type_from_files are imported from madgraph_utils
+# Constants
+DEFAULT_EVENTS_PER_FILE = 128
+DEFAULT_OUTPUT_FILENAME = 'events.hepmc'
+CARD_TYPES = ['run_card', 'shower_card', 'pythia8_card']
 
 def stage_tarball_to_scratch(config):
     """
@@ -95,6 +96,25 @@ def stage_tarball_to_scratch(config):
 
     return copied_process_dir, job_scratch_dir
 
+def _customize_pythia8_card(cards_dir, config, logger, context=""):
+    """Helper to customize pythia8_card.dat with run parameters."""
+    pythia8_card_path = cards_dir / "pythia8_card.dat"
+    if not pythia8_card_path.exists():
+        return
+    
+    p8_params = {}
+    if hasattr(config, 'events'):
+        p8_params['Main:numberOfEvents'] = config.events
+    if hasattr(config, 'seed'):
+        p8_params['Random:seed'] = config.seed
+    
+    base_p8 = config.card_customizations.get('pythia8_card', {})
+    final_p8 = {**base_p8, **p8_params}
+    
+    if final_p8:
+        logger.info(f"Customizing pythia8_card.dat{context}")
+        customize_card_with_regex(pythia8_card_path, final_p8)
+
 def customize_cards_for_run(process_dir, config, run_id=None):
     """
     Customize cards for a specific run with events, seed, and run naming.
@@ -134,18 +154,7 @@ def customize_cards_for_run(process_dir, config, run_id=None):
     run_mode = getattr(config, 'run_mode', None)
     if str(run_mode).lower() == 'lo_mlm':
         # Always apply pythia8_card customizations for LO+MLM (MLM JetMatching lives here)
-        pythia8_card_path = cards_dir / "pythia8_card.dat"
-        if pythia8_card_path.exists():
-            p8_params = {}
-            if hasattr(config, 'events'):
-                p8_params['Main:numberOfEvents'] = config.events
-            if hasattr(config, 'seed'):
-                p8_params['Random:seed'] = config.seed
-            base_p8 = config.card_customizations['pythia8_card']
-            final_p8 = {**base_p8, **p8_params}
-            if final_p8:
-                logger.info("Customizing pythia8_card.dat for run_mode=lo_mlm")
-                customize_card_with_regex(pythia8_card_path, final_p8)
+        _customize_pythia8_card(cards_dir, config, logger, " for run_mode=lo_mlm")
     else:
         # NLO/FxFx path: customize shower_card if present, or pythia8_card if present
         shower_card_path = cards_dir / "shower_card.dat"
@@ -161,21 +170,7 @@ def customize_cards_for_run(process_dir, config, run_id=None):
                 logger.info("Customizing shower_card.dat for NLO process")
                 customize_card_with_regex(shower_card_path, final_shower_settings)
         else:
-            pythia8_card_path = cards_dir / "pythia8_card.dat"
-            if pythia8_card_path.exists():
-                pythia8_params = {}
-                if hasattr(config, 'events'):
-                    pythia8_params['Main:numberOfEvents'] = config.events
-                if hasattr(config, 'seed'):
-                    pythia8_params['Random:seed'] = config.seed
-                base_pythia8_settings = config.card_customizations['pythia8_card']
-                final_pythia8_settings = {**base_pythia8_settings, **pythia8_params}
-                if final_pythia8_settings:
-                    logger.info("Customizing pythia8_card.dat for loop-induced/NLO fallback")
-                    customize_card_with_regex(pythia8_card_path, final_pythia8_settings)
-
-    # No return value needed any more
-
+            _customize_pythia8_card(cards_dir, config, logger, " for loop-induced/NLO fallback")
 
 def split_hepmc_file(input_hepmc_path: Path,
                      final_output_base_dir: Path,
@@ -281,7 +276,7 @@ def normalize_card_customizations(config):
         config.card_customizations = {}
     
     # Ensure each card type is a dict, not None
-    for card_type in ['run_card', 'shower_card', 'pythia8_card']:
+    for card_type in CARD_TYPES:
         if card_type not in config.card_customizations or config.card_customizations[card_type] is None:
             config.card_customizations[card_type] = {}
 
@@ -294,8 +289,8 @@ def setup_splitting_config(config, logger):
         else:
             splitting_enabled = getattr(splitting_config, 'enable', False)
         
-        split_events_per_file = splitting_config.get('events_per_file', 1000)
-        split_output_filename = splitting_config.get('output_filename', 'events.hepmc')
+        split_events_per_file = splitting_config.get('events_per_file', DEFAULT_EVENTS_PER_FILE)
+        split_output_filename = splitting_config.get('output_filename', DEFAULT_OUTPUT_FILENAME)
         max_files_per_mg_run = splitting_config.get('max_files_per_mg_run', None)
         
         logger.info(f"Splitting config: enable={splitting_enabled}, events_per_file={split_events_per_file}, max_files_per_mg_run={max_files_per_mg_run}")
@@ -303,7 +298,7 @@ def setup_splitting_config(config, logger):
         return splitting_enabled, split_events_per_file, split_output_filename, max_files_per_mg_run
     except Exception as e:
         logger.warning(f"Error accessing splitting config: {e}. Using defaults")
-        return False, 1000, 'events.hepmc', None
+        return False, DEFAULT_EVENTS_PER_FILE, DEFAULT_OUTPUT_FILENAME, None
 
 def run_generate_events_no_compile(process_dir: Path, run_name: str, logger: logging.Logger):
     """Run ./bin/generate_events in no-compile mode (-oxf) with optional run name."""
@@ -368,6 +363,91 @@ def run_lo_mlm_with_mg5_script(process_dir: Path, mg5_exe: Path, job_scratch_dir
         logger.error(f"Error running MG5 LO+MLM launch: {e}")
         raise
 
+def _calculate_split_config(mg_run_id, staging_output_dir, events_per_mg_run, 
+                            split_events_per_file, max_files_per_mg_run, logger):
+    """Calculate split output directory and global run offset."""
+    is_multinode = mg_run_id is not None and mg_run_id >= 0
+    
+    if is_multinode:
+        # Multi-node: staging is runs/all/X/, split goes to runs/
+        split_output_base_dir = staging_output_dir.parent.parent
+        
+        # Calculate global run offset
+        if max_files_per_mg_run is not None:
+            runs_per_mg_job = max_files_per_mg_run
+        else:
+            runs_per_mg_job = events_per_mg_run // split_events_per_file if events_per_mg_run and split_events_per_file else 0
+        
+        global_run_offset = mg_run_id * runs_per_mg_job
+        logger.info(f"Multi-node mode: MG run {mg_run_id}, staging to {staging_output_dir}, "
+                   f"{runs_per_mg_job} files/run, global offset {global_run_offset}, splitting to {split_output_base_dir}")
+    else:
+        # Monolithic/interactive: use staging_output_dir as-is
+        split_output_base_dir = staging_output_dir
+        global_run_offset = 0
+        logger.info(f"Monolithic mode: staging and splitting to {split_output_base_dir}")
+    
+    return split_output_base_dir, global_run_offset
+
+def _process_lhe_files(events_subdir_path, staging_output_dir, logger):
+    """Move LHE files to staging directory. Returns count of files processed."""
+    count = 0
+    for pattern in ["*.lhe", "*.lhe.gz"]:
+        for event_file_path in events_subdir_path.glob(pattern):
+            try:
+                destination_path = staging_output_dir / event_file_path.name
+                shutil.move(str(event_file_path), str(destination_path))
+                logger.info(f"Moved LHE file {event_file_path.name} to {destination_path}")
+                count += 1
+            except Exception as e:
+                logger.error(f"Error moving LHE file {event_file_path.name}: {e}")
+    return count
+
+def _process_hepmc_file(event_file_path, splitting_enabled, split_output_base_dir,
+                        split_events_per_file, split_output_filename, global_run_offset,
+                        max_files_per_mg_run, staging_output_dir, logger):
+    """Process a single HepMC file (split or move). Returns count of files processed."""
+    if splitting_enabled:
+        logger.info(f"Processing HEPMC file for splitting: {event_file_path}")
+        created_split_files = split_hepmc_file(
+            input_hepmc_path=event_file_path,
+            final_output_base_dir=split_output_base_dir,
+            events_per_file=split_events_per_file,
+            output_filename=split_output_filename,
+            global_run_offset=global_run_offset,
+            max_files_per_mg_run=max_files_per_mg_run
+        )
+        if created_split_files:
+            try:
+                event_file_path.unlink()
+                logger.info(f"Removed original temporary HEPMC file {event_file_path} after successful splitting.")
+            except OSError as e:
+                logger.warning(f"Could not remove original temporary HEPMC file {event_file_path}: {e}")
+            return len(created_split_files)
+        else:
+            logger.warning(f"HEPMC splitting produced no files for {event_file_path} or was skipped. Attempting to move original.")
+            try:
+                destination_path = split_output_base_dir / event_file_path.name
+                shutil.move(str(event_file_path), str(destination_path))
+                logger.info(f"Moved original HEPMC file {event_file_path.name} to {destination_path} (splitting failed/skipped).")
+                return 1
+            except Exception as e:
+                logger.error(f"Error moving original HEPMC file {event_file_path.name} after failed/skipped split: {e}")
+                return 0
+    else:
+        # Splitting not enabled, move the HEPMC file to staging directory
+        try:
+            if event_file_path.name.endswith('.hepmc.gz'):
+                destination_path = staging_output_dir / "events.hepmc.gz"
+            else:
+                destination_path = staging_output_dir / "events.hepmc3"
+            shutil.move(str(event_file_path), str(destination_path))
+            logger.info(f"Moved HEPMC file {event_file_path.name} to {destination_path} (splitting disabled, ACTS-compatible name).")
+            return 1
+        except Exception as e:
+            logger.error(f"Error moving HEPMC file {event_file_path.name}: {e}")
+            return 0
+
 def process_output_files(copied_process_dir, staging_output_dir, run_name, splitting_enabled,
                         split_events_per_file, split_output_filename, mg_run_id, events_per_mg_run, 
                         max_files_per_mg_run, logger):
@@ -378,28 +458,11 @@ def process_output_files(copied_process_dir, staging_output_dir, run_name, split
     """
     events_dir_in_process = copied_process_dir / "Events"
     
-    # Determine split output directory and global run offset
-    # Multi-node SLURM: staging_output_dir = runs/all/X/ → split to runs/ with offset
-    # Monolithic/Interactive: staging_output_dir = runs/ → split directly there
-    is_multinode = mg_run_id is not None and mg_run_id >= 0
-    
-    if is_multinode:
-        # Multi-node: staging is runs/all/X/, split goes to runs/
-        # Navigate: runs/all/X/ -> runs/all/ -> runs/
-        split_output_base_dir = staging_output_dir.parent.parent
-        # Calculate global run offset for this MadGraph job
-        # Use max_files_per_mg_run if capping is enabled, otherwise use theoretical file count
-        if max_files_per_mg_run is not None:
-            runs_per_mg_job = max_files_per_mg_run
-        else:
-            runs_per_mg_job = events_per_mg_run // split_events_per_file if events_per_mg_run and split_events_per_file else 0
-        global_run_offset = mg_run_id * runs_per_mg_job
-        logger.info(f"Multi-node mode: MG run {mg_run_id}, staging to {staging_output_dir}, {runs_per_mg_job} files/run, global offset {global_run_offset}, splitting to {split_output_base_dir}")
-    else:
-        # Monolithic/interactive: use staging_output_dir as-is
-        split_output_base_dir = staging_output_dir
-        global_run_offset = 0
-        logger.info(f"Monolithic mode: staging and splitting to {split_output_base_dir}")
+    # Calculate split configuration
+    split_output_base_dir, global_run_offset = _calculate_split_config(
+        mg_run_id, staging_output_dir, events_per_mg_run,
+        split_events_per_file, max_files_per_mg_run, logger
+    )
     
     # Look for run-specific directories
     if run_name:
@@ -420,58 +483,17 @@ def process_output_files(copied_process_dir, staging_output_dir, run_name, split
 
     for events_subdir_path in actual_events_subdirs:
         if events_subdir_path.is_dir():
-            # Process LHE files: move them to staging directory
-            for pattern in ["*.lhe", "*.lhe.gz"]:
-                for event_file_path in events_subdir_path.glob(pattern):
-                    try:
-                        destination_path = staging_output_dir / event_file_path.name
-                        shutil.move(str(event_file_path), str(destination_path))
-                        logger.info(f"Moved LHE file {event_file_path.name} to {destination_path}")
-                        files_processed_count += 1
-                    except Exception as e:
-                        logger.error(f"Error moving LHE file {event_file_path.name}: {e}")
+            # Process LHE files
+            files_processed_count += _process_lhe_files(events_subdir_path, staging_output_dir, logger)
 
-            # Process HepMC files: split if enabled, otherwise move
+            # Process HepMC files
             for pattern in ["*.hepmc", "*.hepmc.gz"]:
                 for event_file_path in events_subdir_path.glob(pattern):
-                    if splitting_enabled:
-                        logger.info(f"Processing HEPMC file for splitting: {event_file_path}")
-                        created_split_files = split_hepmc_file(
-                            input_hepmc_path=event_file_path,
-                            final_output_base_dir=split_output_base_dir,
-                            events_per_file=split_events_per_file,
-                            output_filename=split_output_filename,
-                            global_run_offset=global_run_offset,
-                            max_files_per_mg_run=max_files_per_mg_run
-                        )
-                        if created_split_files:
-                            files_processed_count += len(created_split_files)
-                            try:
-                                event_file_path.unlink()
-                                logger.info(f"Removed original temporary HEPMC file {event_file_path} after successful splitting.")
-                            except OSError as e:
-                                logger.warning(f"Could not remove original temporary HEPMC file {event_file_path}: {e}")
-                        else:
-                            logger.warning(f"HEPMC splitting produced no files for {event_file_path} or was skipped. Attempting to move original.")
-                            try:
-                                destination_path = split_output_base_dir / event_file_path.name
-                                shutil.move(str(event_file_path), str(destination_path))
-                                logger.info(f"Moved original HEPMC file {event_file_path.name} to {destination_path} (splitting failed/skipped).")
-                                files_processed_count += 1
-                            except Exception as e:
-                                logger.error(f"Error moving original HEPMC file {event_file_path.name} after failed/skipped split: {e}")
-                    else:
-                        # Splitting not enabled, move the HEPMC file to staging directory
-                        try:
-                            if event_file_path.name.endswith('.hepmc.gz'):
-                                destination_path = staging_output_dir / "events.hepmc.gz"
-                            else:
-                                destination_path = staging_output_dir / "events.hepmc3"
-                            shutil.move(str(event_file_path), str(destination_path))
-                            logger.info(f"Moved HEPMC file {event_file_path.name} to {destination_path} (splitting disabled, ACTS-compatible name).")
-                            files_processed_count += 1
-                        except Exception as e:
-                            logger.error(f"Error moving HEPMC file {event_file_path.name}: {e}")
+                    files_processed_count += _process_hepmc_file(
+                        event_file_path, splitting_enabled, split_output_base_dir,
+                        split_events_per_file, split_output_filename, global_run_offset,
+                        max_files_per_mg_run, staging_output_dir, logger
+                    )
     
     if files_processed_count == 0:
         logger.warning("No event files were found, moved, or split from the MadGraph run.")
