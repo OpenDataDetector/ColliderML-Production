@@ -119,8 +119,8 @@ class JobSubmitter:
                 if s:
                     job_ids.append(s)
             if job_ids:
-                logger.info(f"Applying SLURM dependency afterany on: {job_ids}")
-                return {"afterany": job_ids}
+                logger.info(f"Applying SLURM dependency afterok on: {job_ids}")
+                return {"afterok": job_ids}
         except Exception:
             logger.warning(f"Invalid depends_on value in job_config: {depends_on}")
         return None
@@ -509,7 +509,7 @@ class JobSubmitter:
             account=self.config["common"]["account"],
             qos=val_qos,
             time=val_time,
-            dependency={"afterany": job_ids} if (job_ids and not self.dry_run) else None,
+            dependency={"afterok": job_ids} if (job_ids and not self.dry_run) else None,
             output=str(self.validation_dir / f"validation_%j.out"),
             error=str(self.validation_dir / f"validation_%j.err"),
             constraint="cpu",
