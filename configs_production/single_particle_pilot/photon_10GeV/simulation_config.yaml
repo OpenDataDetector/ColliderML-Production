@@ -43,7 +43,7 @@ gun_position: [0.0, 0.0, 0.0]  # Position vector [x, y, z] in mm
 
 # Vertex smearing (using DD4hep's built-in smearing)
 vertexOffset: [0.0, 0.0, 0.0, 0.0]  # Mean offset [x, y, z, t] in mm and ns
-vertexSigma: [0.0125, 0.0125, 55.5, 5.0]  # Sigma of smearing [x, y, z, t] in mm and ns
+vertexSigma: [0.0125, 0.0125, 55.5, 0]  # Sigma of smearing [x, y, z, t] in mm and ns
 
 # Multiplicity (number of particles per event)
 gun_multiplicity: 1
