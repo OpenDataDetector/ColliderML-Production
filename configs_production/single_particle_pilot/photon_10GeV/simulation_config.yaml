@@ -20,7 +20,7 @@ job_config:
 validation_config:
 
 # Stage-specific configurations
-events: 16
+events: 1024
 single_particle: true
 seed: 42
 
