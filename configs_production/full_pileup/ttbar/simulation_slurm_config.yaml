@@ -5,12 +5,15 @@ version: "v1"
 stage: "simulation"  # One of: generation, merge_smear, simulation, digitization
 job_config:
   # Number of nodes will be calculated as n_runs / runs_per_node
-  n_runs: 1000  # Number of jobs to submit
+  # n_runs: 1000  # Number of jobs to submit
+  n_runs: 16
   runs_per_node: 8  # Number of runs per node
-  time_limit: "08:00:00"  # Time limit per job
-  qos: "regular"
+  # time_limit: "08:00:00"  # Time limit per job
+  time_limit: "00:30:00"
+  # qos: "regular"
+  qos: "debug"
   execution_mode: "multi_node_slurm"
-  depends_on: "43308130"
+  depends_on: "43397643"
   # execution_mode: "interactive"
 
 validation_config:
@@ -18,7 +21,8 @@ validation_config:
   qos: "regular"
 
 # Stage-specific configurations
-events: 128  # Number of events per run, total number of events will be n_runs * events
+# events: 128  # Number of events per run, total number of events will be n_runs * events
+events: 8
 threads: 8
 minimalKineticEnergy: 0.1  # Minimum kinetic energy in GeV to register in truth
 truthParticleHandler: "Geant4FullTruthParticleHandler"
