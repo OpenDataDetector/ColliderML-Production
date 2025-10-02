@@ -426,16 +426,12 @@ class JobSubmitter:
     def _add_multinode_commands(self, slurm):
         """Add commands for a single multi-node job spanning all tasks."""
         self.add_basic_slurm_env_setup(slurm)
-        
-        # Add stagger sleep BEFORE srun/shifter (at SLURM script level, not inside container)
-        stagger_cmd = self.get_stagger_sleep_command()
-        if stagger_cmd:
-            slurm.add_cmd(stagger_cmd)
 
         # previous_runs is the range start if using ranges, else 0
         previous_runs = self.run_range[0] if self.run_range else 0
         # Global run id expr (for run_list)
         run_id_expr, run_ids_setup_cmd = self.get_run_id_expr_global()
+        stagger_cmd = self.get_stagger_sleep_command()
 
         try:
             # Use shared builder; output_dir is runs dir for simulation, version dir for postprocessing in distributed modes
