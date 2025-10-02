@@ -173,7 +173,7 @@ class JobSubmitter:
         """
         stagger_max = self.config.get("job_config", {}).get("stagger_start_max_seconds", 0)
         if stagger_max > 0:
-            return f"sleep $((RANDOM % {stagger_max}))"
+            return f"sleep $((\\$RANDOM % {stagger_max}))"
         return None
     
     def log_stagger_if_enabled(self):

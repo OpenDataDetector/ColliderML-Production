@@ -4,6 +4,7 @@ dataset: "ttbar"
 version: "v1"
 stage: "simulation"  # One of: generation, merge_smear, simulation, digitization
 job_config:
+  stagger_start_max_seconds: 30
   # Number of nodes will be calculated as n_runs / runs_per_node
   # n_runs: 1000  # Number of jobs to submit
   n_runs: 16
@@ -13,7 +14,7 @@ job_config:
   # qos: "regular"
   qos: "debug"
   execution_mode: "multi_node_slurm"
-  depends_on: "43421725"
+  depends_on:
   # execution_mode: "interactive"
 
 validation_config:
