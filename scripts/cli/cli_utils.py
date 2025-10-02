@@ -252,16 +252,13 @@ def build_stage_command(config, config_path, stage_script_path, output_dir, outp
                 raise ValueError(f"Stage '{stage}' requires shifter container but 'common.container' not found in config")
             
             srun_options = "--exact --kill-on-bad-exit=0"
-            # Two-layer structure: outer bash for stagger sleep, inner shifter for container
-            shifter_cmd = f"srun {srun_options} -u bash -c \""
-            shifter_inner_cmd = f"shifter --image={container} --module=cvmfs bash -c '"
+            shifter_cmd = f"srun {srun_options} -u shifter --image={container} --module=cvmfs bash -c \""
             
             # Environment setup commands are added inside the shifter container
             # Python command is also inside
             return {
                 "use_shifter": True,
                 "shifter_command": shifter_cmd,
-                "shifter_inner_command": shifter_inner_cmd,
                 "env_setup_commands": env_setup_cmds,
                 "python_command": python_command,
                 "full_command": None  # Will be built by the SLURM job submitter

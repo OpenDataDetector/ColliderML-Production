@@ -163,24 +163,6 @@ class JobSubmitter:
         if self.run_range:
             return self.run_range[0] + (node_idx * self.config["job_config"]["runs_per_node"])
         return node_idx * self.config["job_config"]["runs_per_node"]
-    
-    def get_stagger_sleep_command(self):
-        """
-        Get the stagger sleep command if configured, else None.
-        
-        Returns:
-            str or None: Bash command to sleep for random duration, or None if stagger disabled
-        """
-        stagger_max = self.config.get("job_config", {}).get("stagger_start_max_seconds", 0)
-        if stagger_max > 0:
-            return f"sleep \\$((\\$RANDOM % {stagger_max}))"
-        return None
-    
-    def log_stagger_if_enabled(self):
-        """Log stagger configuration if enabled."""
-        stagger_max = self.config.get("job_config", {}).get("stagger_start_max_seconds", 0)
-        if stagger_max > 0:
-            logger.info(f"Task start stagger enabled: random sleep 0-{stagger_max} seconds per task")
 
     def compute_total_tasks(self):
         """Compute total number of tasks to run across the job."""
@@ -235,19 +217,15 @@ class JobSubmitter:
             run_id_expr=run_id_expr
         )
         use_shifter = command_info["use_shifter"]
-        stagger_cmd = self.get_stagger_sleep_command()
 
         if use_shifter:
-            # Use two-layer bash: outer for stagger, inner for shifter container
-            slurm.add_cmd(command_info["shifter_command"])  # srun ... bash -c "
-            if stagger_cmd:
-                slurm.add_cmd(f"{stagger_cmd} && \\")
-            slurm.add_cmd(command_info["shifter_inner_command"])  # shifter --image=... bash -c '
+            # Original behavior: put env setup and python inside shifter bash -c
+            slurm.add_cmd(command_info["shifter_command"])
             if run_ids_setup_cmd:
                 slurm.add_cmd(run_ids_setup_cmd)
             for cmd in command_info["env_setup_commands"]:
                 slurm.add_cmd(cmd + " && \\")
-            slurm.add_cmd(command_info["python_command"] + "'\"")  # Close both bash levels
+            slurm.add_cmd(command_info["python_command"] + "\"")
         else:
             # For non-shifter (postprocessing): move env setup OUTSIDE srun to avoid inner-quote issues
             for cmd in command_info["env_setup_commands"]:
@@ -255,17 +233,11 @@ class JobSubmitter:
 
             srun_options = "--exact --kill-on-bad-exit=0"
             # Always wrap payload in bash -c so shell features (e.g., $((...))) are evaluated per task
-            
-            # Build payload with optional stagger
-            payload_parts = []
-            if stagger_cmd:
-                payload_parts.append(stagger_cmd)
             if run_ids_setup_cmd:
                 setup_clean = run_ids_setup_cmd.replace(" && \\", "").strip()
-                payload_parts.append(setup_clean)
-            payload_parts.append(command_info['python_command'])
-            
-            payload = " && ".join(payload_parts)
+                payload = f"{setup_clean} && {command_info['python_command']}"
+            else:
+                payload = f"{command_info['python_command']}"
             # Quote payload, escaping any embedded quotes
             srun_cmd = (
                 f"srun {srun_options} bash -c \"{payload}\""
@@ -399,7 +371,6 @@ class JobSubmitter:
     def submit_jobs(self):
         """Submit all jobs for the stage"""
         job_ids = []
-        self.log_stagger_if_enabled()
         
         for node_idx in range(self.n_nodes):
             slurm = self.create_slurm_job(node_idx)
@@ -432,7 +403,6 @@ class JobSubmitter:
         previous_runs = self.run_range[0] if self.run_range else 0
         # Global run id expr (for run_list)
         run_id_expr, run_ids_setup_cmd = self.get_run_id_expr_global()
-        stagger_cmd = self.get_stagger_sleep_command()
 
         try:
             # Use shared builder; output_dir is runs dir for simulation, version dir for postprocessing in distributed modes
@@ -452,32 +422,22 @@ class JobSubmitter:
 
             use_shifter = command_info["use_shifter"]
             if use_shifter:
-                # Use two-layer bash: outer for stagger, inner for shifter container
-                slurm.add_cmd(command_info["shifter_command"])  # srun ... bash -c "
-                if stagger_cmd:
-                    slurm.add_cmd(f"{stagger_cmd} && \\")
-                slurm.add_cmd(command_info["shifter_inner_command"])  # shifter --image=... bash -c '
+                slurm.add_cmd(command_info["shifter_command"])
                 if run_ids_setup_cmd:
                     slurm.add_cmd(run_ids_setup_cmd)
                 for cmd in command_info["env_setup_commands"]:
                     slurm.add_cmd(cmd + " && \\")
-                slurm.add_cmd(command_info["python_command"] + "'\"")  # Close both bash levels
+                slurm.add_cmd(command_info["python_command"] + "\"")
             else:
                 # Move env setup outside srun for non-shifter
                 for cmd in command_info["env_setup_commands"]:
                     slurm.add_cmd(cmd)
                 srun_options = "--exact --kill-on-bad-exit=0"
-                
-                # Build payload with optional stagger
-                payload_parts = []
-                if stagger_cmd:
-                    payload_parts.append(stagger_cmd)
                 if run_ids_setup_cmd:
                     setup_clean = run_ids_setup_cmd.replace(" && \\", "").strip()
-                    payload_parts.append(setup_clean)
-                payload_parts.append(command_info['python_command'])
-                
-                payload = " && ".join(payload_parts)
+                    payload = f"{setup_clean} && {command_info['python_command']}"
+                else:
+                    payload = f"{command_info['python_command']}"
                 srun_cmd = (
                     f"srun {srun_options} bash -c \"{payload}\""
                 )
@@ -491,7 +451,6 @@ class JobSubmitter:
         """Submit a single SLURM job across multiple nodes with many tasks."""
         job_cfg = self.config["job_config"]
         common_cfg = self.config["common"]
-        self.log_stagger_if_enabled()
 
         total_tasks = self.compute_total_tasks()
         # n_nodes already computed in calculate_job_distribution(); allow override via job_config.nodes
