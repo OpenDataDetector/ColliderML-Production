@@ -217,10 +217,16 @@ class JobSubmitter:
             run_id_expr=run_id_expr
         )
         use_shifter = command_info["use_shifter"]
+        
+        # Check for stagger configuration
+        stagger_max = self.config.get("job_config", {}).get("stagger_start_max_seconds", 0)
 
         if use_shifter:
             # Original behavior: put env setup and python inside shifter bash -c
             slurm.add_cmd(command_info["shifter_command"])
+            # Add random sleep stagger if configured
+            if stagger_max > 0:
+                slurm.add_cmd(f"sleep $((RANDOM % {stagger_max})) && \\")
             if run_ids_setup_cmd:
                 slurm.add_cmd(run_ids_setup_cmd)
             for cmd in command_info["env_setup_commands"]:
@@ -233,11 +239,17 @@ class JobSubmitter:
 
             srun_options = "--exact --kill-on-bad-exit=0"
             # Always wrap payload in bash -c so shell features (e.g., $((...))) are evaluated per task
+            
+            # Build payload with optional stagger
+            payload_parts = []
+            if stagger_max > 0:
+                payload_parts.append(f"sleep $((RANDOM % {stagger_max}))")
             if run_ids_setup_cmd:
                 setup_clean = run_ids_setup_cmd.replace(" && \\", "").strip()
-                payload = f"{setup_clean} && {command_info['python_command']}"
-            else:
-                payload = f"{command_info['python_command']}"
+                payload_parts.append(setup_clean)
+            payload_parts.append(command_info['python_command'])
+            
+            payload = " && ".join(payload_parts)
             # Quote payload, escaping any embedded quotes
             srun_cmd = (
                 f"srun {srun_options} bash -c \"{payload}\""
@@ -372,6 +384,11 @@ class JobSubmitter:
         """Submit all jobs for the stage"""
         job_ids = []
         
+        # Log stagger configuration if enabled
+        stagger_max = self.config.get("job_config", {}).get("stagger_start_max_seconds", 0)
+        if stagger_max > 0:
+            logger.info(f"Task start stagger enabled: random sleep 0-{stagger_max} seconds per task")
+        
         for node_idx in range(self.n_nodes):
             slurm = self.create_slurm_job(node_idx)
             
@@ -403,6 +420,9 @@ class JobSubmitter:
         previous_runs = self.run_range[0] if self.run_range else 0
         # Global run id expr (for run_list)
         run_id_expr, run_ids_setup_cmd = self.get_run_id_expr_global()
+        
+        # Check for stagger configuration
+        stagger_max = self.config.get("job_config", {}).get("stagger_start_max_seconds", 0)
 
         try:
             # Use shared builder; output_dir is runs dir for simulation, version dir for postprocessing in distributed modes
@@ -423,6 +443,9 @@ class JobSubmitter:
             use_shifter = command_info["use_shifter"]
             if use_shifter:
                 slurm.add_cmd(command_info["shifter_command"])
+                # Add random sleep stagger if configured
+                if stagger_max > 0:
+                    slurm.add_cmd(f"sleep $((RANDOM % {stagger_max})) && \\")
                 if run_ids_setup_cmd:
                     slurm.add_cmd(run_ids_setup_cmd)
                 for cmd in command_info["env_setup_commands"]:
@@ -433,11 +456,17 @@ class JobSubmitter:
                 for cmd in command_info["env_setup_commands"]:
                     slurm.add_cmd(cmd)
                 srun_options = "--exact --kill-on-bad-exit=0"
+                
+                # Build payload with optional stagger
+                payload_parts = []
+                if stagger_max > 0:
+                    payload_parts.append(f"sleep $((RANDOM % {stagger_max}))")
                 if run_ids_setup_cmd:
                     setup_clean = run_ids_setup_cmd.replace(" && \\", "").strip()
-                    payload = f"{setup_clean} && {command_info['python_command']}"
-                else:
-                    payload = f"{command_info['python_command']}"
+                    payload_parts.append(setup_clean)
+                payload_parts.append(command_info['python_command'])
+                
+                payload = " && ".join(payload_parts)
                 srun_cmd = (
                     f"srun {srun_options} bash -c \"{payload}\""
                 )
@@ -451,6 +480,11 @@ class JobSubmitter:
         """Submit a single SLURM job across multiple nodes with many tasks."""
         job_cfg = self.config["job_config"]
         common_cfg = self.config["common"]
+        
+        # Log stagger configuration if enabled
+        stagger_max = self.config.get("job_config", {}).get("stagger_start_max_seconds", 0)
+        if stagger_max > 0:
+            logger.info(f"Task start stagger enabled: random sleep 0-{stagger_max} seconds per task")
 
         total_tasks = self.compute_total_tasks()
         # n_nodes already computed in calculate_job_distribution(); allow override via job_config.nodes
