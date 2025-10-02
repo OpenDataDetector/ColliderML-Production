@@ -4,7 +4,6 @@ dataset: "ttbar"
 version: "v1"
 stage: "pythia_generation"  # One of: generation, merge_smear, simulation, digitization
 job_config:
-  stagger_start_max_seconds: 30
   # Number of nodes will be calculated as n_runs / runs_per_node
   n_runs: 1000  # Number of runs (where a run produces N events)
   runs_per_node: 16  # Number of runs per node
