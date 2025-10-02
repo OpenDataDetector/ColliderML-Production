@@ -238,15 +238,16 @@ class JobSubmitter:
         stagger_cmd = self.get_stagger_sleep_command()
 
         if use_shifter:
-            # Add stagger sleep BEFORE srun/shifter to prevent thundering herd
+            # Use two-layer bash: outer for stagger, inner for shifter container
+            slurm.add_cmd(command_info["shifter_command"])  # srun ... bash -c "
             if stagger_cmd:
-                slurm.add_cmd(stagger_cmd)
-            slurm.add_cmd(command_info["shifter_command"])
+                slurm.add_cmd(f"{stagger_cmd} && \\")
+            slurm.add_cmd(command_info["shifter_inner_command"])  # shifter --image=... bash -c '
             if run_ids_setup_cmd:
                 slurm.add_cmd(run_ids_setup_cmd)
             for cmd in command_info["env_setup_commands"]:
                 slurm.add_cmd(cmd + " && \\")
-            slurm.add_cmd(command_info["python_command"] + "\"")
+            slurm.add_cmd(command_info["python_command"] + "'\"")  # Close both bash levels
         else:
             # For non-shifter (postprocessing): move env setup OUTSIDE srun to avoid inner-quote issues
             for cmd in command_info["env_setup_commands"]:
@@ -451,15 +452,16 @@ class JobSubmitter:
 
             use_shifter = command_info["use_shifter"]
             if use_shifter:
-                # Add stagger sleep BEFORE srun/shifter to prevent thundering herd
+                # Use two-layer bash: outer for stagger, inner for shifter container
+                slurm.add_cmd(command_info["shifter_command"])  # srun ... bash -c "
                 if stagger_cmd:
-                    slurm.add_cmd(stagger_cmd)
-                slurm.add_cmd(command_info["shifter_command"])
+                    slurm.add_cmd(f"{stagger_cmd} && \\")
+                slurm.add_cmd(command_info["shifter_inner_command"])  # shifter --image=... bash -c '
                 if run_ids_setup_cmd:
                     slurm.add_cmd(run_ids_setup_cmd)
                 for cmd in command_info["env_setup_commands"]:
                     slurm.add_cmd(cmd + " && \\")
-                slurm.add_cmd(command_info["python_command"] + "\"")
+                slurm.add_cmd(command_info["python_command"] + "'\"")  # Close both bash levels
             else:
                 # Move env setup outside srun for non-shifter
                 for cmd in command_info["env_setup_commands"]:
