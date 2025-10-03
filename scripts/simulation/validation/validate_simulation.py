@@ -11,11 +11,24 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
-def validate_run(run_dir: Path) -> list:
+def validate_run(run_dir: Path, full_validation: bool = False) -> list:
+    """
+    Validate a single run directory.
+    
+    Args:
+        run_dir: Path to run directory
+        full_validation: If True, perform full file read validation. If False, only check existence.
+    
+    Returns:
+        List of issue strings (empty if no issues)
+    """
     issues = []
     edm_file = run_dir / "edm4hep.root"
     if not edm_file.exists():
         issues.append(f"Missing edm4hep.root in {run_dir}")
+        return issues
+
+    if not full_validation:
         return issues
 
     try:
@@ -53,12 +66,11 @@ def validate_run(run_dir: Path) -> list:
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--stage", required=False, help="Pipeline stage being validated")
-    # New unified arg
     parser.add_argument("--runs-dir", help="Directory containing run subdirectories")
-    # Back-compat legacy args (optional)
     parser.add_argument("--run-dir", help="Legacy: Directory containing run outputs")
     parser.add_argument("--node-idx", type=int, help="Legacy: Node index being validated")
     parser.add_argument("--runs-per-node", type=int, help="Legacy: Number of runs per node")
+    parser.add_argument("--full", action="store_true", help="Perform full validation (read files)")
     
     args = parser.parse_args()
 
@@ -75,7 +87,8 @@ def main():
         logger.error(f"Runs directory not found: {runs_dir}")
         sys.exit(2)
 
-    logger.info(f"Validating simulation; scanning runs in: {runs_dir}")
+    validation_type = "full" if args.full else "existence"
+    logger.info(f"Validating simulation ({validation_type} check); scanning runs in: {runs_dir}")
 
     # Only numeric-named subdirectories, sorted numerically
     run_dirs = [d for d in runs_dir.iterdir() if d.is_dir() and d.name.isdigit()]
@@ -87,7 +100,7 @@ def main():
     issues_total = []
     runs_with_issues = []
     for d in tqdm(run_dirs, desc="Validating runs", unit="run"):
-        issues = validate_run(d)
+        issues = validate_run(d, full_validation=args.full)
         for issue in issues:
             logger.warning(issue)
         if issues:

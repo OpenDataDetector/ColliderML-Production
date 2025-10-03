@@ -492,7 +492,11 @@ class JobSubmitter:
             return [job_id]
     
     def submit_validation_jobs(self, job_ids):        
-        """Submit a single-node validation job dependent on all stage jobs"""
+        """Submit a single-node validation job dependent on all stage jobs
+        
+        Uses 'afterany' dependency so validation always runs after the previous
+        job completes, regardless of success or failure.
+        """
 
         if self.config.get("validation_config", None) is None:
             logger.info("No validation config found, skipping validation jobs")
@@ -504,12 +508,13 @@ class JobSubmitter:
         val_time = val_cfg.get("time_limit", "00:10:00")
 
         # Build single validation Slurm job with dependency on all production jobs
+        # Use 'afterany' so validation runs even if the previous job failed
         slurm = Slurm(
             job_name=f"validate_{self.config['stage']}",
             account=self.config["common"]["account"],
             qos=val_qos,
             time=val_time,
-            dependency={"afterok": job_ids} if (job_ids and not self.dry_run) else None,
+            dependency={"afterany": job_ids} if (job_ids and not self.dry_run) else None,
             output=str(self.validation_dir / f"validation_%j.out"),
             error=str(self.validation_dir / f"validation_%j.err"),
             constraint="cpu",
