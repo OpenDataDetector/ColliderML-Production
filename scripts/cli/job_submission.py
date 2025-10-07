@@ -320,16 +320,17 @@ class JobSubmitter:
             error=str(self.log_dir / f"job_{node_idx}_%j.err")
         )
         
+        if dependency_kw is not None:
+            slurm_kwargs["dependency"] = dependency_kw
+        slurm = Slurm(**slurm_kwargs)
+        
         # Add shifter image to SBATCH directives if needed (for performance)
+        # Use add_arguments() to add custom SBATCH directive
         stage = self.config["stage"]
         if stage in cli_utils.SHIFTER_STAGES:
             container = common_cfg.get("container")
             if container:
-                slurm_kwargs["image"] = f"{container} --module=cvmfs"
-        
-        if dependency_kw is not None:
-            slurm_kwargs["dependency"] = dependency_kw
-        slurm = Slurm(**slurm_kwargs)
+                slurm.add_arguments(image=f"{container} --module=cvmfs")
         
         # Calculate run offset based on run range or normal distribution
         previous_runs = self.compute_previous_runs(node_idx)
@@ -484,16 +485,17 @@ class JobSubmitter:
             error=str(self.log_dir / f"job_multinode_%j.err")
         )
         
+        if dependency_kw is not None:
+            slurm_kwargs["dependency"] = dependency_kw
+        slurm = Slurm(**slurm_kwargs)
+        
         # Add shifter image to SBATCH directives if needed (for performance)
+        # Use add_arguments() to add custom SBATCH directive
         stage = self.config["stage"]
         if stage in cli_utils.SHIFTER_STAGES:
             container = common_cfg.get("container")
             if container:
-                slurm_kwargs["image"] = f"{container} --module=cvmfs"
-        
-        if dependency_kw is not None:
-            slurm_kwargs["dependency"] = dependency_kw
-        slurm = Slurm(**slurm_kwargs)
+                slurm.add_arguments(image=f"{container} --module=cvmfs")
 
         # Add srun command invoking tasks across nodes
         self._add_multinode_commands(slurm)
@@ -583,7 +585,7 @@ class JobSubmitter:
         """Save the batch script that would be submitted"""
         script_path = self.dry_run_dir / script_name
         
-        # Get the complete script content
+        # Get the complete script content (includes all SBATCH directives added via add_arguments)
         script_content = slurm.script(shell="/bin/bash", convert=False)
             
         # Save to file
