@@ -325,12 +325,13 @@ class JobSubmitter:
         slurm = Slurm(**slurm_kwargs)
         
         # Add shifter image to SBATCH directives if needed (for performance)
-        # Use add_arguments() to add custom SBATCH directive
+        # Use setattr to add custom directive with multiple options on one line
         stage = self.config["stage"]
         if stage in cli_utils.SHIFTER_STAGES:
             container = common_cfg.get("container")
             if container:
-                slurm.add_arguments(image=f"{container} --module=cvmfs")
+                # Direct attribute injection: image value includes both --image and --module
+                setattr(slurm.namespace, "image", f"{container} --module=cvmfs")
         
         # Calculate run offset based on run range or normal distribution
         previous_runs = self.compute_previous_runs(node_idx)
@@ -490,12 +491,13 @@ class JobSubmitter:
         slurm = Slurm(**slurm_kwargs)
         
         # Add shifter image to SBATCH directives if needed (for performance)
-        # Use add_arguments() to add custom SBATCH directive
+        # Use setattr to add custom directive with multiple options on one line
         stage = self.config["stage"]
         if stage in cli_utils.SHIFTER_STAGES:
             container = common_cfg.get("container")
             if container:
-                slurm.add_arguments(image=f"{container} --module=cvmfs")
+                # Direct attribute injection: image value includes both --image and --module
+                setattr(slurm.namespace, "image", f"{container} --module=cvmfs")
 
         # Add srun command invoking tasks across nodes
         self._add_multinode_commands(slurm)
