@@ -319,6 +319,14 @@ class JobSubmitter:
             output=str(self.log_dir / f"job_{node_idx}_%j.out"),
             error=str(self.log_dir / f"job_{node_idx}_%j.err")
         )
+        
+        # Add shifter image to SBATCH directives if needed (for performance)
+        stage = self.config["stage"]
+        if stage in cli_utils.SHIFTER_STAGES:
+            container = common_cfg.get("container")
+            if container:
+                slurm_kwargs["image"] = f"{container} --module=cvmfs"
+        
         if dependency_kw is not None:
             slurm_kwargs["dependency"] = dependency_kw
         slurm = Slurm(**slurm_kwargs)
@@ -475,6 +483,14 @@ class JobSubmitter:
             output=str(self.log_dir / f"job_multinode_%j.out"),
             error=str(self.log_dir / f"job_multinode_%j.err")
         )
+        
+        # Add shifter image to SBATCH directives if needed (for performance)
+        stage = self.config["stage"]
+        if stage in cli_utils.SHIFTER_STAGES:
+            container = common_cfg.get("container")
+            if container:
+                slurm_kwargs["image"] = f"{container} --module=cvmfs"
+        
         if dependency_kw is not None:
             slurm_kwargs["dependency"] = dependency_kw
         slurm = Slurm(**slurm_kwargs)
