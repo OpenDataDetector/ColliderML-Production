@@ -10,19 +10,20 @@
 # directory created by madgraph_init. It follows the same pattern as pythia_generation.
 
 # --- Dataset & Version ---
-campaign: "full_pileup_pilot"
+campaign: "full_pileup"
 dataset: "ggf"
-version: "v3"
+version: "v1"
 stage: "madgraph_generation"
 
 # --- Job Configuration ---
 job_config:
   # Number of nodes will be calculated as n_runs / runs_per_node
-  n_runs: 1
+  # n_runs: 10
+  n_runs: 4
   runs_per_node: 1
   time_limit: "00:30:00"
   qos: "debug"
-  execution_mode: "distributed_slurm"
+  execution_mode: "multi_node_slurm"
   # execution_mode: "interactive"
 
 validation_config:
@@ -53,6 +54,7 @@ card_customizations:
 splitting_config:
   enable: true
   events_per_file: 128
+  max_files_per_mg_run: 100
   output_filename: "events.hepmc"
 
 # --- Logging ---
