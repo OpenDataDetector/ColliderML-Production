@@ -3,19 +3,19 @@
 #========================================================================
 
 # --- Dataset & Version ---
-campaign: "full_pileup_pilot"
+campaign: "full_pileup"
 dataset: "dihiggs"
-version: "v2"
+version: "v1"
 stage: "madgraph_generation"
 
 # --- Job Configuration ---
 job_config:
-  n_runs: 1
+  n_runs: 10
   runs_per_node: 1
-  time_limit: "04:00:00"
+  time_limit: "01:00:00"
   qos: "regular"
   # execution_mode: "monolithic_slurm"
-  execution_mode: "interactive"
+  execution_mode: "multi_node_slurm"
 
 validation_config:
 
@@ -39,6 +39,7 @@ card_customizations:
 splitting_config:
   enable: true
   events_per_file: 128
+  max_files_per_mg_run: 100
   output_filename: "events.hepmc"
 
 # --- Logging ---
