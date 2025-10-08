@@ -1,0 +1,64 @@
+#========================================================================
+# YAML Configuration for MadGraph NLO Gluon-Gluon Fusion Higgs (gg → H) Generation  
+#========================================================================
+
+# --- Dataset & Version ---
+campaign: "full_pileup_mini_pilot"
+dataset: "ggf"
+version: "v4"
+stage: "madgraph_generation"  # One of: madgraph_generation, pythia_generation, merge_smear, simulation, digitization
+job_config:
+  execution_mode: "interactive"
+
+# --- MadGraph Process Definition ---
+mg_model: "sm-no_b_mass"  # Use loop_sm model for NLO loop-induced processes
+mg_definitions: [] 
+mg_generate_command: "generate g g > h QED<=1 [QCD]"  # GGF Higgs at NLO, specifying explicit coupling order
+
+# --- Essential Paths & Environment ---
+# These now use variables from env_setup.yaml config_defaults
+mg_base_path: "{madgraph.mg_base_path}"
+generation_scratch_dir: "{madgraph.generation_scratch_dir}" 
+output: "{madgraph.output}"
+
+# --- MadGraph Event Settings ---
+events: 100               
+seed: 42                   
+
+# --- Card Templates ---
+card_templates:
+  # For loop-induced processes, we must use a standard Pythia8 card, not one designed for FxFx.
+  pythia8_card: "{templates.pythia8_card_default}" # Uses variable for default card
+
+# --- Card Customizations ---
+card_customizations:
+  run_card:
+    "xqcut": 0.0          # Lower xqcut for electroweak single Higgs
+    "parton_shower": "PYTHIA8"
+    "ebeam1": 7000.0 # 14 TeV centre of mass energy
+    "ebeam2": 7000.0 # 14 TeV centre of mass energy
+    # "pdlabel": "lhapdf"
+    # "lhaid": 13200
+    "use_syst": "True"
+    "systematics_program": "systematics"
+    "systematics_arguments": 
+      - '--mur=0.5,1,2'
+      - '--muf=0.5,1,2'
+      - '--dyn=-1'
+    
+
+  pythia8_card: 
+    # These customizations apply to the standard pythia8_card_default.dat
+    "{{XQCUT}}": 0.0        # MUST be IDENTICAL to the run_card xqcut value
+    "{{PYTHIA_SEED}}": 42 
+    "{{NEVENTS}}": 100 
+    "{{PYTHIA_TUNE}}": 14    # Monash 2013 tune
+
+splitting_config:
+  enable: false
+  events_per_file: 100
+  output_filename: "events.hepmc3"
+
+# --- Logging ---
+log_level: "INFO" 
+
