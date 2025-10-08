@@ -1,0 +1,42 @@
+#========================================================================
+# YAML Configuration for Digitization of zee Events
+#========================================================================
+
+# --- Dataset & Version ---
+campaign: "full_pileup_pilot"
+dataset: "zee"
+version: "v1"
+stage: "digitization"  # One of: generation, merge_smear, simulation, digitization
+
+# --- Job Configuration ---
+job_config:
+  n_runs: 100  # Number of jobs to submit
+  runs_per_node: 1  # Number of runs per node
+  time_limit: "00:30:00"  # Time limit per job
+  qos: "regular"
+  execution_mode: "multi_node_slurm"
+  depends_on:
+
+# --- Validation Configuration ---
+validation_config:
+  time_limit: "00:60:00"
+  qos: "regular"
+
+# --- Stage-specific Configurations ---
+events: 128  # Number of events per run, total number of events will be n_runs * events
+threads: 64
+digi: True
+reco: True
+num_seeds_per_spm: 20
+
+# --- Writing Configuration ---
+output_root: True
+performance_metrics: True
+output_csv: True
+output_all_particles: True
+
+# --- Digitization config ---
+# digi_config: /global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml_dev/scripts/simulation/odd-full-geo-digi-config.json
+
+# --- Debugging Commands ---
+# debug_output_dir: /pscratch/sd/d/danieltm/ColliderML/simulation/full_pileup_mini_pilot/ttbar/v6/runs/3
