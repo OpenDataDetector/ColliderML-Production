@@ -1,0 +1,25 @@
+# Particle Gun Configuration - Single Electrons with Log-Uniform Energy
+campaign: "full_pileup_pilot"
+dataset: "single_electron"
+version: "v1"
+stage: "particlegun_generation"
+
+job_config:
+  n_runs: 100
+  runs_per_node: 32
+  time_limit: "00:15:00"
+  qos: "regular"
+  execution_mode: "distributed_slurm"
+
+events: 1000
+seed: 42
+
+particle: "e-"
+energy_min: 0.5
+energy_max: 500.0
+energy_distribution: "log-uniform"
+
+eta_min: -2.5
+eta_max: 2.5
+phi_min: 0.0
+phi_max: 6.28318530718

@@ -20,7 +20,7 @@ GIT_COMMIT_SUCCESS_FILE = ".git_commit_success"
 
 # Define stage categories
 MADGRAPH_STAGES = ["madgraph_init", "madgraph_generation"]
-SIMULATION_STAGES = MADGRAPH_STAGES + ["pythia_generation", "merge_smear", "simulation", "digitization"]
+SIMULATION_STAGES = MADGRAPH_STAGES + ["pythia_generation", "particlegun_generation", "merge_smear", "simulation", "digitization"]
 POSTPROCESSING_STAGES = [
     "build_tracks",
     "build_tracker_hits",
@@ -32,7 +32,7 @@ VALID_STAGES = SIMULATION_STAGES + POSTPROCESSING_STAGES
 
 # Define which stages need shifter container (subset of simulation stages)
 # madgraph_init and madgraph_generation run on host environment and don't need shifter
-SHIFTER_STAGES = ["pythia_generation", "merge_smear", "simulation", "digitization"]
+SHIFTER_STAGES = ["pythia_generation", "particlegun_generation", "merge_smear", "simulation", "digitization"]
 
 # Stage to script mappings
 STAGE_SCRIPT_MAP = {
@@ -40,6 +40,7 @@ STAGE_SCRIPT_MAP = {
     "madgraph_init": "simulation/madgraph_init.py",
     "madgraph_generation": "simulation/madgraph_gen.py",
     "pythia_generation": "simulation/pythia_gen.py",
+    "particlegun_generation": "simulation/particlegun_gen.py",
     "merge_smear": "simulation/merge_and_smear.py",
     "simulation": "simulation/ddsim_run.py",
     "digitization": "simulation/digi_and_reco.py",
