@@ -1,7 +1,7 @@
 # Particle Gun Configuration - Single Electrons with Log-Uniform Energy
 campaign: "single_particle_pilot"
 dataset: "single_pion"
-version: "v1"
+version: "v3"
 stage: "particlegun_generation"
 
 job_config:
@@ -17,7 +17,7 @@ seed: 42
 particle: "pi-"
 energy_min: 0.3
 energy_max: 1000.0
-energy_distribution: "uniform"
+log_uniform: true
 
 eta_min: -3.5
 eta_max: 3.5
