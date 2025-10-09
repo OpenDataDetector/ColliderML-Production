@@ -1,0 +1,50 @@
+#==============================================
+# Single Pion 0.3 GeV Simulation with Random Distributions
+#==============================================
+
+# --- Dataset & Version ---
+campaign: "single_particle_pilot"
+dataset: "single_pion"
+version: "v2"
+stage: "simulation"
+
+# --- Job Configuration ---
+job_config:
+  n_runs: 1
+  runs_per_node: 1
+  time_limit: "00:30:00"
+  qos: "debug"
+  # execution_mode: "distributed_slurm"
+  execution_mode: "interactive"
+
+validation_config:
+
+# Stage-specific configurations
+events: 1000
+single_particle: true
+seed: 42
+
+# Particle gun configuration
+gun_particle: "pi-"  # Muons
+gun_momentum_min: 0.3  # Energy in GeV
+gun_momentum_max: 1000.0  # Energy in GeV
+minimalKineticEnergy: 0.1  # Minimum kinetic energy in GeV to register in truth
+truthParticleHandler: "Geant4FullTruthParticleHandler"
+threads: 8
+
+# Random direction distribution
+gun_distribution: "eta"  # Uniform on unit sphere
+gun_eta_min: "-3.5"  # Minimum eta angle
+gun_eta_max: "3.5"  # Maximum eta angle
+gun_phi_min: "0*deg"  # Minimum phi angle
+gun_phi_max: "360*deg"  # Maximum phi angle
+
+# Position configuration with vertex smearing
+gun_position: [0.0, 0.0, 0.0]  # Position vector [x, y, z] in mm
+
+# Vertex smearing (using DD4hep's built-in smearing)
+vertexOffset: [0.0, 0.0, 0.0, 0.0]  # Mean offset [x, y, z, t] in mm and ns
+vertexSigma: [0, 0, 0, 0]  # Sigma of smearing [x, y, z, t] in mm and ns
+
+# Multiplicity (number of particles per event)
+gun_multiplicity: 1

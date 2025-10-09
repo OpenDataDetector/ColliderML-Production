@@ -3,6 +3,7 @@ from pathlib import Path
 import pyhepmc as hep
 import numpy as np
 import traceback
+from tqdm import tqdm
 
 from utils.app_logging import setup_logging, TimingRecorder
 from utils.config import create_base_parser, load_config
@@ -154,7 +155,7 @@ def generate_particle_gun_events(output_dir, config, logger):
     
     # Generate events and write to HepMC3
     with hep.open(str(output_path), 'w') as f:
-        for event_id in range(n_events):
+        for event_id in tqdm(range(n_events)):
             # Create new event
             evt = hep.GenEvent(hep.Units.GEV, hep.Units.MM)
             evt.event_number = event_id
