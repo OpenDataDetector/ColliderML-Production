@@ -1,7 +1,7 @@
 # Example configuration
 campaign: "single_particle_pilot"
 dataset: "single_pion"
-version: "v1"
+version: "v3"
 stage: "simulation"  # One of: generation, merge_smear, simulation, digitization
 job_config:
   # Number of nodes will be calculated as n_runs / runs_per_node
