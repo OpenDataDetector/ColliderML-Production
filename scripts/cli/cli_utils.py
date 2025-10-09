@@ -31,8 +31,8 @@ POSTPROCESSING_STAGES = [
 VALID_STAGES = SIMULATION_STAGES + POSTPROCESSING_STAGES
 
 # Define which stages need shifter container (subset of simulation stages)
-# madgraph_init and madgraph_generation run on host environment and don't need shifter
-SHIFTER_STAGES = ["pythia_generation", "particlegun_generation", "merge_smear", "simulation", "digitization"]
+# madgraph_init, madgraph_generation, and particlegun_generation run on host environment and don't need shifter
+SHIFTER_STAGES = ["pythia_generation", "merge_smear", "simulation", "digitization"]
 
 # Stage to script mappings
 STAGE_SCRIPT_MAP = {
