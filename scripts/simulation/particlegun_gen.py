@@ -14,44 +14,69 @@ from utils.app_logging import setup_logging, TimingRecorder
 from utils.config import create_base_parser, load_config
 
 
-def pdg_name_to_code(particle_name):
-    """Convert particle name to PDG code
+def pdg_name_to_particle(particle_name):
+    """Convert particle name to ACTS PdgParticle
     
     Args:
-        particle_name: Particle name (e.g., 'gamma', 'e-') or PDG code as string/int
+        particle_name: Particle name (e.g., 'gamma', 'e-', 'mu-') or PDG code as string/int
         
     Returns:
-        int: PDG code
+        acts.PdgParticle: ACTS particle enum
     """
-    pdg_map = {
-        'e-': 11, 'e+': -11, 'electron': 11, 'positron': -11,
-        'mu-': 13, 'mu+': -13, 'muon': 13, 'muon-': 13, 'muon+': -13,
-        'pi+': 211, 'pi-': -211, 'pi0': 111, 'pion+': 211, 'pion-': -211, 'pion0': 111,
-        'gamma': 22, 'photon': 22,
-        'proton': 2212, 'antiproton': -2212, 'p': 2212, 'pbar': -2212,
-        'neutron': 2112, 'antineutron': -2112, 'n': 2112, 'nbar': -2112,
-        'K+': 321, 'K-': -321, 'K0': 311, 'kaon+': 321, 'kaon-': -321, 'kaon0': 311,
-        'tau-': 15, 'tau+': -15, 'tau': 15,
+    # Map common names to ACTS PdgParticle enums
+    name_to_pdg = {
+        'e-': acts.PdgParticle.eElectron,
+        'e+': acts.PdgParticle.ePositron,
+        'electron': acts.PdgParticle.eElectron,
+        'positron': acts.PdgParticle.ePositron,
+        'mu-': acts.PdgParticle.eMuon,
+        'mu+': acts.PdgParticle.eAntiMuon,
+        'muon': acts.PdgParticle.eMuon,
+        'muon-': acts.PdgParticle.eMuon,
+        'muon+': acts.PdgParticle.eAntiMuon,
+        'gamma': acts.PdgParticle.eGamma,
+        'photon': acts.PdgParticle.eGamma,
+        'pi+': acts.PdgParticle.ePionPlus,
+        'pi-': acts.PdgParticle.ePionMinus,
+        'pi0': acts.PdgParticle.ePionZero,
+        'pion+': acts.PdgParticle.ePionPlus,
+        'pion-': acts.PdgParticle.ePionMinus,
+        'pion0': acts.PdgParticle.ePionZero,
+        'proton': acts.PdgParticle.eProton,
+        'antiproton': acts.PdgParticle.eAntiProton,
+        'p': acts.PdgParticle.eProton,
+        'pbar': acts.PdgParticle.eAntiProton,
+        'neutron': acts.PdgParticle.eNeutron,
+        'antineutron': acts.PdgParticle.eAntiNeutron,
+        'n': acts.PdgParticle.eNeutron,
+        'nbar': acts.PdgParticle.eAntiNeutron,
     }
     
-    # Try to parse as integer first
+    # Check if it's a string name
+    if isinstance(particle_name, str):
+        name_lower = particle_name.lower()
+        if name_lower in name_to_pdg:
+            return name_to_pdg[name_lower]
+        # Try case-sensitive for things like pi+
+        if particle_name in name_to_pdg:
+            return name_to_pdg[particle_name]
+        
+        # Try to parse as integer PDG code
+        try:
+            pdg_code = int(particle_name)
+            return acts.PdgParticle(pdg_code)
+        except (ValueError, TypeError):
+            pass
+    
+    # Try as integer directly
     try:
-        return int(particle_name)
+        return acts.PdgParticle(int(particle_name))
     except (ValueError, TypeError):
         pass
     
-    # Look up by name
-    if isinstance(particle_name, str):
-        name_lower = particle_name.lower()
-        if name_lower in pdg_map:
-            return pdg_map[name_lower]
-        # Try case-sensitive for things like K+
-        if particle_name in pdg_map:
-            return pdg_map[particle_name]
-    
     raise ValueError(
-        f"Unknown particle name: {particle_name}. "
-        f"Use PDG code (int) or name like 'gamma', 'e-', 'mu-', 'pi+', etc."
+        f"Unknown particle: {particle_name}. "
+        f"Use name like 'gamma', 'e-', 'mu-', 'pi+', 'proton' or PDG code."
     )
 
 
@@ -124,7 +149,7 @@ def generate_particle_gun_events(output_dir, config, logger):
     """
     # Get particle gun configuration
     particle_name = getattr(config, 'particle', 'mu-')  # Default: muon
-    particle_pdg = pdg_name_to_code(particle_name)
+    particle_pdg = pdg_name_to_particle(particle_name)
     
     energy_min = getattr(config, 'energy_min', 1.0) * u.GeV
     energy_max = getattr(config, 'energy_max', 100.0) * u.GeV
@@ -140,7 +165,7 @@ def generate_particle_gun_events(output_dir, config, logger):
     seed = config.seed or int(time.time())
     
     logger.info(f"Generating {n_events} particle gun events")
-    logger.info(f"  Particle: {particle_name} (PDG {particle_pdg})")
+    logger.info(f"  Particle: {particle_name} ({particle_pdg})")
     logger.info(f"  Energy: [{energy_min/u.GeV}, {energy_max/u.GeV}] GeV")
     logger.info(f"  Log-uniform: {log_uniform}")
     logger.info(f"  Eta range: [{eta_min}, {eta_max}]")
