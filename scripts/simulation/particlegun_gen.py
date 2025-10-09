@@ -1,12 +1,58 @@
+#!/usr/bin/env python3
+"""Generate particle gun events with log-uniform energy distribution using ACTS"""
+
 import time
 from pathlib import Path
-import pyhepmc as hep
-import numpy as np
 import traceback
-from tqdm import tqdm
+
+import acts
+from acts import UnitConstants as u
+from acts.examples import Sequencer
+from acts.examples.hepmc3 import HepMC3Writer
 
 from utils.app_logging import setup_logging, TimingRecorder
 from utils.config import create_base_parser, load_config
+
+
+def pdg_name_to_code(particle_name):
+    """Convert particle name to PDG code
+    
+    Args:
+        particle_name: Particle name (e.g., 'gamma', 'e-') or PDG code as string/int
+        
+    Returns:
+        int: PDG code
+    """
+    pdg_map = {
+        'e-': 11, 'e+': -11, 'electron': 11, 'positron': -11,
+        'mu-': 13, 'mu+': -13, 'muon': 13, 'muon-': 13, 'muon+': -13,
+        'pi+': 211, 'pi-': -211, 'pi0': 111, 'pion+': 211, 'pion-': -211, 'pion0': 111,
+        'gamma': 22, 'photon': 22,
+        'proton': 2212, 'antiproton': -2212, 'p': 2212, 'pbar': -2212,
+        'neutron': 2112, 'antineutron': -2112, 'n': 2112, 'nbar': -2112,
+        'K+': 321, 'K-': -321, 'K0': 311, 'kaon+': 321, 'kaon-': -321, 'kaon0': 311,
+        'tau-': 15, 'tau+': -15, 'tau': 15,
+    }
+    
+    # Try to parse as integer first
+    try:
+        return int(particle_name)
+    except (ValueError, TypeError):
+        pass
+    
+    # Look up by name
+    if isinstance(particle_name, str):
+        name_lower = particle_name.lower()
+        if name_lower in pdg_map:
+            return pdg_map[name_lower]
+        # Try case-sensitive for things like K+
+        if particle_name in pdg_map:
+            return pdg_map[particle_name]
+    
+    raise ValueError(
+        f"Unknown particle name: {particle_name}. "
+        f"Use PDG code (int) or name like 'gamma', 'e-', 'mu-', 'pi+', etc."
+    )
 
 
 def parse_args():
@@ -15,7 +61,7 @@ def parse_args():
     
     parser.add_argument(
         "--particle",
-        help="Particle type (PDG name or code)",
+        help="Particle name (e.g., 'gamma', 'e-', 'mu-') or PDG code",
         type=str,
         default=None,
     )
@@ -32,10 +78,9 @@ def parse_args():
         default=None,
     )
     parser.add_argument(
-        "--energy-distribution",
-        help="Energy distribution type",
-        type=str,
-        choices=["uniform", "log-uniform"],
+        "--log-uniform",
+        help="Use log-uniform energy distribution",
+        action="store_true",
         default=None,
     )
     parser.add_argument(
@@ -66,54 +111,8 @@ def parse_args():
     return parser.parse_args()
 
 
-def pdg_name_to_code(particle_name):
-    """Convert particle name to PDG code"""
-    pdg_map = {
-        'e-': 11, 'e+': -11,
-        'mu-': 13, 'mu+': -13,
-        'pi+': 211, 'pi-': -211, 'pi0': 111,
-        'gamma': 22,
-        'proton': 2212, 'antiproton': -2212,
-        'neutron': 2112, 'antineutron': -2112,
-        'K+': 321, 'K-': -321, 'K0': 311,
-        'tau-': 15, 'tau+': -15,
-    }
-    
-    try:
-        return int(particle_name)
-    except ValueError:
-        if particle_name in pdg_map:
-            return pdg_map[particle_name]
-        else:
-            raise ValueError(f"Unknown particle name: {particle_name}. Use PDG code or known name.")
-
-
-def sample_energy(energy_min, energy_max, distribution='uniform'):
-    """Sample energy from specified distribution
-    
-    Args:
-        energy_min: Minimum energy [GeV]
-        energy_max: Maximum energy [GeV]
-        distribution: 'uniform' or 'log-uniform'
-        
-    Returns:
-        float: Sampled energy in GeV
-    """
-    if distribution == 'log-uniform':
-        log_min = np.log(energy_min)
-        log_max = np.log(energy_max)
-        return np.exp(np.random.uniform(log_min, log_max))
-    else:
-        return np.random.uniform(energy_min, energy_max)
-
-
-def theta_from_eta(eta):
-    """Convert pseudorapidity to polar angle theta"""
-    return 2.0 * np.arctan(np.exp(-eta))
-
-
 def generate_particle_gun_events(output_dir, config, logger):
-    """Generate single particle events with configurable energy distribution
+    """Generate single particle events using ACTS ParametricParticleGenerator
     
     Args:
         output_dir: Output directory path
@@ -124,79 +123,79 @@ def generate_particle_gun_events(output_dir, config, logger):
         Path: Path to generated HepMC3 file
     """
     # Get particle gun configuration
-    particle_name = getattr(config, 'particle', 'mu-')
+    particle_name = getattr(config, 'particle', 'mu-')  # Default: muon
     particle_pdg = pdg_name_to_code(particle_name)
     
-    energy_min = getattr(config, 'energy_min', 1.0)
-    energy_max = getattr(config, 'energy_max', 100.0)
-    energy_distribution = getattr(config, 'energy_distribution', 'uniform')
+    energy_min = getattr(config, 'energy_min', 1.0) * u.GeV
+    energy_max = getattr(config, 'energy_max', 100.0) * u.GeV
+    log_uniform = getattr(config, 'log_uniform', False)
     
-    # Angular range (default: uniform in eta)
+    # Angular range
     eta_min = getattr(config, 'eta_min', -2.5)
     eta_max = getattr(config, 'eta_max', 2.5)
     phi_min = getattr(config, 'phi_min', 0.0)
-    phi_max = getattr(config, 'phi_max', 2.0 * np.pi)
+    phi_max = getattr(config, 'phi_max', 2.0 * 3.14159265359)
     
     n_events = config.events
     seed = config.seed or int(time.time())
     
     logger.info(f"Generating {n_events} particle gun events")
     logger.info(f"  Particle: {particle_name} (PDG {particle_pdg})")
-    logger.info(f"  Energy: [{energy_min}, {energy_max}] GeV ({energy_distribution} distribution)")
+    logger.info(f"  Energy: [{energy_min/u.GeV}, {energy_max/u.GeV}] GeV")
+    logger.info(f"  Log-uniform: {log_uniform}")
     logger.info(f"  Eta range: [{eta_min}, {eta_max}]")
     logger.info(f"  Phi range: [{phi_min}, {phi_max}]")
     logger.info(f"  Random seed: {seed}")
     
-    # Set random seed for reproducibility
-    np.random.seed(seed)
+    # Create ACTS sequencer
+    s = Sequencer(numThreads=1, events=n_events, logLevel=acts.logging.INFO)
     
-    # Create output file
+    # Random number generator
+    rnd = acts.examples.RandomNumbers(seed=seed)
+    
+    # Event generator with particle gun
+    evGen = acts.examples.EventGenerator(
+        level=acts.logging.INFO,
+        generators=[
+            acts.examples.EventGenerator.Generator(
+                multiplicity=acts.examples.FixedMultiplicityGenerator(n=1),
+                vertex=acts.examples.GaussianVertexGenerator(
+                    mean=acts.Vector4(0, 0, 0, 0),
+                    stddev=acts.Vector4(0, 0, 0, 0),
+                ),
+                particles=acts.examples.ParametricParticleGenerator(
+                    p=(energy_min, energy_max),
+                    pLogUniform=log_uniform,
+                    eta=(eta_min, eta_max),
+                    phi=(phi_min, phi_max),
+                    etaUniform=True,
+                    numParticles=1,
+                    pdg=particle_pdg,
+                ),
+            )
+        ],
+        outputEvent="particle_gun_event",
+        randomNumbers=rnd,
+    )
+    s.addReader(evGen)
+    
+    # Output path
     output_path = output_dir / "events.hepmc3"
     
-    # Generate events and write to HepMC3
-    with hep.open(str(output_path), 'w') as f:
-        for event_id in tqdm(range(n_events)):
-            # Create new event
-            evt = hep.GenEvent(hep.Units.GEV, hep.Units.MM)
-            evt.event_number = event_id
-            
-            # Sample energy
-            energy = sample_energy(energy_min, energy_max, energy_distribution)
-            
-            # Sample direction uniformly in eta-phi space
-            eta = np.random.uniform(eta_min, eta_max)
-            phi = np.random.uniform(phi_min, phi_max)
-            
-            # Convert eta to theta
-            theta = theta_from_eta(eta)
-            
-            # Calculate momentum components (massless approximation)
-            pt = energy * np.sin(theta)
-            px = pt * np.cos(phi)
-            py = pt * np.sin(phi)
-            pz = energy * np.cos(theta)
-            
-            # Create vertex at origin
-            vertex = hep.GenVertex()
-            evt.add_vertex(vertex)
-            
-            # Create particle
-            particle = hep.GenParticle(
-                hep.FourVector(px, py, pz, energy),
-                particle_pdg,
-                1  # status: final state particle
-            )
-            
-            # Add particle to vertex
-            vertex.add_particle_out(particle)
-            
-            # Write event
-            f.write(evt)
-            
-            if (event_id + 1) % 1000 == 0:
-                logger.info(f"  Generated {event_id + 1}/{n_events} events")
+    # Write to HepMC3
+    s.addWriter(
+        HepMC3Writer(
+            acts.logging.INFO,
+            inputEvent=evGen.config.outputEvent,
+            outputPath=output_path,
+            perEvent=False,
+        )
+    )
     
-    logger.info(f"Particle gun generation completed: {output_path}")
+    logger.info(f"Writing events to {output_path}")
+    s.run()
+    logger.info(f"Particle gun generation completed")
+    
     return output_path
 
 
