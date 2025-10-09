@@ -12,7 +12,7 @@
 # --- Dataset & Version ---
 campaign: "full_pileup"
 dataset: "diphoton"
-version: "v2"
+version: "v3"
 stage: "madgraph_init"
 
 # --- Job Configuration ---
