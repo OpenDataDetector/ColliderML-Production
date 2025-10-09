@@ -19,6 +19,6 @@ validation_config:
 events: 1000  # Number of events per run, total number of events will be n_runs * events
 threads: 8
 input_filename: events.hepmc3
-minimalKineticEnergy: 0.001  # Minimum kinetic energy in GeV to register in truth
+minimalKineticEnergy: 0.1  # Minimum kinetic energy in GeV to register in truth
 truthParticleHandler: "Geant4FullTruthParticleHandler"
 
