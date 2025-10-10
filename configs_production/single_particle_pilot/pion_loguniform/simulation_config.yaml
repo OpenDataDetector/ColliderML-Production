@@ -1,7 +1,7 @@
 # Example configuration
 campaign: "single_particle_pilot"
 dataset: "single_pion"
-version: "v3"
+version: "v4"
 stage: "simulation"  # One of: generation, merge_smear, simulation, digitization
 job_config:
   # Number of nodes will be calculated as n_runs / runs_per_node
@@ -22,5 +22,5 @@ input_filename: events.hepmc3
 minimalKineticEnergy: 0.1  # Minimum kinetic energy in GeV to register in truth
 truthParticleHandler: "Geant4FullTruthParticleHandler"
 
-debug_output_dir: "/global/cfs/cdirs/m4958/data/ColliderML/public/single_particle_pilot/single_pion/v3/runs/0"
+debug_output_dir: "/global/cfs/cdirs/m4958/data/ColliderML/public/single_particle_pilot/single_pion/v4/runs/0"
 
