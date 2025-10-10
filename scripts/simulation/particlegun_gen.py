@@ -224,6 +224,24 @@ def generate_particle_gun_events(output_dir, config, logger):
     return output_path
 
 
+def setup_splitting_config(config, logger):
+    """Set up splitting configuration for multi-directory generation"""
+    try:
+        splitting_config = getattr(config, 'splitting_config', {})
+        if isinstance(splitting_config, dict):
+            splitting_enabled = splitting_config.get('enable', False)
+            n_runs = splitting_config.get('n_runs', 1)
+        else:
+            splitting_enabled = False
+            n_runs = 1
+        
+        logger.info(f"Splitting config: enable={splitting_enabled}, n_runs={n_runs}")
+        return splitting_enabled, n_runs
+    except Exception as e:
+        logger.warning(f"Error accessing splitting config: {e}. Using defaults")
+        return False, 1
+
+
 def main():
     timer = None
     logger = setup_logging("ParticleGun")
@@ -232,25 +250,61 @@ def main():
         args = parse_args()
         config = load_config(args)
         
-        # Create output directory
-        output_dir = Path(args.output)
-        if args.output_subdir:
-            output_dir = output_dir / args.output_subdir
-        output_dir.mkdir(parents=True, exist_ok=True)
+        # Base output directory
+        base_output_dir = Path(args.output)
+        
+        # Check splitting configuration
+        splitting_enabled, n_runs = setup_splitting_config(config, logger)
         
         logger.info("=== Particle Gun Generation ===")
-        logger.info(f"Output directory: {output_dir}")
-        logger.info(f"Events: {config.events}")
+        logger.info(f"Base output directory: {base_output_dir}")
+        logger.info(f"Events per run: {config.events}")
         
-        # Initialize timing
-        timer = TimingRecorder(output_dir)
+        # Initialize timing at base level
+        timer = TimingRecorder(base_output_dir)
         
-        # Generate events
-        with timer.record("Particle Gun Generation"):
-            final_output = generate_particle_gun_events(output_dir, config, logger)
-        
-        logger.info("=== Generation Completed Successfully ===")
-        logger.info(f"Output file: {final_output}")
+        if splitting_enabled and not args.output_subdir:
+            # Monolithic mode: loop over N run directories
+            logger.info(f"Generating {n_runs} separate run directories")
+            
+            with timer.record("Particle Gun Generation (all runs)"):
+                for run_id in range(n_runs):
+                    run_output_dir = base_output_dir / str(run_id)
+                    run_output_dir.mkdir(parents=True, exist_ok=True)
+                    
+                    logger.info(f"\n=== Generating run {run_id}/{n_runs} ===")
+                    
+                    # Create a modified config with run-specific seed
+                    import copy
+                    run_config = copy.copy(config)
+                    
+                    # Modify seed for this run
+                    base_seed = config.seed or 42
+                    run_config.seed = base_seed + run_id
+                    
+                    logger.info(f"Run {run_id} seed: {run_config.seed}")
+                    
+                    # Generate events for this run
+                    final_output = generate_particle_gun_events(run_output_dir, run_config, logger)
+                    logger.info(f"Run {run_id} completed: {final_output}")
+            
+            logger.info(f"\n=== All {n_runs} runs completed successfully ===")
+            
+        else:
+            # Single directory mode (distributed SLURM or interactive with output_subdir)
+            output_dir = base_output_dir
+            if args.output_subdir:
+                output_dir = base_output_dir / args.output_subdir
+            output_dir.mkdir(parents=True, exist_ok=True)
+            
+            logger.info(f"Output directory: {output_dir}")
+            
+            # Generate events
+            with timer.record("Particle Gun Generation"):
+                final_output = generate_particle_gun_events(output_dir, config, logger)
+            
+            logger.info("=== Generation Completed Successfully ===")
+            logger.info(f"Output file: {final_output}")
         
     except Exception as e:
         logger.error(f"Fatal error: {str(e)}")
