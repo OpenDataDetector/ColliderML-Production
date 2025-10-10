@@ -9,17 +9,24 @@ job_config:
   runs_per_node: 32
   time_limit: "00:15:00"
   qos: "regular"
-  execution_mode: "distributed_slurm"
+  execution_mode: "interactive"
 
 events: 1000
 seed: 42
 
 particle: "e-"
-energy_min: 0.5
-energy_max: 500.0
-energy_distribution: "log-uniform"
+energy_min: 0.3
+energy_max: 1000.0
+log_uniform: true
 
 eta_min: -3.5
 eta_max: 3.5
 phi_min: 0.0
 phi_max: 6.28318530718
+
+# Splitting configuration for monolithic/interactive mode
+# Generates N separate run directories (0/, 1/, 2/, ...) each with 'events' events
+# Each run gets seed = seed + run_id
+splitting_config:
+  enable: true
+  n_runs: 1  # Number of run directories to generate
