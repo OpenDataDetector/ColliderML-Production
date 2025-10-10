@@ -14,8 +14,8 @@ job_config:
   runs_per_node: 1  # Number of runs per node
   time_limit: "00:30:00"  # Time limit per job
   qos: "debug"
-  # execution_mode: "multi_node_slurm"
-  execution_mode: "interactive"
+  execution_mode: "multi_node_slurm"
+  # execution_mode: "interactive"
   depends_on:
 
 # --- Validation Configuration ---
