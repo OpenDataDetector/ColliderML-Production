@@ -263,7 +263,15 @@ def main():
         # Initialize timing at base level
         timer = TimingRecorder(base_output_dir)
         
-        if splitting_enabled and not args.output_subdir:
+        # Check if we should do monolithic splitting (multiple directories in one job)
+        # This happens when splitting is enabled AND either:
+        #   1. No output_subdir specified, OR
+        #   2. output_subdir is "all" (from CLI for monolithic runs)
+        do_monolithic_splitting = splitting_enabled and (
+            not args.output_subdir or args.output_subdir == "all"
+        )
+        
+        if do_monolithic_splitting:
             # Monolithic mode: loop over N run directories
             logger.info(f"Generating {n_runs} separate run directories")
             
@@ -291,9 +299,9 @@ def main():
             logger.info(f"\n=== All {n_runs} runs completed successfully ===")
             
         else:
-            # Single directory mode (distributed SLURM or interactive with output_subdir)
+            # Single directory mode (distributed SLURM with numeric output_subdir)
             output_dir = base_output_dir
-            if args.output_subdir:
+            if args.output_subdir and args.output_subdir != "all":
                 output_dir = base_output_dir / args.output_subdir
             output_dir.mkdir(parents=True, exist_ok=True)
             
