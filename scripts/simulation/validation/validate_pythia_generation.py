@@ -2,6 +2,8 @@ import argparse
 import logging
 from pathlib import Path
 import sys
+from tqdm import tqdm
+import statistics
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -49,7 +51,7 @@ def validate_hepmc3_file(hepmc_path: Path) -> list:
     return issues
 
 
-def validate_run(run_dir: Path) -> list:
+def validate_run(run_dir: Path) -> tuple[list, int]:
     """
     Validate a single run directory from pythia_generation stage.
     
@@ -57,15 +59,19 @@ def validate_run(run_dir: Path) -> list:
         run_dir: Path to run directory
         
     Returns:
-        List of issues found (empty if valid)
+        Tuple of (list of issues found, file size in bytes)
     """
     issues = []
+    file_size = 0
     
     # Check for merged_events.hepmc3 (primary output from pythia_generation)
     merged_file = run_dir / "merged_events.hepmc3"
     if not merged_file.exists():
         issues.append(f"Missing merged_events.hepmc3 in {run_dir}")
-        return issues
+        return issues, file_size
+    
+    # Get file size
+    file_size = merged_file.stat().st_size
     
     # Validate the HepMC3 file structure
     hepmc_issues = validate_hepmc3_file(merged_file)
@@ -76,7 +82,7 @@ def validate_run(run_dir: Path) -> list:
     if timing_file.exists():
         logger.debug(f"Found timing_summary.txt in {run_dir}")
     
-    return issues
+    return issues, file_size
 
 
 def main():
@@ -116,11 +122,15 @@ def main():
 
     logger.info(f"Found {len(run_dirs)} run directories to validate")
 
-    # Validate each run
+    # Validate each run and collect file sizes
     issues_total = []
     runs_with_issues = []
-    for run_dir in run_dirs:
-        issues = validate_run(run_dir)
+    file_sizes = {}
+    
+    for run_dir in tqdm(run_dirs, desc="Validating runs", unit="run"):
+        issues, file_size = validate_run(run_dir)
+        file_sizes[run_dir.name] = file_size
+        
         if issues:
             for issue in issues:
                 logger.warning(issue)
@@ -128,6 +138,30 @@ def main():
             issues_total.extend(issues)
         else:
             logger.debug(f"Run {run_dir.name}: OK")
+
+    # Check file size consistency
+    valid_sizes = [size for run_name, size in file_sizes.items() if size > 0 and run_name not in runs_with_issues]
+    
+    if len(valid_sizes) > 0:
+        median_size = statistics.median(valid_sizes)
+        threshold = 0.8 * median_size
+        
+        logger.info(f"File size statistics:")
+        logger.info(f"  Median size: {median_size / (1024**2):.2f} MB")
+        logger.info(f"  Threshold (80% of median): {threshold / (1024**2):.2f} MB")
+        
+        size_outliers = []
+        for run_name, size in file_sizes.items():
+            if size > 0 and size < threshold:
+                size_outliers.append(run_name)
+                issue = f"Run {run_name}: File size {size / (1024**2):.2f} MB is below 80% of median ({median_size / (1024**2):.2f} MB)"
+                logger.warning(issue)
+                if run_name not in runs_with_issues:
+                    runs_with_issues.append(run_name)
+                    issues_total.append(issue)
+        
+        if size_outliers:
+            logger.warning(f"Found {len(size_outliers)} runs with undersized files")
 
     # Summary
     logger.info(f"Validated {len(run_dirs)} runs")
