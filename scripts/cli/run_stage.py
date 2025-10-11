@@ -173,7 +173,7 @@ def run_interactive(config, config_path_arg, stage_script_path):
 
 def main():
     parser = argparse.ArgumentParser(description="Run a ColliderML data production stage.")
-    parser.add_argument("config", help="Path to the YAML configuration file for the stage.")
+    parser.add_argument("configs", nargs='+', help="Path(s) to YAML configuration file(s). Multiple configs will be combined into one SLURM job.")
     parser.add_argument("--execution-mode", choices=["interactive", "monolithic_slurm", "distributed_slurm", "multi_node_slurm"], 
                         default=None, help="Override execution mode (optional). If not set, derived from config or defaults to distributed_slurm if ambiguous.")
     parser.add_argument("--dry-run", action="store_true", help="Perform a dry run. For SLURM modes, saves batch scripts instead of submitting.")
@@ -186,44 +186,30 @@ def main():
     
     args = parser.parse_args()
 
-    try:
-        with open(args.config, 'r') as f:
-            config = yaml.safe_load(f)
-        logger.info(f"Successfully loaded configuration from: {args.config}")
-    except FileNotFoundError:
-        logger.error(f"Configuration file not found: {args.config}")
-        sys.exit(1)
-    except yaml.YAMLError as e:
-        logger.error(f"Error parsing YAML configuration file: {e}")
-        sys.exit(1)
-
-    # --- 1. Load env_setup.yaml and apply config processing ---
+    # --- 1. Load all configs and apply processing ---
     env_config_path = Path(__file__).resolve().parent / "env_setup.yaml"
-    if env_config_path.exists():
-        logger.info(f"Loading environment setup from {env_config_path}")
-        with open(env_config_path, 'r') as f_env:
-            env_config = yaml.safe_load(f_env)
-        # We store the env_config under an "env_setup" key in the main config
-        config["env_setup"] = env_config
-        
-        # Debug: Check config before defaults
-        logger.debug(f"Config before defaults - common section: {config.get('common', 'MISSING')}")
-        
-        # Apply config defaults (fills in missing values from env_setup.config_defaults)
-        config = cli_utils.apply_config_defaults(config)
-        logger.info("Applied configuration defaults from env_setup.yaml")
-        
-        # Debug: Check config after defaults
-        logger.debug(f"Config after defaults - common section: {config.get('common', 'MISSING')}")
-        
-        # Apply variable substitution (resolves {var} references within config)
-        config = cli_utils.substitute_config_variables(config)
-        logger.info("Applied variable substitution to configuration")
-        
-        # Debug: Check config after substitution
-        logger.debug(f"Config after substitution - common section: {config.get('common', 'MISSING')}")
-    else:
+    
+    configs = []
+    for config_path in args.configs:
+        try:
+            config = cli_utils.load_and_process_config(config_path, env_config_path)
+            logger.info(f"Successfully loaded and processed configuration from: {config_path}")
+            configs.append(config)
+        except FileNotFoundError:
+            logger.error(f"Configuration file not found: {config_path}")
+            sys.exit(1)
+        except yaml.YAMLError as e:
+            logger.error(f"Error parsing YAML configuration file {config_path}: {e}")
+            sys.exit(1)
+        except Exception as e:
+            logger.error(f"Error processing configuration file {config_path}: {e}")
+            sys.exit(1)
+    
+    if not env_config_path.exists():
         logger.warning(f"{env_config_path} not found. Ensure environment is configured if needed.")
+    
+    # For backward compatibility, use first config for git root detection
+    config = configs[0]
 
     # --- 2. Determine Software Repo Path and Perform Git Commit ---
     git_repo_path = cli_utils.get_git_root(Path(__file__).resolve())
@@ -241,30 +227,97 @@ def main():
             logger.warning("Could not determine git branch, continuing...")
 
     # --- 3. Perform Git Commit (if in git repo) ---
-    processed_config_path = None
+    # For multi-config, we commit once and save each config to its respective directory
+    processed_config_paths = []
     if git_repo_path:
-        # Pass the full config, which now includes env_setup, to the git function
-        success, processed_config_path = cli_utils.git_commit_and_log_config(config, args.config, git_repo_path, args.force_commit)
+        # Perform git commit once using first config
+        success, first_processed_config_path = cli_utils.git_commit_and_log_config(
+            configs[0], args.configs[0], git_repo_path, args.force_commit
+        )
         if not success:
             logger.error("Failed to perform git commit and log configuration. Exiting.")
             sys.exit(1)
-        logger.info("Git commit and config logging successful.")
-        logger.info(f"Processed config saved to: {processed_config_path}")
+        processed_config_paths.append(first_processed_config_path)
+        logger.info("Git commit successful.")
+        logger.info(f"First config saved to: {first_processed_config_path}")
+        
+        # For additional configs (if multi-config), save config snapshots to their directories
+        if len(configs) > 1:
+            for i in range(1, len(configs)):
+                cfg = configs[i]
+                cfg_path = args.configs[i]
+                # Save config snapshot without git commit (already done)
+                output_version_dir = cli_utils.get_version_directory(cfg)
+                output_version_dir.mkdir(parents=True, exist_ok=True)
+                config_snapshot_dir = output_version_dir / "configs"
+                config_snapshot_dir.mkdir(parents=True, exist_ok=True)
+                logged_config_path = config_snapshot_dir / Path(cfg_path).name
+                
+                # Create clean copy without env_setup
+                clean_config = {k: v for k, v in cfg.items() if k != 'env_setup'}
+                with open(logged_config_path, 'w') as f_out:
+                    yaml.dump(clean_config, f_out, default_flow_style=False, sort_keys=False)
+                processed_config_paths.append(logged_config_path)
+                logger.info(f"Config {i+1} saved to: {logged_config_path}")
+    else:
+        # No git repo, use original config paths
+        processed_config_paths = args.configs
 
     # --- 4. Determine Execution Mode --- 
     # Priority: CLI arg > config file > default (e.g., distributed_slurm)
     execution_mode = args.execution_mode
     if not execution_mode:
         execution_mode = config.get("job_config", {}).get("execution_mode", "distributed_slurm")
+    
+    # For multi-config, enforce multi_node_slurm mode
+    if len(configs) > 1:
+        if execution_mode != "multi_node_slurm":
+            logger.error(
+                f"Multi-config jobs only support multi_node_slurm mode. "
+                f"Current mode: {execution_mode}. Use --execution-mode multi_node_slurm or set in config."
+            )
+            sys.exit(1)
+        logger.info(f"Multi-config mode: combining {len(configs)} configs into single SLURM job")
+    
     logger.info(f"Effective execution mode: {execution_mode}")
 
     # --- 5. Execute based on mode ---
-    if execution_mode == "interactive":
-        # For interactive mode, we don't need JobSubmitter at all
+    if len(configs) > 1:
+        # Multi-config mode - combine multiple stages into one job
+        from multi_config_job import MultiConfigJobSubmitter
+        
+        try:
+            multi_submitter = MultiConfigJobSubmitter(
+                config_paths=[str(p) for p in processed_config_paths],
+                config_dicts=configs,
+                git_repo_path=git_repo_path,
+                dry_run=args.dry_run
+            )
+            
+            job_ids = multi_submitter.submit()
+            
+            if not args.dry_run and job_ids:
+                logger.info(f"Submitted combined multi-config job with ID: {job_ids[0]}")
+                
+            # Submit validation jobs for each stage
+            validation_ids = multi_submitter.submit_validation_jobs(job_ids)
+            if validation_ids and not args.dry_run:
+                logger.info(f"Submitted {len(validation_ids)} validation jobs")
+            elif args.dry_run:
+                logger.info(f"Dry run completed. Scripts saved in: {multi_submitter.dry_run_dir}")
+                
+        except Exception as e:
+            logger.error(f"Error in multi-config job submission: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
+            sys.exit(1)
+            
+    elif execution_mode == "interactive":
+        # Single-config interactive mode
         try:
             stage_script_path = cli_utils.get_stage_script_path(config, git_repo_path)
             # Use processed config if available, otherwise fall back to original
-            config_to_use = processed_config_path if processed_config_path else args.config
+            config_to_use = processed_config_paths[0] if processed_config_paths else args.configs[0]
             run_interactive(config, config_to_use, stage_script_path)
         except (ValueError, FileNotFoundError) as e:
             logger.error(f"Failed to locate script for interactive execution: {e}")
@@ -293,17 +346,17 @@ def main():
                 
                 # Write temporary config file if we made changes
                 if effective_config != config:
-                    temp_config_path = Path(args.config).with_suffix('.monolithic.yaml')
+                    temp_config_path = Path(args.configs[0]).with_suffix('.monolithic.yaml')
                     with open(temp_config_path, 'w') as f:
                         yaml.dump(effective_config, f, default_flow_style=False, sort_keys=False)
                     logger.info(f"Created temporary modified config for monolithic mode: {temp_config_path}")
                     config_path_for_submitter = str(temp_config_path)
                 else:
                     # Use processed config if available, otherwise fall back to original
-                    config_path_for_submitter = str(processed_config_path) if processed_config_path else args.config
+                    config_path_for_submitter = str(processed_config_paths[0]) if processed_config_paths else args.configs[0]
             else:
                 # Use processed config if available, otherwise fall back to original
-                config_path_for_submitter = str(processed_config_path) if processed_config_path else args.config
+                config_path_for_submitter = str(processed_config_paths[0]) if processed_config_paths else args.configs[0]
 
             # Initialize JobSubmitter with processed config
             job_submitter = JobSubmitter(

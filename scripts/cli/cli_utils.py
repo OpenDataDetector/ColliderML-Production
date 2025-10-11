@@ -617,4 +617,33 @@ def create_necessary_directories(config):
         "run_dir": run_dir,
         "log_dir": log_dir,
         "validation_dir": validation_dir
-    } 
+    }
+
+def load_and_process_config(config_path, env_config_path):
+    """
+    Load config file, apply env defaults, and substitute variables.
+    
+    Args:
+        config_path (str/Path): Path to the configuration file
+        env_config_path (Path): Path to env_setup.yaml file
+        
+    Returns:
+        dict: Processed configuration dictionary
+    """
+    import yaml
+    
+    # Load main config
+    with open(config_path, 'r') as f:
+        config = yaml.safe_load(f)
+    
+    # Load and merge env_setup if it exists
+    if env_config_path.exists():
+        with open(env_config_path, 'r') as f_env:
+            env_config = yaml.safe_load(f_env)
+        config["env_setup"] = env_config
+        
+        # Apply config defaults and variable substitution
+        config = apply_config_defaults(config)
+        config = substitute_config_variables(config)
+    
+    return config 

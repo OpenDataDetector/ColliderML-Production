@@ -1,23 +1,30 @@
 # Example configuration
-campaign: "full_pileup_pilot"
+campaign: "full_pileup"
 dataset: "dihiggs"
-version: "v4"
+version: "v1"
 stage: "simulation"  # One of: generation, merge_smear, simulation, digitization
 job_config:
   # Number of nodes will be calculated as n_runs / runs_per_node
-  n_runs: 128  # Number of jobs to submit
-  runs_per_node: 32  # Number of runs per node
-  time_limit: "04:00:00"  # Time limit per job
-  qos: "regular"
-  execution_mode: "interactive"
+  n_runs: 8  # Number of jobs to submit
+  runs_per_node: 8  # Number of runs per node
+  time_limit: "00:30:00"  # Time limit per job
+  qos: "debug"
+  execution_mode: "multi_node_slurm"
 
 validation_config:
   time_limit: "00:10:00"
-  qos: "regular"
+  qos: "debug"
 
 # Stage-specific configurations
-events: 32  # Number of events per run, total number of events will be n_runs * events
+events: 8  # Number of events per run, total number of events will be n_runs * events
 threads: 8
 minimalKineticEnergy: 0.001  # Minimum kinetic energy in GeV to register in truth
 truthParticleHandler: "Geant4FullTruthParticleHandler"
+
+
+# DDSim verbosity control (optional)
+ddsim_printLevel: 6  # 1=VERBOSE, 2=DEBUG, 3=INFO, 4=WARNING(default), 5=ERROR, 6=FATAL, 7=ALWAYS
+
+# Filter out specific Geant4 warnings (optional)
+filter_g4_warnings: true  # Filter out mass tolerance and other G4Exception warnings
 
