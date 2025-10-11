@@ -178,10 +178,13 @@ class MultiConfigJobSubmitter:
     
     def _build_parallel_commands(self, slurm):
         """
-        Generate parallel srun commands for all stages.
+        Generate a single srun command with conditional logic for all stages.
         
-        Each stage gets its own srun command with PROCID remapping, running in background.
-        All commands are followed by a wait to ensure all stages complete.
+        All tasks run in a single srun invocation. Each task checks its SLURM_PROCID
+        to determine which stage it belongs to and executes the appropriate command.
+        
+        This avoids interconnect configuration issues that arise from multiple
+        parallel srun commands.
         
         Args:
             slurm (Slurm): The Slurm job object to add commands to
@@ -190,9 +193,11 @@ class MultiConfigJobSubmitter:
         slurm.add_cmd(r"cd $HOME")
         slurm.add_cmd("export SLURM_CPU_BIND=\"cores\"")
         
-        logger.info("Building parallel srun commands for each stage...")
+        logger.info("Building single srun command with conditional stage execution...")
         
-        # Build parallel srun command for each stage
+        # Build conditional branches for each stage
+        stage_conditionals = []
+        
         for stage_idx, (submitter, (start_procid, end_procid)) in enumerate(zip(self.submitters, self.stage_ranges)):
             config = submitter.config
             stage = config["stage"]
@@ -204,75 +209,72 @@ class MultiConfigJobSubmitter:
             run_id_expr, run_ids_setup_cmd = submitter.get_run_id_expr_global()
             
             # Build the stage command using existing utilities
+            # Note: We pass slurm_procid_offset=0 because we handle the remapping ourselves
+            # via STAGE_PROCID. The stage sees local 0-based PROCID values.
             command_info = cli_utils.build_stage_command(
                 config=config,
                 config_path=submitter.config_path,
                 stage_script_path=submitter.get_stage_script(),
                 output_dir=submitter.run_dir,
                 execution_mode="distributed_slurm",
-                slurm_procid_offset=start_procid,  # This will be used for offset calculation
+                slurm_procid_offset=0,  # We handle offset via STAGE_PROCID remapping
                 run_id_expr=run_id_expr
             )
             
-            # Build srun command with PROCID filtering and remapping
-            # We need to remap SLURM_PROCID to local stage PROCID
+            # Build PROCID remapping
             offset_expr = calculate_procid_offset_expr(start_procid)
             
-            # Build the conditional wrapper
-            # Each task checks if it belongs to this stage's PROCID range
-            condition = f"[ \\$SLURM_PROCID -ge {start_procid} ] && [ \\$SLURM_PROCID -lt {end_procid} ]"
+            # Build the conditional for this stage
+            if stage_idx == 0:
+                condition = f"if [ \\$SLURM_PROCID -lt {end_procid} ]; then"
+            else:
+                condition = f"elif [ \\$SLURM_PROCID -ge {start_procid} ] && [ \\$SLURM_PROCID -lt {end_procid} ]; then"
             
             # Remap SLURM_PROCID to local stage PROCID
             if start_procid > 0:
                 procid_remap = f"STAGE_PROCID={offset_expr}"
             else:
-                procid_remap = "STAGE_PROCID=$SLURM_PROCID"
+                procid_remap = "STAGE_PROCID=\\$SLURM_PROCID"
             
             # Get environment setup commands
             env_setup_cmds = command_info["env_setup_commands"]
+            env_setup_str = " && ".join(env_setup_cmds) if env_setup_cmds else ""
             
             # Build the payload that each task will execute
             # Replace SLURM_PROCID references in python command with STAGE_PROCID
             python_cmd = command_info["python_command"].replace("SLURM_PROCID", "STAGE_PROCID")
             
-            # Construct the complete command
+            # Construct the complete payload for this stage
             if run_ids_setup_cmd:
                 # Handle run_list case: setup array, remap, then run
                 setup_clean = run_ids_setup_cmd.replace(" && \\", "").strip()
-                payload = f"{setup_clean} && {procid_remap} && {python_cmd}"
+                stage_payload_parts = [setup_clean, procid_remap, python_cmd]
             else:
-                payload = f"{procid_remap} && {python_cmd}"
+                stage_payload_parts = [procid_remap, python_cmd]
             
-            # Build the conditional + payload
-            full_payload = f"if {condition}; then {payload}; fi"
-            
-            # Build srun command
-            # Use --ntasks to specify how many tasks for this stage
-            # Note: We run a single srun with all tasks, but each task conditionally executes
-            srun_options = "--exact --kill-on-bad-exit=0 -u"
-            
-            # Add comment for clarity
-            slurm.add_cmd(f"# Stage {stage_idx}: {stage} (PROCID {start_procid}-{end_procid-1})")
-            
-            # Build the srun command with shifter
-            # Environment setup goes inside shifter
-            env_setup_str = " && ".join(env_setup_cmds)
             if env_setup_str:
-                shifter_payload = f"{env_setup_str} && {full_payload}"
-            else:
-                shifter_payload = full_payload
+                stage_payload_parts.insert(0, env_setup_str)
             
-            # Escape quotes for the bash -c command
-            shifter_payload_escaped = shifter_payload.replace('"', '\\"')
+            stage_payload = " && ".join(stage_payload_parts)
             
-            # Build complete srun command with background execution
-            srun_cmd = f'srun {srun_options} --ntasks={num_tasks} shifter bash -c "{shifter_payload_escaped}" &'
-            slurm.add_cmd(srun_cmd)
+            # Add this stage's conditional branch
+            stage_conditionals.append(f"{condition} {stage_payload}")
         
-        # Add wait to ensure all stages complete before job finishes
-        slurm.add_cmd("")
-        slurm.add_cmd("# Wait for all stages to complete")
-        slurm.add_cmd("wait")
+        # Close the conditional
+        stage_conditionals.append("fi")
+        
+        # Combine all conditionals into one command
+        full_conditional = " ".join(stage_conditionals)
+        
+        # Escape quotes for bash -c
+        full_conditional_escaped = full_conditional.replace('"', '\\"')
+        
+        # Build single srun command with all tasks
+        srun_options = "--exact --kill-on-bad-exit=0 -u"
+        srun_cmd = f'srun {srun_options} shifter bash -c "{full_conditional_escaped}"'
+        
+        slurm.add_cmd("# Single srun with conditional stage execution based on SLURM_PROCID")
+        slurm.add_cmd(srun_cmd)
         slurm.add_cmd("echo 'All stages completed'")
     
     def submit(self):
