@@ -1,0 +1,37 @@
+# Example configuration
+campaign: "hard_scatter"
+dataset: "ttbar"
+version: "v1"
+stage: "simulation"  # One of: generation, merge_smear, simulation, digitization
+job_config:
+  # Number of nodes will be calculated as n_runs / runs_per_node
+  n_runs: 1000  # Number of jobs to submit
+  runs_per_node: 8  # Number of runs per node
+  time_limit: "08:00:00"  # Time limit per job
+  qos: "regular"
+  # execution_mode: "multi_node_slurm"
+  depends_on: 
+  execution_mode: "interactive"
+
+validation_config:
+  time_limit: "01:00:00"
+  qos: "regular"
+
+# Stage-specific configurations
+events: 1280  # Number of events per run, total number of events will be n_runs * events
+input_filename: events.hepmc
+threads: 8
+minimalKineticEnergy: 0.1  # Minimum kinetic energy in GeV to register in truth
+truthParticleHandler: "Geant4FullTruthParticleHandler"
+
+# Vertex smearing configuration (applied during simulation since hardscatter skips pythia merge smearing)
+vertexOffset: [0.0, 0.0, 0.0, 0.0]  # x, y, z, t in mm, mm, mm, ns
+vertexSigma: [0.0125, 0.0125, 55.5, 5.0]  # x, y, z, t in mm, mm, mm, ns
+
+# DDSim verbosity control (optional)
+ddsim_printLevel: 6  # 1=VERBOSE, 2=DEBUG, 3=INFO, 4=WARNING(default), 5=ERROR, 6=FATAL, 7=ALWAYS
+
+# Filter out specific Geant4 warnings (optional)
+filter_g4_warnings: true  # Filter out mass tolerance and other G4Exception warnings
+
+debug_output_dir: /global/cfs/cdirs/m4958/data/ColliderML/simulation/hard_scatter/ttbar/v1/runs/0
