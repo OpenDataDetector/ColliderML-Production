@@ -287,6 +287,14 @@ class MultiConfigJobSubmitter:
         # Parse dependencies from configs (use first config's dependency if any)
         dependency_kw = self.submitters[0].parse_dependency_kw()
         
+        # Calculate cpus_per_task based on average tasks per node
+        # This ensures proper CPU allocation on Perlmutter (256 cores per node)
+        tasks_per_node = self.total_tasks / self.total_nodes
+        max_cores = self.configs[0].get("job_config", {}).get("max_cores", 256)
+        cpus_per_task = max(1, int(max_cores / tasks_per_node))
+        
+        logger.info(f"Resource allocation: {self.total_tasks} tasks / {self.total_nodes} nodes = {tasks_per_node:.1f} tasks/node → {cpus_per_task} cpus/task")
+        
         # Create single Slurm job object
         slurm_kwargs = dict(
             job_name=f"colliderML_combined_{len(self.configs)}stages",
@@ -295,7 +303,7 @@ class MultiConfigJobSubmitter:
             time=self.time_limit,
             nodes=self.total_nodes,
             ntasks=self.total_tasks,
-            cpus_per_task=1,  # Will be determined by SLURM based on ntasks and nodes
+            cpus_per_task=cpus_per_task,
             constraint="cpu",
             output=str(self.log_dir / "job_combined_%j.out"),
             error=str(self.log_dir / "job_combined_%j.err")
