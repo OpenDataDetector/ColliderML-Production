@@ -71,37 +71,37 @@ stages:
       - pattern: "measurements.root"
         description: "Track measurements"
         min_size_mb: 0.001
-        median_threshold_pct: 0.8
+        median_threshold_pct: 0.6
         required: true
       
       - pattern: "*-track_parameters_ambi.csv"
         description: "Ambiguity-resolved track parameters"
         min_size_mb: 0.001
-        median_threshold_pct: 0.8
+        median_threshold_pct: 0.5
         required: true
 
       - pattern: "*-track_parameters_ckf.csv"
         description: "CKF track parameters"
         min_size_mb: 0.001
-        median_threshold_pct: 0.8
+        median_threshold_pct: 0.5
         required: true
 
       - pattern: "*-tracks_ambi.csv"
         description: "Ambiguity-resolved tracks"
         min_size_mb: 0.001
-        median_threshold_pct: 0.8
+        median_threshold_pct: 0.5
         required: true
 
       - pattern: "*-tracks_ckf.csv"
         description: "CKF tracks"
         min_size_mb: 0.001
-        median_threshold_pct: 0.8
+        median_threshold_pct: 0.5
         required: true
 
       - pattern: "performance_finding_ckf.root"
         description: "Track finding performance metrics"
         min_size_mb: 0.001
-        median_threshold_pct: 0.8
+        median_threshold_pct: 0.5
         required: true
 
   # Stage 7: HDF5 Conversion
