@@ -21,7 +21,7 @@ job_config:
 # --- Validation Configuration ---
 validation_config:
   enabled: True
-  
+
 # --- Stage-specific Configurations ---
 events: 128  # Number of events per run, total number of events will be n_runs * events
 threads: 64
@@ -31,8 +31,8 @@ num_seeds_per_spm: 40
 
 # --- Writing Configuration ---
 output_root: False
-performance_metrics: True
-output_csv: True
+performance_metrics: False
+output_csv: False
 output_all_particles: False
 
 # --- Digitization config ---
