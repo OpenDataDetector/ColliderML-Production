@@ -139,7 +139,8 @@ class JobSubmitter:
             slurm: Slurm object to add commands to
             runs_dir: Path to the runs directory
         """
-        validation_enabled = self.config.get('validation_config', {}).get('enabled', True)
+        validation_config = self.config.get('validation_config') or {}
+        validation_enabled = validation_config.get('enabled', True)
         if not validation_enabled:
             logger.info("Validation disabled for this job")
             return

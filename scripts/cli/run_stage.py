@@ -194,7 +194,8 @@ def run_interactive(config, config_path_arg, stage_script_path):
     """Runs the stage script interactively with integrated validation + guardian."""
     
     # Check if validation is enabled (default: true)
-    validation_enabled = config.get('validation_config', {}).get('enabled', True)
+    validation_config = config.get('validation_config') or {}
+    validation_enabled = validation_config.get('enabled', True)
     
     logger.info("=" * 80)
     logger.info(f"STAGE: {config['stage']}")
