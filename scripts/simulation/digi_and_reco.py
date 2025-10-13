@@ -37,6 +37,9 @@ from acts.examples.edm4hep import EDM4hepSimInputConverter
 
 u = acts.UnitConstants
 
+# LOG_LEVEL = acts.logging.DEBUG
+LOG_LEVEL = acts.logging.INFO
+
 def parse_args():
     """Parse command line arguments"""
     parser = create_base_parser("Digitization and reconstruction for ACTS")
@@ -119,7 +122,7 @@ def setup_acts_reconstruction(input_path, output_dir, config, rnd, logger=None):
     s = Sequencer(
         numThreads=config.threads if config.threads is not None else 1,
         events=config.events,
-        logLevel=acts.logging.DEBUG,
+        logLevel=LOG_LEVEL,
         trackFpes=False,
     )
     
@@ -158,7 +161,7 @@ def setup_acts_reconstruction(input_path, output_dir, config, rnd, logger=None):
     # Configure EDM4hep reader and converter
     # Step 1: PodioReader to read the EDM4hep file
     podioReader = PodioReader(
-        level=acts.logging.DEBUG,
+        level=LOG_LEVEL,
         inputPath=str(input_path),
         outputFrame="events",
         category="events",
@@ -167,7 +170,7 @@ def setup_acts_reconstruction(input_path, output_dir, config, rnd, logger=None):
     
     # Step 2: EDM4hepSimInputConverter algorithm to convert EDM4hep data to ACTS format
     edm4hepConverter = EDM4hepSimInputConverter(
-        level=acts.logging.DEBUG,
+        level=LOG_LEVEL,
         inputFrame="events",
         inputSimHits=[
             "PixelBarrelReadout",
@@ -221,7 +224,7 @@ def setup_acts_reconstruction(input_path, output_dir, config, rnd, logger=None):
             outputDirRoot=perf_output if getattr(config, 'output_root', True) else None,
             outputDirCsv=None,
             rnd=rnd,
-            logLevel=acts.logging.DEBUG,
+            logLevel=LOG_LEVEL,
         )
 
         def make_geoid(vol=None, lay=None):
@@ -395,14 +398,14 @@ def add_root_writers(s, output_dir):
             filePath=str(output_dir / "simhits.root"),
             inputSimHits="simhits"
         ),
-        level=acts.logging.DEBUG
+        level=LOG_LEVEL
     ))
     s.addWriter(acts.examples.RootParticleWriter(
         config=acts.examples.RootParticleWriter.Config(
             filePath=str(output_dir / "particles.root"),
             inputParticles="particles"
         ),
-        level=acts.logging.DEBUG
+        level=LOG_LEVEL
     ))
 
 def main():
