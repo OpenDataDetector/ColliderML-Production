@@ -145,9 +145,9 @@ class JobSubmitter:
             logger.info("Validation disabled for this job")
             return
         
-        validation_lib_path = Path(__file__).parent.parent / 'simulation' / 'validation'
-        rules_path = validation_lib_path / 'validation_rules.yaml'
-        policy_path = validation_lib_path / 'guardian_policy.yaml'
+        validation_dir = Path(__file__).parent.parent / 'simulation' / 'validation'
+        validation_script = validation_dir / 'run_validation.py'
+        guardian_script = validation_dir / 'run_guardian.py'
         
         # Create validation reports directory
         report_dir = Path(runs_dir).parent / 'validation_reports'
@@ -163,38 +163,14 @@ class JobSubmitter:
         stage_name = self.config["stage"]
         slurm.add_cmd(f"echo 'Validating outputs for stage {stage_name}...'")
         
-        # Run validation using heredoc to handle multi-line Python
-        validation_script = f"""python << 'VALIDATION_EOF'
-import sys
-import json
-sys.path.insert(0, '{validation_lib_path}')
-from validation_lib import validate_stage, load_validation_rules
-
-try:
-    print("Loading validation rules from: {rules_path}")
-    rules = load_validation_rules('{rules_path}')
-    print("Validating runs in: {runs_dir}")
-    result = validate_stage(
-        runs_dir='{runs_dir}',
-        stage='{stage_name}',
-        validation_rules=rules
-    )
-    print(f"Validation status: {{result.get('status', 'UNKNOWN')}}")
-    print(f"Total runs: {{result.get('total_runs', 0)}}")
-    print(f"Failed runs: {{result.get('failed_runs', 0)}}")
-    if result.get('failed_runs', 0) > 0:
-        print(f"Failure rate: {{result.get('failure_rate', 0):.1f}}%")
-    
-    with open('{report_path}', 'w') as f:
-        json.dump(result, f, indent=2)
-    print("Validation report saved to: {report_path}")
-except Exception as e:
-    print(f"Validation failed: {{e}}")
-    import traceback
-    traceback.print_exc()
-    sys.exit(1)
-VALIDATION_EOF"""
-        slurm.add_cmd(validation_script)
+        # Run validation script
+        validation_cmd = (
+            f"python {validation_script} "
+            f"--stage {stage_name} "
+            f"--runs-dir {runs_dir} "
+            f"--output {report_path}"
+        )
+        slurm.add_cmd(validation_cmd)
         
         # Add phase 3: Guardian decision
         slurm.add_cmd("")
@@ -203,51 +179,13 @@ VALIDATION_EOF"""
         slurm.add_cmd("# ============================================================================")
         slurm.add_cmd(f"echo 'Running error guardian (retry $SLURM_RESTART_COUNT)...'")
         
-        guardian_script = f"""python << 'GUARDIAN_EOF'
-import sys
-import json
-import os
-sys.path.insert(0, '{validation_lib_path}')
-from error_guardian import make_decision, load_guardian_policy
-
-try:
-    print("Loading validation report from: {report_path}")
-    with open('{report_path}', 'r') as f:
-        validation_result = json.load(f)
-    
-    print("Loading guardian policy from: {policy_path}")
-    policy = load_guardian_policy('{policy_path}')
-    
-    retry_count = int(os.environ.get('SLURM_RESTART_COUNT', '0'))
-    max_retries = policy.get('retry_policy', {{}}).get('max_retries', 3)
-    print(f"Retry count: {{retry_count}}/{{max_retries}}")
-    
-    decision = make_decision(
-        validation_result=validation_result,
-        runs_dir='{runs_dir}',
-        guardian_policy=policy,
-        retry_count=retry_count,
-        max_retries=max_retries
-    )
-    
-    print("="*80)
-    print(f"Guardian Action: {{decision.get('action', 'UNKNOWN')}}")
-    print(f"Reason: {{decision.get('reason', 'No reason')}}")
-    print(f"Exit Code: {{decision.get('exit_code', 1)}}")
-    if decision.get('actions_taken'):
-        print("Actions taken:")
-        for action in decision['actions_taken']:
-            print(f"  - {{action}}")
-    print("="*80)
-    
-    sys.exit(decision['exit_code'])
-except Exception as e:
-    print(f"Guardian decision failed: {{e}}")
-    import traceback
-    traceback.print_exc()
-    sys.exit(1)
-GUARDIAN_EOF"""
-        slurm.add_cmd(guardian_script)
+        # Run guardian script
+        guardian_cmd = (
+            f"python {guardian_script} "
+            f"--report {report_path} "
+            f"--runs-dir {runs_dir}"
+        )
+        slurm.add_cmd(guardian_cmd)
 
     def compute_cpus_per_task(self, is_monolithic, tasks_for_node=None):
         job_cfg = self.config["job_config"]
