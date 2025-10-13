@@ -48,8 +48,26 @@ def main():
         type=Path,
         help='Path to save validation report JSON (optional)'
     )
+    parser.add_argument(
+        '--run-ids',
+        type=int,
+        nargs='+',
+        help='Specific run IDs to validate (optional, defaults to all runs in directory)'
+    )
+    parser.add_argument(
+        '--run-range',
+        type=int,
+        nargs=2,
+        metavar=('START', 'END'),
+        help='Range of run IDs to validate: START (inclusive) to END (exclusive)'
+    )
     
     args = parser.parse_args()
+    
+    # Check that run-ids and run-range are not both specified
+    if args.run_ids and args.run_range:
+        logger.error("Cannot specify both --run-ids and --run-range")
+        sys.exit(1)
     
     # Load validation rules
     logger.info(f"Loading validation rules from: {args.rules}")
@@ -59,13 +77,26 @@ def main():
         logger.error(f"Failed to load validation rules: {e}")
         sys.exit(1)
     
+    # Determine which runs to validate
+    run_ids_to_validate = None
+    if args.run_ids:
+        run_ids_to_validate = args.run_ids
+        logger.info(f"Validating specific run IDs: {run_ids_to_validate}")
+    elif args.run_range:
+        start, end = args.run_range
+        run_ids_to_validate = list(range(start, end))
+        logger.info(f"Validating run range: {start} to {end-1} ({len(run_ids_to_validate)} runs)")
+    else:
+        logger.info("Validating all runs in directory")
+    
     # Run validation
     logger.info(f"Validating stage '{args.stage}' in: {args.runs_dir}")
     try:
         result = validate_stage(
             runs_dir=args.runs_dir,
             stage=args.stage,
-            validation_rules=validation_rules
+            validation_rules=validation_rules,
+            run_ids=run_ids_to_validate
         )
     except Exception as e:
         logger.error(f"Validation failed: {e}")

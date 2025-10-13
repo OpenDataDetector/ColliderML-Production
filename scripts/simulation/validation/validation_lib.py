@@ -135,7 +135,8 @@ def validate_stage(
     runs_dir: Path,
     stage: str,
     validation_rules: dict,
-    dry_run: bool = False
+    dry_run: bool = False,
+    run_ids: list = None
 ) -> dict:
     """
     Validate outputs for a pipeline stage.
@@ -181,7 +182,15 @@ def validate_stage(
         logger.warning(f"No file patterns defined for stage {stage}")
     
     # Get run directories
-    run_dirs = get_run_directories(Path(runs_dir))
+    all_run_dirs = get_run_directories(Path(runs_dir))
+    
+    # Filter to specific run IDs if provided
+    if run_ids is not None:
+        run_ids_set = set(run_ids)
+        run_dirs = [d for d in all_run_dirs if int(d.name) in run_ids_set]
+        logger.info(f"Filtered to {len(run_dirs)} runs (from {len(all_run_dirs)} total) based on run_ids filter")
+    else:
+        run_dirs = all_run_dirs
     
     if not run_dirs:
         logger.error(f"No run directories found in {runs_dir}")
