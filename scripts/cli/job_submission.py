@@ -312,6 +312,24 @@ class JobSubmitter:
             )
             slurm.add_cmd(srun_cmd)
     
+    def get_runs_for_node(self, node_idx, tasks_for_node):
+        """
+        Get the list of actual run IDs that will be processed by this node.
+        
+        Args:
+            node_idx: Node index
+            tasks_for_node: Number of tasks on this node
+            
+        Returns:
+            List of run IDs that this node will process
+        """
+        run_ids = []
+        for process_idx in range(tasks_for_node):
+            run_id = self.get_run_id(node_idx, process_idx)
+            if run_id is not None:
+                run_ids.append(run_id)
+        return run_ids
+    
     def get_run_id(self, node_idx, process_idx):
         """Calculate run ID from node and process indices"""
         if self.run_list:
@@ -451,11 +469,12 @@ class JobSubmitter:
         slurm.add_cmd("set -e  # Re-enable exit on error")
         slurm.add_cmd("echo \"Stage completed with exit code: $STAGE_EXIT_CODE\"")
         
-        # Add validation + guardian phases (validate only tasks_for_node)
+        # Add validation + guardian phases (validate only runs processed by this node)
+        runs_for_this_node = self.get_runs_for_node(node_idx, tasks_for_node) if tasks_for_node else []
         self.add_validation_and_guardian_to_script(
             slurm, 
             self.run_dir,
-            run_list=tasks_for_node
+            run_list=runs_for_this_node if runs_for_this_node else None
         )
     
     def _add_postprocessing_commands(self, slurm, previous_runs, is_monolithic=False, node_idx=0, tasks_for_node=None):
@@ -491,13 +510,14 @@ class JobSubmitter:
         slurm.add_cmd("set -e  # Re-enable exit on error")
         slurm.add_cmd("echo \"Stage completed with exit code: $STAGE_EXIT_CODE\"")
         
-        # Add validation + guardian phases (validate only tasks_for_node)
+        # Add validation + guardian phases (validate only runs processed by this node)
         # For postprocessing, use version_dir instead of run_dir for some stages
         output_dir = self.run_dir if is_monolithic else cli_utils.get_version_directory(self.config)
+        runs_for_this_node = self.get_runs_for_node(node_idx, tasks_for_node) if tasks_for_node else []
         self.add_validation_and_guardian_to_script(
             slurm, 
             self.run_dir,
-            run_list=tasks_for_node
+            run_list=runs_for_this_node if runs_for_this_node else None
         )
     
     def submit_jobs(self):
