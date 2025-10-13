@@ -566,6 +566,8 @@ def main():
                     
         except Exception as e:
             logger.error(f"Error in SLURM job submission: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
             sys.exit(1)
     else:
         logger.error(f"Unknown execution mode: {execution_mode}")
