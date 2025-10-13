@@ -615,9 +615,26 @@ class JobSubmitter:
         slurm.add_cmd("set -e  # Re-enable exit on error")
         slurm.add_cmd("echo \"Stage completed with exit code: $STAGE_EXIT_CODE\"")
         
-        # Add validation + guardian phases (validate all runs in multi-node job)
-        # Multi-node jobs process all runs at once, so no filtering needed
-        self.add_validation_and_guardian_to_script(slurm, self.run_dir)
+        # Add validation + guardian phases
+        # Multi-node jobs: calculate which runs are processed based on total_tasks
+        total_tasks = self.compute_total_tasks()
+        if self.run_list:
+            # Using specific run IDs from list
+            runs_to_validate = self.run_ids[:total_tasks]
+        elif self.run_range:
+            # Using range of runs
+            start_run, end_run = self.run_range
+            runs_to_validate = list(range(start_run, min(start_run + total_tasks, end_run)))
+        else:
+            # Default: sequential runs from 0
+            n_runs = self.config["job_config"]["n_runs"]
+            runs_to_validate = list(range(min(total_tasks, n_runs)))
+        
+        self.add_validation_and_guardian_to_script(
+            slurm, 
+            self.run_dir,
+            run_list=runs_to_validate
+        )
 
     def submit_multi_node_job(self):
         """Submit a single SLURM job across multiple nodes with many tasks."""
