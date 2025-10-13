@@ -1,0 +1,115 @@
+# Validation Rules for Pipeline Stages
+#
+# This file defines file patterns and validation thresholds for each pipeline stage.
+# Used by validation_lib.py to check stage outputs.
+
+stages:
+  # Stage 1: MadGraph Process Compilation
+  madgraph:
+    description: "Check that MadGraph process was compiled successfully"
+    file_patterns:
+      - pattern: "bin/mg5_aMC"
+        description: "MadGraph executable"
+        check_type: "exists"
+        required: true
+
+  # Stage 2: Event Generation (MadGraph)
+  generation:
+    description: "Validate event generation outputs (HepMC3 files)"
+    file_patterns:
+      - pattern: "events.hepmc3"
+        description: "Hard-scatter events"
+        min_size_mb: 0.1
+        median_threshold_pct: 0.8
+        required: true
+      
+      - pattern: "events_pileup.hepmc3"
+        description: "Pileup events"
+        min_size_mb: 0.1
+        median_threshold_pct: 0.8
+        required: true
+
+  # Stage 3: Pythia Hadronization + Pileup Merging
+  pythia_generation:
+    description: "Validate Pythia generation and merged events"
+    file_patterns:
+      - pattern: "merged_events.hepmc3"
+        description: "Merged hard-scatter + pileup events"
+        min_size_mb: 1.0
+        median_threshold_pct: 0.8
+        required: true
+      
+      - pattern: "timing_summary.txt"
+        description: "Timing information"
+        check_type: "exists"
+        required: false
+
+  # Stage 4: Geant4 Detector Simulation
+  simulation:
+    description: "Validate Geant4 simulation outputs"
+    file_patterns:
+      - pattern: "edm4hep.root"
+        description: "EDM4hep simulation output"
+        min_size_mb: 5.0
+        median_threshold_pct: 0.8
+        required: true
+
+  # Stage 5: Calorimeter Digitization (Key4hep)
+  calo_digitization:
+    description: "Validate calorimeter digitization outputs"
+    file_patterns:
+      - pattern: "calo_digitized.root"
+        description: "Calorimeter cells after digitization"
+        min_size_mb: 1.0
+        median_threshold_pct: 0.8
+        required: true
+
+  # Stage 6: Tracker Digitization + Track Reconstruction (ACTS)
+  digitization:
+    description: "Validate tracker digitization and tracking outputs"
+    file_patterns:
+      - pattern: "measurements.root"
+        description: "Track measurements"
+        min_size_mb: 1.0
+        median_threshold_pct: 0.8
+        required: true
+      
+      - pattern: "*.csv"
+        description: "Track parameter CSV files"
+        min_size_mb: 0.01
+        median_threshold_pct: 0.8
+        required: true
+      
+      - pattern: "performance_finding_ckf.root"
+        description: "Track finding performance metrics"
+        min_size_mb: 0.1
+        median_threshold_pct: 0.8
+        required: true
+
+  # Stage 7: HDF5 Conversion
+  convert_all:
+    description: "Validate HDF5 conversion outputs"
+    file_patterns:
+      - pattern: "*.h5"
+        description: "HDF5 files"
+        min_size_mb: 10.0
+        median_threshold_pct: 0.8
+        required: true
+      
+      - pattern: "*.hdf5"
+        description: "HDF5 files (alternate extension)"
+        min_size_mb: 10.0
+        median_threshold_pct: 0.8
+        required: false
+
+# Global defaults (can be overridden per pattern)
+defaults:
+  median_threshold_pct: 0.8  # Files must be >= 80% of median size
+  check_type: "size"          # Default to size-based checking
+
+# Notes:
+# - check_type can be "exists" (just check file exists) or "size" (check size)
+# - median_threshold_pct: fraction of median size below which file is flagged
+# - min_size_mb: absolute minimum size in MB (checked before median calculation)
+# - required: if true, missing file is always a failure; if false, it's a warning
+

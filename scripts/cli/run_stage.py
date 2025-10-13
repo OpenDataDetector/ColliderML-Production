@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 import logging
 import datetime
+import json
 
 # Import shared utilities
 import cli_utils
@@ -110,6 +111,84 @@ def get_stage_script_path(config, git_repo_path):
     relative_script_path = JobSubmitter(config_path=config["config_path"], git_repo_path=git_repo_path).get_stage_script() 
     # job_submitter.get_stage_script() now returns an absolute path
     return Path(relative_script_path)
+
+def run_validation(config, runs_dir):
+    """Run validation and return results."""
+    logger.info("Loading validation library...")
+    validation_path = Path(__file__).parent.parent / 'simulation' / 'validation'
+    sys.path.insert(0, str(validation_path))
+    
+    try:
+        from validation_lib import validate_stage, load_validation_rules
+        
+        rules_path = validation_path / 'validation_rules.yaml'
+        if not rules_path.exists():
+            logger.error(f"Validation rules not found: {rules_path}")
+            return None
+            
+        logger.info(f"Loading validation rules from: {rules_path}")
+        validation_rules = load_validation_rules(rules_path)
+        
+        logger.info(f"Validating runs in: {runs_dir}")
+        result = validate_stage(
+            runs_dir=Path(runs_dir),
+            stage=config['stage'],
+            validation_rules=validation_rules
+        )
+        
+        # Save report
+        report_dir = Path(runs_dir).parent / 'validation_reports'
+        report_dir.mkdir(exist_ok=True, parents=True)
+        report_path = report_dir / f"validation_report_{config['stage']}.json"
+        with open(report_path, 'w') as f:
+            json.dump(result, f, indent=2)
+        logger.info(f"Validation report saved to: {report_path}")
+        
+        return result
+        
+    except Exception as e:
+        logger.error(f"Validation failed with error: {e}")
+        logger.exception("Full traceback:")
+        return None
+
+def run_guardian(validation_result, config, runs_dir):
+    """Run guardian decision logic and return decision."""
+    if validation_result is None:
+        logger.error("Cannot run guardian without validation results")
+        return {'action': 'FAIL', 'exit_code': 1, 'reason': 'Validation failed to run'}
+    
+    logger.info("Loading error guardian...")
+    validation_path = Path(__file__).parent.parent / 'simulation' / 'validation'
+    
+    try:
+        from error_guardian import make_decision, load_guardian_policy
+        
+        policy_path = validation_path / 'guardian_policy.yaml'
+        if not policy_path.exists():
+            logger.error(f"Guardian policy not found: {policy_path}")
+            return {'action': 'FAIL', 'exit_code': 1, 'reason': 'Policy file missing'}
+            
+        logger.info(f"Loading guardian policy from: {policy_path}")
+        guardian_policy = load_guardian_policy(policy_path)
+        
+        retry_count = int(os.environ.get('SLURM_RESTART_COUNT', '0'))
+        max_retries = guardian_policy.get('retry_policy', {}).get('max_retries', 3)
+        
+        logger.info(f"Making guardian decision (retry {retry_count}/{max_retries})...")
+        decision = make_decision(
+            validation_result=validation_result,
+            runs_dir=Path(runs_dir),
+            guardian_policy=guardian_policy,
+            retry_count=retry_count,
+            max_retries=max_retries
+        )
+        
+        return decision
+        
+    except Exception as e:
+        logger.error(f"Guardian decision failed with error: {e}")
+        logger.exception("Full traceback:")
+        return {'action': 'FAIL', 'exit_code': 1, 'reason': f'Guardian error: {e}'}
 
 def run_interactive(config, config_path_arg, stage_script_path):
     """Runs the stage script directly as a subprocess after setting up the environment."""

@@ -99,7 +99,8 @@ def calculate_procid_offset_expr(offset):
     """
     if offset == 0:
         return "$SLURM_PROCID"
-    return f"$((SLURM_PROCID - {offset}))"
+    # Escape the '$' so evaluation happens inside bash -c per task, not at script render time
+    return f"\\$((SLURM_PROCID - {offset}))"
 
 
 class MultiConfigJobSubmitter:
