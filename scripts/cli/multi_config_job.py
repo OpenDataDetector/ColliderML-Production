@@ -256,6 +256,11 @@ class MultiConfigJobSubmitter:
                 stage_payload_parts.insert(0, env_setup_str)
             
             stage_payload = " && ".join(stage_payload_parts)
+            # Ensure each conditional block terminates with a command separator so subsequent
+            # 'elif' tokens are parsed correctly when composed as a single line under bash -c.
+            # Without this, the generated script may look like: "... python ... elif [ ... ] then".
+            if not stage_payload.endswith(";"):
+                stage_payload = f"{stage_payload} ;"
             
             # Add this stage's conditional branch
             stage_conditionals.append(f"{condition} {stage_payload}")
