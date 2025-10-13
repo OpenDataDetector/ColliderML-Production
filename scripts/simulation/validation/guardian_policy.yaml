@@ -11,9 +11,9 @@ thresholds:
 
 # Retry policy for critical/complete failures
 retry_policy:
-  max_retries: 3                    # Maximum number of retry attempts (via SLURM_RESTART_COUNT)
-  retry_on_complete_failure: true   # Requeue if all runs failed
-  retry_on_critical_failure: true   # Requeue if >10% failure rate
+  max_retries: 0                    # Maximum number of retry attempts (via SLURM_RESTART_COUNT)
+  retry_on_complete_failure: false   # Requeue if all runs failed
+  retry_on_critical_failure: false   # Requeue if >10% failure rate
 
 # Actions for each failure severity level
 actions:
