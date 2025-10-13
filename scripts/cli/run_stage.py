@@ -112,7 +112,7 @@ def get_stage_script_path(config, git_repo_path):
     # job_submitter.get_stage_script() now returns an absolute path
     return Path(relative_script_path)
 
-def run_validation(config, runs_dir):
+def run_validation(config, runs_dir, run_ids=None, run_range=None):
     """Run validation and return results."""
     logger.info("Loading validation library...")
     validation_path = Path(__file__).parent.parent / 'simulation' / 'validation'
@@ -129,11 +129,20 @@ def run_validation(config, runs_dir):
         logger.info(f"Loading validation rules from: {rules_path}")
         validation_rules = load_validation_rules(rules_path)
         
-        logger.info(f"Validating runs in: {runs_dir}")
+        # Log run filtering info
+        if run_ids is not None:
+            logger.info(f"Validating {len(run_ids)} specific runs: {run_ids}")
+        elif run_range is not None:
+            start, end = run_range
+            logger.info(f"Validating run range: {start} to {end-1}")
+        else:
+            logger.info(f"Validating all runs in: {runs_dir}")
+        
         result = validate_stage(
             runs_dir=Path(runs_dir),
             stage=config['stage'],
-            validation_rules=validation_rules
+            validation_rules=validation_rules,
+            run_ids=run_ids
         )
         
         # Save report
