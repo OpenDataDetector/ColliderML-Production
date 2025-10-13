@@ -191,9 +191,15 @@ def run_guardian(validation_result, config, runs_dir):
         return {'action': 'FAIL', 'exit_code': 1, 'reason': f'Guardian error: {e}'}
 
 def run_interactive(config, config_path_arg, stage_script_path):
-    """Runs the stage script directly as a subprocess after setting up the environment."""
-    logger.info(f"Running stage '{config['stage']}' interactively.")
-    logger.info(f"Using script: {stage_script_path}")
+    """Runs the stage script interactively with integrated validation + guardian."""
+    
+    # Check if validation is enabled (default: true)
+    validation_enabled = config.get('validation_config', {}).get('enabled', True)
+    
+    logger.info("=" * 80)
+    logger.info(f"STAGE: {config['stage']}")
+    logger.info(f"VALIDATION: {'ENABLED' if validation_enabled else 'DISABLED'}")
+    logger.info("=" * 80)
 
     # Create necessary output directories
     debug_output_dir = config.get("debug_output_dir")
@@ -201,16 +207,23 @@ def run_interactive(config, config_path_arg, stage_script_path):
         run_dir = Path(debug_output_dir)
         run_dir.mkdir(parents=True, exist_ok=True)
         logger.info(f"Using custom debug output directory from config: {run_dir}")
-        # Don't use subdirectory when debug output dir is specified
         output_subdir = None
     else:
         logger.info("Creating output directories for interactive run...")
         directories = cli_utils.create_necessary_directories(config)
         run_dir = directories["run_dir"]
-        # Use default subdirectory for normal runs
         output_subdir = "all"
 
-    # Use shared command builder to ensure consistency with batch mode
+    # ===== PHASE 1: Execute Stage =====
+    logger.info("")
+    logger.info("=" * 80)
+    logger.info(f"PHASE 1: Executing stage - {config['stage']}")
+    logger.info("=" * 80)
+    logger.info(f"Using script: {stage_script_path}")
+    
+    stage_success = False
+    stage_exit_code = 1
+    
     try:
         command_info = cli_utils.build_stage_command(
             config=config,
@@ -231,24 +244,75 @@ def run_interactive(config, config_path_arg, stage_script_path):
         if not command_info["env_setup_commands"]:
             logger.warning("No environment setup commands found. Running script in current environment.")
         
-        logger.info(f"Executing command string: {final_command_str}")
+        logger.info(f"Executing command: {final_command_str}")
         
-        # print(f"DEBUG COMMAND: {final_command_str}", file=sys.stderr)
-        # sys.exit(0) # Exit after printing
-
-        # Use shell=True to correctly process the command string with '&&' and environment sourcing
-        process = subprocess.run(final_command_str, shell=True, check=True)
-        logger.info(f"Interactive stage '{config['stage']}' completed successfully.")
+        # Run stage (don't exit on error if validation is enabled)
+        process = subprocess.run(final_command_str, shell=True, check=False)
+        stage_exit_code = process.returncode
         
-    except subprocess.CalledProcessError as e:
-        logger.error(f"Interactive stage '{config['stage']}' failed with return code: {e.returncode}")
-        sys.exit(1)
+        if stage_exit_code == 0:
+            logger.info(f"✓ Stage '{config['stage']}' completed successfully.")
+            stage_success = True
+        else:
+            logger.warning(f"✗ Stage '{config['stage']}' failed with exit code: {stage_exit_code}")
+            stage_success = False
+            
     except FileNotFoundError:
         logger.error(f"Error: Stage script {stage_script_path} not found.")
-        sys.exit(1)
+        stage_exit_code = 1
+        stage_success = False
     except Exception as e:
-        logger.error(f"Error building command for interactive execution: {e}")
-        sys.exit(1)
+        logger.error(f"Error building/executing command: {e}")
+        logger.exception("Full traceback:")
+        stage_exit_code = 1
+        stage_success = False
+    
+    # If validation is disabled, exit with stage result
+    if not validation_enabled:
+        logger.info(f"Validation disabled. Exiting with stage exit code: {stage_exit_code}")
+        sys.exit(stage_exit_code)
+    
+    # ===== PHASE 2: Validate Outputs =====
+    logger.info("")
+    logger.info("=" * 80)
+    logger.info("PHASE 2: Validating outputs")
+    logger.info("=" * 80)
+    
+    validation_result = run_validation(config, run_dir)
+    
+    if validation_result:
+        logger.info(f"Validation status: {validation_result.get('status', 'UNKNOWN')}")
+        logger.info(f"Total runs: {validation_result.get('total_runs', 0)}")
+        logger.info(f"Successful: {validation_result.get('successful_runs', 0)}")
+        logger.info(f"Failed: {validation_result.get('failed_runs', 0)}")
+        if validation_result.get('failed_runs', 0) > 0:
+            logger.info(f"Failure rate: {validation_result.get('failure_rate', 0):.1f}%")
+    
+    # ===== PHASE 3: Guardian Decision =====
+    logger.info("")
+    logger.info("=" * 80)
+    logger.info("PHASE 3: Error guardian decision")
+    logger.info("=" * 80)
+    
+    decision = run_guardian(validation_result, config, run_dir)
+    
+    logger.info(f"Guardian action: {decision.get('action', 'UNKNOWN')}")
+    logger.info(f"Reason: {decision.get('reason', 'No reason provided')}")
+    logger.info(f"Exit code: {decision.get('exit_code', 1)}")
+    
+    # Display any actions taken
+    if 'actions_taken' in decision and decision['actions_taken']:
+        logger.info("Actions taken:")
+        for action in decision['actions_taken']:
+            logger.info(f"  - {action}")
+    
+    logger.info("")
+    logger.info("=" * 80)
+    logger.info(f"INTERACTIVE RUN COMPLETE - Exiting with code {decision['exit_code']}")
+    logger.info("=" * 80)
+    
+    # Exit with guardian's decision
+    sys.exit(decision['exit_code'])
 
 def main():
     parser = argparse.ArgumentParser(description="Run a ColliderML data production stage.")
