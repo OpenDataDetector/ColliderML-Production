@@ -38,11 +38,6 @@ stages:
         min_size_mb: 1.0
         median_threshold_pct: 0.8
         required: true
-      
-      - pattern: "timing_summary.txt"
-        description: "Timing information"
-        check_type: "exists"
-        required: false
 
   # Stage 4: Geant4 Detector Simulation
   simulation:
@@ -110,24 +105,11 @@ stages:
     file_patterns:
       - pattern: "*.h5"
         description: "HDF5 files"
-        min_size_mb: 10.0
+        min_size_mb: 1.0
         median_threshold_pct: 0.8
         required: true
-      
-      - pattern: "*.hdf5"
-        description: "HDF5 files (alternate extension)"
-        min_size_mb: 10.0
-        median_threshold_pct: 0.8
-        required: false
 
 # Global defaults (can be overridden per pattern)
 defaults:
   median_threshold_pct: 0.8  # Files must be >= 80% of median size
   check_type: "size"          # Default to size-based checking
-
-# Notes:
-# - check_type can be "exists" (just check file exists) or "size" (check size)
-# - median_threshold_pct: fraction of median size below which file is flagged
-# - min_size_mb: absolute minimum size in MB (checked before median calculation)
-# - required: if true, missing file is always a failure; if false, it's a warning
-

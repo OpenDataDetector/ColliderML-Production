@@ -134,7 +134,49 @@ def main():
                 import subprocess
                 subprocess.run(['scontrol', 'requeue', job_id], check=True)
                 logger.info(f"✓ Job {job_id} requeued successfully")
-                # Exit with 0 since requeue was successful
+                
+                # CRITICAL: Update dependent jobs to prevent DependencyNeverSatisfied
+                # When a job requeues, SLURM marks the original run as "failed"
+                # Dependent jobs need their dependencies reset to wait for the new run
+                logger.info(f"Checking for dependent jobs...")
+                try:
+                    result = subprocess.run(
+                        ['squeue', '--dependency', '--format=%i,%E', '--noheader'],
+                        capture_output=True, text=True, check=True
+                    )
+                    dependent_jobs = []
+                    for line in result.stdout.strip().split('\n'):
+                        if not line:
+                            continue
+                        parts = line.split(',')
+                        if len(parts) >= 2:
+                            dep_job_id = parts[0].strip()
+                            dep_spec = parts[1].strip()
+                            # Check if this job depends on our job
+                            if job_id in dep_spec:
+                                dependent_jobs.append((dep_job_id, dep_spec))
+                    
+                    if dependent_jobs:
+                        logger.info(f"Found {len(dependent_jobs)} dependent job(s), resetting dependencies...")
+                        for dep_job_id, old_dep in dependent_jobs:
+                            try:
+                                # Reset the dependency to the same job ID (now requeued)
+                                # This tells SLURM to wait for the NEW run, not the old failed one
+                                subprocess.run(
+                                    ['scontrol', 'update', f'jobid={dep_job_id}', f'dependency={old_dep}'],
+                                    check=True, capture_output=True, text=True
+                                )
+                                logger.info(f"  ✓ Reset dependency for job {dep_job_id}")
+                            except subprocess.CalledProcessError as e:
+                                logger.warning(f"  ✗ Failed to update dependency for job {dep_job_id}: {e}")
+                    else:
+                        logger.info("No dependent jobs found")
+                except subprocess.CalledProcessError as e:
+                    logger.warning(f"Could not check for dependent jobs: {e}")
+                except FileNotFoundError:
+                    logger.warning("squeue command not found - skipping dependent job check")
+                
+                # Exit with 0 since requeue was successful, SLURM will handle the restart
                 sys.exit(0)
             except subprocess.CalledProcessError as e:
                 logger.error(f"✗ Failed to requeue job {job_id}: {e}")
