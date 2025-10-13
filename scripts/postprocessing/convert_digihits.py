@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Convert digitized tracker measurements (measurements.root) to HDF5 format.
+Convert digitized tracker measurements (measurements.root) to HDF5 or Parquet format.
 
 This merges measurements with EDM4hep tracker hits to attach detector labels
 and truth particle links, using the true_x/true_y/true_z coordinates present
@@ -25,6 +25,7 @@ import time
 from utils.path_utils import get_run_paths, make_dir
 from utils.driver import iterate_and_process_chunks, local_events_for_run
 from utils.track_utils import load_root_file
+from utils.parquet_utils import build_parquet_from_flat_df
 
 sys.path.append("/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/OtherLibraries/pyedm4hep")
 from pyedm4hep import EDM4hepEvent, EDM4hepEventBatch
@@ -171,12 +172,37 @@ def process_event_for_digihits(event_id: int, local_event_num: int, measurements
     return event_measurements
 
 
+def build_parquet_digihits(df: pd.DataFrame, output_file: str) -> None:
+    """
+    Write digitized measurements to Parquet format.
+    
+    Args:
+        df: Flat DataFrame with event_id and per-hit columns
+        output_file: Path to output Parquet file
+    """
+    if df.empty:
+        logger.warning(f"Skipping empty DataFrame for Parquet digihits: {output_file}")
+        return
+    
+    # Use shared utility to group by event and write
+    build_parquet_from_flat_df(df, output_file, compression='snappy')
+
+
 def write_digihits_with_selection(
     df: pd.DataFrame,
     output_file: str,
     columns_keep: List[str] | None = None,
+    output_format: str = 'hdf5',
 ) -> None:
-    """Write merged digi-hits DataFrame to H5 with optional column selection."""
+    """
+    Write merged digi-hits DataFrame to HDF5 or Parquet with optional column selection.
+    
+    Args:
+        df: DataFrame with digitized hit data
+        output_file: Path to output file
+        columns_keep: Optional list of columns to keep
+        output_format: Output format - 'hdf5' (default) or 'parquet'
+    """
     if df.empty:
         return
     if columns_keep:
@@ -184,7 +210,12 @@ def write_digihits_with_selection(
         if 'event_id' not in cols and 'event_id' in df.columns:
             cols = cols + ['event_id']
         df = df[cols].copy()
-    build_hdf5_digihits(df, output_file)
+    
+    # Route to appropriate writer based on format
+    if output_format == 'parquet':
+        build_parquet_digihits(df, output_file)
+    else:  # default to hdf5
+        build_hdf5_digihits(df, output_file)
 
 
 def build_hdf5_digihits(df: pd.DataFrame, output_file: str) -> None:
@@ -285,6 +316,7 @@ def process_chunk_for_digihits(
     run_size: int,
     force_overwrite: bool = False,
     columns_keep: List[str] | None = None,
+    output_format: str = 'hdf5',
 ) -> None:
     """
     Process a chunk of runs and write one HDF5 file for the chunk.
@@ -304,7 +336,9 @@ def process_chunk_for_digihits(
     # start_event/end_event precomputed by driver (event-based chunking)
     end_run = min(end_run, len(run_dirs) - 1)
 
-    output_file = Path(output_dir) / f"{dataset_name}.reco.tracker_hits.events{start_event}-{end_event}.h5"
+    # Determine file extension based on output format
+    file_ext = '.parquet' if output_format == 'parquet' else '.h5'
+    output_file = Path(output_dir) / f"{dataset_name}.reco.tracker_hits.events{start_event}-{end_event}{file_ext}"
     chunk_start = time.time()
     if output_file.exists() and not force_overwrite:
         logging.info(f"Skipping events {start_event}-{end_event} - exists: {output_file}")
@@ -386,7 +420,7 @@ def process_chunk_for_digihits(
                 cols = cols + ['event_id']
             all_df = all_df[cols].copy()
         logging.info(f"Writing {len(all_df)} measurements across {all_df.event_id.nunique()} events -> {output_file} (chunk_time={time.time() - chunk_start:.3f}s)")
-        build_hdf5_digihits(all_df, str(output_file))
+        write_digihits_with_selection(all_df, str(output_file), columns_keep=None, output_format=output_format)
     else:
         logging.warning(f"No data to save for events {start_event}-{end_event}")
 
@@ -401,16 +435,22 @@ def convert_digihits(
     max_chunks: int | None = None,
     config_for_cap: dict | None = None,
     columns_keep: List[str] | None = None,
+    output_format: str = 'hdf5',
 ) -> None:
     """
-    Convert digitized measurements to HDF5 files grouped by event.
+    Convert digitized measurements to HDF5 or Parquet files grouped by event.
+    
+    Args:
+        output_format: Output format - 'hdf5' (default) or 'parquet'
     """
     base_dir = Path(base_dir)
     output_base_dir = Path(output_base_dir)
 
     run_dirs = get_run_paths(base_dir)
 
-    output_dir = make_dir(output_base_dir, f"{dataset_name}/reco/tracker_hits")
+    # Use format-specific subdirectory
+    format_subdir = output_format if output_format in ['hdf5', 'parquet'] else 'hdf5'
+    output_dir = make_dir(output_base_dir, f"{dataset_name}/{format_subdir}/reco/tracker_hits")
     dataset_name = dataset_name.replace("/", ".")
     
     iterate_and_process_chunks(
@@ -433,6 +473,7 @@ def convert_digihits(
             dataset_name,
             run_size,
             columns_keep=columns_keep,
+            output_format=output_format,
         ),
     )
 
@@ -468,10 +509,14 @@ def main():
     chunk_size = config.get("chunk_size", 1000)
     run_size = config.get("run_size", 10)
 
+    # Extract output format from config (default to hdf5 for backward compatibility)
+    output_format = config.get("output_format", "hdf5")
+
     logging.info("\nStarting digitized hit conversion with configuration:")
     logging.info(f"Campaign: {campaign}, Dataset: {dataset}, Version: {version}")
     logging.info(f"Input directory: {input_base_dir}")
     logging.info(f"Output root: {output_base_dir}")
+    logging.info(f"Output format: {output_format}")
     logging.info(f"Chunk size: {chunk_size}, Run size: {run_size}")
 
     # Save config path for optional cap inference
@@ -488,6 +533,7 @@ def main():
         config.get("max_chunks"),
         config,
         columns_keep=config.get("digihits_columns_keep"),
+        output_format=output_format,
     )
 
 
