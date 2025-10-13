@@ -125,6 +125,30 @@ def main():
     
     logger.info("=" * 80)
     
+    # If guardian decides to requeue, trigger SLURM requeue before exiting
+    if decision['exit_code'] == 99 and not args.dry_run:
+        job_id = os.environ.get('SLURM_JOB_ID')
+        if job_id:
+            logger.info(f"Triggering SLURM requeue for job {job_id}")
+            try:
+                import subprocess
+                subprocess.run(['scontrol', 'requeue', job_id], check=True)
+                logger.info(f"✓ Job {job_id} requeued successfully")
+                # Exit with 0 since requeue was successful
+                sys.exit(0)
+            except subprocess.CalledProcessError as e:
+                logger.error(f"✗ Failed to requeue job {job_id}: {e}")
+                logger.error("Falling back to exit code 99")
+                sys.exit(99)
+            except FileNotFoundError:
+                logger.error("scontrol command not found - are we in a SLURM environment?")
+                logger.error("Falling back to exit code 99")
+                sys.exit(99)
+        else:
+            logger.warning("SLURM_JOB_ID not set - cannot requeue (not in SLURM job?)")
+            logger.warning("Exiting with code 99 anyway")
+            sys.exit(99)
+    
     # Exit with guardian's decision code
     sys.exit(decision['exit_code'])
 
