@@ -521,11 +521,7 @@ def main():
                     logger.info("Using standard submit_jobs for monolithic job submission (n_nodes=1).")
                     job_ids = job_submitter.submit_jobs()
                     if not args.dry_run and job_ids:
-                        logger.info(f"Submitted monolithic job with ID: {job_ids[0]}")
-                        # Validation jobs could still apply if defined
-                        validation_ids = job_submitter.submit_validation_jobs(job_ids)
-                        if validation_ids:
-                            logger.info(f"Submitted validation job with ID: {validation_ids[0]}")
+                        logger.info(f"Submitted monolithic job with ID: {job_ids[0]} (with integrated validation)")
                     elif args.dry_run:
                         logger.info(f"Dry run for monolithic SLURM completed. Script saved in {job_submitter.dry_run_dir}")
                 else:
@@ -535,26 +531,16 @@ def main():
                 logger.info(f"Preparing for distributed SLURM submission for stage: {config['stage']}")
                 job_ids = job_submitter.submit_jobs()
                 if not args.dry_run and job_ids:
-                    validation_ids = job_submitter.submit_validation_jobs(job_ids)
-                    logger.info(f"Submitted {len(job_ids)} distributed production jobs.")
-                    if validation_ids:
-                        logger.info(f"Submitted {len(validation_ids)} validation jobs.")
+                    logger.info(f"Submitted {len(job_ids)} distributed production jobs with integrated validation.")
                 elif args.dry_run:
                     logger.info(f"Dry run for distributed SLURM completed. Scripts saved in: {job_submitter.dry_run_dir}")
-                    if job_submitter.config.get("validation_config"):
-                        logger.info(f"Validation scripts saved in: {job_submitter.validation_dir}")
             else:  # multi_node_slurm
                 logger.info(f"Preparing for single multinode SLURM submission for stage: {config['stage']}")
                 job_ids = job_submitter.submit_multi_node_job()
                 if not args.dry_run and job_ids:
-                    validation_ids = job_submitter.submit_validation_jobs(job_ids)
-                    logger.info(f"Submitted multinode production job.")
-                    if validation_ids:
-                        logger.info(f"Submitted {len(validation_ids)} validation jobs.")
+                    logger.info(f"Submitted multinode production job with integrated validation.")
                 elif args.dry_run:
                     logger.info(f"Dry run for multinode SLURM completed. Script saved in: {job_submitter.dry_run_dir}")
-                    if job_submitter.config.get("validation_config"):
-                        logger.info(f"Validation scripts saved in: {job_submitter.validation_dir}")
                         
             # Clean up temporary config file if created
             if execution_mode == "monolithic_slurm" and effective_config != config:
