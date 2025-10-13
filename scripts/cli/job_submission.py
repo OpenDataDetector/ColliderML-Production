@@ -382,9 +382,10 @@ class JobSubmitter:
         slurm = Slurm(**slurm_kwargs)
         
         # Add requeue and append flags for validation + guardian integration
-        # These must be added as direct attributes since simple_slurm may not support them as kwargs
-        setattr(slurm.namespace, "requeue", True)
-        setattr(slurm.namespace, "open-mode", "append")
+        # For boolean flags, set to empty string to just add the flag without value
+        # For flags with values, set the value directly
+        setattr(slurm.namespace, "requeue", "")  # Boolean flag - no value
+        setattr(slurm.namespace, "open-mode", "append")  # Flag with value
         
         # Add shifter image to SBATCH directives if needed (for performance)
         # Use setattr to add custom directive with multiple options on one line
@@ -612,8 +613,9 @@ class JobSubmitter:
         slurm = Slurm(**slurm_kwargs)
         
         # Add requeue and append flags for validation + guardian integration
-        setattr(slurm.namespace, "requeue", True)
-        setattr(slurm.namespace, "open-mode", "append")
+        # For boolean flags, set to empty string to just add the flag without value
+        setattr(slurm.namespace, "requeue", "")  # Boolean flag - no value
+        setattr(slurm.namespace, "open-mode", "append")  # Flag with value
         
         # Add shifter image to SBATCH directives if needed (for performance)
         # Use setattr to add custom directive with multiple options on one line
