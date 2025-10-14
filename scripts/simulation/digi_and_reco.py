@@ -261,6 +261,37 @@ def setup_acts_reconstruction(input_path, output_dir, config, rnd, logger=None):
             ),
         )
     
+    # Add spacepoint creation if enabled
+    spacepoints_enabled = getattr(config, 'spacepoints', False)  # Default False
+    if spacepoints_enabled and digi_enabled:
+        logger.info("Adding spacepoint creation and writing")
+        
+        # Get geometry selection file (from ACTS Examples/Configs)
+        spGeometrySelection = Path("/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/OtherLibraries/acts_versions/acts_v4/Examples/Configs/odd-strip-spacepoint-selection.json")
+        
+        # Add SpacePointMaker algorithm
+        s.addAlgorithm(
+            acts.examples.SpacePointMaker(
+                level=LOG_LEVEL,
+                trackingGeometry=trackingGeometry,
+                inputMeasurements="measurements",
+                outputSpacePoints="spacepoints",
+                stripGeometrySelection=acts.examples.readJsonGeometryList(
+                    str(spGeometrySelection)
+                ),
+            )
+        )
+        
+        # Write spacepoints to ROOT
+        s.addWriter(
+            acts.examples.RootSpacepointWriter(
+                level=LOG_LEVEL,
+                inputSpacepoints="spacepoints",
+                inputMeasurementParticlesMap="measurement_particles_map",
+                filePath=str(output_dir / "spacepoints.root"),
+            )
+        )
+    
     # Add reconstruction components if enabled
     reco_enabled = getattr(config, 'reco', False)  # Default False
     if reco_enabled:
