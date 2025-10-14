@@ -158,3 +158,5 @@ def build_parquet_from_flat_df(
     # Write to Parquet
     write_parquet_table(grouped, output_file, compression=compression)
 
+
+

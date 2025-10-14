@@ -1,17 +1,17 @@
 # Particle Gun Configuration - Single Electrons with Log-Uniform Energy
 campaign: "single_particle_pilot"
-dataset: "single_electron"
+dataset: "single_electron_loguniform"
 version: "v1"
 stage: "particlegun_generation"
 
 job_config:
-  n_runs: 100
-  runs_per_node: 32
-  time_limit: "00:15:00"
-  qos: "regular"
-  execution_mode: "interactive"
+  n_runs: 1
+  runs_per_node: 1
+  time_limit: "00:30:00"
+  qos: "debug"
+  execution_mode: "multi_node_slurm"
 
-events: 1000
+events: 10000
 seed: 42
 
 particle: "e-"
