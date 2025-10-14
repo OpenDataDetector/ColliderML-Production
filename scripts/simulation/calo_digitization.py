@@ -39,11 +39,11 @@ def run_k4odd_digitization(input_file, output_dir, config, logger):
         RuntimeError: If digitization fails
     """
     
-    # Get k4ODD script path from config (with fallback to environment variable)
+    # Get k4ODD script path from environment variable (set by env_setup.yaml)
     import os
-    k4odd_base = getattr(config, 'k4odd_path', None) or os.environ.get('K4ODD_PATH')
+    k4odd_base = os.environ.get('K4ODD_PATH')
     if not k4odd_base:
-        raise ValueError("k4odd_path not set in config and K4ODD_PATH not in environment")
+        raise ValueError("K4ODD_PATH not found in environment. This should be set by env_setup.yaml")
     
     k4odd_script = Path(k4odd_base) / "k4ODD/options/ODDdigitisation.py"
     

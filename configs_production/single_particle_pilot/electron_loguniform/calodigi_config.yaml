@@ -11,9 +11,7 @@ job_config:
   qos: "debug"
   execution_mode: "interactive"
 
-events: 10000
+events: 100
 seed: 42
-
-k4odd_path: "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/OtherLibraries/k4ODD"
 
 debug_output_dir: "/global/cfs/cdirs/m4958/data/ColliderML/simulation/single_particle_pilot/single_electron_loguniform/v1/runs/0"
