@@ -1,0 +1,98 @@
+# Example HuggingFace Upload Configuration
+# This config demonstrates how to upload ColliderML datasets to HuggingFace
+# while keeping data files hosted on NERSC for HTTP streaming.
+
+# HuggingFace repository settings
+huggingface:
+  repo_id: "OpenDataDetector/ColliderML-HardScatter"  # Your HF dataset repo
+  token_env: "HF_TOKEN"  # Environment variable containing HF token
+  create_if_missing: true  # Create repo if it doesn't exist
+
+# NERSC hosting settings
+nersc:
+  base_url: "https://portal.nersc.gov/project/m4958"  # Base URL for data access
+  www_path: "/global/cfs/cdirs/m4958/www"  # Local path to NERSC www directory
+
+# Upload configuration
+upload:
+  # Base directory containing your Parquet files
+  source_base: "/global/cfs/cdirs/m4958/data/ColliderML/processed/hard_scatter/ttbar/v1/parquet"
+  
+  # List of configurations to create/update
+  # Each config represents a different data type (particles, tracker_hits, tracks)
+  configs:
+    # Truth-level particles
+    - name: "particles"
+      local_path: "truth/particles"  # Path relative to source_base
+      nersc_subpath: "HuggingFace/hard_scatter/ttbar/v1/truth/particles"  # Path on NERSC www
+      split: "ttbar"  # Split name (physics channel)
+      
+    # Reconstructed tracker hits
+    - name: "tracker_hits"
+      local_path: "reco/tracker_hits"
+      nersc_subpath: "HuggingFace/hard_scatter/ttbar/v1/reco/tracker_hits"
+      split: "ttbar"
+      
+    # Reconstructed tracks
+    - name: "tracks"
+      local_path: "reco/tracks"
+      nersc_subpath: "HuggingFace/hard_scatter/ttbar/v1/reco/tracks"
+      split: "ttbar"
+
+# README generation settings
+readme:
+  # Path to custom template (optional)
+  # If null, auto-generates from statistics
+  template_path: null
+  
+  # Custom dataset description (optional)
+  # If null, uses default description
+  description: |
+    # ColliderML Hard Scatter Dataset
+    
+    High-luminosity LHC collision simulations for machine learning research.
+    Contains truth-level particles, digitized tracker hits, and reconstructed tracks.
+    
+    **Dataset:** ttbar (top-antitop quark pair production)
+    **Version:** v1
+    **Events:** 10 (test dataset)
+    
+    Data is hosted on NERSC and streamed on-demand via HuggingFace.
+
+# File sharding strategy
+sharding:
+  strategy: "preserve"  # Options: "preserve", "combine", "split"
+  # "preserve" - Keep existing event-based filenames (recommended)
+  # "combine" - Merge small files into larger shards
+  # "split" - Split large files into smaller chunks
+  
+  target_shard_size_mb: 100  # Only used if strategy != "preserve"
+
+# Notes:
+# 
+# 1. To upload to HuggingFace:
+#    export HF_TOKEN=<your_token>
+#    python upload_to_huggingface.py --config configs/hf_upload_example.yaml
+#
+# 2. For dry run (no changes made):
+#    python upload_to_huggingface.py --config configs/hf_upload_example.yaml --dry-run
+#
+# 3. If files already on NERSC www:
+#    python upload_to_huggingface.py --config configs/hf_upload_example.yaml --skip-copy
+#
+# 4. Progressive updates:
+#    - Run once with ttbar split
+#    - Update config with ggf split
+#    - Run again - both splits will be available
+#
+# 5. Multi-split example (same config, different physics channels):
+#    configs:
+#      - name: "particles"
+#        local_path: "truth/particles"
+#        nersc_subpath: "HuggingFace/hard_scatter/ttbar/v1/truth/particles"
+#        split: "ttbar"
+#      - name: "particles"
+#        local_path: "truth/particles"  
+#        nersc_subpath: "HuggingFace/hard_scatter/ggf/v1/truth/particles"
+#        split: "ggf"
+

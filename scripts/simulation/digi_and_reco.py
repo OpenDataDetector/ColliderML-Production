@@ -266,8 +266,16 @@ def setup_acts_reconstruction(input_path, output_dir, config, rnd, logger=None):
     if spacepoints_enabled and digi_enabled:
         logger.info("Adding spacepoint creation and writing")
         
-        # Get geometry selection file (from ACTS Examples/Configs)
-        spGeometrySelection = Path("/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/OtherLibraries/acts_versions/acts_v4/Examples/Configs/odd-strip-spacepoint-selection.json")
+        # Get geometry selection file from config
+        spacepoint_geo_config = getattr(config, 'spacepoint_geometry_selection', None)
+        if not spacepoint_geo_config:
+            logger.error("spacepoints enabled but 'spacepoint_geometry_selection' not specified in config")
+            raise ValueError("spacepoint_geometry_selection must be specified in config when spacepoints=True")
+        
+        spGeometrySelection = Path(spacepoint_geo_config)
+        if not spGeometrySelection.exists():
+            logger.error(f"Spacepoint geometry selection file not found: {spGeometrySelection}")
+            raise FileNotFoundError(f"Spacepoint geometry selection file not found: {spGeometrySelection}")
         
         # Add SpacePointMaker algorithm
         s.addAlgorithm(

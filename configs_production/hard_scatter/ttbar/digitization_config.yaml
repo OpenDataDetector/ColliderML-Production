@@ -39,5 +39,8 @@ output_all_particles: True
 # --- Digitization config ---
 digi_config: /global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml_dev/scripts/simulation/odd-full-geo-digi-config.json
 
+# --- Spacepoint config ---
+spacepoint_geometry_selection: /global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/OtherLibraries/acts_versions/acts_v4/Examples/Configs/odd-strip-spacepoint-selection.json
+
 # --- Debugging Commands ---
 debug_output_dir: /global/cfs/cdirs/m4958/data/ColliderML/simulation/hard_scatter/ttbar/v1/runs/0

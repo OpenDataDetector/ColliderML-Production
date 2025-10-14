@@ -99,7 +99,7 @@ def _merge_measurements_with_tracker(meas_df: pd.DataFrame, tracker_df: pd.DataF
     # Select minimal measurement columns to bring through (intersect with available)
     if not include_meas_cols:
         include_meas_cols = [
-            "true_x", "true_y", "true_z", "rec_x", "rec_y", "rec_z",
+            "true_x", "true_y", "true_z", "rec_gx", "rec_gy", "rec_gz",
             "volume_id", "layer_id", "surface_id"
         ]
     lhs_cols = [c for c in include_meas_cols if c in meas_df.columns] + ["_orig_pos"]
@@ -129,9 +129,9 @@ def _merge_measurements_with_tracker(meas_df: pd.DataFrame, tracker_df: pd.DataF
         "x": "true_x",
         "y": "true_y",
         "z": "true_z",
-        "rec_x": "x",
-        "rec_y": "y",
-        "rec_z": "z",
+        "rec_gx": "x",
+        "rec_gy": "y",
+        "rec_gz": "z",
         "cellID": "cell_id",
         "EDep": "e_dep",
         "pathLength": "path_length",
