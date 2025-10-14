@@ -11,7 +11,7 @@ job_config:
   qos: "debug"
   execution_mode: "interactive"
 
-events: 100
+events: 1000
 seed: 42
 
 debug_output_dir: "/global/cfs/cdirs/m4958/data/ColliderML/simulation/single_particle_pilot/single_electron_loguniform/v1/runs/0"
