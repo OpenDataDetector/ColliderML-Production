@@ -41,7 +41,7 @@ def run_k4odd_digitization(input_file, output_dir, config, logger):
     
     # Get k4ODD script path from config (with fallback to environment variable)
     import os
-    k4odd_base = config.get('k4odd_path') or os.environ.get('K4ODD_PATH')
+    k4odd_base = getattr(config, 'k4odd_path', None) or os.environ.get('K4ODD_PATH')
     if not k4odd_base:
         raise ValueError("k4odd_path not set in config and K4ODD_PATH not in environment")
     
