@@ -3,14 +3,14 @@
 #========================================================================
 
 # --- Dataset & Version ---
-campaign: "full_pileup"
+campaign: "hard_scatter"
 dataset: "ttbar"
 version: "v1"
 stage: "digitization"  # One of: generation, merge_smear, simulation, digitization
 
 # --- Job Configuration ---
 job_config:
-  n_runs: 64  # Number of jobs to submit
+  n_runs: 100  # Number of jobs to submit
   runs_per_node: 64  # Number of runs per node
   time_limit: "00:30:00"  # Time limit per job
   qos: "debug"
