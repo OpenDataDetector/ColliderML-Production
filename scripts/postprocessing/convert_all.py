@@ -43,17 +43,29 @@ def _compute_paths(config: dict) -> tuple[Path, Path, str, str]:
     dataset = config["dataset"]
     version = config["version"]
     common_cfg = config.get("common", {})
-    input_base_dir = Path(common_cfg["output_base_dir"]) / campaign / dataset / version
+    input_base_dir = Path(common_cfg["input_base_dir"]) / campaign / dataset / version
     output_base_dir = Path(config.get("h5_output_dir", common_cfg["output_base_dir"]))
     dataset_base = f"{campaign}/{dataset}/{version}"
     dataset_name_dot = dataset_base.replace("/", ".")
     return input_base_dir, output_base_dir, dataset_base, dataset_name_dot
 
 
-def _prepare_output_dirs(output_base_dir: Path, dataset_base: str) -> tuple[Path, Path, Path]:
-    particles_out_dir = make_dir(output_base_dir, f"{dataset_base}/hdf5/truth/particles")
-    trkhits_out_dir = make_dir(output_base_dir, f"{dataset_base}/hdf5/reco/tracker_hits")
-    tracks_out_dir = make_dir(output_base_dir, f"{dataset_base}/hdf5/reco/tracks")
+def _prepare_output_dirs(output_base_dir: Path, dataset_base: str, output_format: str = 'hdf5') -> tuple[Path, Path, Path]:
+    """
+    Prepare output directories for conversion results.
+    
+    Args:
+        output_base_dir: Base output directory
+        dataset_base: Dataset path (campaign/dataset/version)
+        output_format: Output format - 'hdf5' (default) or 'parquet'
+    
+    Returns:
+        Tuple of (particles_out_dir, trkhits_out_dir, tracks_out_dir)
+    """
+    format_subdir = output_format if output_format in ['hdf5', 'parquet'] else 'hdf5'
+    particles_out_dir = make_dir(output_base_dir, f"{dataset_base}/{format_subdir}/truth/particles")
+    trkhits_out_dir = make_dir(output_base_dir, f"{dataset_base}/{format_subdir}/reco/tracker_hits")
+    tracks_out_dir = make_dir(output_base_dir, f"{dataset_base}/{format_subdir}/reco/tracks")
     return particles_out_dir, trkhits_out_dir, tracks_out_dir
 
 
@@ -82,6 +94,7 @@ def _process_chunk_for_all(
     simhits_file: str,
     # new optional selection for tracks output
     tracks_columns_keep: list[str] | None = None,
+    output_format: str = 'hdf5',
 ) -> None:
     chunk_start_time = time.time()
     logger.info(f"Starting chunk processing for events {start_event}-{end_event}")
@@ -308,11 +321,14 @@ def _process_chunk_for_all(
     writing_start_time = time.time()
     expected_events = end_event - start_event + 1
     
+    # Determine file extension based on output format
+    file_ext = '.parquet' if output_format == 'parquet' else '.h5'
+    
     if "particles" in objects and particles_frames:
         particles_write_start = time.time()
         particles_all = pd.concat(particles_frames, ignore_index=True)
         particles_out = Path(particles_out_dir) / (
-            f"{dataset_name_dot}.truth.particles.events{start_event}-{end_event}.h5"
+            f"{dataset_name_dot}.truth.particles.events{start_event}-{end_event}{file_ext}"
         )
         processed_events_particles = len(seen_pairs_particles)
         if processed_events_particles != expected_events:
@@ -320,7 +336,7 @@ def _process_chunk_for_all(
                 f"Particles chunk events expected={expected_events}, processed={processed_events_particles}"
             )
         logger.info(f"Writing particles to: {particles_out} (rows={len(particles_all)})")
-        write_particles_with_selection(particles_all, str(particles_out), columns_keep=particles_columns_keep)
+        write_particles_with_selection(particles_all, str(particles_out), columns_keep=particles_columns_keep, output_format=output_format)
         if particles_out.exists():
             logger.info(f"Wrote particles file: {particles_out}")
         else:
@@ -332,7 +348,7 @@ def _process_chunk_for_all(
         digihits_write_start = time.time()
         digihits_all = pd.concat(digihits_frames, ignore_index=True)
         trkhits_out = Path(trkhits_out_dir) / (
-            f"{dataset_name_dot}.reco.tracker_hits.events{start_event}-{end_event}.h5"
+            f"{dataset_name_dot}.reco.tracker_hits.events{start_event}-{end_event}{file_ext}"
         )
         processed_events_hits = len(seen_pairs_hits)
         if processed_events_hits != expected_events:
@@ -340,7 +356,7 @@ def _process_chunk_for_all(
                 f"Tracker hits chunk events expected={expected_events}, processed={processed_events_hits}"
             )
         logger.info(f"Writing tracker hits to: {trkhits_out} (rows={len(digihits_all)})")
-        write_digihits_with_selection(digihits_all, str(trkhits_out), columns_keep=digihits_columns_keep)
+        write_digihits_with_selection(digihits_all, str(trkhits_out), columns_keep=digihits_columns_keep, output_format=output_format)
         if trkhits_out.exists():
             logger.info(f"Wrote tracker hits file: {trkhits_out}")
         else:
@@ -354,7 +370,7 @@ def _process_chunk_for_all(
         tracks_write_start = time.time()
         tracks_all = pd.concat(tracks_frames, ignore_index=True)
         tracks_out = Path(tracks_out_dir) / (
-            f"{dataset_name_dot}.reco.tracks.events{start_event}-{end_event}.h5"
+            f"{dataset_name_dot}.reco.tracks.events{start_event}-{end_event}{file_ext}"
         )
         processed_events_tracks = len(seen_pairs_tracks)
         if processed_events_tracks != expected_events:
@@ -362,7 +378,7 @@ def _process_chunk_for_all(
                 f"Tracks chunk events expected={expected_events}, processed={processed_events_tracks}"
             )
         logger.info(f"Writing tracks to: {tracks_out} (rows={len(tracks_all)})")
-        write_tracks_with_selection(tracks_all, str(tracks_out), columns_keep=tracks_columns_keep)
+        write_tracks_with_selection(tracks_all, str(tracks_out), columns_keep=tracks_columns_keep, output_format=output_format)
         if tracks_out.exists():
             logger.info(f"Wrote tracks file: {tracks_out}")
         else:
@@ -391,17 +407,21 @@ def convert_all(config: dict, chunk_index: int | None = None) -> None:
     chunk_size = int(config.get("chunk_size", 1000))
     run_size = int(config.get("run_size", 10))
     objects = _get_objects(config)
+    
+    # Extract output format from config (default to hdf5 for backward compatibility)
+    output_format = config.get("output_format", "hdf5")
 
     logger.debug(f"Input base directory: {input_base_dir}")
     logger.debug(f"Output base directory: {output_base_dir}")
+    logger.debug(f"Output format: {output_format}")
     logger.debug(f"Objects to convert: {objects}")
 
     start_time = time.time()
 
     run_dirs = get_run_paths(input_base_dir)
-    logger.info(f"Found {len(run_dirs)} runs. chunk_size={chunk_size}, run_size={run_size}, chunk_index={chunk_index}")
+    logger.info(f"Found {len(run_dirs)} runs. chunk_size={chunk_size}, run_size={run_size}, chunk_index={chunk_index}, output_format={output_format}")
 
-    particles_out_dir, trkhits_out_dir, tracks_out_dir = _prepare_output_dirs(output_base_dir, dataset_base)
+    particles_out_dir, trkhits_out_dir, tracks_out_dir = _prepare_output_dirs(output_base_dir, dataset_base, output_format)
 
     particles_columns_keep = config.get("particles_columns_keep")
     digihits_columns_keep = config.get("digihits_columns_keep")
@@ -444,6 +464,7 @@ def convert_all(config: dict, chunk_index: int | None = None) -> None:
             tracksummary_file=tracksummary_file,
             simhits_file=simhits_file,
             tracks_columns_keep=tracks_columns_keep,
+            output_format=output_format,
         ),
     )
 

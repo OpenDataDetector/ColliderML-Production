@@ -1,0 +1,64 @@
+# Example configuration for Parquet output
+# This shows how to enable Parquet format instead of HDF5
+
+campaign: "test_campaign"
+dataset: "test_dataset"
+version: "v1"
+
+common:
+  output_base_dir: "/path/to/output"
+
+# Processing parameters
+chunk_size: 100  # Number of events per output file
+run_size: 10     # Number of events per run directory
+
+# ============================================
+# OUTPUT FORMAT SELECTION (NEW!)
+# ============================================
+# Set to 'parquet' for Parquet output
+# Set to 'hdf5' or omit for HDF5 output (default)
+output_format: parquet  # <-- Change this to switch formats!
+
+# Objects to convert
+objects:
+  - particles
+  - tracker_hits
+  - tracks
+
+# Optional: Column selection (works with both formats)
+particles_columns_keep:
+  - particle_id
+  - pdg_id
+  - mass
+  - energy
+  - charge
+  - px
+  - py
+  - pz
+
+digihits_columns_keep:
+  - x
+  - y
+  - z
+  - time
+  - particle_id
+  - detector
+  - layer_id
+
+tracks_columns_keep:
+  - track_id
+  - num_hits
+  - chi2
+  - d0
+  - z0
+  - phi
+  - theta
+
+# Optional: Filtering parameters
+min_particle_energy: 0.1  # GeV
+min_tracker_hits: 3
+
+# File patterns for tracks
+tracks_csv_pattern: "event{:09d}-tracks_ambi.csv"
+tracksummary_file: "tracksummary_ambi.root"
+
