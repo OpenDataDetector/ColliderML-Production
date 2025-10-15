@@ -53,6 +53,10 @@ def run_k4odd_digitization(input_file, output_dir, config, logger):
     # Get number of events (default to all if not specified)
     events = getattr(config, 'events', -1)
     
+    # Get realistic digitization settings
+    apply_realistic_ecal_digi = getattr(config, 'apply_realistic_ecal_digi', 0)
+    apply_realistic_hcal_digi = getattr(config, 'apply_realistic_hcal_digi', 0)
+    
     # Convert paths to absolute
     input_file = input_file.resolve()
     output_file = (output_dir / "edm4hep_digitized.root").resolve()
@@ -61,6 +65,8 @@ def run_k4odd_digitization(input_file, output_dir, config, logger):
     logger.info(f"  Input:  {input_file}")
     logger.info(f"  Output: {output_file}")
     logger.info(f"  Events: {events if events > 0 else 'all'}")
+    logger.info(f"  Realistic ECAL digi: {apply_realistic_ecal_digi} (0=none, 1=silicon, 2=scintillator)")
+    logger.info(f"  Realistic HCAL digi: {apply_realistic_hcal_digi} (0=none, 1=scintillator)")
     
     # Build k4run command - environment is already set up by pipeline
     cmd = [
@@ -68,7 +74,9 @@ def run_k4odd_digitization(input_file, output_dir, config, logger):
         str(k4odd_script),
         f"--inputFile={input_file}",
         f"--outputFile={output_file}",
-        f"--events={events}"
+        f"--events={events}",
+        f"--applyRealisticEcalDigi={apply_realistic_ecal_digi}",
+        f"--applyRealisticHcalDigi={apply_realistic_hcal_digi}"
     ]
     
     logger.info(f"Running: {' '.join(cmd)}")

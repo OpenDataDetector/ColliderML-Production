@@ -1,7 +1,7 @@
 # Calorimeter Digitization Configuration - Single Electrons with Log-Uniform Energy
 campaign: "single_particle_pilot"
 dataset: "single_electron_loguniform"
-version: "v1"
+version: "v2"
 stage: "calo_digitization"
 
 job_config:
@@ -11,7 +11,11 @@ job_config:
   qos: "debug"
   execution_mode: "interactive"
 
-events: 10000
+events: 100
 seed: 42
+
+# Realistic digitization settings
+apply_realistic_ecal_digi: 1  # 0=none, 1=silicon, 2=scintillator
+apply_realistic_hcal_digi: 1  # 0=none, 1=scintillator
 
 debug_output_dir: "/global/cfs/cdirs/m4958/data/ColliderML/simulation/single_particle_pilot/single_electron_loguniform/v1/runs/0"
