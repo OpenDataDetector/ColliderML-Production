@@ -1,7 +1,7 @@
 # Calorimeter Digitization Configuration - Single Pions with Log-Uniform Energy
 campaign: "single_particle_pilot"
 dataset: "single_pion_loguniform"
-version: "v1"
+version: "v2"
 stage: "calo_digitization"
 
 job_config:
@@ -11,7 +11,7 @@ job_config:
   qos: "debug"
   execution_mode: "interactive"
 
-events: 10000
+events: 1000
 seed: 42
 
 # Realistic digitization settings
