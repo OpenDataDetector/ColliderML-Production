@@ -11,7 +11,7 @@ job_config:
   qos: "debug"
   execution_mode: "interactive"
 
-events: 100
+events: 1000
 seed: 42
 
 # Realistic digitization settings
