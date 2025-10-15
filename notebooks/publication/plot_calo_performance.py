@@ -58,8 +58,10 @@ def process_data(particles, digi_hits, pdg_code=11):
         pdg_code: PDG code to filter (default 11 for electrons)
     
     Returns:
-        combined_df: DataFrame with generator particles and calo energy
-        residual, relative_residual, pull: Series with computed quantities
+        combined_df: DataFrame with generator particles, calo energy, eta, and pt
+        residual: absolute energy residual
+        relative_residual: relative energy residual  
+        pull: energy pull distribution
     """
     # Extract generator particles (not created in simulation)
     generator_particles = particles[
@@ -78,7 +80,12 @@ def process_data(particles, digi_hits, pdg_code=11):
         how="inner"
     )
     
-    # Compute pt if not present
+    # Compute eta and pt if not present
+    if 'eta' not in combined.columns:
+        # Calculate eta using pseudorapidity formula
+        p = np.sqrt(combined['px']**2 + combined['py']**2 + combined['pz']**2)
+        combined['eta'] = 0.5 * np.log((p + combined['pz']) / (p - combined['pz']))
+    
     if 'pt' not in combined.columns:
         combined['pt'] = np.sqrt(combined['px']**2 + combined['py']**2)
     
@@ -106,9 +113,9 @@ def plot_energy_distribution(generator_particles, output_dir, config):
     counts, bins = np.histogram(energy_data, bins=log_bins)
     bin_centers = (bins[:-1] + bins[1:]) / 2
     bin_widths = bins[1:] - bins[:-1]
-    errors = np.sqrt(counts) / bin_widths
+    errors = np.sqrt(counts)
     
-    ax.errorbar(bin_centers, counts / bin_widths, yerr=errors, 
+    ax.errorbar(bin_centers, counts, xerr=bin_widths/2, yerr=errors, 
                 fmt='o', color='royalblue', capsize=2, markersize=3)
     ax.set_xlabel('Energy [GeV]')
     ax.set_ylabel('Events / GeV')
@@ -123,86 +130,98 @@ def plot_energy_distribution(generator_particles, output_dir, config):
 
 
 def plot_residuals_pulls(residual, relative_residual, pull, output_dir, config):
-    """Plot residual, relative residual, and pull distributions."""
-    fig, ax = plt.subplots(3, 1, figsize=(10, 15))
+    """Plot residual, relative residual, and pull distributions as separate plots."""
     
     # Plot 1: Absolute residual
+    fig, ax = plt.subplots(figsize=(10, 6))
     bins_residual = np.logspace(
         np.log10(residual[residual > 0].min()), 
         np.log10(residual.max()), 
-        50
+        30
     )
     counts, bins = np.histogram(residual, bins=bins_residual)
     bin_centers = (bins[:-1] + bins[1:]) / 2
     bin_widths = bins[1:] - bins[:-1]
     errors = np.sqrt(counts)
     
-    ax[0].errorbar(bin_centers, counts, xerr=bin_widths/2, yerr=errors, 
-                   fmt='o', color='royalblue', capsize=2, markersize=3, 
-                   elinewidth=1, markeredgewidth=1)
-    ax[0].set_xlabel('Energy Residual [GeV]')
-    ax[0].set_ylabel('Events')
-    ax[0].set_xscale('log')
-    ax[0].grid(True, alpha=0.3)
-    atl.atlasify("Simulation", r"$|E_{\mathrm{gen}} - E_{\mathrm{calo}}|$", 
-                 axes=ax[0], enlarge=1.0)
+    ax.errorbar(bin_centers, counts, xerr=bin_widths/2, yerr=errors, 
+                fmt='o', color='royalblue', capsize=2, markersize=3, 
+                elinewidth=1, markeredgewidth=1)
+    ax.set_xlabel('Energy Residual [GeV]')
+    ax.set_ylabel('Events')
+    ax.set_xscale('log')
+    ax.grid(True, alpha=0.3)
+    atl.atlasify("Simulation", r"$|E_{\mathrm{gen}} - E_{\mathrm{calo}}|$", enlarge=1.0)
+    
+    plt.tight_layout()
+    plt.savefig(output_dir / "residual_absolute.pdf", dpi=300, bbox_inches='tight')
+    plt.savefig(output_dir / "residual_absolute.png", dpi=300, bbox_inches='tight')
+    plt.close()
+    print(f"  Saved residual_absolute.pdf")
     
     # Plot 2: Relative residual
+    fig, ax = plt.subplots(figsize=(10, 6))
     bins_relative = np.logspace(
         np.log10(relative_residual[relative_residual > 0].min()), 
         np.log10(relative_residual.max()), 
-        50
+        30
     )
     counts, bins = np.histogram(relative_residual, bins=bins_relative)
     bin_centers = (bins[:-1] + bins[1:]) / 2
     bin_widths = bins[1:] - bins[:-1]
     errors = np.sqrt(counts)
     
-    ax[1].errorbar(bin_centers, counts, xerr=bin_widths/2, yerr=errors, 
-                   fmt='o', color='royalblue', capsize=2, markersize=3, 
-                   elinewidth=1, markeredgewidth=1)
-    ax[1].set_xlabel('Relative Energy Residual')
-    ax[1].set_ylabel('Events')
-    ax[1].set_xscale('log')
-    ax[1].grid(True, alpha=0.3)
-    atl.atlasify("Simulation", r"$|E_{\mathrm{gen}} - E_{\mathrm{calo}}| / E_{\mathrm{gen}}$", 
-                 axes=ax[1], enlarge=1.0)
+    ax.errorbar(bin_centers, counts, xerr=bin_widths/2, yerr=errors, 
+                fmt='o', color='royalblue', capsize=2, markersize=3, 
+                elinewidth=1, markeredgewidth=1)
+    ax.set_xlabel('Relative Energy Residual')
+    ax.set_ylabel('Events')
+    ax.set_xscale('log')
+    ax.grid(True, alpha=0.3)
+    atl.atlasify("Simulation", r"$|E_{\mathrm{gen}} - E_{\mathrm{calo}}| / E_{\mathrm{gen}}$", enlarge=1.0)
+    
+    plt.tight_layout()
+    plt.savefig(output_dir / "residual_relative.pdf", dpi=300, bbox_inches='tight')
+    plt.savefig(output_dir / "residual_relative.png", dpi=300, bbox_inches='tight')
+    plt.close()
+    print(f"  Saved residual_relative.pdf")
     
     # Plot 3: Pull distribution
-    bins_pull = np.linspace(-3, 3, 50)
+    fig, ax = plt.subplots(figsize=(10, 6))
+    bins_pull = np.linspace(-2, 2, 30)
     counts, bins = np.histogram(pull, bins=bins_pull)
     bin_centers = (bins[:-1] + bins[1:]) / 2
     bin_widths = bins[1:] - bins[:-1]
     errors = np.sqrt(counts)
     
-    ax[2].errorbar(bin_centers, counts, xerr=bin_widths/2, yerr=errors, 
-                   fmt='o', color='royalblue', capsize=2, markersize=3, 
-                   elinewidth=1, markeredgewidth=1)
-    ax[2].set_xlabel('Pull')
-    ax[2].set_ylabel('Events')
-    ax[2].set_xlim(-3, 3)
-    ax[2].grid(True, alpha=0.3)
-    atl.atlasify("Simulation", r"$(E_{\mathrm{gen}} - E_{\mathrm{calo}}) / \sqrt{E_{\mathrm{calo}}}$", 
-                 axes=ax[2], enlarge=1.0)
+    ax.errorbar(bin_centers, counts, xerr=bin_widths/2, yerr=errors, 
+                fmt='o', color='royalblue', capsize=2, markersize=3, 
+                elinewidth=1, markeredgewidth=1)
+    ax.set_xlabel('Energy Pull')
+    ax.set_ylabel('Events')
+    ax.set_xlim(-2, 2)
+    ax.grid(True, alpha=0.3)
+    atl.atlasify("Simulation", r"$(E_{\mathrm{gen}} - E_{\mathrm{calo}}) / \sqrt{E_{\mathrm{calo}}}$", enlarge=1.0)
     
     plt.tight_layout()
-    plt.savefig(output_dir / "residuals_pulls.pdf", dpi=300, bbox_inches='tight')
-    plt.savefig(output_dir / "residuals_pulls.png", dpi=300, bbox_inches='tight')
+    plt.savefig(output_dir / "pull_distribution.pdf", dpi=300, bbox_inches='tight')
+    plt.savefig(output_dir / "pull_distribution.png", dpi=300, bbox_inches='tight')
     plt.close()
-    print(f"  Saved residuals_pulls.pdf")
+    print(f"  Saved pull_distribution.pdf")
 
 
 def plot_profiles(combined, relative_residual, output_dir, config):
-    """Plot profile plots: mean relative residual vs eta and pt."""
-    fig, ax = plt.subplots(1, 2, figsize=(16, 6))
+    """Plot profile plots: mean relative residual vs eta and pt as separate plots."""
     
     # Profile 1: Mean relative residual vs eta
+    fig, ax = plt.subplots(figsize=(10, 6))
     eta_bins = np.linspace(
         combined['eta'].min(), 
         combined['eta'].max(), 
         config['plot_params']['profile_nbins']
     )
     eta_bin_centers = []
+    eta_bin_widths = []
     eta_mean_residuals = []
     eta_errors = []
     
@@ -210,27 +229,35 @@ def plot_profiles(combined, relative_residual, output_dir, config):
         mask = (combined['eta'] >= eta_bins[i]) & (combined['eta'] < eta_bins[i+1])
         if mask.sum() > 0:
             eta_bin_centers.append((eta_bins[i] + eta_bins[i+1]) / 2)
+            eta_bin_widths.append(eta_bins[i+1] - eta_bins[i])
             residuals_in_bin = relative_residual[mask]
             eta_mean_residuals.append(residuals_in_bin.mean())
             eta_errors.append(residuals_in_bin.std() / np.sqrt(len(residuals_in_bin)))
     
-    ax[0].errorbar(eta_bin_centers, eta_mean_residuals, yerr=eta_errors,
-                   fmt='o', color='royalblue', capsize=3, markersize=5,
-                   elinewidth=1.5, markeredgewidth=1.5)
-    ax[0].axhline(y=0, color='gray', linestyle='--', alpha=0.5)
-    ax[0].set_xlabel(r'$\eta$')
-    ax[0].set_ylabel(r'Mean $|E_{\mathrm{gen}} - E_{\mathrm{calo}}| / E_{\mathrm{gen}}$')
-    ax[0].grid(True, alpha=0.3)
-    atl.atlasify("Simulation", config['plot_params']['profile_label'], 
-                 axes=ax[0], enlarge=1.0)
+    ax.errorbar(eta_bin_centers, eta_mean_residuals, xerr=[w/2 for w in eta_bin_widths], yerr=eta_errors,
+                fmt='o', color='royalblue', capsize=3, markersize=5,
+                elinewidth=1.5, markeredgewidth=1.5)
+    ax.axhline(y=0, color='gray', linestyle='--', alpha=0.5)
+    ax.set_xlabel(r'$\eta$')
+    ax.set_ylabel(r'Mean $|E_{\mathrm{gen}} - E_{\mathrm{calo}}| / E_{\mathrm{gen}}$')
+    ax.grid(True, alpha=0.3)
+    atl.atlasify("Simulation", config['plot_params']['profile_label'], enlarge=1.0)
+    
+    plt.tight_layout()
+    plt.savefig(output_dir / "profile_eta.pdf", dpi=300, bbox_inches='tight')
+    plt.savefig(output_dir / "profile_eta.png", dpi=300, bbox_inches='tight')
+    plt.close()
+    print(f"  Saved profile_eta.pdf")
     
     # Profile 2: Mean relative residual vs pt
+    fig, ax = plt.subplots(figsize=(10, 6))
     pt_bins = np.logspace(
         np.log10(combined['pt'].min()), 
         np.log10(combined['pt'].max()), 
         config['plot_params']['profile_nbins']
     )
     pt_bin_centers = []
+    pt_bin_widths = []
     pt_mean_residuals = []
     pt_errors = []
     
@@ -239,26 +266,26 @@ def plot_profiles(combined, relative_residual, output_dir, config):
         if mask.sum() > 0:
             # Use geometric mean for bin center in log space
             pt_bin_centers.append(np.sqrt(pt_bins[i] * pt_bins[i+1]))
+            pt_bin_widths.append(pt_bins[i+1] - pt_bins[i])
             residuals_in_bin = relative_residual[mask]
             pt_mean_residuals.append(residuals_in_bin.mean())
             pt_errors.append(residuals_in_bin.std() / np.sqrt(len(residuals_in_bin)))
     
-    ax[1].errorbar(pt_bin_centers, pt_mean_residuals, yerr=pt_errors,
-                   fmt='o', color='royalblue', capsize=3, markersize=5,
-                   elinewidth=1.5, markeredgewidth=1.5)
-    ax[1].axhline(y=0, color='gray', linestyle='--', alpha=0.5)
-    ax[1].set_xlabel(r'$p_T$ [GeV]')
-    ax[1].set_ylabel(r'Mean $|E_{\mathrm{gen}} - E_{\mathrm{calo}}| / E_{\mathrm{gen}}$')
-    ax[1].set_xscale('log')
-    ax[1].grid(True, alpha=0.3)
-    atl.atlasify("Simulation", config['plot_params']['profile_label'], 
-                 axes=ax[1], enlarge=1.0)
+    ax.errorbar(pt_bin_centers, pt_mean_residuals, xerr=[w/2 for w in pt_bin_widths], yerr=pt_errors,
+                fmt='o', color='royalblue', capsize=3, markersize=5,
+                elinewidth=1.5, markeredgewidth=1.5)
+    ax.axhline(y=0, color='gray', linestyle='--', alpha=0.5)
+    ax.set_xlabel(r'$p_T$ [GeV]')
+    ax.set_ylabel(r'Mean $|E_{\mathrm{gen}} - E_{\mathrm{calo}}| / E_{\mathrm{gen}}$')
+    ax.set_xscale('log')
+    ax.grid(True, alpha=0.3)
+    atl.atlasify("Simulation", config['plot_params']['profile_label'], enlarge=1.0)
     
     plt.tight_layout()
-    plt.savefig(output_dir / "profiles_eta_pt.pdf", dpi=300, bbox_inches='tight')
-    plt.savefig(output_dir / "profiles_eta_pt.png", dpi=300, bbox_inches='tight')
+    plt.savefig(output_dir / "profile_pt.pdf", dpi=300, bbox_inches='tight')
+    plt.savefig(output_dir / "profile_pt.png", dpi=300, bbox_inches='tight')
     plt.close()
-    print(f"  Saved profiles_eta_pt.pdf")
+    print(f"  Saved profile_pt.pdf")
 
 
 def main():

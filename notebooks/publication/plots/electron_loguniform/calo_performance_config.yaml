@@ -34,12 +34,12 @@ detector_params:
 
 plot_params:
   # Energy distribution plot
-  energy_nbins: 51
+  energy_nbins: 30
   energy_label: "Single-electron, log-uniform energy"
   
   # Profile plots
   profile_nbins: 20
-  profile_label: "Single electron"
+  profile_label: "Single electron, relative residual"
   
   # General plot settings
   dpi: 300
