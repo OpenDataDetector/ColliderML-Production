@@ -7,7 +7,7 @@ job_config:
   # Number of nodes will be calculated as n_runs / runs_per_node
   n_runs: 100  # Number of jobs to submit
   runs_per_node: 16  # Number of runs per node
-  time_limit: "06:00:00"  # Time limit per job
+  time_limit: "03:00:00"  # Time limit per job
   qos: "regular"
   depends_on: 
   execution_mode: "multi_node_slurm"
