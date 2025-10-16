@@ -10,13 +10,13 @@ stage: "digitization"  # One of: generation, merge_smear, simulation, digitizati
 
 # --- Job Configuration ---
 job_config:
-  # n_runs: 999  # Number of jobs to submit
-  n_runs: 64  # Number of jobs to submit
+  n_runs: 999  # Number of jobs to submit
+  # n_runs: 64  # Number of jobs to submit
   runs_per_node: 64  # Number of runs per node
-  # time_limit: "06:00:00"  # Time limit per job
-  # qos: "regular"
-  time_limit: "00:30:00"  # Time limit per job
-  qos: "debug"
+  time_limit: "08:00:00"  # Time limit per job
+  qos: "regular"
+  # time_limit: "00:30:00"  # Time limit per job
+  # qos: "debug"
   execution_mode: "multi_node_slurm"
   # execution_mode: "interactive"
   depends_on:
@@ -26,7 +26,7 @@ validation_config:
   enabled: True
 
 # --- Stage-specific Configurations ---
-events: 8  # Number of events per run, total number of events will be n_runs * events
+events: 128  # Number of events per run, total number of events will be n_runs * events
 threads: 1
 digi: True
 reco: True
