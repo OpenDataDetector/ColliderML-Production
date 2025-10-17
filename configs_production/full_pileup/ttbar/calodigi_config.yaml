@@ -5,14 +5,14 @@ version: "v1"
 stage: "calo_digitization"
 
 job_config:
-  n_runs: 8
-  runs_per_node: 8
+  n_runs: 64
+  runs_per_node: 64
   time_limit: "00:30:00"
   qos: "debug"
   # execution_mode: "interactive"
   execution_mode: "multi_node_slurm"
 
-events: 5
+events: 10
 seed: 42
 
 # Realistic digitization settings
