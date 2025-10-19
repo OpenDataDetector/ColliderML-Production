@@ -109,6 +109,12 @@ def parse_args():
         default=None,
     )
     parser.add_argument(
+        "--transverse",
+        help="Treat energy as transverse momentum (pt) instead of total momentum (p)",
+        action="store_true",
+        default=None,
+    )
+    parser.add_argument(
         "--eta-min",
         help="Minimum pseudorapidity",
         type=float,
@@ -154,6 +160,7 @@ def generate_particle_gun_events(output_dir, config, logger):
     energy_min = getattr(config, 'energy_min', 1.0) * u.GeV
     energy_max = getattr(config, 'energy_max', 100.0) * u.GeV
     log_uniform = getattr(config, 'log_uniform', False)
+    transverse = getattr(config, 'transverse', False)  # Default: total momentum
     
     # Angular range
     eta_min = getattr(config, 'eta_min', -2.5)
@@ -167,6 +174,7 @@ def generate_particle_gun_events(output_dir, config, logger):
     logger.info(f"Generating {n_events} particle gun events")
     logger.info(f"  Particle: {particle_name} ({particle_pdg})")
     logger.info(f"  Energy: [{energy_min/u.GeV}, {energy_max/u.GeV}] GeV")
+    logger.info(f"  Momentum type: {'Transverse (pt)' if transverse else 'Total (p)'}")
     logger.info(f"  Log-uniform: {log_uniform}")
     logger.info(f"  Eta range: [{eta_min}, {eta_max}]")
     logger.info(f"  Phi range: [{phi_min}, {phi_max}]")
@@ -191,6 +199,7 @@ def generate_particle_gun_events(output_dir, config, logger):
                 particles=acts.examples.ParametricParticleGenerator(
                     p=(energy_min, energy_max),
                     pLogUniform=log_uniform,
+                    pTransverse=transverse,
                     eta=(eta_min, eta_max),
                     phi=(phi_min, phi_max),
                     etaUniform=True,

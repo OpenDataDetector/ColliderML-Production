@@ -39,6 +39,7 @@ def process_event_for_particles(
     preloaded_parents_df: pd.DataFrame | None = None,
     min_particle_energy: float | None = None,
     min_tracker_hits: int | None = None,
+    min_calo_hits: int | None = None,
 ) -> pd.DataFrame:
     """
     Process particle data for a single event.
@@ -136,6 +137,14 @@ def process_event_for_particles(
             except Exception:
                 pass
 
+        # Apply configurable minimum calo hits filter if available
+        if min_calo_hits is not None and "num_calo_hits" in particles_df.columns:
+            try:
+                particle_cut_mask = particle_cut_mask & (particles_df["num_calo_hits"] >= int(min_calo_hits))
+                logger.debug(f"Event {event_id}: {particle_cut_mask.sum()} particles after min_calo_hits filter ")
+            except Exception:
+                pass
+
         # Also ensure all generator particles are included
         particle_cut_mask = particle_cut_mask | (particles_df["created_in_simulation"] == False)
         
@@ -182,6 +191,7 @@ def build_particles_df_with_parents_and_vertex(
     *,
     min_particle_energy: float | None = None,
     min_tracker_hits: int | None = None,
+    min_calo_hits: int | None = None,
 ) -> pd.DataFrame:
     """
     Build a per-run particles dataframe using preloaded batch collections, with:
@@ -216,6 +226,7 @@ def build_particles_df_with_parents_and_vertex(
             preloaded_parents_df=ev_parents,
             min_particle_energy=min_particle_energy,
             min_tracker_hits=min_tracker_hits,
+            min_calo_hits=min_calo_hits,
         )
         if not ev_df.empty:
             frames.append(ev_df)

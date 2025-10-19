@@ -53,7 +53,7 @@ stages:
   calo_digitization:
     description: "Validate calorimeter digitization outputs"
     file_patterns:
-      - pattern: "calo_digitized.root"
+      - pattern: "edm4hep_digitized.root"
         description: "Calorimeter cells after digitization"
         min_size_mb: 1.0
         median_threshold_pct: 0.8
