@@ -1,6 +1,6 @@
 # Particle Gun Configuration - Single Muons with Uniform Energy
 campaign: "single_particle_pilot"
-dataset: "single_muon_10GeV"
+dataset: "single_muon_1GeV"
 version: "v1"
 stage: "particlegun_generation"
 
@@ -15,8 +15,8 @@ events: 10000
 seed: 42
 
 particle: "e-"
-energy_min: 10.0
-energy_max: 10.0
+energy_min: 1.0
+energy_max: 1.0
 log_uniform: false
 transverse: true  # If true, energy is transverse momentum (pt); if false, total momentum (p)
 

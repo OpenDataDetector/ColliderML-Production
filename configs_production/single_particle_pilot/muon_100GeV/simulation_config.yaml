@@ -1,6 +1,6 @@
 # Example configuration
 campaign: "single_particle_pilot"
-dataset: "single_muon_10GeV"
+dataset: "single_muon_100GeV"
 version: "v1"
 stage: "simulation"  # One of: generation, merge_smear, simulation, digitization
 job_config:
