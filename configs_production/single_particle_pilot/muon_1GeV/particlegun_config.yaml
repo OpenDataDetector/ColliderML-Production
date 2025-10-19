@@ -14,7 +14,7 @@ job_config:
 events: 10000
 seed: 42
 
-particle: "e-"
+particle: "mu-"
 energy_min: 1.0
 energy_max: 1.0
 log_uniform: false
