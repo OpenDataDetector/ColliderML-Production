@@ -63,10 +63,7 @@ def optimize_dtypes_for_parquet(df: pd.DataFrame) -> pd.DataFrame:
 def group_by_event_to_lists(df: pd.DataFrame) -> pd.DataFrame:
     """
     Group DataFrame by event_id and aggregate all other columns into lists.
-    
-    This creates the structure needed for Parquet:
-    - One row per event
-    - All per-particle/hit columns become variable-length lists
+    Uses PyArrow for efficient nested array handling.
     
     Args:
         df: Input DataFrame with event_id column and per-particle/hit data
@@ -81,10 +78,17 @@ def group_by_event_to_lists(df: pd.DataFrame) -> pd.DataFrame:
     if 'event_id' not in df.columns:
         raise ValueError("DataFrame must have 'event_id' column for grouping")
     
-    # Group by event_id and aggregate all other columns to lists
-    grouped = df.groupby('event_id', as_index=False).agg(list)
+    # Use PyArrow for efficient nested array handling
+    table = pa.Table.from_pandas(df)
     
+    # Group by event_id - creates proper Arrow list arrays
+    grouped_table = table.group_by('event_id').aggregate([
+        (col, 'list') for col in table.column_names if col != 'event_id'
+    ])
+    
+    grouped = grouped_table.to_pandas()
     logger.debug(f"Grouped {len(df)} rows into {len(grouped)} events")
+    
     return grouped
 
 
