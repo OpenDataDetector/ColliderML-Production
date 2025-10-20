@@ -379,8 +379,8 @@ def main():
         except subprocess.CalledProcessError:
             logger.warning("Could not determine git branch, continuing...")
 
-    # --- 3. Perform Git Commit (if in git repo) ---
-    # For multi-config, we commit once and save each config to its respective directory
+    # --- 3. Perform Git Commit and Save Configs ---
+    # Git commit is performed once, but ALL configs are ALWAYS saved to their directories
     processed_config_paths = []
     if git_repo_path:
         # Perform git commit once using first config
@@ -392,29 +392,43 @@ def main():
             sys.exit(1)
         processed_config_paths.append(first_processed_config_path)
         logger.info("Git commit successful.")
-        logger.info(f"First config saved to: {first_processed_config_path}")
+        logger.info(f"Config 1/{len(configs)} saved to: {first_processed_config_path}")
         
-        # For additional configs (if multi-config), save config snapshots to their directories
+        # For additional configs (if multi-config), ALWAYS save config snapshots to their directories
         if len(configs) > 1:
+            logger.info(f"Saving {len(configs)-1} additional config(s)...")
             for i in range(1, len(configs)):
                 cfg = configs[i]
                 cfg_path = args.configs[i]
-                # Save config snapshot without git commit (already done)
+                # Always save config snapshot (git commit already done for repo)
                 output_version_dir = cli_utils.get_version_directory(cfg)
                 output_version_dir.mkdir(parents=True, exist_ok=True)
                 config_snapshot_dir = output_version_dir / "configs"
                 config_snapshot_dir.mkdir(parents=True, exist_ok=True)
                 logged_config_path = config_snapshot_dir / Path(cfg_path).name
                 
-                # Create clean copy without env_setup
+                # Create clean copy without env_setup and ALWAYS write it
                 clean_config = {k: v for k, v in cfg.items() if k != 'env_setup'}
                 with open(logged_config_path, 'w') as f_out:
                     yaml.dump(clean_config, f_out, default_flow_style=False, sort_keys=False)
                 processed_config_paths.append(logged_config_path)
-                logger.info(f"Config {i+1} saved to: {logged_config_path}")
+                logger.info(f"Config {i+1}/{len(configs)} saved to: {logged_config_path}")
     else:
-        # No git repo, use original config paths
-        processed_config_paths = args.configs
+        # No git repo - still save configs to their target locations
+        logger.warning("No git repository found. Saving configs without git tracking.")
+        for i, (cfg, cfg_path) in enumerate(zip(configs, args.configs)):
+            output_version_dir = cli_utils.get_version_directory(cfg)
+            output_version_dir.mkdir(parents=True, exist_ok=True)
+            config_snapshot_dir = output_version_dir / "configs"
+            config_snapshot_dir.mkdir(parents=True, exist_ok=True)
+            logged_config_path = config_snapshot_dir / Path(cfg_path).name
+            
+            # Create clean copy without env_setup and ALWAYS write it
+            clean_config = {k: v for k, v in cfg.items() if k != 'env_setup'}
+            with open(logged_config_path, 'w') as f_out:
+                yaml.dump(clean_config, f_out, default_flow_style=False, sort_keys=False)
+            processed_config_paths.append(logged_config_path)
+            logger.info(f"Config {i+1}/{len(configs)} saved to: {logged_config_path}")
 
     # --- 4. Determine Execution Mode --- 
     # Priority: CLI arg > config file > default (e.g., distributed_slurm)
