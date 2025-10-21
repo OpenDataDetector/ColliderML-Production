@@ -29,6 +29,8 @@ stages:
         median_threshold_pct: 0.8
         required: true
 
+
+
   # Stage 3: Pythia Hadronization + Pileup Merging
   pythia_generation:
     description: "Validate Pythia generation and merged events"
