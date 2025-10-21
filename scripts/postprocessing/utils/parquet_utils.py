@@ -63,7 +63,10 @@ def optimize_dtypes_for_parquet(df: pd.DataFrame) -> pd.DataFrame:
 def group_by_event_to_lists(df: pd.DataFrame) -> pd.DataFrame:
     """
     Group DataFrame by event_id and aggregate all other columns into lists.
-    Uses PyArrow for efficient nested array handling.
+    Uses pandas groupby for simplicity and correct handling of nested lists.
+    
+    For columns that already contain lists (like hit_ids), this creates nested lists:
+    - hit_ids: list[int] per row → list[list[int]] per event
     
     Args:
         df: Input DataFrame with event_id column and per-particle/hit data
@@ -78,15 +81,28 @@ def group_by_event_to_lists(df: pd.DataFrame) -> pd.DataFrame:
     if 'event_id' not in df.columns:
         raise ValueError("DataFrame must have 'event_id' column for grouping")
     
-    # Use PyArrow for efficient nested array handling
-    table = pa.Table.from_pandas(df)
+    # Get the original column names (excluding event_id)
+    original_columns = [col for col in df.columns if col != 'event_id']
     
-    # Group by event_id - creates proper Arrow list arrays
-    grouped_table = table.group_by('event_id').aggregate([
-        (col, 'list') for col in table.column_names if col != 'event_id'
-    ])
+    # Use pandas groupby with list aggregation
+    # This correctly handles both scalar columns and columns that already contain lists
+    grouped = df.groupby('event_id', as_index=False).agg(list)
     
-    grouped = grouped_table.to_pandas()
+    # Rename columns to remove any suffixes that pandas might add
+    # Build rename dict: map any modified column names back to originals
+    rename_dict = {}
+    for orig_col in original_columns:
+        # Find the column in grouped that corresponds to this original column
+        # It might be 'col' or 'col_list' or similar
+        for grouped_col in grouped.columns:
+            if grouped_col != 'event_id' and (grouped_col == orig_col or grouped_col.startswith(orig_col)):
+                if grouped_col != orig_col:
+                    rename_dict[grouped_col] = orig_col
+                break
+    
+    if rename_dict:
+        grouped = grouped.rename(columns=rename_dict)
+    
     logger.debug(f"Grouped {len(df)} rows into {len(grouped)} events")
     
     return grouped
