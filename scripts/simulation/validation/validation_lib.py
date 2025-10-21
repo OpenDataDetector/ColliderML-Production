@@ -301,6 +301,12 @@ def validate_stage(
         for run_id, reasons in failure_reasons.items()
     }
     
+    # Create command-ready format for re-running failed runs
+    failed_run_ids_sorted = sorted(list(failed_runs), key=int)
+    rerun_command = ""
+    if failed_run_ids_sorted:
+        rerun_command = f"--run-list {' '.join(map(str, failed_run_ids_sorted))}"
+    
     result = {
         "stage": stage,
         "status": status,
@@ -308,7 +314,8 @@ def validate_stage(
         "successful_runs": successful_runs_count,
         "failed_runs": failed_runs_count,
         "failure_rate": failure_rate,
-        "failed_run_ids": sorted(list(failed_runs), key=int),
+        "failed_run_ids": failed_run_ids_sorted,
+        "rerun_command": rerun_command,
         "failure_reasons": formatted_failure_reasons,
         "statistics": pattern_statistics
     }
@@ -327,6 +334,10 @@ def validate_stage(
         logger.info(f"\nFailed runs: {', '.join(sorted(list(failed_runs), key=int)[:20])}")
         if len(failed_runs) > 20:
             logger.info(f"  ... and {len(failed_runs) - 20} more")
+        
+        # Show rerun command
+        logger.info(f"\nTo re-run failed runs only:")
+        logger.info(f"  {rerun_command}")
     
     return result
 

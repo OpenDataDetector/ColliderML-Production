@@ -13,6 +13,16 @@ stages:
         check_type: "exists"
         required: true
 
+  # Stage 1a: Particle Gun Generation
+  particlegun_generation:
+    description: "Validate particle gun generation outputs (HepMC3 files)"
+    file_patterns:
+      - pattern: "events.hepmc3"
+        description: "Particle gun events"
+        min_size_mb: 0.01
+        median_threshold_pct: 0.8
+        required: true
+        
   # Stage 2: Event Generation (MadGraph)
   generation:
     description: "Validate event generation outputs (HepMC3 files)"
@@ -28,8 +38,6 @@ stages:
         min_size_mb: 0.1
         median_threshold_pct: 0.8
         required: true
-
-
 
   # Stage 3: Pythia Hadronization + Pileup Merging
   pythia_generation:
