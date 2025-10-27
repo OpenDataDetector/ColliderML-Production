@@ -66,7 +66,8 @@ def _prepare_output_dirs(output_base_dir: Path, dataset_base: str, output_format
     particles_out_dir = make_dir(output_base_dir, f"{dataset_base}/{format_subdir}/truth/particles")
     trkhits_out_dir = make_dir(output_base_dir, f"{dataset_base}/{format_subdir}/reco/tracker_hits")
     tracks_out_dir = make_dir(output_base_dir, f"{dataset_base}/{format_subdir}/reco/tracks")
-    return particles_out_dir, trkhits_out_dir, tracks_out_dir
+    calo_out_dir = make_dir(output_base_dir, f"{dataset_base}/{format_subdir}/reco/calo_hits")
+    return particles_out_dir, trkhits_out_dir, tracks_out_dir, calo_out_dir
 
 
 def _process_chunk_for_all(
