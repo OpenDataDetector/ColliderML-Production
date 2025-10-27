@@ -13,12 +13,12 @@ job_config:
   n_runs: 999  # Number of jobs to submit
   # n_runs: 64  # Number of jobs to submit
   runs_per_node: 64  # Number of runs per node
-  time_limit: "08:00:00"  # Time limit per job
-  qos: "regular"
-  # time_limit: "00:30:00"  # Time limit per job
-  # qos: "debug"
-  execution_mode: "multi_node_slurm"
-  # execution_mode: "interactive"
+  # time_limit: "08:00:00"  # Time limit per job
+  # qos: "regular"
+  time_limit: "00:30:00"  # Time limit per job
+  qos: "debug"
+  # execution_mode: "multi_node_slurm"
+  execution_mode: "interactive"
   depends_on:
 
 # --- Validation Configuration ---
@@ -42,4 +42,4 @@ output_all_particles: True
 digi_config: /global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml_dev/scripts/simulation/odd-full-geo-digi-config.json
 
 # --- Debugging Commands ---
-# debug_output_dir: /global/cfs/cdirs/m4958/data/ColliderML/simulation/full_pileup/ttbar/v1/runs/1
+debug_output_dir: /global/cfs/cdirs/m4958/data/ColliderML/simulation/full_pileup/ttbar/v1/runs/1
