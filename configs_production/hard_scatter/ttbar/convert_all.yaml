@@ -77,6 +77,7 @@ tracks_columns_keep:
   - "phi"
   - "theta"
   - "qop"
+  - "majority_particle_id"
 
 calo_columns_keep:
   - "event_id"
