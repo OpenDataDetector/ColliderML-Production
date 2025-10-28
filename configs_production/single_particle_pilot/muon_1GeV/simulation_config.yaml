@@ -9,7 +9,8 @@ job_config:
   runs_per_node: 1  # Number of runs per node
   time_limit: "00:30:00"  # Time limit per job
   qos: "debug"
-  execution_mode: "multi_node_slurm"
+  # execution_mode: "multi_node_slurm"
+  execution_mode: "interactive"
 
 validation_config:
 
@@ -20,5 +21,5 @@ input_filename: events.hepmc3
 minimalKineticEnergy: 0.1  # Minimum kinetic energy in GeV to register in truth
 truthParticleHandler: "Geant4FullTruthParticleHandler"
 
-# debug_output_dir: "/global/cfs/cdirs/m4958/data/ColliderML/public/single_particle_pilot/single_electron/v1/runs/0"
+debug_output_dir: "/global/cfs/cdirs/m4958/data/ColliderML/public/single_particle_pilot/single_muon_1GeV/v2/runs/0"
 
