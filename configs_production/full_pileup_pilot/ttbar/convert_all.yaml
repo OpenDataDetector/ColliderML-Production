@@ -76,6 +76,7 @@ tracks_columns_keep:
   - "phi"
   - "theta"
   - "qop"
+  - "majority_particle_id"
 
 # Processing parameters
 max_chunks: 1

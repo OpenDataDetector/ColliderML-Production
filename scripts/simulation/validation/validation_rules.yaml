@@ -111,11 +111,11 @@ stages:
 
   # Stage 7: HDF5 Conversion
   convert_all:
-    description: "Validate HDF5 conversion outputs"
+    description: "Validate Parquet conversion outputs"
     file_patterns:
-      - pattern: "*.h5"
-        description: "HDF5 files"
-        min_size_mb: 1.0
+      - pattern: "*.parquet"
+        description: "Parquet files"
+        min_size_mb: 0.1
         median_threshold_pct: 0.8
         required: true
 
