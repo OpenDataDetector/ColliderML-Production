@@ -61,9 +61,41 @@ Each script accepts the same optional arguments as `convert_all.py`.
 
 ### Converting Efficiency Graphs
 
+Efficiency histograms (TEfficiency objects) need to be converted to TGraphAsymmErrors + TTrees so they can be read by uproot.
+
+#### Single File Conversion
+
 ```bash
 root -l -b -q 'convert_eff_to_graphs.C+("/pscratch/sd/d/danieltm/ColliderML/simulation/full_pileup_mini_pilot/ttbar/v6/runs/0/performance_finding_ckf.root","/pscratch/sd/d/danieltm/ColliderML/simulation/full_pileup_mini_pilot/ttbar/v6/runs/0/performance_finding_ckf_graphs.root","trackeff_vs_pT,trackeff_vs_eta")'
 ```
+
+#### Batch Conversion
+
+To convert all efficiency ROOT files matching a pattern across multiple run directories:
+
+```bash
+# Convert all performance_finding_ckf.root files in a dataset
+python batch_convert_efficiency_graphs.py /path/to/dataset
+
+# Dry run to preview what would be processed
+python batch_convert_efficiency_graphs.py /path/to/dataset --dry-run
+
+# Convert with custom pattern
+python batch_convert_efficiency_graphs.py /path/to/dataset --pattern "performance_*.root"
+
+# Specify additional efficiency objects to convert
+python batch_convert_efficiency_graphs.py /path/to/dataset --keys "trackeff_vs_pT,trackeff_vs_eta,trackeff_vs_phi"
+
+# Control parallelism (default: auto-detect, max 16)
+python batch_convert_efficiency_graphs.py /path/to/dataset --workers 8
+```
+
+The batch script will:
+- Recursively find all matching ROOT files
+- Create output files with `_graphs` suffix in the same directory
+- Skip files where output already exists (use `--no-skip-existing` to reconvert)
+- Process files in parallel for speed
+- Provide progress tracking and error reporting
 
 ## Output Structure
 
