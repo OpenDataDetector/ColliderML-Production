@@ -37,6 +37,9 @@ from acts.examples.edm4hep import EDM4hepSimInputConverter
 
 u = acts.UnitConstants
 
+# LOG_LEVEL = acts.logging.DEBUG
+LOG_LEVEL = acts.logging.INFO
+
 def parse_args():
     """Parse command line arguments"""
     parser = create_base_parser("Digitization and reconstruction for ACTS")
@@ -119,7 +122,7 @@ def setup_acts_reconstruction(input_path, output_dir, config, rnd, logger=None):
     s = Sequencer(
         numThreads=config.threads if config.threads is not None else 1,
         events=config.events,
-        # logLevel=acts.logging.DEBUG,
+        logLevel=LOG_LEVEL,
         trackFpes=False,
     )
     
@@ -158,7 +161,7 @@ def setup_acts_reconstruction(input_path, output_dir, config, rnd, logger=None):
     # Configure EDM4hep reader and converter
     # Step 1: PodioReader to read the EDM4hep file
     podioReader = PodioReader(
-        level=acts.logging.INFO,
+        level=LOG_LEVEL,
         inputPath=str(input_path),
         outputFrame="events",
         category="events",
@@ -167,7 +170,7 @@ def setup_acts_reconstruction(input_path, output_dir, config, rnd, logger=None):
     
     # Step 2: EDM4hepSimInputConverter algorithm to convert EDM4hep data to ACTS format
     edm4hepConverter = EDM4hepSimInputConverter(
-        level=acts.logging.INFO,
+        level=LOG_LEVEL,
         inputFrame="events",
         inputSimHits=[
             "PixelBarrelReadout",
@@ -221,7 +224,7 @@ def setup_acts_reconstruction(input_path, output_dir, config, rnd, logger=None):
             outputDirRoot=perf_output if getattr(config, 'output_root', True) else None,
             outputDirCsv=None,
             rnd=rnd,
-            logLevel=acts.logging.INFO,
+            logLevel=LOG_LEVEL,
         )
 
         def make_geoid(vol=None, lay=None):
@@ -256,6 +259,45 @@ def setup_acts_reconstruction(input_path, output_dir, config, rnd, logger=None):
                 removeSecondaries=False,
                 nMeasurementsGroupMin=measurementCounter,
             ),
+        )
+    
+    # Add spacepoint creation if enabled
+    spacepoints_enabled = getattr(config, 'spacepoints', False)  # Default False
+    if spacepoints_enabled and digi_enabled:
+        logger.info("Adding spacepoint creation and writing")
+        
+        # Get geometry selection file from config
+        spacepoint_geo_config = getattr(config, 'spacepoint_geometry_selection', None)
+        if not spacepoint_geo_config:
+            logger.error("spacepoints enabled but 'spacepoint_geometry_selection' not specified in config")
+            raise ValueError("spacepoint_geometry_selection must be specified in config when spacepoints=True")
+        
+        spGeometrySelection = Path(spacepoint_geo_config)
+        if not spGeometrySelection.exists():
+            logger.error(f"Spacepoint geometry selection file not found: {spGeometrySelection}")
+            raise FileNotFoundError(f"Spacepoint geometry selection file not found: {spGeometrySelection}")
+        
+        # Add SpacePointMaker algorithm
+        s.addAlgorithm(
+            acts.examples.SpacePointMaker(
+                level=LOG_LEVEL,
+                trackingGeometry=trackingGeometry,
+                inputMeasurements="measurements",
+                outputSpacePoints="spacepoints",
+                stripGeometrySelection=acts.examples.readJsonGeometryList(
+                    str(spGeometrySelection)
+                ),
+            )
+        )
+        
+        # Write spacepoints to ROOT
+        s.addWriter(
+            acts.examples.RootSpacepointWriter(
+                level=LOG_LEVEL,
+                inputSpacepoints="spacepoints",
+                inputMeasurementParticlesMap="measurement_particles_map",
+                filePath=str(output_dir / "spacepoints.root"),
+            )
         )
     
     # Add reconstruction components if enabled
@@ -395,14 +437,14 @@ def add_root_writers(s, output_dir):
             filePath=str(output_dir / "simhits.root"),
             inputSimHits="simhits"
         ),
-        level=acts.logging.INFO
+        level=LOG_LEVEL
     ))
     s.addWriter(acts.examples.RootParticleWriter(
         config=acts.examples.RootParticleWriter.Config(
             filePath=str(output_dir / "particles.root"),
             inputParticles="particles"
         ),
-        level=acts.logging.INFO
+        level=LOG_LEVEL
     ))
 
 def main():

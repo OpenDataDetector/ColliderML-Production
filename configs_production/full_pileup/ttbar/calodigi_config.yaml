@@ -1,0 +1,22 @@
+# Calorimeter Digitization Configuration - TTBar with Full Pileup
+campaign: "full_pileup"
+dataset: "ttbar"
+version: "v1"
+stage: "calo_digitization"
+
+job_config:
+  n_runs: 1000
+  runs_per_node: 64
+  time_limit: "02:00:00"
+  qos: "regular"
+  # execution_mode: "interactive"
+  execution_mode: "multi_node_slurm"
+
+events: 128
+seed: 42
+
+# Realistic digitization settings
+apply_realistic_ecal_digi: 0  # 0=none, 1=silicon, 2=scintillator
+apply_realistic_hcal_digi: 0  # 0=none, 1=scintillator
+
+# debug_output_dir: "/global/cfs/cdirs/m4958/data/ColliderML/simulation/full_pileup/ttbar/v1/runs/0"

@@ -18,7 +18,7 @@ validation_config:
   qos: "regular"
 
 # Stage-specific configurations
-events: 128  # Number of events per run, total number of events will be n_runs * events
+events: 1280  # Number of events per run, total number of events will be n_runs * events
 input_filename: events.hepmc
 threads: 8
 minimalKineticEnergy: 0.1  # Minimum kinetic energy in GeV to register in truth

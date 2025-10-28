@@ -1,0 +1,49 @@
+# Configuration for calorimeter performance plotting
+# 
+# This config file specifies input data, processing parameters,
+# and plot settings for generating publication-quality plots
+
+# ============================================================
+# Data files and event selection
+# ============================================================
+
+# Path to digitized EDM4hep ROOT file (contains both truth and digi hits)
+digi_file: "/global/cfs/cdirs/m4958/data/ColliderML/simulation/single_particle_pilot/single_electron_loguniform/v1/runs/0/edm4hep_digitized.root"
+
+# Event range to process: [start, stop]
+events_range: [0, 10000]
+
+# PDG code to analyze (11 = electron, 22 = photon, 211 = pi+, etc.)
+pdg_code: 11
+
+# Output directory for plots
+output_dir: "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml_dev/notebooks/publication/plots/electron_loguniform"
+
+# ============================================================
+# Detector parameters
+# ============================================================
+
+detector_params:
+  tracking_radius: 1080    # mm
+  tracking_z_max: 3030     # mm
+  energy_threshold: 0.0    # GeV
+
+# ============================================================
+# Plot parameters
+# ============================================================
+
+plot_params:
+  # Energy distribution plot
+  energy_nbins: 30
+  energy_label: "Single-electron, log-uniform energy"
+  
+  # Profile plots
+  profile_nbins: 20
+  profile_label: "Single electron, relative residual"
+  
+  # General plot settings
+  dpi: 300
+  figsize_default: [10, 8]
+  figsize_multipanel: [10, 15]
+  figsize_profiles: [16, 6]
+

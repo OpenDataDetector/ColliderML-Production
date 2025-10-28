@@ -88,14 +88,30 @@ def configure_particle_gun(ddsim, config, logger):
     # Configure multiplicity
     ddsim.gun.multiplicity = getattr(config, 'gun_multiplicity', 1)
     
-    # Configure vertex smearing
-    if hasattr(config, 'vertexOffset'):
-        ddsim.vertexOffset = config.vertexOffset
-    if hasattr(config, 'vertexSigma'):
-        ddsim.vertexSigma = config.vertexSigma
-    
     # Log configuration
     log_particle_gun_config(ddsim, logger)
+    
+    return ddsim
+
+def configure_vertex_smearing(ddsim, config, logger):
+    """Configure vertex smearing for all simulation modes (particle gun and HepMC3 input)
+    
+    Args:
+        ddsim: DD4hepSimulation instance
+        config: Configuration object
+        logger: Logger instance
+        
+    Returns:
+        DD4hepSimulation: Configured DD4hepSimulation instance
+    """
+    if hasattr(config, 'vertexOffset'):
+        ddsim.vertexOffset = config.vertexOffset
+        logger.info(f"Setting vertex offset: {ddsim.vertexOffset}")
+    
+    if hasattr(config, 'vertexSigma'):
+        ddsim.vertexSigma = config.vertexSigma
+        if any(x != 0 for x in ddsim.vertexSigma):
+            logger.info(f"Setting vertex smearing sigma: {ddsim.vertexSigma}")
     
     return ddsim
 
@@ -116,8 +132,6 @@ def log_particle_gun_config(ddsim, logger):
     logger.info(f"  Position: {ddsim.gun.position}")
     logger.info(f"  Distribution: {ddsim.gun.distribution}")
     logger.info(f"  Multiplicity: {ddsim.gun.multiplicity}")
-    if any(x != 0 for x in ddsim.vertexSigma):
-        logger.info(f"  Vertex smearing: {ddsim.vertexSigma}")
 
 def configure_detector(ddsim):
     """Configure the detector for simulation
@@ -268,6 +282,9 @@ def run_ddsim(input_path, output_path, config, logger=None):
     ddsim.numberOfThreads = config.threads if config.threads is not None else 1
     ddsim.random.enableEventSeed = True
     ddsim.random.seed = getattr(config, 'seed', None) or int(time.time())
+    
+    # Configure vertex smearing (applies to both particle gun and HepMC3 input)
+    ddsim = configure_vertex_smearing(ddsim, config, logger)
     
     # Configure physics
     ddsim = configure_physics(ddsim, config, logger)

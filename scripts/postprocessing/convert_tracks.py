@@ -286,6 +286,7 @@ def process_chunk_for_tracks(
     file_patterns: dict,
     *,
     columns_keep: List[str] | None = None,
+    output_format: str = 'hdf5',
 ) -> None:
     """
     Process a chunk of runs.
@@ -302,8 +303,9 @@ def process_chunk_for_tracks(
     # Calculate event range for this chunk
     end_run = min(end_run, len(run_dirs) - 1)
     
-    # Build output filename with event range
-    output_file = output_dir / f"{dataset_name}.events{start_event}-{end_event}.h5"
+    # Determine file extension based on output format
+    file_ext = '.parquet' if output_format == 'parquet' else '.h5'
+    output_file = output_dir / f"{dataset_name}.events{start_event}-{end_event}{file_ext}"
     
     # Skip if file already exists
     if output_file.exists():
@@ -351,10 +353,10 @@ def process_chunk_for_tracks(
             print(f"\nSkipping run {abs_run} due to error: {str(e)}")
             continue
             
-    # Save chunk to HDF5
+    # Save chunk to HDF5 or Parquet
     if all_track_data:
         all_events_df = pd.concat(all_track_data, ignore_index=True)
-        write_tracks_with_selection(all_events_df, str(output_file), columns_keep=columns_keep)
+        write_tracks_with_selection(all_events_df, str(output_file), columns_keep=columns_keep, output_format=output_format)
         print(f"\nSaved events {start_event}-{end_event} to {output_file}")
     else:
         print(f"\nNo data to save for events {start_event}-{end_event}")
@@ -375,7 +377,11 @@ def main():
     # Build paths from config
     input_base_dir = Path(config["common"]["output_base_dir"]) / campaign / dataset / version
     output_base_dir = Path(config["common"]["output_base_dir"]) 
-    output_path = config.get("output_path", f"{campaign}/{dataset}/{version}/reco/tracks")
+    
+    # Extract output format from config (default to hdf5 for backward compatibility)
+    output_format = config.get("output_format", "hdf5")
+    format_subdir = output_format if output_format in ['hdf5', 'parquet'] else 'hdf5'
+    output_path = config.get("output_path", f"{campaign}/{dataset}/{version}/{format_subdir}/reco/tracks")
 
     # Processing parameters
     chunk_size = config.get("chunk_size", 1000)
@@ -393,6 +399,7 @@ def main():
     print(f"Campaign: {campaign}, Dataset: {dataset}, Version: {version}")
     print(f"Input directory: {input_base_dir}")
     print(f"Output directory: {output_base_dir}/{output_path}")
+    print(f"Output format: {output_format}")
     print(f"Chunk size: {chunk_size}, Run size: {run_size}")
     
     # Get run directories
@@ -433,6 +440,8 @@ def main():
             dataset_name,
             run_size,
             file_patterns,
+            columns_keep=config.get("tracks_columns_keep"),
+            output_format=output_format,
         ),
     )
 

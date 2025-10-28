@@ -129,6 +129,74 @@ class JobSubmitter:
         """Emit standard environment setup commands into the slurm script."""
         slurm.add_cmd(r"cd $HOME")
         slurm.add_cmd("export SLURM_CPU_BIND=\"cores\"")
+    
+    def add_validation_and_guardian_to_script(self, slurm, runs_dir, run_range=None, run_list=None):
+        """
+        Add validation + guardian phases to the batch script.
+        Called after stage execution commands are added.
+        
+        Args:
+            slurm: Slurm object to add commands to
+            runs_dir: Path to the runs directory
+            run_range: Tuple of (start, end) for run range validation (optional)
+            run_list: List of specific run IDs to validate (optional)
+        """
+        validation_config = self.config.get('validation_config') or {}
+        validation_enabled = validation_config.get('enabled', True)
+        if not validation_enabled:
+            logger.info("Validation disabled for this job")
+            return
+        
+        validation_dir = Path(__file__).parent.parent / 'simulation' / 'validation'
+        validation_script = validation_dir / 'run_validation.py'
+        guardian_script = validation_dir / 'run_guardian.py'
+        
+        # Create validation reports directory
+        report_dir = Path(runs_dir).parent / 'validation_reports'
+        report_path = report_dir / f"validation_report_{self.config['stage']}.json"
+        
+        # Add phase separator
+        slurm.add_cmd("")
+        slurm.add_cmd("# ============================================================================")
+        slurm.add_cmd("# PHASE 2: Validate Outputs")
+        slurm.add_cmd("# ============================================================================")
+        slurm.add_cmd(f"mkdir -p {report_dir}")
+        
+        stage_name = self.config["stage"]
+        slurm.add_cmd(f"echo 'Validating outputs for stage {stage_name}...'")
+        
+        # Build validation command with run filtering
+        validation_cmd = (
+            f"python {validation_script} "
+            f"--stage {stage_name} "
+            f"--runs-dir {runs_dir} "
+            f"--output {report_path}"
+        )
+        
+        # Add run filtering arguments if provided
+        if run_list is not None:
+            run_list_str = " ".join(map(str, run_list))
+            validation_cmd += f" --run-ids {run_list_str}"
+        elif run_range is not None:
+            start, end = run_range
+            validation_cmd += f" --run-range {start} {end}"
+        
+        slurm.add_cmd(validation_cmd)
+        
+        # Add phase 3: Guardian decision
+        slurm.add_cmd("")
+        slurm.add_cmd("# ============================================================================")
+        slurm.add_cmd("# PHASE 3: Error Guardian Decision")
+        slurm.add_cmd("# ============================================================================")
+        slurm.add_cmd(f"echo 'Running error guardian (retry $SLURM_RESTART_COUNT)...'")
+        
+        # Run guardian script
+        guardian_cmd = (
+            f"python {guardian_script} "
+            f"--report {report_path} "
+            f"--runs-dir {runs_dir}"
+        )
+        slurm.add_cmd(guardian_cmd)
 
     def compute_cpus_per_task(self, is_monolithic, tasks_for_node=None):
         job_cfg = self.config["job_config"]
@@ -244,6 +312,24 @@ class JobSubmitter:
             )
             slurm.add_cmd(srun_cmd)
     
+    def get_runs_for_node(self, node_idx, tasks_for_node):
+        """
+        Get the list of actual run IDs that will be processed by this node.
+        
+        Args:
+            node_idx: Node index
+            tasks_for_node: Number of tasks on this node
+            
+        Returns:
+            List of run IDs that this node will process
+        """
+        run_ids = []
+        for process_idx in range(tasks_for_node):
+            run_id = self.get_run_id(node_idx, process_idx)
+            if run_id is not None:
+                run_ids.append(run_id)
+        return run_ids
+    
     def get_run_id(self, node_idx, process_idx):
         """Calculate run ID from node and process indices"""
         if self.run_list:
@@ -324,6 +410,12 @@ class JobSubmitter:
             slurm_kwargs["dependency"] = dependency_kw
         slurm = Slurm(**slurm_kwargs)
         
+        # Add requeue and append flags for validation + guardian integration
+        # For boolean flags, set to empty string to just add the flag without value
+        # For flags with values, set the value directly
+        setattr(slurm.namespace, "requeue", "")  # Boolean flag - no value
+        setattr(slurm.namespace, "open-mode", "append")  # Flag with value
+        
         # Add shifter image to SBATCH directives if needed (for performance)
         # Use setattr to add custom directive with multiple options on one line
         stage = self.config["stage"]
@@ -348,6 +440,18 @@ class JobSubmitter:
         """Add commands for simulation stages using shared command builder for consistency with interactive mode."""
         self.add_basic_slurm_env_setup(slurm)
         
+        # Add phase 1 header
+        slurm.add_cmd("")
+        slurm.add_cmd("# ============================================================================")
+        slurm.add_cmd(f"# PHASE 1: Executing stage - {self.config['stage']}")
+        slurm.add_cmd("# ============================================================================")
+        slurm.add_cmd("echo \"SLURM_JOB_ID: $SLURM_JOB_ID\"")
+        slurm.add_cmd("echo \"SLURM_RESTART_COUNT: $SLURM_RESTART_COUNT\"")
+        slurm.add_cmd("")
+        
+        # Don't exit on stage failure - let validation/guardian handle it
+        slurm.add_cmd("set +e  # Don't exit on error")
+        
         try:
             self._build_and_add_commands(
                 slurm=slurm,
@@ -360,10 +464,34 @@ class JobSubmitter:
         except Exception as e:
             logger.error(f"Error building simulation command: {e}")
             raise
+        
+        slurm.add_cmd("STAGE_EXIT_CODE=$?")
+        slurm.add_cmd("set -e  # Re-enable exit on error")
+        slurm.add_cmd("echo \"Stage completed with exit code: $STAGE_EXIT_CODE\"")
+        
+        # Add validation + guardian phases (validate only runs processed by this node)
+        runs_for_this_node = self.get_runs_for_node(node_idx, tasks_for_node) if tasks_for_node else []
+        self.add_validation_and_guardian_to_script(
+            slurm, 
+            self.run_dir,
+            run_list=runs_for_this_node if runs_for_this_node else None
+        )
     
     def _add_postprocessing_commands(self, slurm, previous_runs, is_monolithic=False, node_idx=0, tasks_for_node=None):
         """Add commands for postprocessing stages using shared command builder for consistency with interactive mode."""
         self.add_basic_slurm_env_setup(slurm)
+        
+        # Add phase 1 header
+        slurm.add_cmd("")
+        slurm.add_cmd("# ============================================================================")
+        slurm.add_cmd(f"# PHASE 1: Executing stage - {self.config['stage']}")
+        slurm.add_cmd("# ============================================================================")
+        slurm.add_cmd("echo \"SLURM_JOB_ID: $SLURM_JOB_ID\"")
+        slurm.add_cmd("echo \"SLURM_RESTART_COUNT: $SLURM_RESTART_COUNT\"")
+        slurm.add_cmd("")
+        
+        # Don't exit on stage failure - let validation/guardian handle it
+        slurm.add_cmd("set +e  # Don't exit on error")
         
         try:
             self._build_and_add_commands(
@@ -377,6 +505,20 @@ class JobSubmitter:
         except Exception as e:
             logger.error(f"Error building postprocessing command: {e}")
             raise
+        
+        slurm.add_cmd("STAGE_EXIT_CODE=$?")
+        slurm.add_cmd("set -e  # Re-enable exit on error")
+        slurm.add_cmd("echo \"Stage completed with exit code: $STAGE_EXIT_CODE\"")
+        
+        # Add validation + guardian phases (validate only runs processed by this node)
+        # For postprocessing, use version_dir instead of run_dir for some stages
+        output_dir = self.run_dir if is_monolithic else cli_utils.get_version_directory(self.config)
+        runs_for_this_node = self.get_runs_for_node(node_idx, tasks_for_node) if tasks_for_node else []
+        self.add_validation_and_guardian_to_script(
+            slurm, 
+            self.run_dir,
+            run_list=runs_for_this_node if runs_for_this_node else None
+        )
     
     def submit_jobs(self):
         """Submit all jobs for the stage"""
@@ -408,6 +550,18 @@ class JobSubmitter:
     def _add_multinode_commands(self, slurm):
         """Add commands for a single multi-node job spanning all tasks."""
         self.add_basic_slurm_env_setup(slurm)
+        
+        # Add phase 1 header
+        slurm.add_cmd("")
+        slurm.add_cmd("# ============================================================================")
+        slurm.add_cmd(f"# PHASE 1: Executing stage - {self.config['stage']}")
+        slurm.add_cmd("# ============================================================================")
+        slurm.add_cmd("echo \"SLURM_JOB_ID: $SLURM_JOB_ID\"")
+        slurm.add_cmd("echo \"SLURM_RESTART_COUNT: $SLURM_RESTART_COUNT\"")
+        slurm.add_cmd("")
+        
+        # Don't exit on stage failure - let validation/guardian handle it
+        slurm.add_cmd("set +e  # Don't exit on error")
 
         # previous_runs is the range start if using ranges, else 0
         previous_runs = self.run_range[0] if self.run_range else 0
@@ -456,6 +610,31 @@ class JobSubmitter:
         except Exception as e:
             logger.error(f"Error building multinode command: {e}")
             raise
+        
+        slurm.add_cmd("STAGE_EXIT_CODE=$?")
+        slurm.add_cmd("set -e  # Re-enable exit on error")
+        slurm.add_cmd("echo \"Stage completed with exit code: $STAGE_EXIT_CODE\"")
+        
+        # Add validation + guardian phases
+        # Multi-node jobs: calculate which runs are processed based on total_tasks
+        total_tasks = self.compute_total_tasks()
+        if self.run_list:
+            # Using specific run IDs from list
+            runs_to_validate = self.run_ids[:total_tasks]
+        elif self.run_range:
+            # Using range of runs
+            start_run, end_run = self.run_range
+            runs_to_validate = list(range(start_run, min(start_run + total_tasks, end_run)))
+        else:
+            # Default: sequential runs from 0
+            n_runs = self.config["job_config"]["n_runs"]
+            runs_to_validate = list(range(min(total_tasks, n_runs)))
+        
+        self.add_validation_and_guardian_to_script(
+            slurm, 
+            self.run_dir,
+            run_list=runs_to_validate
+        )
 
     def submit_multi_node_job(self):
         """Submit a single SLURM job across multiple nodes with many tasks."""
@@ -489,6 +668,11 @@ class JobSubmitter:
         if dependency_kw is not None:
             slurm_kwargs["dependency"] = dependency_kw
         slurm = Slurm(**slurm_kwargs)
+        
+        # Add requeue and append flags for validation + guardian integration
+        # For boolean flags, set to empty string to just add the flag without value
+        setattr(slurm.namespace, "requeue", "")  # Boolean flag - no value
+        setattr(slurm.namespace, "open-mode", "append")  # Flag with value
         
         # Add shifter image to SBATCH directives if needed (for performance)
         # Use setattr to add custom directive with multiple options on one line

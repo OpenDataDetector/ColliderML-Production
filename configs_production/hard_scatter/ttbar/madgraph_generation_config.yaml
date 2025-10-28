@@ -1,0 +1,87 @@
+#========================================================================
+# YAML Configuration for MadGraph Event Generation (NLO ttbar)
+#========================================================================
+# 
+# This configuration is for the second step of the two-step MadGraph workflow:
+# 1. madgraph_init: Generate and compile the process 
+# 2. madgraph_generation: Parallel event generation using the compiled process (this config)
+#
+# This stage performs parallel event generation using the pre-compiled process
+# directory created by madgraph_init. It follows the same pattern as pythia_generation.
+
+# --- Dataset & Version ---
+campaign: "hard_scatter"
+dataset: "ttbar"
+version: "v1"
+stage: "madgraph_generation"
+
+# --- Job Configuration ---
+job_config:
+  # Number of nodes will be calculated as n_runs / runs_per_node
+  n_runs: 200        # Number of runs (where a run produces N events)
+  # n_runs: 4        # Number of runs (where a run produces N events)
+  runs_per_node: 1  # Number of runs per node (adjust based on memory/time constraints)
+  time_limit: "01:00:00"  # Time limit per job - MadGraph NLO generation is slower than Pythia
+  qos: "regular"
+  # time_limit: "00:30:00"
+  # qos: "debug"
+  # execution_mode: "monolithic_slurm"  # Use distributed mode for parallel generation
+  execution_mode: "multi_node_slurm"
+  # execution_mode: "interactive"
+
+validation_config:
+
+# --- Event Generation Parameters ---
+# These follow the exact same pattern as pythia_gen.py and ddsim_run.py
+events: 17500  # Number of events per run, total events = n_runs * events
+# events: 5000
+# NOTE: ttbar pythia matching survival rate is around 45%
+seed: 42     # Base seed - will be modified per run using run_id
+
+# --- Essential Paths & Environment ---
+# These use variables from env_setup.yaml config_defaults
+mg_base_path: "{madgraph.mg_base_path}"
+generation_scratch_dir: "{madgraph.generation_scratch_dir}" 
+
+# --- Card Customizations (Optional Override) ---
+# These settings will be merged with base settings and run-specific parameters (events, seed)
+# The process directory already contains cards customized during madgraph_init,
+# but you can override specific run-level parameters here if needed
+card_customizations:
+  run_card:
+    "ptj": 20.0      # Minimum jet pT
+    "event_norm": "sum"
+
+  # For NLO processes (born), customize shower_card.dat
+  shower_card:
+    "Qcut": 40.0       # MUST match run_card value for FxFx
+    "time_shower_me_corrections": "F"
+
+  # For loop-induced processes (noborn), customize pythia8_card.dat  
+  pythia8_card:
+    # Most settings come from madgraph_init, but you can override run-specific ones
+
+# --- HepMC Splitting Configuration (Optional) ---
+# Configure splitting with keys expected by the generation script
+splitting_config:
+  enable: true
+  events_per_file: 1280
+  max_files_per_mg_run: 50
+  output_filename: "events.hepmc"
+
+# --- Logging ---
+log_level: "INFO"
+
+# --- Documentation ---
+# This stage expects that madgraph_init has been run successfully and the
+# tarball artifact exists at:
+# {output_base_dir}/{campaign}/{dataset}/{version}/madgraph_process.tgz
+# (The process directory may also exist; generation will use the tarball.)
+#
+# Output will be placed at:
+# {output_base_dir}/{campaign}/{dataset}/{version}/runs/
+# with structure: runs/0/events.lhe.gz, runs/1/events.lhe.gz, etc.
+# This matches the same pattern used by pythia_generation, simulation, etc.
+# 
+# Expected runtime per run: 10-60 minutes (depends on events count and process complexity)
+# Expected output per run: ~1-50 MB for LHE files (depends on events count)

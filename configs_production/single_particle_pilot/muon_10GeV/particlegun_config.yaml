@@ -1,0 +1,33 @@
+# Particle Gun Configuration - Single Muons with Uniform Energy
+campaign: "single_particle_pilot"
+dataset: "single_muon_10GeV"
+version: "v1"
+stage: "particlegun_generation"
+
+job_config:
+  n_runs: 1
+  runs_per_node: 1
+  time_limit: "00:30:00"
+  qos: "debug"
+  execution_mode: "multi_node_slurm"
+
+events: 10000
+seed: 42
+
+particle: "mu-"
+energy_min: 10.0
+energy_max: 10.0
+log_uniform: false
+transverse: true  # If true, energy is transverse momentum (pt); if false, total momentum (p)
+
+eta_min: -3.0
+eta_max: 3.0
+phi_min: 0.0
+phi_max: 6.28318530718
+
+# Splitting configuration for monolithic/interactive mode
+# Generates N separate run directories (0/, 1/, 2/, ...) each with 'events' events
+# Each run gets seed = seed + run_id
+splitting_config:
+  enable: true
+  n_runs: 1  # Number of run directories to generate

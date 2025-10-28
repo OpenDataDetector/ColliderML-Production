@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 import logging
 import datetime
+import json
 
 # Import shared utilities
 import cli_utils
@@ -111,10 +112,104 @@ def get_stage_script_path(config, git_repo_path):
     # job_submitter.get_stage_script() now returns an absolute path
     return Path(relative_script_path)
 
+def run_validation(config, runs_dir, run_ids=None, run_range=None):
+    """Run validation and return results."""
+    logger.info("Loading validation library...")
+    validation_path = Path(__file__).parent.parent / 'simulation' / 'validation'
+    sys.path.insert(0, str(validation_path))
+    
+    try:
+        from validation_lib import validate_stage, load_validation_rules
+        
+        rules_path = validation_path / 'validation_rules.yaml'
+        if not rules_path.exists():
+            logger.error(f"Validation rules not found: {rules_path}")
+            return None
+            
+        logger.info(f"Loading validation rules from: {rules_path}")
+        validation_rules = load_validation_rules(rules_path)
+        
+        # Log run filtering info
+        if run_ids is not None:
+            logger.info(f"Validating {len(run_ids)} specific runs: {run_ids}")
+        elif run_range is not None:
+            start, end = run_range
+            logger.info(f"Validating run range: {start} to {end-1}")
+        else:
+            logger.info(f"Validating all runs in: {runs_dir}")
+        
+        result = validate_stage(
+            runs_dir=Path(runs_dir),
+            stage=config['stage'],
+            validation_rules=validation_rules,
+            run_ids=run_ids
+        )
+        
+        # Save report
+        report_dir = Path(runs_dir).parent / 'validation_reports'
+        report_dir.mkdir(exist_ok=True, parents=True)
+        report_path = report_dir / f"validation_report_{config['stage']}.json"
+        with open(report_path, 'w') as f:
+            json.dump(result, f, indent=2)
+        logger.info(f"Validation report saved to: {report_path}")
+        
+        return result
+        
+    except Exception as e:
+        logger.error(f"Validation failed with error: {e}")
+        logger.exception("Full traceback:")
+        return None
+
+def run_guardian(validation_result, config, runs_dir):
+    """Run guardian decision logic and return decision."""
+    if validation_result is None:
+        logger.error("Cannot run guardian without validation results")
+        return {'action': 'FAIL', 'exit_code': 1, 'reason': 'Validation failed to run'}
+    
+    logger.info("Loading error guardian...")
+    validation_path = Path(__file__).parent.parent / 'simulation' / 'validation'
+    
+    try:
+        from error_guardian import make_decision, load_guardian_policy
+        
+        policy_path = validation_path / 'guardian_policy.yaml'
+        if not policy_path.exists():
+            logger.error(f"Guardian policy not found: {policy_path}")
+            return {'action': 'FAIL', 'exit_code': 1, 'reason': 'Policy file missing'}
+            
+        logger.info(f"Loading guardian policy from: {policy_path}")
+        guardian_policy = load_guardian_policy(policy_path)
+        
+        retry_count = int(os.environ.get('SLURM_RESTART_COUNT', '0'))
+        max_retries = guardian_policy.get('retry_policy', {}).get('max_retries', 3)
+        
+        logger.info(f"Making guardian decision (retry {retry_count}/{max_retries})...")
+        decision = make_decision(
+            validation_result=validation_result,
+            runs_dir=Path(runs_dir),
+            guardian_policy=guardian_policy,
+            retry_count=retry_count,
+            max_retries=max_retries
+        )
+        
+        return decision
+        
+    except Exception as e:
+        logger.error(f"Guardian decision failed with error: {e}")
+        logger.exception("Full traceback:")
+        return {'action': 'FAIL', 'exit_code': 1, 'reason': f'Guardian error: {e}'}
+
 def run_interactive(config, config_path_arg, stage_script_path):
-    """Runs the stage script directly as a subprocess after setting up the environment."""
-    logger.info(f"Running stage '{config['stage']}' interactively.")
-    logger.info(f"Using script: {stage_script_path}")
+    """Runs the stage script interactively with integrated validation + guardian."""
+    
+    # Check if validation is enabled (default: true)
+    validation_config = config.get('validation_config') or {}
+    validation_enabled = validation_config.get('enabled', True)
+    
+    logger.info("=" * 80)
+    logger.info(f"STAGE: {config['stage']}")
+    logger.info(f"VALIDATION: {'ENABLED' if validation_enabled else 'DISABLED'}")
+    logger.info("=" * 80)
 
     # Create necessary output directories
     debug_output_dir = config.get("debug_output_dir")
@@ -122,16 +217,23 @@ def run_interactive(config, config_path_arg, stage_script_path):
         run_dir = Path(debug_output_dir)
         run_dir.mkdir(parents=True, exist_ok=True)
         logger.info(f"Using custom debug output directory from config: {run_dir}")
-        # Don't use subdirectory when debug output dir is specified
         output_subdir = None
     else:
         logger.info("Creating output directories for interactive run...")
         directories = cli_utils.create_necessary_directories(config)
         run_dir = directories["run_dir"]
-        # Use default subdirectory for normal runs
         output_subdir = "all"
 
-    # Use shared command builder to ensure consistency with batch mode
+    # ===== PHASE 1: Execute Stage =====
+    logger.info("")
+    logger.info("=" * 80)
+    logger.info(f"PHASE 1: Executing stage - {config['stage']}")
+    logger.info("=" * 80)
+    logger.info(f"Using script: {stage_script_path}")
+    
+    stage_success = False
+    stage_exit_code = 1
+    
     try:
         command_info = cli_utils.build_stage_command(
             config=config,
@@ -152,28 +254,79 @@ def run_interactive(config, config_path_arg, stage_script_path):
         if not command_info["env_setup_commands"]:
             logger.warning("No environment setup commands found. Running script in current environment.")
         
-        logger.info(f"Executing command string: {final_command_str}")
+        logger.info(f"Executing command: {final_command_str}")
         
-        # print(f"DEBUG COMMAND: {final_command_str}", file=sys.stderr)
-        # sys.exit(0) # Exit after printing
-
-        # Use shell=True to correctly process the command string with '&&' and environment sourcing
-        process = subprocess.run(final_command_str, shell=True, check=True)
-        logger.info(f"Interactive stage '{config['stage']}' completed successfully.")
+        # Run stage (don't exit on error if validation is enabled)
+        process = subprocess.run(final_command_str, shell=True, check=False)
+        stage_exit_code = process.returncode
         
-    except subprocess.CalledProcessError as e:
-        logger.error(f"Interactive stage '{config['stage']}' failed with return code: {e.returncode}")
-        sys.exit(1)
+        if stage_exit_code == 0:
+            logger.info(f"✓ Stage '{config['stage']}' completed successfully.")
+            stage_success = True
+        else:
+            logger.warning(f"✗ Stage '{config['stage']}' failed with exit code: {stage_exit_code}")
+            stage_success = False
+            
     except FileNotFoundError:
         logger.error(f"Error: Stage script {stage_script_path} not found.")
-        sys.exit(1)
+        stage_exit_code = 1
+        stage_success = False
     except Exception as e:
-        logger.error(f"Error building command for interactive execution: {e}")
-        sys.exit(1)
+        logger.error(f"Error building/executing command: {e}")
+        logger.exception("Full traceback:")
+        stage_exit_code = 1
+        stage_success = False
+    
+    # If validation is disabled, exit with stage result
+    if not validation_enabled:
+        logger.info(f"Validation disabled. Exiting with stage exit code: {stage_exit_code}")
+        sys.exit(stage_exit_code)
+    
+    # ===== PHASE 2: Validate Outputs =====
+    logger.info("")
+    logger.info("=" * 80)
+    logger.info("PHASE 2: Validating outputs")
+    logger.info("=" * 80)
+    
+    validation_result = run_validation(config, run_dir)
+    
+    if validation_result:
+        logger.info(f"Validation status: {validation_result.get('status', 'UNKNOWN')}")
+        logger.info(f"Total runs: {validation_result.get('total_runs', 0)}")
+        logger.info(f"Successful: {validation_result.get('successful_runs', 0)}")
+        logger.info(f"Failed: {validation_result.get('failed_runs', 0)}")
+        if validation_result.get('failed_runs', 0) > 0:
+            logger.info(f"Failure rate: {validation_result.get('failure_rate', 0):.1f}%")
+    
+    # ===== PHASE 3: Guardian Decision =====
+    logger.info("")
+    logger.info("=" * 80)
+    logger.info("PHASE 3: Error guardian decision")
+    logger.info("=" * 80)
+    
+    decision = run_guardian(validation_result, config, run_dir)
+    
+    logger.info(f"Guardian action: {decision.get('action', 'UNKNOWN')}")
+    logger.info(f"Reason: {decision.get('reason', 'No reason provided')}")
+    logger.info(f"Exit code: {decision.get('exit_code', 1)}")
+    
+    # Display any actions taken
+    if 'actions_taken' in decision and decision['actions_taken']:
+        logger.info("Actions taken:")
+        for action in decision['actions_taken']:
+            logger.info(f"  - {action}")
+    
+    logger.info("")
+    logger.info("=" * 80)
+    logger.info(f"INTERACTIVE RUN COMPLETE - Exiting with code {decision['exit_code']}")
+    logger.info("=" * 80)
+    
+    # Exit with guardian's decision
+    sys.exit(decision['exit_code'])
 
 def main():
     parser = argparse.ArgumentParser(description="Run a ColliderML data production stage.")
-    parser.add_argument("config", help="Path to the YAML configuration file for the stage.")
+    parser.add_argument("configs", nargs='+', help="Path(s) to YAML configuration file(s). Multiple configs will be combined into one SLURM job.")
     parser.add_argument("--execution-mode", choices=["interactive", "monolithic_slurm", "distributed_slurm", "multi_node_slurm"], 
                         default=None, help="Override execution mode (optional). If not set, derived from config or defaults to distributed_slurm if ambiguous.")
     parser.add_argument("--dry-run", action="store_true", help="Perform a dry run. For SLURM modes, saves batch scripts instead of submitting.")
@@ -186,44 +339,30 @@ def main():
     
     args = parser.parse_args()
 
-    try:
-        with open(args.config, 'r') as f:
-            config = yaml.safe_load(f)
-        logger.info(f"Successfully loaded configuration from: {args.config}")
-    except FileNotFoundError:
-        logger.error(f"Configuration file not found: {args.config}")
-        sys.exit(1)
-    except yaml.YAMLError as e:
-        logger.error(f"Error parsing YAML configuration file: {e}")
-        sys.exit(1)
-
-    # --- 1. Load env_setup.yaml and apply config processing ---
+    # --- 1. Load all configs and apply processing ---
     env_config_path = Path(__file__).resolve().parent / "env_setup.yaml"
-    if env_config_path.exists():
-        logger.info(f"Loading environment setup from {env_config_path}")
-        with open(env_config_path, 'r') as f_env:
-            env_config = yaml.safe_load(f_env)
-        # We store the env_config under an "env_setup" key in the main config
-        config["env_setup"] = env_config
-        
-        # Debug: Check config before defaults
-        logger.debug(f"Config before defaults - common section: {config.get('common', 'MISSING')}")
-        
-        # Apply config defaults (fills in missing values from env_setup.config_defaults)
-        config = cli_utils.apply_config_defaults(config)
-        logger.info("Applied configuration defaults from env_setup.yaml")
-        
-        # Debug: Check config after defaults
-        logger.debug(f"Config after defaults - common section: {config.get('common', 'MISSING')}")
-        
-        # Apply variable substitution (resolves {var} references within config)
-        config = cli_utils.substitute_config_variables(config)
-        logger.info("Applied variable substitution to configuration")
-        
-        # Debug: Check config after substitution
-        logger.debug(f"Config after substitution - common section: {config.get('common', 'MISSING')}")
-    else:
+    
+    configs = []
+    for config_path in args.configs:
+        try:
+            config = cli_utils.load_and_process_config(config_path, env_config_path)
+            logger.info(f"Successfully loaded and processed configuration from: {config_path}")
+            configs.append(config)
+        except FileNotFoundError:
+            logger.error(f"Configuration file not found: {config_path}")
+            sys.exit(1)
+        except yaml.YAMLError as e:
+            logger.error(f"Error parsing YAML configuration file {config_path}: {e}")
+            sys.exit(1)
+        except Exception as e:
+            logger.error(f"Error processing configuration file {config_path}: {e}")
+            sys.exit(1)
+    
+    if not env_config_path.exists():
         logger.warning(f"{env_config_path} not found. Ensure environment is configured if needed.")
+    
+    # For backward compatibility, use first config for git root detection
+    config = configs[0]
 
     # --- 2. Determine Software Repo Path and Perform Git Commit ---
     git_repo_path = cli_utils.get_git_root(Path(__file__).resolve())
@@ -240,31 +379,112 @@ def main():
         except subprocess.CalledProcessError:
             logger.warning("Could not determine git branch, continuing...")
 
-    # --- 3. Perform Git Commit (if in git repo) ---
-    processed_config_path = None
+    # --- 3. Perform Git Commit and Save Configs ---
+    # Git commit is performed once, but ALL configs are ALWAYS saved to their directories
+    processed_config_paths = []
     if git_repo_path:
-        # Pass the full config, which now includes env_setup, to the git function
-        success, processed_config_path = cli_utils.git_commit_and_log_config(config, args.config, git_repo_path, args.force_commit)
+        # Perform git commit once using first config
+        success, first_processed_config_path = cli_utils.git_commit_and_log_config(
+            configs[0], args.configs[0], git_repo_path, args.force_commit
+        )
         if not success:
             logger.error("Failed to perform git commit and log configuration. Exiting.")
             sys.exit(1)
-        logger.info("Git commit and config logging successful.")
-        logger.info(f"Processed config saved to: {processed_config_path}")
+        processed_config_paths.append(first_processed_config_path)
+        logger.info("Git commit successful.")
+        logger.info(f"Config 1/{len(configs)} saved to: {first_processed_config_path}")
+        
+        # For additional configs (if multi-config), ALWAYS save config snapshots to their directories
+        if len(configs) > 1:
+            logger.info(f"Saving {len(configs)-1} additional config(s)...")
+            for i in range(1, len(configs)):
+                cfg = configs[i]
+                cfg_path = args.configs[i]
+                # Always save config snapshot (git commit already done for repo)
+                output_version_dir = cli_utils.get_version_directory(cfg)
+                output_version_dir.mkdir(parents=True, exist_ok=True)
+                config_snapshot_dir = output_version_dir / "configs"
+                config_snapshot_dir.mkdir(parents=True, exist_ok=True)
+                logged_config_path = config_snapshot_dir / Path(cfg_path).name
+                
+                # Create clean copy without env_setup and ALWAYS write it
+                clean_config = {k: v for k, v in cfg.items() if k != 'env_setup'}
+                with open(logged_config_path, 'w') as f_out:
+                    yaml.dump(clean_config, f_out, default_flow_style=False, sort_keys=False)
+                processed_config_paths.append(logged_config_path)
+                logger.info(f"Config {i+1}/{len(configs)} saved to: {logged_config_path}")
+    else:
+        # No git repo - still save configs to their target locations
+        logger.warning("No git repository found. Saving configs without git tracking.")
+        for i, (cfg, cfg_path) in enumerate(zip(configs, args.configs)):
+            output_version_dir = cli_utils.get_version_directory(cfg)
+            output_version_dir.mkdir(parents=True, exist_ok=True)
+            config_snapshot_dir = output_version_dir / "configs"
+            config_snapshot_dir.mkdir(parents=True, exist_ok=True)
+            logged_config_path = config_snapshot_dir / Path(cfg_path).name
+            
+            # Create clean copy without env_setup and ALWAYS write it
+            clean_config = {k: v for k, v in cfg.items() if k != 'env_setup'}
+            with open(logged_config_path, 'w') as f_out:
+                yaml.dump(clean_config, f_out, default_flow_style=False, sort_keys=False)
+            processed_config_paths.append(logged_config_path)
+            logger.info(f"Config {i+1}/{len(configs)} saved to: {logged_config_path}")
 
     # --- 4. Determine Execution Mode --- 
     # Priority: CLI arg > config file > default (e.g., distributed_slurm)
     execution_mode = args.execution_mode
     if not execution_mode:
         execution_mode = config.get("job_config", {}).get("execution_mode", "distributed_slurm")
+    
+    # For multi-config, enforce multi_node_slurm mode
+    if len(configs) > 1:
+        if execution_mode != "multi_node_slurm":
+            logger.error(
+                f"Multi-config jobs only support multi_node_slurm mode. "
+                f"Current mode: {execution_mode}. Use --execution-mode multi_node_slurm or set in config."
+            )
+            sys.exit(1)
+        logger.info(f"Multi-config mode: combining {len(configs)} configs into single SLURM job")
+    
     logger.info(f"Effective execution mode: {execution_mode}")
 
     # --- 5. Execute based on mode ---
-    if execution_mode == "interactive":
-        # For interactive mode, we don't need JobSubmitter at all
+    if len(configs) > 1:
+        # Multi-config mode - combine multiple stages into one job
+        from multi_config_job import MultiConfigJobSubmitter
+        
+        try:
+            multi_submitter = MultiConfigJobSubmitter(
+                config_paths=[str(p) for p in processed_config_paths],
+                config_dicts=configs,
+                git_repo_path=git_repo_path,
+                dry_run=args.dry_run
+            )
+            
+            job_ids = multi_submitter.submit()
+            
+            if not args.dry_run and job_ids:
+                logger.info(f"Submitted combined multi-config job with ID: {job_ids[0]}")
+                
+            # Submit validation jobs for each stage
+            validation_ids = multi_submitter.submit_validation_jobs(job_ids)
+            if validation_ids and not args.dry_run:
+                logger.info(f"Submitted {len(validation_ids)} validation jobs")
+            elif args.dry_run:
+                logger.info(f"Dry run completed. Scripts saved in: {multi_submitter.dry_run_dir}")
+                
+        except Exception as e:
+            logger.error(f"Error in multi-config job submission: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
+            sys.exit(1)
+            
+    elif execution_mode == "interactive":
+        # Single-config interactive mode
         try:
             stage_script_path = cli_utils.get_stage_script_path(config, git_repo_path)
             # Use processed config if available, otherwise fall back to original
-            config_to_use = processed_config_path if processed_config_path else args.config
+            config_to_use = processed_config_paths[0] if processed_config_paths else args.configs[0]
             run_interactive(config, config_to_use, stage_script_path)
         except (ValueError, FileNotFoundError) as e:
             logger.error(f"Failed to locate script for interactive execution: {e}")
@@ -293,17 +513,17 @@ def main():
                 
                 # Write temporary config file if we made changes
                 if effective_config != config:
-                    temp_config_path = Path(args.config).with_suffix('.monolithic.yaml')
+                    temp_config_path = Path(args.configs[0]).with_suffix('.monolithic.yaml')
                     with open(temp_config_path, 'w') as f:
                         yaml.dump(effective_config, f, default_flow_style=False, sort_keys=False)
                     logger.info(f"Created temporary modified config for monolithic mode: {temp_config_path}")
                     config_path_for_submitter = str(temp_config_path)
                 else:
                     # Use processed config if available, otherwise fall back to original
-                    config_path_for_submitter = str(processed_config_path) if processed_config_path else args.config
+                    config_path_for_submitter = str(processed_config_paths[0]) if processed_config_paths else args.configs[0]
             else:
                 # Use processed config if available, otherwise fall back to original
-                config_path_for_submitter = str(processed_config_path) if processed_config_path else args.config
+                config_path_for_submitter = str(processed_config_paths[0]) if processed_config_paths else args.configs[0]
 
             # Initialize JobSubmitter with processed config
             job_submitter = JobSubmitter(
@@ -324,11 +544,7 @@ def main():
                     logger.info("Using standard submit_jobs for monolithic job submission (n_nodes=1).")
                     job_ids = job_submitter.submit_jobs()
                     if not args.dry_run and job_ids:
-                        logger.info(f"Submitted monolithic job with ID: {job_ids[0]}")
-                        # Validation jobs could still apply if defined
-                        validation_ids = job_submitter.submit_validation_jobs(job_ids)
-                        if validation_ids:
-                            logger.info(f"Submitted validation job with ID: {validation_ids[0]}")
+                        logger.info(f"Submitted monolithic job with ID: {job_ids[0]} (with integrated validation)")
                     elif args.dry_run:
                         logger.info(f"Dry run for monolithic SLURM completed. Script saved in {job_submitter.dry_run_dir}")
                 else:
@@ -338,26 +554,16 @@ def main():
                 logger.info(f"Preparing for distributed SLURM submission for stage: {config['stage']}")
                 job_ids = job_submitter.submit_jobs()
                 if not args.dry_run and job_ids:
-                    validation_ids = job_submitter.submit_validation_jobs(job_ids)
-                    logger.info(f"Submitted {len(job_ids)} distributed production jobs.")
-                    if validation_ids:
-                        logger.info(f"Submitted {len(validation_ids)} validation jobs.")
+                    logger.info(f"Submitted {len(job_ids)} distributed production jobs with integrated validation.")
                 elif args.dry_run:
                     logger.info(f"Dry run for distributed SLURM completed. Scripts saved in: {job_submitter.dry_run_dir}")
-                    if job_submitter.config.get("validation_config"):
-                        logger.info(f"Validation scripts saved in: {job_submitter.validation_dir}")
             else:  # multi_node_slurm
                 logger.info(f"Preparing for single multinode SLURM submission for stage: {config['stage']}")
                 job_ids = job_submitter.submit_multi_node_job()
                 if not args.dry_run and job_ids:
-                    validation_ids = job_submitter.submit_validation_jobs(job_ids)
-                    logger.info(f"Submitted multinode production job.")
-                    if validation_ids:
-                        logger.info(f"Submitted {len(validation_ids)} validation jobs.")
+                    logger.info(f"Submitted multinode production job with integrated validation.")
                 elif args.dry_run:
                     logger.info(f"Dry run for multinode SLURM completed. Script saved in: {job_submitter.dry_run_dir}")
-                    if job_submitter.config.get("validation_config"):
-                        logger.info(f"Validation scripts saved in: {job_submitter.validation_dir}")
                         
             # Clean up temporary config file if created
             if execution_mode == "monolithic_slurm" and effective_config != config:
@@ -370,6 +576,8 @@ def main():
                     
         except Exception as e:
             logger.error(f"Error in SLURM job submission: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
             sys.exit(1)
     else:
         logger.error(f"Unknown execution mode: {execution_mode}")

@@ -1,0 +1,24 @@
+# Example configuration
+campaign: "single_particle_pilot"
+dataset: "single_muon_uniform"
+version: "v1"
+stage: "simulation"  # One of: generation, merge_smear, simulation, digitization
+job_config:
+  # Number of nodes will be calculated as n_runs / runs_per_node
+  n_runs: 1  # Number of jobs to submit
+  runs_per_node: 1  # Number of runs per node
+  time_limit: "00:30:00"  # Time limit per job
+  qos: "debug"
+  execution_mode: "multi_node_slurm"
+
+validation_config:
+
+# Stage-specific configurations
+events: 10000  # Number of events per run, total number of events will be n_runs * events
+threads: 64
+input_filename: events.hepmc3
+minimalKineticEnergy: 0.1  # Minimum kinetic energy in GeV to register in truth
+truthParticleHandler: "Geant4FullTruthParticleHandler"
+
+# debug_output_dir: "/global/cfs/cdirs/m4958/data/ColliderML/public/single_particle_pilot/single_electron/v1/runs/0"
+

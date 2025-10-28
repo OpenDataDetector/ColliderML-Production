@@ -6,6 +6,16 @@ This directory contains the main command-line interface for running stages of th
 
 The primary entry point is `run_stage.py`. It serves as the main front door for all data production tasks.
 
+## New Feature: Multi-Config Jobs
+
+You can now combine multiple stage configs into a single large SLURM job to take advantage of bulk discounts (e.g., >256 nodes on Perlmutter):
+
+```bash
+python run_stage.py config1.yaml config2.yaml config3.yaml --execution-mode multi_node_slurm
+```
+
+See [MULTI_CONFIG_USAGE.md](MULTI_CONFIG_USAGE.md) for detailed documentation.
+
 ## Core Functionality of `run_stage.py`
 
 1.  **Configuration-Driven**:

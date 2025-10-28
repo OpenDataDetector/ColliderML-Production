@@ -12,6 +12,13 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+# Import parquet utilities
+try:
+    from .parquet_utils import build_parquet_from_flat_df
+except ImportError:
+    # Fallback if relative import fails
+    from parquet_utils import build_parquet_from_flat_df
+
 def get_particle_ids_from_events(events, tracker_readouts):
     """Get particle IDs from events for each tracker readout.
     
@@ -384,17 +391,45 @@ def build_hdf5_tracks(df: pd.DataFrame, output_file: str) -> None:
     )
 
 
+def build_parquet_tracks(df: pd.DataFrame, output_file: str) -> None:
+    """
+    Write tracks to Parquet format with nested lists (including hit_ids).
+    
+    Args:
+        df: Flat DataFrame with event_id, track data, and hit_ids column
+        output_file: Path to output Parquet file
+    """
+    if df is None or df.empty:
+        logger.warning(f"Skipping empty DataFrame for Parquet tracks: {output_file}")
+        return
+    
+    # Use shared utility to group by event and write
+    # hit_ids column will become list[list[int]] automatically
+    build_parquet_from_flat_df(df, output_file, compression='snappy')
+
+
 def write_tracks_with_selection(
     df: pd.DataFrame,
     output_file: str,
     columns_keep: List[str] | None = None,
+    output_format: str = 'hdf5',
 ) -> None:
     """
-    Write tracks DataFrame to H5 with optional column selection.
+    Write tracks DataFrame to HDF5 or Parquet with optional column selection.
 
-    Ensures required columns for storage are present:
+    Args:
+        df: DataFrame with track data
+        output_file: Path to output file
+        columns_keep: Optional list of columns to keep
+        output_format: Output format - 'hdf5' (default) or 'parquet'
+
+    For HDF5:
+      Ensures required columns for storage are present:
       - 'event_id' (for grouping)
       - 'hit_ids' (used to build CSR arrays hit_ids_data/indptr under /events/event_#)
+    
+    For Parquet:
+      Groups by event_id and aggregates all columns (including hit_ids) into lists
     """
     if df is None or df.empty:
         logger.debug(f"write_tracks_with_selection skipped empty dataframe for {output_file}")
@@ -420,7 +455,12 @@ def write_tracks_with_selection(
     logger.debug(
         f"write_tracks_with_selection file={output_file} input_rows={len(df)} output_rows={len(filtered)} cols={list(filtered.columns)} time={pd.Timestamp.now().timestamp() - t_start:.3f}s"
     )
-    build_hdf5_tracks(filtered, output_file)
+    
+    # Route to appropriate writer based on format
+    if output_format == 'parquet':
+        build_parquet_tracks(filtered, output_file)
+    else:  # default to hdf5
+        build_hdf5_tracks(filtered, output_file)
 
 
 def build_track_fitting_df_run(tracksummary_arrays: Any, run_size: int) -> pd.DataFrame:

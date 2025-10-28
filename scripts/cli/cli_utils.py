@@ -20,7 +20,7 @@ GIT_COMMIT_SUCCESS_FILE = ".git_commit_success"
 
 # Define stage categories
 MADGRAPH_STAGES = ["madgraph_init", "madgraph_generation"]
-SIMULATION_STAGES = MADGRAPH_STAGES + ["pythia_generation", "particlegun_generation", "merge_smear", "simulation", "digitization"]
+SIMULATION_STAGES = MADGRAPH_STAGES + ["pythia_generation", "particlegun_generation", "merge_smear", "simulation", "digitization", "calo_digitization"]
 POSTPROCESSING_STAGES = [
     "build_tracks",
     "build_tracker_hits",
@@ -32,7 +32,7 @@ VALID_STAGES = SIMULATION_STAGES + POSTPROCESSING_STAGES
 
 # Define which stages need shifter container (subset of simulation stages)
 # madgraph_init, madgraph_generation, and particlegun_generation run on host environment and don't need shifter
-SHIFTER_STAGES = ["pythia_generation", "particlegun_generation", "merge_smear", "simulation", "digitization"]
+SHIFTER_STAGES = ["pythia_generation", "particlegun_generation", "merge_smear", "simulation", "digitization", "calo_digitization"]
 
 # Stage to script mappings
 STAGE_SCRIPT_MAP = {
@@ -44,6 +44,7 @@ STAGE_SCRIPT_MAP = {
     "merge_smear": "simulation/merge_and_smear.py",
     "simulation": "simulation/ddsim_run.py",
     "digitization": "simulation/digi_and_reco.py",
+    "calo_digitization": "simulation/calo_digitization.py",
     
     # Postprocessing scripts
     "build_tracks": "postprocessing/convert_tracks.py",
@@ -542,39 +543,33 @@ def git_commit_and_log_config(config, config_path, software_repo_path, force_com
                 logger.info(f"Forced empty commit successful: '{commit_message}'")
                 committed_this_run = True
 
-        # --- 4. Check if version already processed (after git commit) ---
-        if not force_commit and commit_success_file.exists() and not committed_this_run:
-            logger.info(f"Success marker file {commit_success_file} exists and no new commits made. Skipping git tag and config re-save for this version.")
-            # Check for the config in the new location
-            if not logged_config_path.exists():
-                 logger.warning(f"Git commit marker exists, but config snapshot {logged_config_path} not found. Re-logging config.")
-                 config_snapshot_dir.mkdir(parents=True, exist_ok=True) # Ensure 'configs' subdir exists
-                 with open(logged_config_path, 'w') as f_out:
-                    yaml.dump(config, f_out, default_flow_style=False, sort_keys=False)
-                 logger.info(f"Config snapshot saved to {logged_config_path}")
-            return True, logged_config_path
-
+        # --- 4. Get current git hash for logging ---
         git_hash_cmd = ["git", "-C", str(software_repo_path), "rev-parse", "HEAD"]
         current_git_hash = subprocess.check_output(git_hash_cmd, text=True, cwd=software_repo_path).strip()
         logger.info(f"Current Git HEAD for {software_repo_path}: {current_git_hash}")
 
-        # --- 5. Save Config Snapshot and Success Marker ---
-        config_snapshot_dir.mkdir(parents=True, exist_ok=True) # Ensure 'configs' subdir exists before writing
+        # --- 5. ALWAYS Save Config Snapshot ---
+        # Always save the config to ensure we have the current version
+        # This is safer than checking if it exists or relying on git status
+        config_snapshot_dir.mkdir(parents=True, exist_ok=True)
         
         # Create a clean copy of the config without internal env_setup data
         clean_config = {k: v for k, v in config.items() if k != 'env_setup'}
         
         with open(logged_config_path, 'w') as f_out:
             yaml.dump(clean_config, f_out, default_flow_style=False, sort_keys=False)
-        logger.info(f"Full configuration snapshot saved to {logged_config_path}")
+        logger.info(f"Configuration snapshot saved to {logged_config_path}")
         
+        # --- 6. Update Success Marker ---
+        # Update the marker file with current info
         relative_config_path_for_marker = Path("configs") / original_config_filename
         with open(commit_success_file, 'w') as f_marker:
-            f_marker.write(f"Commit successful at {datetime.datetime.now()}\n"
+            f_marker.write(f"Last run at {datetime.datetime.now()}\n"
                            f"Git Branch: {current_branch_name}\n"
                            f"Git Hash: {current_git_hash}\n"
-                           f"Config: {relative_config_path_for_marker}\n") # Use relative path here
-        logger.info(f"Git commit success marker created at {commit_success_file}")
+                           f"Config: {relative_config_path_for_marker}\n"
+                           f"Committed this run: {committed_this_run}\n")
+        logger.info(f"Success marker updated at {commit_success_file}")
         return True, logged_config_path
         
     except subprocess.CalledProcessError as e:
@@ -617,4 +612,33 @@ def create_necessary_directories(config):
         "run_dir": run_dir,
         "log_dir": log_dir,
         "validation_dir": validation_dir
-    } 
+    }
+
+def load_and_process_config(config_path, env_config_path):
+    """
+    Load config file, apply env defaults, and substitute variables.
+    
+    Args:
+        config_path (str/Path): Path to the configuration file
+        env_config_path (Path): Path to env_setup.yaml file
+        
+    Returns:
+        dict: Processed configuration dictionary
+    """
+    import yaml
+    
+    # Load main config
+    with open(config_path, 'r') as f:
+        config = yaml.safe_load(f)
+    
+    # Load and merge env_setup if it exists
+    if env_config_path.exists():
+        with open(env_config_path, 'r') as f_env:
+            env_config = yaml.safe_load(f_env)
+        config["env_setup"] = env_config
+        
+        # Apply config defaults and variable substitution
+        config = apply_config_defaults(config)
+        config = substitute_config_variables(config)
+    
+    return config 

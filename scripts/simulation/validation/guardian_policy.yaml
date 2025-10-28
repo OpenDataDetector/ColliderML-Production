@@ -1,0 +1,86 @@
+# Error Guardian Policy Configuration
+#
+# Defines failure rate thresholds and recovery actions for the error guardian.
+# Used by error_guardian.py to decide what action to take based on validation results.
+
+# Failure rate thresholds (as percentages)
+thresholds:
+  minor_failure_pct: 2.0      # Below this: auto-cleanup and continue
+  moderate_failure_pct: 10.0  # Between minor and this: alert human, no auto-action
+  # Above moderate: critical failure (requeue or stop)
+
+# Retry policy for critical/complete failures
+retry_policy:
+  max_retries: 0                    # Maximum number of retry attempts (via SLURM_RESTART_COUNT)
+  retry_on_complete_failure: false   # Requeue if all runs failed
+  retry_on_critical_failure: false   # Requeue if >10% failure rate
+
+# Actions for each failure severity level
+actions:
+  minor_failure:
+    description: "Small number of runs failed (<2%)"
+    auto_remove_failed: true        # Automatically delete failed run directories
+    auto_normalize: true            # Call normalise_runs.py to renumber remaining runs
+    alert_level: "INFO"
+    exit_code: 0                    # Success (after cleanup)
+    
+  moderate_failure:
+    description: "Significant failures (2-10%) but not critical"
+    auto_remove_failed: false       # Do NOT auto-delete (might be systemic issue)
+    auto_normalize: false
+    alert_level: "WARNING"
+    exit_code: 1                    # Failure - requires human intervention
+    require_human: true
+    
+  critical_failure:
+    description: "High failure rate (>10%) or complete failure"
+    alert_level: "CRITICAL"
+    auto_resubmit: true             # Requeue via exit code 99 (if retries available)
+    exit_code_requeue: 99           # SLURM requeues on this exit code
+    exit_code_give_up: 1            # After max retries exhausted
+    require_human_after_retries: true
+
+# Dry-run mode settings
+dry_run:
+  description: "When --dry-run flag is used"
+  log_decisions: true
+  execute_actions: false            # Don't actually delete files or normalize
+  show_commands: true               # Show what commands would be run
+
+# Reporting settings
+reporting:
+  save_json_report: true            # Save validation results as JSON
+  report_filename_template: "validation_report_{stage}_{timestamp}.json"
+  include_statistics: true          # Include file size statistics in report
+  include_failed_run_details: true  # List all failed runs with reasons
+
+# Logging settings
+logging:
+  log_all_decisions: true
+  log_recovery_actions: true
+  log_level_minor: "INFO"
+  log_level_moderate: "WARNING"
+  log_level_critical: "ERROR"
+
+# Safety settings
+safety:
+  require_confirmation_for_deletion: false  # Set to true for extra safety
+  max_failed_runs_to_delete: 100            # Safety limit on auto-deletion
+  min_successful_runs: 10                   # Don't continue if < this many successful
+
+# Stage-specific overrides (optional)
+# Uncomment and modify if certain stages need different thresholds
+stage_overrides: {}
+  # simulation:
+  #   thresholds:
+  #     minor_failure_pct: 1.0  # Be more strict for simulation stage
+  # digitization:
+  #   retry_policy:
+  #     max_retries: 5          # Allow more retries for tracking stage
+
+# Notes:
+# - Failure rate = (failed_runs / total_runs) * 100
+# - SLURM_RESTART_COUNT is checked to determine retry attempts
+# - Exit codes: 0 = success, 1 = failure (no retry), 99 = requeue job
+# - normalise_runs.py is called with absolute path from config
+
