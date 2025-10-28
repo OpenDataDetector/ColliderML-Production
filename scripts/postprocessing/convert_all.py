@@ -43,7 +43,7 @@ def _compute_paths(config: dict) -> tuple[Path, Path, str, str]:
     dataset = config["dataset"]
     version = config["version"]
     common_cfg = config.get("common", {})
-    input_base_dir = Path(common_cfg["input_base_dir"]) / campaign / dataset / version
+    input_base_dir = Path(common_cfg["output_base_dir"]) / campaign / dataset / version
     output_base_dir = Path(config.get("h5_output_dir", common_cfg["output_base_dir"]))
     dataset_base = f"{campaign}/{dataset}/{version}"
     dataset_name_dot = dataset_base.replace("/", ".")
