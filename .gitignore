@@ -30,6 +30,7 @@ scripts/cli/env_setup.yaml
 **/*.lhe.xz
 **/*.lhe.lzma
 **/*.h5
+**/*.parquet
 
 # Pycache
 __pycache__/
