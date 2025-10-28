@@ -235,7 +235,8 @@ def _process_chunk_for_all(
                 df_run = build_particles_df_with_parents_and_vertex(
                     batch,
                     str(edm4hep_path),
-                    digi_particles_df_run,
+                    digi_particles_df = digi_particles_df_run,
+                    preloaded_particles_df = None,
                     local_events=local_events,
                     min_particle_energy=min_particle_energy,
                     min_tracker_hits=min_tracker_hits,

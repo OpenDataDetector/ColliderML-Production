@@ -125,14 +125,14 @@ def process_event_for_particles(
         # Apply configurable minimum energy filter if requested
         if min_particle_energy is not None and "energy" in particles_df.columns:
             try:
-                particle_cut_mask = particle_cut_mask & (particles_df["energy"] >= float(min_particle_energy))
+                particle_cut_mask = particle_cut_mask | (particles_df["energy"] >= float(min_particle_energy))
             except Exception:
                 pass
 
         # Apply configurable minimum tracker hits filter if available
         if min_tracker_hits is not None and "num_tracker_hits" in particles_df.columns:
             try:
-                particle_cut_mask = particle_cut_mask & (particles_df["num_tracker_hits"] >= int(min_tracker_hits))
+                particle_cut_mask = particle_cut_mask | (particles_df["num_tracker_hits"] >= int(min_tracker_hits))
                 logger.debug(f"Event {event_id}: {particle_cut_mask.sum()} particles after min_tracker_hits filter ")
             except Exception:
                 pass
@@ -140,7 +140,7 @@ def process_event_for_particles(
         # Apply configurable minimum calo hits filter if available
         if min_calo_hits is not None and "num_calo_hits" in particles_df.columns:
             try:
-                particle_cut_mask = particle_cut_mask & (particles_df["num_calo_hits"] >= int(min_calo_hits))
+                particle_cut_mask = particle_cut_mask | (particles_df["num_calo_hits"] >= int(min_calo_hits))
                 logger.debug(f"Event {event_id}: {particle_cut_mask.sum()} particles after min_calo_hits filter ")
             except Exception:
                 pass
