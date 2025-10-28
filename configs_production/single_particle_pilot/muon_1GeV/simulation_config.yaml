@@ -15,7 +15,7 @@ job_config:
 validation_config:
 
 # Stage-specific configurations
-events: 100  # Number of events per run, total number of events will be n_runs * events
+events: 64  # Number of events per run, total number of events will be n_runs * events
 threads: 64
 input_filename: events.hepmc3
 minimalKineticEnergy: 0.1  # Minimum kinetic energy in GeV to register in truth
