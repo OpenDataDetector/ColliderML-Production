@@ -135,9 +135,10 @@ def process_event_for_tracks(
     }
     
     full_track_df = pd.DataFrame(track_finding_data)
-    print(full_track_df.columns)
+    logging.info(f"Full track dataframe columns: {full_track_df.columns}")
     event_df = full_track_df.merge(pd.DataFrame(track_fitting_data), 
                                  on=["event_id", "track_id"])
+    logging.info(f"Event dataframe columns: {event_df.columns}")
     return event_df
 
 def build_hdf5_tracks(df: pd.DataFrame, output_file: str) -> None:
