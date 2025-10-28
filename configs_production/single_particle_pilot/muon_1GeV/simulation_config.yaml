@@ -1,7 +1,7 @@
 # Example configuration
 campaign: "single_particle_pilot"
 dataset: "single_muon_1GeV"
-version: "v1"
+version: "v2"
 stage: "simulation"  # One of: generation, merge_smear, simulation, digitization
 job_config:
   # Number of nodes will be calculated as n_runs / runs_per_node
@@ -14,7 +14,7 @@ job_config:
 validation_config:
 
 # Stage-specific configurations
-events: 10000  # Number of events per run, total number of events will be n_runs * events
+events: 100  # Number of events per run, total number of events will be n_runs * events
 threads: 64
 input_filename: events.hepmc3
 minimalKineticEnergy: 0.1  # Minimum kinetic energy in GeV to register in truth
