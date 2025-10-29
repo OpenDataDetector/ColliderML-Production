@@ -36,7 +36,7 @@ output_format: "parquet"
 
 # Chunking
 # chunk_size: 1000
-chunk_size: 128
+chunk_size: 1000
 run_size: 128
 
 # Column selection for H5 outputs

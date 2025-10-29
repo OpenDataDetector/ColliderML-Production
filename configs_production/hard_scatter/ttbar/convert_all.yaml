@@ -6,9 +6,9 @@ stage: "convert_all"
 
 # Job submission configuration
 job_config:
-  n_runs: 32  # Number of jobs to submit
+  n_runs: 100  # Number of jobs to submit
   # n_runs: 1
-  runs_per_node: 32  # Number of runs per node
+  runs_per_node: 25  # Number of runs per node
   # runs_per_node: 1
   time_limit: "00:30:00"  # Time limit per job
   qos: "debug"
@@ -35,7 +35,7 @@ objects:
 output_format: "parquet"
 
 # Chunking
-chunk_size: 100
+chunk_size: 1000
 # chunk_size: 10
 run_size: 1280
 
