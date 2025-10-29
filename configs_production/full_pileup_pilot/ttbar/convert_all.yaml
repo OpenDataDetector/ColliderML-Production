@@ -1,7 +1,7 @@
 # Config to drive convert_all.py
 campaign: "full_pileup_pilot"
 dataset: "ttbar"
-version: "v2"
+version: "v1"
 stage: "convert_all"
 
 # Job submission configuration
@@ -35,7 +35,7 @@ objects:
 
 # Chunking
 # chunk_size: 1000
-chunk_size: 128
+chunk_size: 100
 run_size: 128
 
 # Column selection for H5 outputs

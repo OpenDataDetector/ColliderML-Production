@@ -6,12 +6,12 @@ stage: "convert_all"
 
 # Job submission configuration
 job_config:
-  n_runs: 8  # Number of jobs to submit
+  n_runs: 32  # Number of jobs to submit
   # n_runs: 1
-  runs_per_node: 8  # Number of runs per node
+  runs_per_node: 32  # Number of runs per node
   # runs_per_node: 1
   time_limit: "00:30:00"  # Time limit per job
-  # qos: "regular"
+  qos: "debug"
   # execution_mode: "interactive"
   execution_mode: "multi_node_slurm"
 
@@ -36,7 +36,7 @@ output_format: "parquet"
 
 # Chunking
 # chunk_size: 1000
-chunk_size: 1000
+chunk_size: 100
 run_size: 128
 
 # Column selection for H5 outputs
