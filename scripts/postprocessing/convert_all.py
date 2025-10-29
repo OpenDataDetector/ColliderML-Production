@@ -15,7 +15,7 @@ from pyedm4hep import EDM4hepEventBatch
 import awkward as ak
 
 from convert_particles import convert_particles, build_particles_df_with_parents_and_vertex, write_particles_with_selection
-from convert_calorimeter import process_event_for_calohits, write_calohits_with_selection
+from convert_calorimeter import process_calohits_batch, write_calohits_with_selection
 # Reuse per-event tracks processing from dedicated module
 from convert_tracks import process_event_for_tracks
 from convert_digihits import convert_digihits, process_event_for_digihits, write_digihits_with_selection
@@ -174,36 +174,35 @@ def _process_chunk_for_all(
             
             if calo_hits_all is not None and not calo_hits_all.empty and \
                calo_contributions_all is not None and not calo_contributions_all.empty:
-                for local_event_num in range(local_events[0], local_events[1]):
-                    global_event_num = abs_run * run_size + local_event_num
-                    ev_calo_hits = calo_hits_all[calo_hits_all.event_id == local_event_num]
-                    ev_calo_contribs = calo_contributions_all[calo_contributions_all.event_id == local_event_num]
-                    
-                    if not ev_calo_hits.empty and not ev_calo_contribs.empty:
-                        ev_df = process_event_for_calohits(
-                            event_id=global_event_num,
-                            local_event_num=local_event_num,
-                            preloaded_calo_hits=ev_calo_hits,
-                            preloaded_calo_contributions=ev_calo_contribs,
-                            ecal_energy_threshold=ecal_energy_threshold,
-                            hcal_energy_threshold=hcal_energy_threshold,
-                            ecal_time_min=ecal_time_min,
-                            ecal_time_max=ecal_time_max,
-                            hcal_time_min=hcal_time_min,
-                            hcal_time_max=hcal_time_max,
-                        )
-                        if not ev_df.empty:
-                            pair = (abs_run, local_event_num)
-                            if pair in seen_pairs_calo:
-                                logger.error(
-                                    f"Overlap detected for calo_hits on (run,local_event)=({abs_run},{local_event_num})"
-                                )
-                            seen_pairs_calo.add(pair)
-                            calo_frames.append(ev_df)
+                # Process entire run at once (vectorized, no event loop!)
+                run_calo_df = process_calohits_batch(
+                    calo_hits_all,
+                    calo_contributions_all,
+                    ecal_energy_threshold=ecal_energy_threshold,
+                    hcal_energy_threshold=hcal_energy_threshold,
+                    ecal_time_min=ecal_time_min,
+                    ecal_time_max=ecal_time_max,
+                    hcal_time_min=hcal_time_min,
+                    hcal_time_max=hcal_time_max,
+                )
                 
-                if calo_frames:
+                if not run_calo_df.empty:
+                    # Update event_ids to global numbering
+                    run_calo_df['event_id'] = run_calo_df['event_id'] + abs_run * run_size
+                    
+                    # Track which events we processed
+                    for local_event_num in run_calo_df['event_id'].unique():
+                        local_event = local_event_num - abs_run * run_size
+                        pair = (abs_run, local_event)
+                        if pair in seen_pairs_calo:
+                            logger.error(
+                                f"Overlap detected for calo_hits on (run,local_event)=({abs_run},{local_event})"
+                            )
+                        seen_pairs_calo.add(pair)
+                    
+                    calo_frames.append(run_calo_df)
                     logger.info(
-                        f"Run {abs_run}: calo_hits rows={sum(len(f) for f in calo_frames[-local_count:])} events={local_count}"
+                        f"Run {abs_run}: calo_hits rows={len(run_calo_df)} events={run_calo_df['event_id'].nunique()}"
                     )
             else:
                 logger.warning(f"Missing or empty calorimeter data for run {abs_run}")

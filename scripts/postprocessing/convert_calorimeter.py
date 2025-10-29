@@ -31,6 +31,155 @@ from pyedm4hep import EDM4hepEvent, EDM4hepEventBatch
 logger = logging.getLogger(__name__)
 
 
+def process_calohits_batch(
+    calo_hits: pd.DataFrame,
+    calo_contributions: pd.DataFrame,
+    ecal_energy_threshold: float = 5.0e-5,  # GeV
+    hcal_energy_threshold: float = 2.5e-4,  # GeV
+    ecal_time_min: float = -1.0,  # ns
+    ecal_time_max: float = 10.0,  # ns
+    hcal_time_min: float = -1.0,  # ns
+    hcal_time_max: float = 10.0,  # ns
+) -> pd.DataFrame:
+    """
+    Process calorimeter data for multiple events with nested contributions.
+    
+    This creates a cell-level DataFrame where each row is a calorimeter cell,
+    with contributions stored as nested lists (particle_id, energy, time).
+    Processes all events in the input DataFrames simultaneously.
+    
+    Args:
+        calo_hits: DataFrame with calorimeter hits (multi-event)
+        calo_contributions: DataFrame with calorimeter contributions (multi-event)
+        ecal_energy_threshold: ECal energy threshold in GeV (cell level)
+        hcal_energy_threshold: HCal energy threshold in GeV (cell level)
+        ecal_time_min: ECal minimum time in ns
+        ecal_time_max: ECal maximum time in ns
+        hcal_time_min: HCal minimum time in ns
+        hcal_time_max: HCal maximum time in ns
+        
+    Returns:
+        DataFrame with columns: event_id, cellID, detector, x, y, z, total_energy, 
+                                contrib_particle_ids, contrib_energies, contrib_times
+    """
+    try:
+        t0 = time.time()
+        
+        if calo_contributions is None or calo_contributions.empty:
+            logger.warning("No calorimeter contributions")
+            return pd.DataFrame()
+        
+        if calo_hits is None or calo_hits.empty:
+            logger.warning("No calorimeter hits")
+            return pd.DataFrame()
+        
+        # Work with contributions copy
+        contribs = calo_contributions.copy()
+        
+        # Step 1: Apply timing filters to contributions
+        if 'time' in contribs.columns:
+            # Calculate time-of-flight correction
+            contribs['r'] = np.sqrt(contribs['x']**2 + contribs['y']**2 + contribs['z']**2)
+            contribs['dt'] = contribs['r'] / 300.0 - 0.1  # time-of-flight in ns
+            contribs['corrected_time'] = contribs['time'] - contribs['dt']
+            
+            # Create detector masks
+            ecal_mask = contribs['detector'].str.contains('ECal', na=False)
+            hcal_mask = contribs['detector'].str.contains('HCal', na=False)
+            
+            # Apply timing filters
+            timing_mask = (
+                (ecal_mask & 
+                 (contribs['corrected_time'] >= ecal_time_min) & 
+                 (contribs['corrected_time'] <= ecal_time_max)) |
+                (hcal_mask & 
+                 (contribs['corrected_time'] >= hcal_time_min) & 
+                 (contribs['corrected_time'] <= hcal_time_max))
+            )
+            contribs = contribs[timing_mask].copy()
+            logger.debug(f"Batch: {len(contribs)} contributions after timing filter")
+        
+        if contribs.empty:
+            return pd.DataFrame()
+        
+        # Step 2: Aggregate contributions by (event_id, cellID, particle_id)
+        # Use energy-weighted time for aggregated time per particle contribution
+        contribs['energy_time'] = contribs['energy'] * contribs.get('time', 0.0)
+        
+        contrib_per_particle = (
+            contribs.groupby(['event_id', 'cellID', 'particle_id'], sort=False)
+            .agg(
+                energy=('energy', 'sum'),
+                energy_time=('energy_time', 'sum'),
+                detector=('detector', 'first'),
+            )
+            .reset_index()
+        )
+        
+        # Calculate energy-weighted time per particle contribution
+        contrib_per_particle['time'] = contrib_per_particle['energy_time'] / contrib_per_particle['energy']
+        contrib_per_particle = contrib_per_particle.drop(columns=['energy_time'])
+        
+        # Step 3a: First group by cell to get total energy (for threshold)
+        cell_energy = (
+            contrib_per_particle.groupby(['event_id', 'cellID'], sort=False)
+            .agg(
+                detector=('detector', 'first'),
+                total_energy=('energy', 'sum'),
+            )
+            .reset_index()
+        )
+        
+        # Step 3b: Apply cell-level energy thresholds BEFORE creating nested lists (much faster!)
+        ecal_mask = cell_energy['detector'].str.contains('ECal', na=False)
+        hcal_mask = cell_energy['detector'].str.contains('HCal', na=False)
+        
+        energy_mask = (
+            (ecal_mask & (cell_energy['total_energy'] >= ecal_energy_threshold)) |
+            (hcal_mask & (cell_energy['total_energy'] >= hcal_energy_threshold))
+        )
+        
+        cells_passing_threshold = cell_energy[energy_mask][['event_id', 'cellID']].copy()
+        logger.debug(f"Batch: {len(cells_passing_threshold)} cells pass energy threshold")
+        
+        # Step 3c: Filter contributions to only cells passing threshold
+        contrib_filtered = contrib_per_particle.merge(
+            cells_passing_threshold,
+            on=['event_id', 'cellID'],
+            how='inner'
+        )
+        
+        if contrib_filtered.empty:
+            return pd.DataFrame()
+        
+        # Step 3d: Now group to create nested lists (much smaller dataset!)
+        cell_level = (
+            contrib_filtered.groupby(['event_id', 'cellID'], sort=False)
+            .agg(
+                detector=('detector', 'first'),
+                total_energy=('energy', 'sum'),
+                contrib_particle_ids=('particle_id', list),
+                contrib_energies=('energy', list),
+                contrib_times=('time', list),
+            )
+            .reset_index()
+        )
+        
+        # Step 4: Merge with calo_hits to get cell positions (x, y, z)
+        calo_cells = cell_level.merge(
+            calo_hits[['event_id', 'cellID', 'x', 'y', 'z']],
+            on=['event_id', 'cellID'],
+            how='inner'
+        )
+        
+        logger.debug(f"Batch: processed {len(calo_cells)} calorimeter cells in {time.time() - t0:.3f}s")
+        return calo_cells
+        
+    except Exception as e:
+        logger.error(f"Failed to process calorimeter data: {e}")
+        return pd.DataFrame()
+
+
 def process_event_for_calohits(
     event_id: int,
     local_event_num: int,
