@@ -61,6 +61,11 @@ def main():
         metavar=('START', 'END'),
         help='Range of run IDs to validate: START (inclusive) to END (exclusive)'
     )
+    parser.add_argument(
+        '--chunk-size',
+        type=int,
+        help='Chunk size for chunk-based validation (e.g., convert_all). Used to map chunk IDs to expected filenames.'
+    )
     
     args = parser.parse_args()
     
@@ -96,7 +101,8 @@ def main():
             runs_dir=args.runs_dir,
             stage=args.stage,
             validation_rules=validation_rules,
-            run_ids=run_ids_to_validate
+            run_ids=run_ids_to_validate,
+            chunk_size=args.chunk_size
         )
     except Exception as e:
         logger.error(f"Validation failed: {e}")

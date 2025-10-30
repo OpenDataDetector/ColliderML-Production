@@ -115,25 +115,30 @@ stages:
     # Special: convert_all outputs go to version-level directories, not per-run
     # Use output_location to specify alternative search location
     output_location: "parquet"  # Relative to version directory (campaign/dataset/version/)
+    # For convert_all, we validate individual chunk files rather than per-run outputs
+    validate_as_chunks: true
     file_patterns:
-      - pattern: "**/calo_hits/*.parquet"  # Recursive pattern to find all parquet files
-        description: "Parquet files"
-        min_size_mb: 0.1
+      - pattern: "reco/calo_hits/*.parquet"
+        description: "Calorimeter hits parquet files"
+        min_size_mb: 100.0
         median_threshold_pct: 0.8
         required: true
-      - pattern: "**/tracker_hits/*.parquet"
-        description: "Parquet files"
-        min_size_mb: 0.1
+      
+      - pattern: "reco/tracker_hits/*.parquet"
+        description: "Tracker hits parquet files"
+        min_size_mb: 100.0
         median_threshold_pct: 0.8
         required: true
-      - pattern: "**/tracks/*.parquet"
-        description: "Parquet files"
-        min_size_mb: 0.1
+      
+      - pattern: "reco/tracks/*.parquet"
+        description: "Tracks parquet files"
+        min_size_mb: 1.0
         median_threshold_pct: 0.8
         required: true
-      - pattern: "**/particles/*.parquet"
-        description: "Parquet files"
-        min_size_mb: 0.1
+      
+      - pattern: "truth/particles/*.parquet"
+        description: "Particles parquet files"
+        min_size_mb: 100.0
         median_threshold_pct: 0.8
         required: true
 

@@ -71,14 +71,15 @@ def get_run_directories(runs_dir: Path) -> List[Path]:
     return run_dirs
 
 
-def check_file_pattern(run_dir: Path, pattern: str, check_type: str = "size") -> Tuple[bool, Optional[int], str]:
+def check_file_pattern(run_dir: Path, pattern: str, check_type: str = "size", is_file: bool = False) -> Tuple[bool, Optional[int], str]:
     """
     Check if files matching pattern exist in run directory and get size.
     
     Args:
-        run_dir: Path to run directory
+        run_dir: Path to run directory (or file path if is_file=True)
         pattern: Glob pattern to match (e.g., "*.hepmc3")
         check_type: "exists" or "size"
+        is_file: If True, run_dir is actually a file path to check directly
         
     Returns:
         Tuple of (files_found, total_size_bytes, issue_description)
@@ -86,6 +87,22 @@ def check_file_pattern(run_dir: Path, pattern: str, check_type: str = "size") ->
         - total_size_bytes: Total size of all matching files (None if check_type="exists")
         - issue_description: Empty string if OK, otherwise describes the issue
     """
+    if is_file:
+        # run_dir is actually a file - check it directly
+        if not run_dir.exists():
+            return False, None, f"File does not exist: {run_dir.name}"
+        
+        if check_type == "exists":
+            return True, None, ""
+        
+        # Get file size
+        try:
+            size = run_dir.stat().st_size
+            return True, size, ""
+        except Exception as e:
+            return False, None, f"Failed to get size of {run_dir.name}: {e}"
+    
+    # Original directory-based logic
     # Find matching files
     matching_files = list(run_dir.glob(pattern))
     
@@ -136,7 +153,8 @@ def validate_stage(
     stage: str,
     validation_rules: dict,
     dry_run: bool = False,
-    run_ids: list = None
+    run_ids: list = None,
+    chunk_size: int = None
 ) -> dict:
     """
     Validate outputs for a pipeline stage.
@@ -146,7 +164,8 @@ def validate_stage(
         stage: Stage name (must match key in validation_rules)
         validation_rules: Validation rules dictionary
         dry_run: If True, log actions but don't modify anything
-        run_ids: Optional list of specific run IDs to validate
+        run_ids: Optional list of specific run IDs to validate (for standard validation) or chunk IDs (for chunk-based validation)
+        chunk_size: Optional chunk size for chunk-based validation (maps chunk IDs to expected filenames)
         
     Returns:
         Dictionary with validation results
@@ -168,13 +187,20 @@ def validate_stage(
     stage_rules = validation_rules['stages'][stage]
     file_patterns = stage_rules.get('file_patterns', [])
     output_location = stage_rules.get('output_location')  # Optional: alternative output directory
+    validate_as_chunks = stage_rules.get('validate_as_chunks', False)  # For chunk-based outputs
+    
+    # Initialize failure tracking
+    failed_runs = set()
+    failure_reasons = {}
+    pattern_statistics = {}
+    missing_chunks_info = {}
     
     if not file_patterns:
         logger.warning(f"No file patterns defined for stage {stage}")
     
     # Determine search directories based on output_location
     if output_location:
-        # Custom output location (e.g., parquet/): treat the output dir as a single "run"
+        # Custom output location (e.g., parquet/): different validation approach
         search_dir = runs_dir.parent / output_location if runs_dir.name == "runs" else runs_dir / output_location
         logger.info(f"Using custom output location: {search_dir}")
         
@@ -190,15 +216,99 @@ def validate_stage(
                 "error": f"Output directory not found: {search_dir}"
             }
         
-        # Create a pseudo "run directory" list with just the output dir
-        run_dirs = [search_dir]
-        logger.info(f"Validating aggregated outputs in {output_location}/")
+        if validate_as_chunks:
+            # For chunk-based outputs (e.g., convert_all), collect all chunk files
+            # and treat each file as a "run" for validation purposes
+            logger.info(f"Validating chunk-based outputs in {output_location}/")
+            
+            # Collect all matching files across all patterns into pseudo run_dirs
+            all_chunk_files = []
+            for pattern_config in file_patterns:
+                pattern = pattern_config['pattern']
+                matching = list(search_dir.glob(pattern))
+                all_chunk_files.extend(matching)
+            
+            if not all_chunk_files:
+                logger.error(f"No chunk files found in {search_dir}")
+                return {
+                    "stage": stage,
+                    "status": "COMPLETE_FAILURE",
+                    "total_runs": 0,
+                    "successful_runs": 0,
+                    "failed_runs": 0,
+                    "failure_rate": 1.0,
+                    "error": "No chunk files found"
+                }
+            
+            # Extract chunk IDs from filenames (e.g., "events0-999.parquet" -> chunk 0)
+            # Filename pattern: {prefix}.events{start}-{end}.parquet
+            import re
+            chunk_id_pattern = re.compile(r'events(\d+)-(\d+)\.parquet$')
+            
+            found_chunks = set()
+            for f in all_chunk_files:
+                match = chunk_id_pattern.search(f.name)
+                if match:
+                    start_event = int(match.group(1))
+                    if chunk_size:
+                        chunk_id = start_event // chunk_size
+                        found_chunks.add(chunk_id)
+            
+            # If run_ids specified (chunk IDs to validate) and chunk_size provided, check for missing chunks
+            missing_chunks = set()
+            if run_ids is not None and chunk_size is not None:
+                expected_chunks = set(run_ids)
+                missing_chunks = expected_chunks - found_chunks
+                
+                if missing_chunks:
+                    logger.warning(f"Missing {len(missing_chunks)} chunks: {sorted(missing_chunks)[:20]}")
+                    if len(missing_chunks) > 20:
+                        logger.warning(f"  ... and {len(missing_chunks) - 20} more")
+                    
+                    # Add missing chunks to failure_reasons
+                    for chunk_id in missing_chunks:
+                        chunk_name = f"chunk_{chunk_id}"
+                        failed_runs.add(chunk_name)
+                        failure_reasons[chunk_name] = [f"Missing chunk file (events{chunk_id*chunk_size}-{(chunk_id+1)*chunk_size-1}.parquet)"]
+                    
+                    # Store missing chunks info for the result
+                    missing_chunks_info = {
+                        "missing_chunk_ids": sorted(missing_chunks),
+                        "missing_count": len(missing_chunks),
+                        "expected_count": len(expected_chunks),
+                        "found_count": len(found_chunks)
+                    }
+                
+                logger.info(f"Found {len(found_chunks)}/{len(expected_chunks)} expected chunks")
+                
+                # Filter to only validate chunks that were requested
+                all_chunk_files = [f for f in all_chunk_files 
+                                   if any(chunk_id_pattern.search(f.name) and 
+                                         int(chunk_id_pattern.search(f.name).group(1)) // chunk_size in expected_chunks
+                                         for _ in [True])]
+            else:
+                missing_chunks = set()
+            
+            # Create pseudo "run directories" - each file is treated as a run
+            # We'll use the file path itself as the "run_dir" and check it directly
+            run_dirs = all_chunk_files
+            all_run_dirs = run_dirs
+            logger.info(f"Found {len(run_dirs)} chunk files to validate")
+        else:
+            # Aggregate validation: treat entire output dir as single "run"
+            run_dirs = [search_dir]
+            all_run_dirs = run_dirs
+            logger.info(f"Validating aggregated outputs in {output_location}/")
     else:
         # Standard per-run validation
         all_run_dirs = get_run_directories(Path(runs_dir))
     
-    # Filter to specific run IDs if provided
-    if run_ids is not None:
+    # Filter to specific run IDs if provided (only for standard per-run validation)
+    if output_location and not validate_as_chunks and run_ids is not None:
+        logger.info("run_ids filter provided but ignored when validating custom output_location without chunk validation")
+        run_ids = None
+
+    if run_ids is not None and not (output_location and validate_as_chunks):
         run_ids_set = set(run_ids)
         run_dirs = [d for d in all_run_dirs if int(d.name) in run_ids_set]
         logger.info(f"Filtered to {len(run_dirs)} runs (from {len(all_run_dirs)} total) based on run_ids filter")
@@ -221,10 +331,11 @@ def validate_stage(
     
     logger.info(f"Found {len(run_dirs)} run directories to validate")
     
+    # Detect if we're in chunk validation mode (run_dirs contains files not directories)
+    chunk_mode = validate_as_chunks and output_location and run_dirs and run_dirs[0].is_file()
+    
     # Validate each pattern across all runs
-    failed_runs = set()  # Use set to avoid duplicates
-    failure_reasons = {}  # run_id -> list of reasons
-    pattern_statistics = {}
+    # Note: failed_runs, failure_reasons, and missing_chunks_info already initialized above
     
     for pattern_config in file_patterns:
         pattern = pattern_config['pattern']
@@ -235,40 +346,77 @@ def validate_stage(
         
         logger.info(f"\nChecking pattern: {pattern}")
         
-        # Collect sizes and check each run
+        # Collect sizes and check each run/chunk
         sizes = []
         run_sizes = {}  # run_id -> size
         run_issues = {}  # run_id -> issue description
         
-        for run_dir in run_dirs:
-            run_id = run_dir.name
-            files_found, size, issue = check_file_pattern(run_dir, pattern, check_type)
+        if chunk_mode:
+            # In chunk mode, each "run_dir" is actually a file
+            # Filter to files matching the current pattern
+            pattern_suffix = pattern.split('/')[-1]  # e.g., "*.parquet" from "reco/tracks/*.parquet"
+            relevant_files = [f for f in run_dirs if f.match(pattern)]
             
-            if not files_found:
-                if required:
-                    logger.warning(f"  Run {run_id}: {issue}")
-                    run_issues[run_id] = issue
-                    failed_runs.add(run_id)
-                    if run_id not in failure_reasons:
-                        failure_reasons[run_id] = []
-                    failure_reasons[run_id].append(f"{pattern}: {issue}")
-                continue
-            
-            if check_type == "size" and size is not None:
-                # Check absolute minimum
-                size_mb = size / (1024**2)
-                if size_mb < min_size_mb:
-                    issue = f"{pattern}: size {size_mb:.2f} MB < minimum {min_size_mb} MB"
-                    logger.warning(f"  Run {run_id}: {issue}")
-                    run_issues[run_id] = issue
-                    failed_runs.add(run_id)
-                    if run_id not in failure_reasons:
-                        failure_reasons[run_id] = []
-                    failure_reasons[run_id].append(issue)
+            for file_path in relevant_files:
+                run_id = file_path.name  # Use filename as run_id
+                files_found, size, issue = check_file_pattern(file_path, pattern, check_type, is_file=True)
+                
+                if not files_found:
+                    if required:
+                        logger.warning(f"  File {run_id}: {issue}")
+                        run_issues[run_id] = issue
+                        failed_runs.add(run_id)
+                        if run_id not in failure_reasons:
+                            failure_reasons[run_id] = []
+                        failure_reasons[run_id].append(f"{pattern}: {issue}")
                     continue
                 
-                sizes.append(size)
-                run_sizes[run_id] = size
+                if check_type == "size" and size is not None:
+                    # Check absolute minimum
+                    size_mb = size / (1024**2)
+                    if size_mb < min_size_mb:
+                        issue = f"{pattern}: size {size_mb:.2f} MB < minimum {min_size_mb} MB"
+                        logger.warning(f"  File {run_id}: {issue}")
+                        run_issues[run_id] = issue
+                        failed_runs.add(run_id)
+                        if run_id not in failure_reasons:
+                            failure_reasons[run_id] = []
+                        failure_reasons[run_id].append(issue)
+                        continue
+                    
+                    sizes.append(size)
+                    run_sizes[run_id] = size
+        else:
+            # Standard per-directory validation
+            for run_dir in run_dirs:
+                run_id = run_dir.name
+                files_found, size, issue = check_file_pattern(run_dir, pattern, check_type)
+                
+                if not files_found:
+                    if required:
+                        logger.warning(f"  Run {run_id}: {issue}")
+                        run_issues[run_id] = issue
+                        failed_runs.add(run_id)
+                        if run_id not in failure_reasons:
+                            failure_reasons[run_id] = []
+                        failure_reasons[run_id].append(f"{pattern}: {issue}")
+                    continue
+                
+                if check_type == "size" and size is not None:
+                    # Check absolute minimum
+                    size_mb = size / (1024**2)
+                    if size_mb < min_size_mb:
+                        issue = f"{pattern}: size {size_mb:.2f} MB < minimum {min_size_mb} MB"
+                        logger.warning(f"  Run {run_id}: {issue}")
+                        run_issues[run_id] = issue
+                        failed_runs.add(run_id)
+                        if run_id not in failure_reasons:
+                            failure_reasons[run_id] = []
+                        failure_reasons[run_id].append(issue)
+                        continue
+                    
+                    sizes.append(size)
+                    run_sizes[run_id] = size
         
         # Calculate statistics and check median threshold
         if sizes and check_type == "size":
@@ -301,6 +449,14 @@ def validate_stage(
     successful_runs_count = total_runs - failed_runs_count
     failure_rate = failed_runs_count / total_runs if total_runs > 0 else 0.0
     
+    # Adjust for missing chunks in chunk validation mode
+    if missing_chunks_info:
+        # In chunk mode, total_runs should be expected chunks, not just found files
+        total_runs = missing_chunks_info["expected_count"]
+        failed_runs_count = len(failed_runs)
+        successful_runs_count = total_runs - failed_runs_count
+        failure_rate = failed_runs_count / total_runs if total_runs > 0 else 0.0
+    
     if failed_runs_count == 0:
         status = "SUCCESS"
     elif failed_runs_count == total_runs:
@@ -315,7 +471,14 @@ def validate_stage(
     }
     
     # Create command-ready format for re-running failed runs
-    failed_run_ids_sorted = sorted(list(failed_runs), key=int)
+    # For chunk mode, extract chunk IDs; for standard mode, use run IDs
+    if missing_chunks_info:
+        # Extract chunk IDs from chunk_X names
+        failed_chunk_ids = [int(rid.split('_')[1]) for rid in failed_runs if rid.startswith('chunk_')]
+        failed_run_ids_sorted = sorted(failed_chunk_ids)
+    else:
+        failed_run_ids_sorted = sorted(list(failed_runs), key=lambda x: int(x) if isinstance(x, str) and x.isdigit() else x)
+    
     rerun_command = ""
     if failed_run_ids_sorted:
         rerun_command = f"--run-list {' '.join(map(str, failed_run_ids_sorted))}"
@@ -333,6 +496,10 @@ def validate_stage(
         "statistics": pattern_statistics
     }
     
+    # Add missing chunks info if available
+    if missing_chunks_info:
+        result["missing_chunks"] = missing_chunks_info
+    
     # Log summary
     logger.info(f"\n" + "=" * 80)
     logger.info(f"VALIDATION SUMMARY - {stage}")
@@ -344,7 +511,16 @@ def validate_stage(
     logger.info(f"Failure rate: {failure_rate:.1%}")
     
     if failed_runs:
-        logger.info(f"\nFailed runs: {', '.join(sorted(list(failed_runs), key=int)[:20])}")
+        # Handle both chunk mode (chunk_N) and standard mode (integer run IDs)
+        if missing_chunks_info:
+            # Chunk mode: show chunk IDs
+            failed_list = sorted(failed_run_ids_sorted)[:20]
+            logger.info(f"\nFailed chunks: {', '.join(map(str, failed_list))}")
+        else:
+            # Standard mode: show run IDs
+            failed_list = sorted(list(failed_runs), key=lambda x: int(x) if str(x).isdigit() else x)[:20]
+            logger.info(f"\nFailed runs: {', '.join(map(str, failed_list))}")
+        
         if len(failed_runs) > 20:
             logger.info(f"  ... and {len(failed_runs) - 20} more")
         

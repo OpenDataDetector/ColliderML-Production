@@ -2,7 +2,7 @@
 #SBATCH --job-name=split_test
 #SBATCH --output=logs/split_test_%j.out
 #SBATCH --error=logs/split_test_%j.err
-#SBATCH --time=01:00:00
+#SBATCH --time=02:00:00
 #SBATCH --qos=regular
 #SBATCH --constraint=cpu
 #SBATCH --nodes=4
