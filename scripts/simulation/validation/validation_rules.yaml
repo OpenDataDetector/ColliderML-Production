@@ -109,11 +109,29 @@ stages:
         median_threshold_pct: 0.5
         required: true
 
-  # Stage 7: HDF5 Conversion
+  # Stage 7: HDF5/Parquet Conversion
   convert_all:
     description: "Validate Parquet conversion outputs"
+    # Special: convert_all outputs go to version-level directories, not per-run
+    # Use output_location to specify alternative search location
+    output_location: "parquet"  # Relative to version directory (campaign/dataset/version/)
     file_patterns:
-      - pattern: "*.parquet"
+      - pattern: "**/calo_hits/*.parquet"  # Recursive pattern to find all parquet files
+        description: "Parquet files"
+        min_size_mb: 0.1
+        median_threshold_pct: 0.8
+        required: true
+      - pattern: "**/tracker_hits/*.parquet"
+        description: "Parquet files"
+        min_size_mb: 0.1
+        median_threshold_pct: 0.8
+        required: true
+      - pattern: "**/tracks/*.parquet"
+        description: "Parquet files"
+        min_size_mb: 0.1
+        median_threshold_pct: 0.8
+        required: true
+      - pattern: "**/particles/*.parquet"
         description: "Parquet files"
         min_size_mb: 0.1
         median_threshold_pct: 0.8

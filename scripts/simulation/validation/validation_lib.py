@@ -142,28 +142,18 @@ def validate_stage(
     Validate outputs for a pipeline stage.
     
     Args:
-        runs_dir: Path to runs directory
+        runs_dir: Path to runs directory (or version directory for stages with custom output_location)
         stage: Stage name (must match key in validation_rules)
         validation_rules: Validation rules dictionary
         dry_run: If True, log actions but don't modify anything
+        run_ids: Optional list of specific run IDs to validate
         
     Returns:
-        Dictionary with validation results:
-        {
-            "stage": str,
-            "status": str (SUCCESS, PARTIAL_FAILURE, COMPLETE_FAILURE),
-            "total_runs": int,
-            "successful_runs": int,
-            "failed_runs": int,
-            "failure_rate": float (0.0-1.0),
-            "failed_run_ids": list[str],
-            "failure_reasons": dict[str, str],
-            "statistics": dict[str, dict]  # Per-pattern statistics
-        }
+        Dictionary with validation results
     """
     logger.info(f"=" * 80)
     logger.info(f"Validating stage: {stage}")
-    logger.info(f"Runs directory: {runs_dir}")
+    logger.info(f"Base directory: {runs_dir}")
     logger.info(f"=" * 80)
     
     # Get stage rules
@@ -177,12 +167,35 @@ def validate_stage(
     
     stage_rules = validation_rules['stages'][stage]
     file_patterns = stage_rules.get('file_patterns', [])
+    output_location = stage_rules.get('output_location')  # Optional: alternative output directory
     
     if not file_patterns:
         logger.warning(f"No file patterns defined for stage {stage}")
     
-    # Get run directories
-    all_run_dirs = get_run_directories(Path(runs_dir))
+    # Determine search directories based on output_location
+    if output_location:
+        # Custom output location (e.g., parquet/): treat the output dir as a single "run"
+        search_dir = runs_dir.parent / output_location if runs_dir.name == "runs" else runs_dir / output_location
+        logger.info(f"Using custom output location: {search_dir}")
+        
+        if not search_dir.exists():
+            logger.error(f"Output directory does not exist: {search_dir}")
+            return {
+                "stage": stage,
+                "status": "COMPLETE_FAILURE",
+                "total_runs": 0,
+                "successful_runs": 0,
+                "failed_runs": 0,
+                "failure_rate": 1.0,
+                "error": f"Output directory not found: {search_dir}"
+            }
+        
+        # Create a pseudo "run directory" list with just the output dir
+        run_dirs = [search_dir]
+        logger.info(f"Validating aggregated outputs in {output_location}/")
+    else:
+        # Standard per-run validation
+        all_run_dirs = get_run_directories(Path(runs_dir))
     
     # Filter to specific run IDs if provided
     if run_ids is not None:
