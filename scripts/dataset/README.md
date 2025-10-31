@@ -9,7 +9,7 @@ Upload ColliderML parquet datasets to HuggingFace Hub with automatic validation 
 ### Features
 
 - ✅ Validates that parquet files exist in expected locations
-- ✅ Checks and fixes file permissions (world-readable)
+- ✅ Automatically fixes file permissions (world-readable) by default
 - ✅ Populates README template with dataset information
 - ✅ Saves README to local data directory
 - ✅ Uploads same README to HuggingFace Hub
@@ -28,8 +28,8 @@ python scripts/dataset/upload_to_huggingface.py configs_production/hard_scatter/
 # Save generated README to additional location
 python scripts/dataset/upload_to_huggingface.py configs_production/hard_scatter/ttbar/huggingface_config.yaml --output /tmp/README.md
 
-# Automatically fix file permissions
-python scripts/dataset/upload_to_huggingface.py configs_production/hard_scatter/ttbar/huggingface_config.yaml --fix-permissions
+# Skip automatic permission fixing (permissions are fixed by default)
+python scripts/dataset/upload_to_huggingface.py configs_production/hard_scatter/ttbar/huggingface_config.yaml --skip-fix-permissions
 
 # Use custom template
 python scripts/dataset/upload_to_huggingface.py configs_production/hard_scatter/ttbar/huggingface_config.yaml --template /path/to/custom_template.md
@@ -65,23 +65,18 @@ Required fields:
    rsync -avz /path/to/output/ /global/cfs/cdirs/m4958/data/ColliderML/public/campaign/dataset/version/parquet/
    ```
 
-3. **Set permissions**:
-   ```bash
-   chmod -R a+rX /global/cfs/cdirs/m4958/data/ColliderML/public/campaign/dataset/version/
-   ```
-
-4. **Create/update HuggingFace config**:
+3. **Create/update HuggingFace config**:
    ```bash
    cp configs_production/hard_scatter/ttbar/huggingface_config.yaml configs_production/campaign/dataset/huggingface_config.yaml
    # Edit the config file
    ```
 
-5. **Test with dry run**:
+4. **Test with dry run**:
    ```bash
    python scripts/dataset/upload_to_huggingface.py configs_production/campaign/dataset/huggingface_config.yaml --dry-run
    ```
 
-6. **Upload to HuggingFace**:
+5. **Upload to HuggingFace**:
    ```bash
    python scripts/dataset/upload_to_huggingface.py configs_production/campaign/dataset/huggingface_config.yaml
    ```
@@ -116,8 +111,9 @@ The script expects parquet files to be organized as:
 - Verify subdirectory structure matches expected layout
 
 **Permission errors**:
-- Run with `--fix-permissions` flag
-- Or manually: `chmod -R a+r /path/to/parquet/files`
+- Permissions are automatically fixed by default
+- To skip: use `--skip-fix-permissions` flag
+- Or fix manually: `chmod -R a+rX /path/to/parquet/files`
 
 **Upload fails**:
 - Ensure you're authenticated with HuggingFace: `huggingface-cli login`

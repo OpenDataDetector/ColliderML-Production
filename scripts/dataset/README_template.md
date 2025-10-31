@@ -23,7 +23,7 @@ configs:
 
 ## Dataset Description
 
-This dataset contains simulated high-energy physics collision events for {{ process_description_long }} generated using the **Open Data Detector (ODD)** geometry within the **ACTS (A Common Tracking Software)** framework, representing a generic collider detector similar to those at the LHC.
+This dataset contains simulated high-energy physics collision events for {{ process_description_long }} generated using the **Open Data Detector (ODD)** geometry within the **Key4hep** and **ACTS (A Common Tracking Software)** frameworks, representing a generic collider detector similar to those at the HL-LHC.
 
 ### Dataset Summary
 
@@ -167,7 +167,7 @@ Truth information about generated particles before detector simulation.
 | `time` | list<float64> | Production time (ns) |
 | `num_tracker_hits` | list<int64> | Number of hits in tracker |
 | `num_calo_hits` | list<int64> | Number of hits in calorimeter |
-| `vertex_primary` | list<int64> | Primary vertex flag (1=primary, 0=secondary) |
+| `vertex_primary` | list<int64> | Primary vertex flag (1 = hard scatter, 2,...,N = pileup) |
 | `parent_id` | list<float64> | ID of parent particle |
 
 **Typical event**: ~200-500 particles per event
@@ -255,278 +255,18 @@ train_val, test = train_test_split(all_events, test_size=0.15, random_state=42)
 train, val = train_test_split(train_val, test_size=0.176, random_state=42)  # 0.176 * 0.85 ≈ 0.15
 ```
 
-## Dataset Creation
-
-### Curation Rationale
-
-This dataset was created to support machine learning research in high-energy physics, specifically for:
-
-1. **Benchmarking tracking algorithms**: Compare traditional and ML-based track reconstruction methods
-2. **Hierarchical representation learning**: Study information flow from detector hits → tracks → particles
-3. **Physics analysis**: Develop ML models for event classification and particle identification
-4. **Open science**: Provide publicly accessible, realistic detector simulation data
-
-{{ curation_notes }}
-
-### Source Data
-
-#### Initial Data Collection and Normalization
-
-The data is generated through the following simulation chain:
-
-1. **Event Generation**: Events generated using a Monte Carlo event generator
-2. **Detector Simulation**: Particle propagation through the Open Data Detector using ACTS
-3. **Digitization**: Conversion of energy deposits to realistic detector signals
-4. **Reconstruction**: Track finding and fitting using ACTS tracking algorithms
-5. **Format Conversion**: EDM4HEP → Parquet using the ColliderML data pipeline
-
-#### Who are the source data producers?
-
-The data is produced by the **ColliderML collaboration** as part of the **ATLAS ITk ML Reconstruction** project at NERSC (National Energy Research Scientific Computing Center).
-
-### Annotations
-
-#### Annotation process
-
-The dataset includes truth-level annotations automatically generated during the simulation:
-
-- **Particle-level truth**: Generator-level particle information
-- **Hit-to-particle associations**: Which particle created each detector hit
-- **Track-to-particle matching**: `majority_particle_id` links reconstructed tracks to truth particles
-
-These annotations enable supervised learning for tasks like:
-- Track efficiency (did we reconstruct this particle?)
-- Track purity (how many hits belong to the correct particle?)
-- Fake rate (how many tracks are not matched to real particles?)
-
-#### Who are the annotators?
-
-N/A (Annotations are from simulation ground truth)
-
-### Personal and Sensitive Information
-
-This dataset contains only simulated physics data. No personal or sensitive information is included.
-
-## Considerations for Using the Data
-
-### Social Impact of Dataset
-
-This dataset supports fundamental physics research and ML algorithm development. It has no direct social impact but contributes to:
-
-- Open science and reproducible research
-- Education in HEP and ML
-- Development of algorithms that may have broader applications (e.g., pattern recognition, tracking in medical imaging)
-
-### Discussion of Biases
-
-As a simulated dataset, biases may arise from:
-
-1. **Generator-level biases**: The event generator's modeling of the physics process
-2. **Detector simulation biases**: Approximations in material interactions, detector response
-3. **Reconstruction biases**: Algorithm choices in track finding and fitting
-4. **Pileup modeling**: {% if pileup == 0 %}This dataset has no pileup; real LHC data has 20-60 simultaneous collisions{% else %}Pileup modeling may not perfectly match real data{% endif %}
-
-Users should be aware that models trained on this data may not generalize to:
-- Real detector data (requires calibration and alignment)
-- Different detector geometries
-- Different pileup conditions
-
-### Other Known Limitations
-
-- **Limited statistics**: ~{{ total_events }} events (consider data augmentation for large models)
-- **Single physics process**: Only {{ process_description }}; does not include background processes
-- **Idealized detector**: ODD is a generic detector, not an exact replica of ATLAS/CMS
-- **Simplified simulation**: Some detector effects may be simplified
-
-## Additional Information
-
-### Dataset Curators
-
-This dataset is maintained by the ColliderML team:
-
-- Primary contact: {{ contact }}
-- Collaboration: ATLAS ITk ML Reconstruction working group
-- Infrastructure: NERSC (National Energy Research Scientific Computing Center)
-
-### Licensing Information
-
-This dataset is released under the **{{ license_name }}** license.
-
-You are free to:
-- **Share**: Copy and redistribute the material
-- **Adapt**: Remix, transform, and build upon the material
-
-Under the following terms:
-- **Attribution**: You must give appropriate credit and indicate if changes were made
-
-### Citation Information
-
-If you use this dataset in your research, please cite:
-
-```bibtex
-@dataset{colliderml_{{ dataset }}_{{ version.replace('.', '_').replace('-', '_') }}_{{ year }},
-  title={ {ColliderML: {{ pretty_name }}} },
-  author={ {ColliderML Collaboration} },
-  year={ {{ year }} },
-  publisher={NERSC},
-  howpublished={\url{ https://huggingface.co/datasets/{{ repo_id }} }},
-  note={Simulation performed using ACTS and the Open Data Detector}
-}
-```
-
-### Contributions
-
-This dataset was produced using:
-
-- **ACTS (A Common Tracking Software)**: https://acts.readthedocs.io/
-- **Open Data Detector**: https://acts.readthedocs.io/en/latest/examples/open_data_detector.html
-- **EDM4HEP**: https://edm4hep.web.cern.ch/
-- **ColliderML Pipeline**: https://github.com/ATLAS-ITk-ML/colliderml
-
-## How to Use This Dataset
-
-### Loading the Dataset
-
-The dataset is hosted on the NERSC public portal and can be streamed directly without downloading:
-
-```python
-from datasets import load_dataset
-
-{% for config_name in data_files.keys() %}
-# Load {{ config_name }}
-{{ config_name }}_ds = load_dataset(
-    "{{ repo_id }}",
-    "{{ config_name }}",
-    split="train"
-)
-{% endfor %}
-```
-
-### Example: Iterating Over Events
-
-```python
-import numpy as np
-
-# Iterate over first 10 events
-for i, event in enumerate(particles_ds.take(10)):
-    event_id = event['event_id']
-    n_particles = len(event['particle_id'])
-
-    print(f"Event {event_id}: {n_particles} particles")
-
-    # Access list columns as numpy arrays
-    px = np.array(event['px'])
-    py = np.array(event['py'])
-    pz = np.array(event['pz'])
-
-    # Compute transverse momentum
-    pt = np.sqrt(px**2 + py**2)
-    print(f"  Mean pt: {pt.mean():.2f} GeV")
-```
-
-### Example: Computing Track Features
-
-```python
-import numpy as np
-
-for event in tracks_ds.take(5):
-    # Get track parameters
-    qop = np.array(event['qop'])
-    theta = np.array(event['theta'])
-    phi = np.array(event['phi'])
-
-    # Compute derived quantities
-    pt = np.abs(1.0 / qop) * np.sin(theta)
-    eta = -np.log(np.tan(theta / 2.0))
-
-    print(f"Event {event['event_id']}: {len(qop)} tracks")
-    print(f"  pt range: [{pt.min():.2f}, {pt.max():.2f}] GeV")
-    print(f"  eta range: [{eta.min():.2f}, {eta.max():.2f}]")
-```
-
-### Example: Matching Tracks to Particles
-
-```python
-# Load both datasets
-particles = load_dataset("{{ repo_id }}", "particles", split="train")
-tracks = load_dataset("{{ repo_id }}", "tracks", split="train")
-
-# Process event-by-event
-for particle_event, track_event in zip(particles, tracks):
-    assert particle_event['event_id'] == track_event['event_id']
-
-    # Get particle information
-    particle_ids = np.array(particle_event['particle_id'])
-    particle_px = np.array(particle_event['px'])
-    particle_py = np.array(particle_event['py'])
-
-    # Get track information
-    track_particle_ids = np.array(track_event['majority_particle_id'])
-
-    # Compute truth pt for particles
-    particle_pt = np.sqrt(particle_px**2 + particle_py**2)
-
-    # Find matched tracks
-    for i, pid in enumerate(track_particle_ids):
-        if pid in particle_ids:
-            idx = np.where(particle_ids == pid)[0][0]
-            truth_pt = particle_pt[idx]
-            print(f"Track {i}: matched to particle {pid}, pt={truth_pt:.2f} GeV")
-```
-
-### Data Location
-
-The Parquet files are hosted at:
-
-```
-{{ public_url_base }}
-{% for config_name in data_files.keys() %}
-├── {{ 'truth' if config_name == 'particles' else 'reco' }}/
-│   └── {{ config_name }}/
-│       └── *.parquet ({{ data_files[config_name]|length }} files)
-{% endfor %}
-```
-
-### File Naming Convention
-
-Files follow the pattern:
-```
-<campaign>.<dataset>.<version>.<category>.<object>.<event_range>.parquet
-```
-
-Example: `{{ file_example }}`
-- Campaign: `{{ campaign }}`
-- Dataset: `{{ dataset }}`
-- Version: `{{ version }}`
-- Category: `{{ 'truth' if 'particles' in data_files else 'reco' }}`
-- Object: one of {{ data_files.keys()|list|join(', ') }}
-- Event range: `eventsXXXX-YYYY` (inclusive)
-
-### Performance Tips
-
-1. **Streaming**: Use the dataset API for efficient memory usage
-2. **Batch processing**: Process events in chunks for better performance
-3. **Selective loading**: Only load the data types you need
-4. **Caching**: Use dataset caching for repeated experiments
-
-### Related Datasets
-
-{% for related in related_datasets %}
-- **{{ related }}** ({{ related_status }})
-{% endfor %}
-
 ### Support
 
 For questions, issues, or feature requests:
 - Email: {{ contact }}
-- GitHub: https://github.com/ATLAS-ITk-ML/colliderml/issues
+- You can also open a discussion in the HuggingFace community panel for this dataset.
 
 ### Acknowledgments
 
 This work was supported by:
-- ATLAS ITk ML Reconstruction project
 - NERSC computing resources
 - U.S. Department of Energy, Office of Science
+- Danish Data Science Academy (DDSA)
 
 ---
 

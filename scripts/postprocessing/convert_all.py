@@ -101,10 +101,8 @@ def _process_chunk_for_all(
     # calorimeter thresholds
     ecal_energy_threshold: float = 5.0e-5,
     hcal_energy_threshold: float = 2.5e-4,
-    ecal_time_min: float = -1.0,
-    ecal_time_max: float = 10.0,
-    hcal_time_min: float = -1.0,
-    hcal_time_max: float = 10.0,
+    time_min: float = -1.0,
+    time_max: float = 10.0,
     output_format: str = 'hdf5',
 ) -> None:
     chunk_start_time = time.time()
@@ -180,10 +178,8 @@ def _process_chunk_for_all(
                     calo_contributions_all,
                     ecal_energy_threshold=ecal_energy_threshold,
                     hcal_energy_threshold=hcal_energy_threshold,
-                    ecal_time_min=ecal_time_min,
-                    ecal_time_max=ecal_time_max,
-                    hcal_time_min=hcal_time_min,
-                    hcal_time_max=hcal_time_max,
+                    time_min=time_min,
+                    time_max=time_max,
                 )
                 
                 if not run_calo_df.empty:
@@ -522,10 +518,9 @@ def convert_all(config: dict, chunk_index: int | None = None) -> None:
     calo_config = config.get("calorimeter", {})
     ecal_energy_threshold = calo_config.get("ecal_energy_threshold", 5.0e-5)
     hcal_energy_threshold = calo_config.get("hcal_energy_threshold", 2.5e-4)
-    ecal_time_min = calo_config.get("ecal_time_min", -1.0)
-    ecal_time_max = calo_config.get("ecal_time_max", 10.0)
-    hcal_time_min = calo_config.get("hcal_time_min", -1.0)
-    hcal_time_max = calo_config.get("hcal_time_max", 10.0)
+    time_min = calo_config.get("time_min", -1.0)
+    time_max = calo_config.get("time_max", 10.0)
+    
 
     processing_start_time = time.time()
     
@@ -563,10 +558,8 @@ def convert_all(config: dict, chunk_index: int | None = None) -> None:
             calo_columns_keep=calo_columns_keep,
             ecal_energy_threshold=ecal_energy_threshold,
             hcal_energy_threshold=hcal_energy_threshold,
-            ecal_time_min=ecal_time_min,
-            ecal_time_max=ecal_time_max,
-            hcal_time_min=hcal_time_min,
-            hcal_time_max=hcal_time_max,
+            time_min=time_min,
+            time_max=time_max,
             output_format=output_format,
         ),
     )

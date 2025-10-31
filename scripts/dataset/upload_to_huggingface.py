@@ -66,17 +66,21 @@ def check_file_permissions(files: Dict[str, List[Path]]) -> bool:
     return all_readable
 
 
-def fix_file_permissions(files: Dict[str, List[Path]]) -> None:
-    """Make all files and parent directories world-readable."""
+def fix_file_permissions(files: Dict[str, List[Path]], data_dir: Path) -> None:
+    """Make all files and parent directories world-readable (only within data_dir)."""
     import stat
 
-    # Fix directory permissions first
+    # Fix directory permissions first (only within data_dir)
     dirs_to_fix = set()
     for obj_type, file_list in files.items():
         for file_path in file_list:
-            # Add all parent directories up to data_dir
+            # Add all parent directories up to (and including) data_dir
             for parent in file_path.parents:
-                dirs_to_fix.add(parent)
+                # Stop at data_dir - don't go higher
+                if parent == data_dir or data_dir in parent.parents:
+                    dirs_to_fix.add(parent)
+                if parent == data_dir:
+                    break
 
     for dir_path in sorted(dirs_to_fix):
         try:
@@ -89,9 +93,12 @@ def fix_file_permissions(files: Dict[str, List[Path]]) -> None:
     # Fix file permissions
     for obj_type, file_list in files.items():
         for file_path in file_list:
-            current_mode = file_path.stat().st_mode
-            new_mode = current_mode | stat.S_IROTH
-            file_path.chmod(new_mode)
+            try:
+                current_mode = file_path.stat().st_mode
+                new_mode = current_mode | stat.S_IROTH
+                file_path.chmod(new_mode)
+            except Exception as e:
+                print(f"Warning: Could not fix permissions for {file_path}: {e}")
 
     print("✅ Fixed file and directory permissions")
 
@@ -257,9 +264,9 @@ def main():
         help="Path to YAML configuration file"
     )
     parser.add_argument(
-        "--fix-permissions",
+        "--skip-fix-permissions",
         action="store_true",
-        help="Automatically fix file permissions if not world-readable"
+        help="Skip automatic fixing of file permissions (permissions are fixed by default)"
     )
     parser.add_argument(
         "--dry-run",
@@ -300,16 +307,20 @@ def main():
     all_readable = check_file_permissions(files)
 
     if not all_readable:
-        if args.fix_permissions:
-            print("\nFixing file permissions...")
-            fix_file_permissions(files)
-        else:
+        if args.skip_fix_permissions:
             print("\nWARNING: Some files are not world-readable!")
-            print("Run with --fix-permissions to fix automatically, or run:")
-            print(f"  chmod -R a+rX {data_dir}")
+            print("Skipping permission fixes (--skip-fix-permissions specified)")
+            print(f"To fix manually, run: chmod -R a+rX {data_dir}")
             response = input("Continue anyway? (y/N): ")
             if response.lower() != 'y':
                 sys.exit(1)
+        else:
+            print("\nFixing file permissions...")
+            fix_file_permissions(files, data_dir)
+            # Re-check after fixing
+            all_readable = check_file_permissions(files)
+            if not all_readable:
+                print("WARNING: Some files still not readable after permission fix")
     else:
         print("✅ All files are world-readable")
 

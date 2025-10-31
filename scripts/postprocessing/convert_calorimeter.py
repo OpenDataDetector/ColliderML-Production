@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import List
 import numpy as np
 import pandas as pd
+import polars as pl
 
 import h5py
 from tqdm import tqdm
@@ -36,10 +37,8 @@ def process_calohits_batch(
     calo_contributions: pd.DataFrame,
     ecal_energy_threshold: float = 5.0e-5,  # GeV
     hcal_energy_threshold: float = 2.5e-4,  # GeV
-    ecal_time_min: float = -1.0,  # ns
-    ecal_time_max: float = 10.0,  # ns
-    hcal_time_min: float = -1.0,  # ns
-    hcal_time_max: float = 10.0,  # ns
+    time_min: float = -1.0,  # ns
+    time_max: float = 10.0,  # ns
 ) -> pd.DataFrame:
     """
     Process calorimeter data for multiple events with nested contributions.
@@ -53,10 +52,8 @@ def process_calohits_batch(
         calo_contributions: DataFrame with calorimeter contributions (multi-event)
         ecal_energy_threshold: ECal energy threshold in GeV (cell level)
         hcal_energy_threshold: HCal energy threshold in GeV (cell level)
-        ecal_time_min: ECal minimum time in ns
-        ecal_time_max: ECal maximum time in ns
-        hcal_time_min: HCal minimum time in ns
-        hcal_time_max: HCal maximum time in ns
+        time_min: ECal minimum time in ns
+        time_max: ECal maximum time in ns
         
     Returns:
         DataFrame with columns: event_id, cellID, detector, x, y, z, total_energy, 
@@ -83,18 +80,10 @@ def process_calohits_batch(
             contribs['dt'] = contribs['r'] / 300.0 - 0.1  # time-of-flight in ns
             contribs['corrected_time'] = contribs['time'] - contribs['dt']
             
-            # Create detector masks
-            ecal_mask = contribs['detector'].str.contains('ECal', na=False)
-            hcal_mask = contribs['detector'].str.contains('HCal', na=False)
-            
             # Apply timing filters
             timing_mask = (
-                (ecal_mask & 
-                 (contribs['corrected_time'] >= ecal_time_min) & 
-                 (contribs['corrected_time'] <= ecal_time_max)) |
-                (hcal_mask & 
-                 (contribs['corrected_time'] >= hcal_time_min) & 
-                 (contribs['corrected_time'] <= hcal_time_max))
+                 (contribs['corrected_time'] >= time_min) & 
+                 (contribs['corrected_time'] <= time_max)
             )
             contribs = contribs[timing_mask].copy()
             logger.debug(f"Batch: {len(contribs)} contributions after timing filter")
@@ -120,50 +109,48 @@ def process_calohits_batch(
         contrib_per_particle['time'] = contrib_per_particle['energy_time'] / contrib_per_particle['energy']
         contrib_per_particle = contrib_per_particle.drop(columns=['energy_time'])
         
-        # Step 3a: First group by cell to get total energy (for threshold)
-        cell_energy = (
-            contrib_per_particle.groupby(['event_id', 'cellID'], sort=False)
-            .agg(
-                detector=('detector', 'first'),
-                total_energy=('energy', 'sum'),
-            )
-            .reset_index()
+        # Step 3a-3d: Use Polars for fast grouping (10-50x speedup!)
+        # Convert to Polars for processing
+        contrib_pl = pl.from_pandas(contrib_per_particle)
+        
+        # Step 3a: Group by cell to get total energy (for threshold)
+        cell_energy_pl = (
+            contrib_pl
+            .group_by(['event_id', 'cellID'])
+            .agg([
+                pl.col('detector').first(),
+                pl.col('energy').sum().alias('total_energy'),
+            ])
         )
         
-        # Step 3b: Apply cell-level energy thresholds BEFORE creating nested lists (much faster!)
-        ecal_mask = cell_energy['detector'].str.contains('ECal', na=False)
-        hcal_mask = cell_energy['detector'].str.contains('HCal', na=False)
-        
-        energy_mask = (
-            (ecal_mask & (cell_energy['total_energy'] >= ecal_energy_threshold)) |
-            (hcal_mask & (cell_energy['total_energy'] >= hcal_energy_threshold))
-        )
-        
-        cells_passing_threshold = cell_energy[energy_mask][['event_id', 'cellID']].copy()
-        logger.debug(f"Batch: {len(cells_passing_threshold)} cells pass energy threshold")
+        # Step 3b: Apply cell-level energy thresholds BEFORE creating nested lists
+        cells_passing_pl = cell_energy_pl.filter(
+            ((pl.col('detector').str.contains('ECal')) & (pl.col('total_energy') >= ecal_energy_threshold)) |
+            ((pl.col('detector').str.contains('HCal')) & (pl.col('total_energy') >= hcal_energy_threshold))
+        ).select(['event_id', 'cellID'])
+        logger.debug(f"Batch: {len(cells_passing_pl)} cells pass energy threshold")
         
         # Step 3c: Filter contributions to only cells passing threshold
-        contrib_filtered = contrib_per_particle.merge(
-            cells_passing_threshold,
-            on=['event_id', 'cellID'],
-            how='inner'
-        )
+        contrib_filtered_pl = contrib_pl.join(cells_passing_pl, on=['event_id', 'cellID'], how='inner')
         
-        if contrib_filtered.empty:
+        if contrib_filtered_pl.is_empty():
             return pd.DataFrame()
         
-        # Step 3d: Now group to create nested lists (much smaller dataset!)
-        cell_level = (
-            contrib_filtered.groupby(['event_id', 'cellID'], sort=False)
-            .agg(
-                detector=('detector', 'first'),
-                total_energy=('energy', 'sum'),
-                contrib_particle_ids=('particle_id', list),
-                contrib_energies=('energy', list),
-                contrib_times=('time', list),
-            )
-            .reset_index()
+        # Step 3d: Create nested lists (fast in Polars!)
+        cell_level_pl = (
+            contrib_filtered_pl
+            .group_by(['event_id', 'cellID'])
+            .agg([
+                pl.col('detector').first(),
+                pl.col('energy').sum().alias('total_energy'),
+                pl.col('particle_id').alias('contrib_particle_ids'),
+                pl.col('energy').alias('contrib_energies'),
+                pl.col('time').alias('contrib_times'),
+            ])
         )
+        
+        # Convert back to pandas for compatibility
+        cell_level = cell_level_pl.to_pandas()
         
         # Step 4: Merge with calo_hits to get cell positions (x, y, z)
         calo_cells = cell_level.merge(
@@ -272,50 +259,48 @@ def process_event_for_calohits(
         contrib_per_particle['time'] = contrib_per_particle['energy_time'] / contrib_per_particle['energy']
         contrib_per_particle = contrib_per_particle.drop(columns=['energy_time'])
         
-        # Step 3a: First group by cell to get total energy (for threshold)
-        cell_energy = (
-            contrib_per_particle.groupby(['event_id', 'cellID'], sort=False)
-            .agg(
-                detector=('detector', 'first'),
-                total_energy=('energy', 'sum'),
-            )
-            .reset_index()
+        # Step 3a-3d: Use Polars for fast grouping (10-50x speedup!)
+        # Convert to Polars for processing
+        contrib_pl = pl.from_pandas(contrib_per_particle)
+        
+        # Step 3a: Group by cell to get total energy (for threshold)
+        cell_energy_pl = (
+            contrib_pl
+            .group_by(['event_id', 'cellID'])
+            .agg([
+                pl.col('detector').first(),
+                pl.col('energy').sum().alias('total_energy'),
+            ])
         )
         
-        # Step 3b: Apply cell-level energy thresholds BEFORE creating nested lists (much faster!)
-        ecal_mask = cell_energy['detector'].str.contains('ECal', na=False)
-        hcal_mask = cell_energy['detector'].str.contains('HCal', na=False)
-        
-        energy_mask = (
-            (ecal_mask & (cell_energy['total_energy'] >= ecal_energy_threshold)) |
-            (hcal_mask & (cell_energy['total_energy'] >= hcal_energy_threshold))
-        )
-        
-        cells_passing_threshold = cell_energy[energy_mask][['event_id', 'cellID']].copy()
-        logger.debug(f"Event {event_id}: {len(cells_passing_threshold)} cells pass energy threshold")
+        # Step 3b: Apply cell-level energy thresholds BEFORE creating nested lists
+        cells_passing_pl = cell_energy_pl.filter(
+            ((pl.col('detector').str.contains('ECal')) & (pl.col('total_energy') >= ecal_energy_threshold)) |
+            ((pl.col('detector').str.contains('HCal')) & (pl.col('total_energy') >= hcal_energy_threshold))
+        ).select(['event_id', 'cellID'])
+        logger.debug(f"Event {event_id}: {len(cells_passing_pl)} cells pass energy threshold")
         
         # Step 3c: Filter contributions to only cells passing threshold
-        contrib_filtered = contrib_per_particle.merge(
-            cells_passing_threshold,
-            on=['event_id', 'cellID'],
-            how='inner'
-        )
+        contrib_filtered_pl = contrib_pl.join(cells_passing_pl, on=['event_id', 'cellID'], how='inner')
         
-        if contrib_filtered.empty:
+        if contrib_filtered_pl.is_empty():
             return pd.DataFrame()
         
-        # Step 3d: Now group to create nested lists (much smaller dataset!)
-        cell_level = (
-            contrib_filtered.groupby(['event_id', 'cellID'], sort=False)
-            .agg(
-                detector=('detector', 'first'),
-                total_energy=('energy', 'sum'),
-                contrib_particle_ids=('particle_id', list),
-                contrib_energies=('energy', list),
-                contrib_times=('time', list),
-            )
-            .reset_index()
+        # Step 3d: Create nested lists (fast in Polars!)
+        cell_level_pl = (
+            contrib_filtered_pl
+            .group_by(['event_id', 'cellID'])
+            .agg([
+                pl.col('detector').first(),
+                pl.col('energy').sum().alias('total_energy'),
+                pl.col('particle_id').alias('contrib_particle_ids'),
+                pl.col('energy').alias('contrib_energies'),
+                pl.col('time').alias('contrib_times'),
+            ])
         )
+        
+        # Convert back to pandas for compatibility
+        cell_level = cell_level_pl.to_pandas()
         
         # Step 4: Merge with calo_hits to get cell positions (x, y, z)
         calo_cells = cell_level.merge(
