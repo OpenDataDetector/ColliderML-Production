@@ -249,7 +249,7 @@ class JobSubmitter:
             end_index = start_index + (tasks_for_node if tasks_for_node is not None else runs_per_node)
             node_run_ids = self.run_ids[start_index:end_index]
             run_ids_str = " ".join(str(r) for r in node_run_ids)
-            run_ids_setup_cmd = f"RUN_IDS=({run_ids_str}) && \\\\" 
+            run_ids_setup_cmd = f"RUN_IDS=({run_ids_str}) && \\"
             run_id_expr = r"\${RUN_IDS[\$SLURM_PROCID]}"
             if self.dry_run:
                 logger.info(f"Node {node_idx} RUN_IDS: {node_run_ids}")
@@ -260,7 +260,7 @@ class JobSubmitter:
         """For multi-node single job, return (escaped expr, RUN_IDS setup cmd) when using run_list; else (None, None)."""
         if self.run_list:
             run_ids_str = " ".join(str(r) for r in self.run_ids)
-            run_ids_setup_cmd = f"RUN_IDS=({run_ids_str}) && \\\\" 
+            run_ids_setup_cmd = f"RUN_IDS=({run_ids_str}) && \\"
             run_id_expr = r"\${RUN_IDS[\$SLURM_PROCID]}"
             if self.dry_run:
                 logger.info(f"Global RUN_IDS: {self.run_ids}")
