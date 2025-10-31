@@ -295,14 +295,22 @@ class JobSubmitter:
                 slurm.add_cmd(cmd + " && \\")
             slurm.add_cmd(command_info["python_command"] + "\"")
         else:
-            # Non-shifter (postprocessing): use same multi-line pattern as shifter for consistency
-            srun_options = "--exact --kill-on-bad-exit=0"
-            slurm.add_cmd(f"srun {srun_options} bash -c \"")
+            # Non-shifter (postprocessing): env setup OUTSIDE srun to avoid SLURM allocation issues
             for cmd in command_info["env_setup_commands"]:
-                slurm.add_cmd(cmd + " && \\")
+                slurm.add_cmd(cmd)
+
+            srun_options = "--exact --kill-on-bad-exit=0"
+            # Always wrap payload in bash -c so shell features (e.g., $((...))) are evaluated per task
             if run_ids_setup_cmd:
-                slurm.add_cmd(run_ids_setup_cmd)
-            slurm.add_cmd(command_info["python_command"] + "\"")
+                setup_clean = run_ids_setup_cmd.replace(" && \\\\", "").strip()
+                payload = f"{setup_clean} && {command_info['python_command']}"
+            else:
+                payload = f"{command_info['python_command']}"
+            # Quote payload, escaping any embedded quotes
+            srun_cmd = (
+                f"srun {srun_options} bash -c \"{payload}\""
+            )
+            slurm.add_cmd(srun_cmd)
     
     def get_runs_for_node(self, node_idx, tasks_for_node):
         """
@@ -585,14 +593,19 @@ class JobSubmitter:
                     slurm.add_cmd(cmd + " && \\")
                 slurm.add_cmd(command_info["python_command"] + "\"")
             else:
-                # Non-shifter (postprocessing): use same multi-line pattern as shifter for consistency
-                srun_options = "--exact --kill-on-bad-exit=0"
-                slurm.add_cmd(f"srun {srun_options} bash -c \"")
+                # Non-shifter (postprocessing): env setup OUTSIDE srun to avoid SLURM allocation issues
                 for cmd in command_info["env_setup_commands"]:
-                    slurm.add_cmd(cmd + " && \\")
+                    slurm.add_cmd(cmd)
+                srun_options = "--exact --kill-on-bad-exit=0"
                 if run_ids_setup_cmd:
-                    slurm.add_cmd(run_ids_setup_cmd)
-                slurm.add_cmd(command_info["python_command"] + "\"")
+                    setup_clean = run_ids_setup_cmd.replace(" && \\\\", "").strip()
+                    payload = f"{setup_clean} && {command_info['python_command']}"
+                else:
+                    payload = f"{command_info['python_command']}"
+                srun_cmd = (
+                    f"srun {srun_options} bash -c \"{payload}\""
+                )
+                slurm.add_cmd(srun_cmd)
 
         except Exception as e:
             logger.error(f"Error building multinode command: {e}")
