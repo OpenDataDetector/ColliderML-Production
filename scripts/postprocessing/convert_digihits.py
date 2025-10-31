@@ -8,6 +8,7 @@ in the measurements file to match to EDM4hep hit x/y/z.
 """
 
 import argparse
+import gc
 import yaml
 from pathlib import Path
 from typing import List
@@ -75,18 +76,13 @@ def _merge_measurements_with_tracker(meas_df: pd.DataFrame, tracker_df: pd.DataF
     if len(coord_meas) != 3 or len(coord_trk) != 3:
         return meas_df
 
-    # Prepare copies and cast to float32 for stable equality
-    meas_df = meas_df.copy()
-    tracker_df = tracker_df.copy()
-    meas_df.loc[:, ["true_x", "true_y", "true_z"]] = (
-        meas_df[["true_x", "true_y", "true_z"]].astype(np.float32)
-    )
-    tracker_df.loc[:, ["x", "y", "z"]] = (
-        tracker_df[["x", "y", "z"]].astype(np.float32)
-    )
+    # Cast to float32 for stable equality (avoid full copy by reassigning columns)
+    # Create working copies only of coordinate columns
+    meas_coords = meas_df[["true_x", "true_y", "true_z"]].astype(np.float32)
+    tracker_coords = tracker_df[["x", "y", "z"]].astype(np.float32)
 
     # Preserve original measurement order explicitly
-    meas_df["_orig_pos"] = np.arange(len(meas_df), dtype=np.int64)
+    orig_pos = np.arange(len(meas_df), dtype=np.int64)
 
     # Select minimal simulation hits columns to append (intersect with available)
     if not include_simhits_cols:
@@ -94,7 +90,7 @@ def _merge_measurements_with_tracker(meas_df: pd.DataFrame, tracker_df: pd.DataF
             "x", "y", "z", "time", "px", "py", "pz", "particle_id", "cellID", "detector", "EDep", "pathLength"
         ]
     rhs_cols = [c for c in include_simhits_cols if c in tracker_df.columns]
-    rhs = tracker_df[rhs_cols].copy() if rhs_cols else tracker_df.copy()
+    rhs = tracker_df[rhs_cols] if rhs_cols else tracker_df
 
     # Select minimal measurement columns to bring through (intersect with available)
     if not include_meas_cols:
@@ -102,17 +98,35 @@ def _merge_measurements_with_tracker(meas_df: pd.DataFrame, tracker_df: pd.DataF
             "true_x", "true_y", "true_z", "rec_gx", "rec_gy", "rec_gz",
             "volume_id", "layer_id", "surface_id"
         ]
-    lhs_cols = [c for c in include_meas_cols if c in meas_df.columns] + ["_orig_pos"]
-    lhs = meas_df[lhs_cols].copy() if lhs_cols else meas_df[["_orig_pos"]].copy()
+    lhs_cols = [c for c in include_meas_cols if c in meas_df.columns]
+    lhs = meas_df[lhs_cols] if lhs_cols else pd.DataFrame(index=meas_df.index)
+    
+    # Build temp DataFrames for merge with coords and position tracking
+    lhs_temp = pd.DataFrame({
+        'true_x': meas_coords['true_x'].values,
+        'true_y': meas_coords['true_y'].values,
+        'true_z': meas_coords['true_z'].values,
+        '_orig_pos': orig_pos,
+    })
+    for col in lhs_cols:
+        lhs_temp[col] = lhs[col].values
+    
+    rhs_temp = pd.DataFrame({
+        'x': tracker_coords['x'].values,
+        'y': tracker_coords['y'].values,
+        'z': tracker_coords['z'].values,
+    })
+    for col in rhs_cols:
+        rhs_temp[col] = rhs[col].values
 
     # Create per-key sequence numbers to avoid cartesian product on duplicates
-    lhs["_seq"] = lhs.groupby(["true_x", "true_y", "true_z"], dropna=False).cumcount()
-    rhs["_seq"] = rhs.groupby(["x", "y", "z"], dropna=False).cumcount()
+    lhs_temp["_seq"] = lhs_temp.groupby(["true_x", "true_y", "true_z"], dropna=False).cumcount()
+    rhs_temp["_seq"] = rhs_temp.groupby(["x", "y", "z"], dropna=False).cumcount()
 
     # Perform LEFT merge on keys + sequence number (stable 1:1 pairing)
     merged = pd.merge(
-        lhs,
-        rhs,
+        lhs_temp,
+        rhs_temp,
         left_on=["true_x", "true_y", "true_z", "_seq"],
         right_on=["x", "y", "z", "_seq"],
         how="left",
@@ -395,9 +409,9 @@ def process_chunk_for_digihits(
 
                 # Slice measurements for this local event from in-memory DataFrame
                 if "event_nr" in meas_df_all.columns:
-                    ev_meas = meas_df_all[meas_df_all.event_nr == local_event_num].copy()
+                    ev_meas = meas_df_all[meas_df_all.event_nr == local_event_num]
                 else:
-                    ev_meas = meas_df_all.copy()
+                    ev_meas = meas_df_all
 
                 ev_hits = hits_all[hits_all.event_id == local_event_num] if not hits_all.empty else None
                 ev_df = process_event_for_digihits(global_event_num, local_event_num, ev_meas, ev_hits)
@@ -409,6 +423,11 @@ def process_chunk_for_digihits(
             logging.info(
                 f"Run {abs_run}: tracker_hits rows={rows_run} events={len(evs)}"
             )
+            
+            # Delete batch object and force garbage collection to free memory
+            del batch
+            gc.collect()
+            
         except Exception as e:
             logging.error(f"Error processing run {abs_run}: {e}")
 

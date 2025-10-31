@@ -8,6 +8,7 @@ with nested contributions per cell.
 """
 
 import argparse
+import gc
 import yaml
 from pathlib import Path
 from typing import List
@@ -70,33 +71,40 @@ def process_calohits_batch(
             logger.warning("No calorimeter hits")
             return pd.DataFrame()
         
-        # Work with contributions copy
-        contribs = calo_contributions.copy()
-        
         # Step 1: Apply timing filters to contributions
-        if 'time' in contribs.columns:
-            # Calculate time-of-flight correction
-            contribs['r'] = np.sqrt(contribs['x']**2 + contribs['y']**2 + contribs['z']**2)
-            contribs['dt'] = contribs['r'] / 300.0 - 0.1  # time-of-flight in ns
-            contribs['corrected_time'] = contribs['time'] - contribs['dt']
+        # We'll filter and add columns in-place to avoid full copy
+        if 'time' in calo_contributions.columns:
+            # Calculate time-of-flight correction (creates new columns but no full copy)
+            r = np.sqrt(calo_contributions['x']**2 + calo_contributions['y']**2 + calo_contributions['z']**2)
+            dt = r / 300.0 - 0.1  # time-of-flight in ns
+            corrected_time = calo_contributions['time'] - dt
             
-            # Apply timing filters
-            timing_mask = (
-                 (contribs['corrected_time'] >= time_min) & 
-                 (contribs['corrected_time'] <= time_max)
-            )
-            contribs = contribs[timing_mask].copy()
+            # Apply timing filters to get mask
+            timing_mask = (corrected_time >= time_min) & (corrected_time <= time_max)
+            contribs = calo_contributions[timing_mask]
             logger.debug(f"Batch: {len(contribs)} contributions after timing filter")
+        else:
+            contribs = calo_contributions
         
         if contribs.empty:
             return pd.DataFrame()
         
         # Step 2: Aggregate contributions by (event_id, cellID, particle_id)
         # Use energy-weighted time for aggregated time per particle contribution
-        contribs['energy_time'] = contribs['energy'] * contribs.get('time', 0.0)
+        energy_time = contribs['energy'] * contribs.get('time', 0.0)
+        
+        # Create temporary dataframe with only needed columns for groupby
+        temp_df = pd.DataFrame({
+            'event_id': contribs['event_id'].values,
+            'cellID': contribs['cellID'].values,
+            'particle_id': contribs['particle_id'].values,
+            'energy': contribs['energy'].values,
+            'energy_time': energy_time.values,
+            'detector': contribs['detector'].values,
+        })
         
         contrib_per_particle = (
-            contribs.groupby(['event_id', 'cellID', 'particle_id'], sort=False)
+            temp_df.groupby(['event_id', 'cellID', 'particle_id'], sort=False)
             .agg(
                 energy=('energy', 'sum'),
                 energy_time=('energy_time', 'sum'),
@@ -636,6 +644,10 @@ def process_chunk_for_calohits(
                 logger.info(
                     f"Run {abs_run}: calo_hits rows={len(run_df)} events={run_df.event_id.nunique()}"
                 )
+            
+            # Delete batch object and force garbage collection to free memory
+            del batch
+            gc.collect()
                 
         except Exception as e:
             logger.error(f"Error processing run {abs_run}: {e}")

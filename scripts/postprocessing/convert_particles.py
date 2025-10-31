@@ -7,6 +7,7 @@ structured HDF5 or Parquet files with particle properties and hit count statisti
 """
 
 import argparse
+import gc
 import yaml
 from pathlib import Path
 from typing import List
@@ -77,8 +78,8 @@ def process_event_for_particles(
             if "event_id" not in digi_particles_df.columns and "event_nr" in digi_particles_df.columns:
                 digi_particles_df = digi_particles_df.rename(columns={"event_nr": "event_id"})
 
-            # Select this local event's digi particles
-            local_digi = digi_particles_df[digi_particles_df.get("event_id", -1) == local_event_num].copy()
+            # Select this local event's digi particles (boolean indexing creates view)
+            local_digi = digi_particles_df[digi_particles_df.get("event_id", -1) == local_event_num]
 
             # Ensure required merge columns exist
             merge_cols = ["vx", "vy", "vz", "px", "py", "pz"]
@@ -471,6 +472,11 @@ def process_chunk_for_particles(
             logging.info(
                 f"Run {abs_run}: particles rows={rows_run} events={ev_count}"
             )
+            
+            # Delete batch object and force garbage collection to free memory
+            del batch
+            gc.collect()
+            
         except Exception as e:
             logging.error(f"Error processing run {abs_run}: {e}")
 

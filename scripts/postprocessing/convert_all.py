@@ -4,6 +4,7 @@ Run all EDM4HEP to HDF5 conversions in sequence, driven by a YAML config.
 """
 
 import argparse
+import gc
 import time
 from pathlib import Path
 import yaml
@@ -237,7 +238,7 @@ def _process_chunk_for_all(
                     min_calo_hits=min_calo_hits,
                 )
                 if not df_run.empty and "event_id" in df_run.columns:
-                    df_run = df_run.copy()
+                    # Update event_id in-place (no copy needed)
                     global_event_nums = df_run["event_id"] + abs_run * run_size
                     df_run["event_id"] = global_event_nums
                 if not df_run.empty:
@@ -284,7 +285,8 @@ def _process_chunk_for_all(
                 evs_for_run = []
                 for local_event_num in range(local_events[0], local_events[1]):
                     ev_hits = hits_all[hits_all.event_id == local_event_num] if not hits_all.empty else None
-                    ev_meas = digi_measurements_df_all[digi_measurements_df_all.event_id == local_event_num].copy()
+                    # Boolean indexing creates a view; process_event_for_digihits will copy if needed
+                    ev_meas = digi_measurements_df_all[digi_measurements_df_all.event_id == local_event_num]
                     ev_df = process_event_for_digihits(abs_run * run_size + local_event_num, local_event_num, ev_meas, ev_hits)
                     if not ev_df.empty:
                         pair = (abs_run, local_event_num)
@@ -340,11 +342,12 @@ def _process_chunk_for_all(
                 global_event_num = abs_run * run_size + local_event_num
                 try:
                     per_ev_start = time.time()
+                    # Boolean indexing creates a view; function will copy if needed
                     event_df = process_event_for_tracks(
                         run_dir=Path(run_dir),
                         local_event_num=local_event_num,
                         global_event_num=global_event_num,
-                        track_fitting_df_event=track_fitting_df_run[track_fitting_df_run.event_id == local_event_num].copy(),
+                        track_fitting_df_event=track_fitting_df_run[track_fitting_df_run.event_id == local_event_num],
                         tracks_csv_pattern=tracks_csv_pattern,
                         digihits_run_df=digihits_run_df,
                     )
@@ -375,6 +378,10 @@ def _process_chunk_for_all(
         run_time = time.time() - run_start_time
         run_processing_time += run_time
         logger.debug(f"Run {abs_run} total processing time: {run_time:.3f}s")
+        
+        # Delete batch object and force garbage collection to free memory
+        del batch
+        gc.collect()
 
     # File writing phase
     writing_start_time = time.time()
