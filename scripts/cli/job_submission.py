@@ -302,7 +302,7 @@ class JobSubmitter:
             srun_options = "--exact --kill-on-bad-exit=0"
             # Always wrap payload in bash -c so shell features (e.g., $((...))) are evaluated per task
             if run_ids_setup_cmd:
-                setup_clean = run_ids_setup_cmd.replace(" && \\\\", "").strip()
+                setup_clean = run_ids_setup_cmd.replace(" && \\", "").strip()
                 payload = f"{setup_clean} && {command_info['python_command']}"
             else:
                 payload = f"{command_info['python_command']}"
@@ -598,7 +598,7 @@ class JobSubmitter:
                     slurm.add_cmd(cmd)
                 srun_options = "--exact --kill-on-bad-exit=0"
                 if run_ids_setup_cmd:
-                    setup_clean = run_ids_setup_cmd.replace(" && \\\\", "").strip()
+                    setup_clean = run_ids_setup_cmd.replace(" && \\", "").strip()
                     payload = f"{setup_clean} && {command_info['python_command']}"
                 else:
                     payload = f"{command_info['python_command']}"
