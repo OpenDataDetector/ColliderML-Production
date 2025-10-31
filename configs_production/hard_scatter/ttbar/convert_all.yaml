@@ -6,7 +6,7 @@ stage: "convert_all"
 
 # Job submission configuration
 job_config:
-  # n_runs: 100  # Number of jobs to submit
+  n_runs: 100  # Number of jobs to submit
   # n_runs: 1
   # runs_per_node: 5  # Number of runs per node
   runs_per_node: 8
