@@ -7,14 +7,14 @@ job_config:
   # Number of nodes will be calculated as n_runs / runs_per_node
   n_runs: 2048  # Number of jobs to submit
   runs_per_node: 8  # Number of runs per node
-  time_limit: "06:00:00"  # Time limit per job
+  time_limit: "04:00:00"  # Time limit per job
   qos: "regular"
   execution_mode: "multi_node_slurm"
 
 validation_config:
 
 # Stage-specific configurations
-events: 8  # Number of events per run, total number of events will be n_runs * events
+events: 64  # Number of events per run, total number of events will be n_runs * events
 threads: 8
 minimalKineticEnergy: 0.1  # Minimum kinetic energy in GeV to register in truth
 truthParticleHandler: "Geant4FullTruthParticleHandler"
