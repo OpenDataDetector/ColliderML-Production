@@ -287,7 +287,7 @@ class JobSubmitter:
         use_shifter = command_info["use_shifter"]
 
         if use_shifter:
-            # Original behavior: put env setup and python inside shifter bash -c
+            # Shifter stages: put env setup and python inside shifter bash -c
             slurm.add_cmd(command_info["shifter_command"])
             if run_ids_setup_cmd:
                 slurm.add_cmd(run_ids_setup_cmd)
@@ -295,22 +295,14 @@ class JobSubmitter:
                 slurm.add_cmd(cmd + " && \\")
             slurm.add_cmd(command_info["python_command"] + "\"")
         else:
-            # For non-shifter (postprocessing): move env setup OUTSIDE srun to avoid inner-quote issues
-            for cmd in command_info["env_setup_commands"]:
-                slurm.add_cmd(cmd)
-
+            # Non-shifter (postprocessing): use same multi-line pattern as shifter for consistency
             srun_options = "--exact --kill-on-bad-exit=0"
-            # Always wrap payload in bash -c so shell features (e.g., $((...))) are evaluated per task
+            slurm.add_cmd(f"srun {srun_options} bash -c \"")
+            for cmd in command_info["env_setup_commands"]:
+                slurm.add_cmd(cmd + " && \\")
             if run_ids_setup_cmd:
-                setup_clean = run_ids_setup_cmd.replace(" && \\", "").strip()
-                payload = f"{setup_clean} && {command_info['python_command']}"
-            else:
-                payload = f"{command_info['python_command']}"
-            # Quote payload, escaping any embedded quotes
-            srun_cmd = (
-                f"srun {srun_options} bash -c \"{payload}\""
-            )
-            slurm.add_cmd(srun_cmd)
+                slurm.add_cmd(run_ids_setup_cmd)
+            slurm.add_cmd(command_info["python_command"] + "\"")
     
     def get_runs_for_node(self, node_idx, tasks_for_node):
         """
@@ -593,19 +585,14 @@ class JobSubmitter:
                     slurm.add_cmd(cmd + " && \\")
                 slurm.add_cmd(command_info["python_command"] + "\"")
             else:
-                # Move env setup outside srun for non-shifter
-                for cmd in command_info["env_setup_commands"]:
-                    slurm.add_cmd(cmd)
+                # Non-shifter (postprocessing): use same multi-line pattern as shifter for consistency
                 srun_options = "--exact --kill-on-bad-exit=0"
+                slurm.add_cmd(f"srun {srun_options} bash -c \"")
+                for cmd in command_info["env_setup_commands"]:
+                    slurm.add_cmd(cmd + " && \\")
                 if run_ids_setup_cmd:
-                    setup_clean = run_ids_setup_cmd.replace(" && \\", "").strip()
-                    payload = f"{setup_clean} && {command_info['python_command']}"
-                else:
-                    payload = f"{command_info['python_command']}"
-                srun_cmd = (
-                    f"srun {srun_options} bash -c \"{payload}\""
-                )
-                slurm.add_cmd(srun_cmd)
+                    slurm.add_cmd(run_ids_setup_cmd)
+                slurm.add_cmd(command_info["python_command"] + "\"")
 
         except Exception as e:
             logger.error(f"Error building multinode command: {e}")
