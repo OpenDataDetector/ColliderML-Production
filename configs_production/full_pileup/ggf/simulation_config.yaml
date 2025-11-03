@@ -9,12 +9,14 @@ job_config:
   runs_per_node: 8  # Number of runs per node
   time_limit: "04:00:00"  # Time limit per job
   qos: "regular"
-  execution_mode: "multi_node_slurm"
+  # execution_mode: "multi_node_slurm"
+  execution_mode: "interactive"
 
 validation_config:
 
 # Stage-specific configurations
-events: 64  # Number of events per run, total number of events will be n_runs * events
+# events: 64  # Number of events per run, total number of events will be n_runs * events
+events: 8
 threads: 8
 minimalKineticEnergy: 0.1  # Minimum kinetic energy in GeV to register in truth
 truthParticleHandler: "Geant4FullTruthParticleHandler"
@@ -25,3 +27,4 @@ ddsim_printLevel: 6  # 1=VERBOSE, 2=DEBUG, 3=INFO, 4=WARNING(default), 5=ERROR, 
 # Filter out specific Geant4 warnings (optional)
 filter_g4_warnings: true  # Filter out mass tolerance and other G4Exception warnings
 
+debug_output_dir: "/global/cfs/cdirs/m4958/data/ColliderML/simulation/full_pileup/ggf/v1/runs/0"
