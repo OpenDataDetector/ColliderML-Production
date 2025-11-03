@@ -71,74 +71,56 @@ def _merge_measurements_with_tracker(meas_df: pd.DataFrame, tracker_df: pd.DataF
     If required coordinate columns are missing, return the measurements unchanged.
     """
     # Guard on required columns
-    coord_meas = [c for c in ["true_x", "true_y", "true_z"] if c in meas_df.columns]
-    coord_trk = [c for c in ["x", "y", "z"] if c in tracker_df.columns]
-    if len(coord_meas) != 3 or len(coord_trk) != 3:
+    if not all(c in meas_df.columns for c in ["true_x", "true_y", "true_z"]):
+        return meas_df
+    if not all(c in tracker_df.columns for c in ["x", "y", "z"]):
         return meas_df
 
-    # Cast to float32 for stable equality (avoid full copy by reassigning columns)
-    # Create working copies only of coordinate columns
-    meas_coords = meas_df[["true_x", "true_y", "true_z"]].astype(np.float32)
-    tracker_coords = tracker_df[["x", "y", "z"]].astype(np.float32)
-
-    # Preserve original measurement order explicitly
-    orig_pos = np.arange(len(meas_df), dtype=np.int64)
-
-    # Select minimal simulation hits columns to append (intersect with available)
+    # Select columns to keep
     if not include_simhits_cols:
         include_simhits_cols = [
             "x", "y", "z", "time", "px", "py", "pz", "particle_id", "cellID", "detector", "EDep", "pathLength"
         ]
-    rhs_cols = [c for c in include_simhits_cols if c in tracker_df.columns]
-    rhs = tracker_df[rhs_cols] if rhs_cols else tracker_df
-
-    # Select minimal measurement columns to bring through (intersect with available)
     if not include_meas_cols:
         include_meas_cols = [
             "true_x", "true_y", "true_z", "rec_gx", "rec_gy", "rec_gz",
             "volume_id", "layer_id", "surface_id"
         ]
+    
+    rhs_cols = [c for c in include_simhits_cols if c in tracker_df.columns]
     lhs_cols = [c for c in include_meas_cols if c in meas_df.columns]
-    lhs = meas_df[lhs_cols] if lhs_cols else pd.DataFrame(index=meas_df.index)
     
-    # Build temp DataFrames for merge with coords and position tracking
-    lhs_temp = pd.DataFrame({
-        'true_x': meas_coords['true_x'].values,
-        'true_y': meas_coords['true_y'].values,
-        'true_z': meas_coords['true_z'].values,
-        '_orig_pos': orig_pos,
-    })
-    for col in lhs_cols:
-        lhs_temp[col] = lhs[col].values
+    # Copy selected columns
+    lhs = meas_df[lhs_cols].copy()
+    rhs = tracker_df[rhs_cols].copy()
     
-    rhs_temp = pd.DataFrame({
-        'x': tracker_coords['x'].values,
-        'y': tracker_coords['y'].values,
-        'z': tracker_coords['z'].values,
-    })
-    for col in rhs_cols:
-        rhs_temp[col] = rhs[col].values
+    # Cast coordinate columns to float32 for merge
+    lhs['true_x'] = lhs['true_x'].astype(np.float32)
+    lhs['true_y'] = lhs['true_y'].astype(np.float32)
+    lhs['true_z'] = lhs['true_z'].astype(np.float32)
+    rhs['x'] = rhs['x'].astype(np.float32)
+    rhs['y'] = rhs['y'].astype(np.float32)
+    rhs['z'] = rhs['z'].astype(np.float32)
+    
+    # Add helper columns for merge and order preservation
+    lhs['_orig_pos'] = np.arange(len(lhs), dtype=np.int64)
+    lhs["_seq"] = lhs.groupby(["true_x", "true_y", "true_z"], dropna=False).cumcount()
+    rhs["_seq"] = rhs.groupby(["x", "y", "z"], dropna=False).cumcount()
 
-    # Create per-key sequence numbers to avoid cartesian product on duplicates
-    lhs_temp["_seq"] = lhs_temp.groupby(["true_x", "true_y", "true_z"], dropna=False).cumcount()
-    rhs_temp["_seq"] = rhs_temp.groupby(["x", "y", "z"], dropna=False).cumcount()
-
-    # Perform LEFT merge on keys + sequence number (stable 1:1 pairing)
+    # Perform LEFT merge on coordinates + sequence number
     merged = pd.merge(
-        lhs_temp,
-        rhs_temp,
+        lhs,
+        rhs,
         left_on=["true_x", "true_y", "true_z", "_seq"],
         right_on=["x", "y", "z", "_seq"],
         how="left",
         sort=False,
-        copy=False,
     )
 
-    # Drop helper columns and the measurement-side true_* prior to renaming to avoid duplicates
+    # Drop helper columns and measurement-side coordinates before renaming
     merged = merged.drop(columns=["_seq", "true_x", "true_y", "true_z"], errors='ignore')
 
-    # Simhits x,y,z become true_x, true_y, true_z
-    # Measurements rec_x, rec_y, rec_z become x, y, z
+    # Rename: simhits x,y,z -> true_x,true_y,true_z; measurements rec_* -> x,y,z
     merged = merged.rename(columns={
         "x": "true_x",
         "y": "true_y",
@@ -154,10 +136,8 @@ def _merge_measurements_with_tracker(meas_df: pd.DataFrame, tracker_df: pd.DataF
     # Convert detector strings to integers
     merged = _convert_detector_to_int(merged)
 
-    # Restore original measurement order explicitly
+    # Restore original order and drop position tracker
     merged = merged.sort_values("_orig_pos", kind="stable").drop(columns=["_orig_pos"], errors='ignore')
-
-    logger.debug(f"Merged columns: {merged.columns}")
 
     return merged
 
