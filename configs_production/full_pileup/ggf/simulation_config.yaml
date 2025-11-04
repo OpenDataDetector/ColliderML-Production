@@ -5,12 +5,14 @@ version: "v1"
 stage: "simulation"  # One of: generation, merge_smear, simulation, digitization
 job_config:
   # Number of nodes will be calculated as n_runs / runs_per_node
-  n_runs: 2048  # Number of jobs to submit
-  runs_per_node: 8  # Number of runs per node
-  time_limit: "04:00:00"  # Time limit per job
-  qos: "regular"
-  # execution_mode: "multi_node_slurm"
-  execution_mode: "interactive"
+  # n_runs: 2048  # Number of jobs to submit
+  runs_per_node: 16
+  # time_limit: "04:00:00"  # Time limit per job
+  time_limit: "00:30:00"
+  # qos: "regular"
+  qos: "debug"
+  execution_mode: "multi_node_slurm"
+  # execution_mode: "interactive"
 
 validation_config:
 
