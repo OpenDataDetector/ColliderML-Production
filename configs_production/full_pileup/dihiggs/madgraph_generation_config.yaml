@@ -10,7 +10,7 @@ stage: "madgraph_generation"
 
 # --- Job Configuration ---
 job_config:
-  n_runs: 20
+  n_runs: 21
   runs_per_node: 1
   time_limit: "02:00:00"
   qos: "regular"
