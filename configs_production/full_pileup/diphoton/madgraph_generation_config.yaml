@@ -42,6 +42,8 @@ generation_scratch_dir: "{madgraph.generation_scratch_dir}"
 card_customizations:
   run_card:
     "ptj": 10.0      # Minimum jet pT
+    "req_acc": 0.01  # Reduce from 0.001 to 0.01 to speed up generation
+
 
   # For NLO processes (born), customize shower_card.dat
   shower_card:

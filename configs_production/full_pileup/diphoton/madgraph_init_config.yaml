@@ -12,7 +12,7 @@
 # --- Dataset & Version ---
 campaign: "full_pileup"
 dataset: "diphoton"
-version: "v3"
+version: "v1"
 stage: "madgraph_init"
 
 # --- Job Configuration ---
@@ -20,7 +20,7 @@ job_config:
   # Number of nodes will be calculated as n_runs / runs_per_node
   n_runs: 1        # Number of runs (where a run produces N events)
   runs_per_node: 1  # Number of runs per node (adjust based on memory/time constraints)
-  time_limit: "24:00:00"  # Time limit per job - MadGraph NLO generation is slower than Pythia
+  time_limit: "8:00:00"  # Time limit per job - MadGraph NLO generation is slower than Pythia
   qos: "regular"
   execution_mode: "monolithic_slurm"  # Use distributed mode for parallel generation
   # execution_mode: "interactive"
@@ -51,6 +51,7 @@ card_customizations:
     
     # Generator-level cuts (improves showering acceptance)
     "ptj": 10.0      # Minimum jet pT
+    "req_acc": 0.01  # Reduce from 0.001 to 0.01 to speed up generation
 
   # For NLO processes (born), MadGraph creates shower_card.dat
   shower_card: # Use MOSTLY defaults, but override xqcut
