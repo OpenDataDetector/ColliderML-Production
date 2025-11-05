@@ -18,7 +18,7 @@ stage: "madgraph_generation"
 # --- Job Configuration ---
 job_config:
   # Number of nodes will be calculated as n_runs / runs_per_node
-  n_runs: 20
+  n_runs: 21
   # n_runs: 4
   runs_per_node: 1
   time_limit: "01:00:00"

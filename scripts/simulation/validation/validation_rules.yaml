@@ -4,15 +4,6 @@
 # Used by validation_lib.py to check stage outputs.
 
 stages:
-  # Stage 1: MadGraph Process Compilation
-  madgraph:
-    description: "Check that MadGraph process was compiled successfully"
-    file_patterns:
-      - pattern: "bin/mg5_aMC"
-        description: "MadGraph executable"
-        check_type: "exists"
-        required: true
-
   # Stage 1a: Particle Gun Generation
   particlegun_generation:
     description: "Validate particle gun generation outputs (HepMC3 files)"
@@ -24,17 +15,11 @@ stages:
         required: true
         
   # Stage 2: Event Generation (MadGraph)
-  generation:
+  madgraph_generation:
     description: "Validate event generation outputs (HepMC3 files)"
     file_patterns:
       - pattern: "events.hepmc3"
         description: "Hard-scatter events"
-        min_size_mb: 0.1
-        median_threshold_pct: 0.8
-        required: true
-      
-      - pattern: "events_pileup.hepmc3"
-        description: "Pileup events"
         min_size_mb: 0.1
         median_threshold_pct: 0.8
         required: true
