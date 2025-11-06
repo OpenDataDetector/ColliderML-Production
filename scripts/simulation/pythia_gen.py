@@ -311,31 +311,18 @@ def merge_events(hard_scatter_file, pileup_file, output_dir, config, logger):
     rng = acts.examples.RandomNumbers(seed=config.seed or 42)
     
     # ACTS HepMC3Reader with merging
-    # Build inputs using new Config::Input API
+    # Build inputs using HepMC3Reader.Input API
     if getattr(config, 'poisson_sample', False):
         # Use Poisson sampling for pileup
         inputs = [
-            acts.examples.hepmc3.Input(
-                path=hard_scatter_file,
-                numEvents=1
-            ),
-            acts.examples.hepmc3.Input(
-                path=pileup_file,
-                numEvents=1,  # ignored when multiplicityGenerator is set
-                multiplicityGenerator=acts.examples.PoissonMultiplicityGenerator(mean=float(pileup_multiplicity))
-            )
+            HepMC3Reader.Input.Fixed(hard_scatter_file, 1),
+            HepMC3Reader.Input.Poisson(pileup_file, float(pileup_multiplicity))
         ]
     else:
         # Use fixed multiplicity (backward compatible)
         inputs = [
-            acts.examples.hepmc3.Input(
-                path=hard_scatter_file,
-                numEvents=1
-            ),
-            acts.examples.hepmc3.Input(
-                path=pileup_file,
-                numEvents=max(1, int(pileup_multiplicity))
-            )
+            HepMC3Reader.Input.Fixed(hard_scatter_file, 1),
+            HepMC3Reader.Input.Fixed(pileup_file, max(1, int(pileup_multiplicity)))
         ]
 
     s.addReader(
