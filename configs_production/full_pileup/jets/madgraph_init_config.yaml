@@ -12,7 +12,7 @@
 # --- Dataset & Version ---
 campaign: "full_pileup"
 dataset: "jets"
-version: "v2"
+version: "v3"
 stage: "madgraph_init"
 
 # --- Job Configuration ---
@@ -31,7 +31,8 @@ mg_definitions: [] # No specific lepton definitions needed for inclusive jets
 mg_generate_command: |
   generate p p > j j [QCD]
   add process p p > j j j [QCD]
-  add process p p > j j j j [QCD]
+
+# add process p p > j j j j [QCD]
 
 # --- Essential Paths & Environment ---
 # These use variables from env_setup.yaml config_defaults
