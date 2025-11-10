@@ -3,15 +3,15 @@
 #========================================================================
 
 # --- Dataset & Version ---
-campaign: "hard_scatter"
-dataset: "ttbar"
+campaign: "full_pileup"
+dataset: "dihiggs"
 version: "v1"
 stage: "digitization"  # One of: generation, merge_smear, simulation, digitization
 
 # --- Job Configuration ---
 job_config:
-  n_runs: 1000  # Number of jobs to submit
-  runs_per_node: 16  # Number of runs per node
+  n_runs: 2100  # Number of jobs to submit
+  runs_per_node: 8  # Number of runs per node
   time_limit: "01:00:00"  # Time limit per job
   qos: "regular"
   execution_mode: "multi_node_slurm"
@@ -20,14 +20,12 @@ job_config:
 
 # --- Validation Configuration ---
 validation_config:
-  enabled: True
 
 # --- Stage-specific Configurations ---
-events: 1280  # Number of events per run, total number of events will be n_runs * events
-threads: 8
+events: 64  # Number of events per run, total number of events will be n_runs * events
+threads: 16
 digi: True
 reco: True
-# spacepoints: True  # Write spacepoints to ROOT (requires digi: True)
 num_seeds_per_spm: 40
 
 # --- Writing Configuration ---
@@ -38,9 +36,3 @@ output_all_particles: True
 
 # --- Digitization config ---
 digi_config: /global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml_dev/scripts/simulation/odd-full-geo-digi-config.json
-
-# --- Spacepoint config ---
-# spacepoint_geometry_selection: /global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/OtherLibraries/acts_versions/acts_v4/Examples/Configs/odd-strip-spacepoint-selection.json
-
-# --- Debugging Commands ---
-# debug_output_dir: /global/cfs/cdirs/m4958/data/ColliderML/simulation/hard_scatter/ttbar/v1/runs/0
