@@ -5,10 +5,10 @@ version: "v1"
 stage: "particlegun_generation"
 
 job_config:
-  n_runs: 1
-  runs_per_node: 1
+  n_runs: 100
+  runs_per_node: 25
   time_limit: "00:30:00"
-  qos: "regular"
+  qos: "debug"
   execution_mode: "multi_node_slurm"
 
 events: 10000
@@ -18,7 +18,7 @@ particle: "mu-"
 energy_min: 1.0
 energy_max: 1.0
 log_uniform: false
-transverse: true  # If true, energy is transverse momentum (pt); if false, total momentum (p)
+transverse: false  # If true, energy is transverse momentum (pt); if false, total momentum (p)
 
 eta_min: -3.0
 eta_max: 3.0
