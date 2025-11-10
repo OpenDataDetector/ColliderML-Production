@@ -6,7 +6,7 @@ stage: "simulation"  # One of: generation, merge_smear, simulation, digitization
 job_config:
   # Number of nodes will be calculated as n_runs / runs_per_node
   n_runs: 8  # Number of jobs to submit
-  runs_per_node: 2  # Number of runs per node
+  runs_per_node: 16  # Number of runs per node
   time_limit: "00:30:00"  # Time limit per job
   qos: "debug"
   depends_on:
@@ -15,8 +15,8 @@ job_config:
 validation_config:
 
 # Stage-specific configurations
-events: 640  # Number of events per run, total number of events will be n_runs * events
-threads: 64
+events: 800  # Number of events per run, total number of events will be n_runs * events
+threads: 8
 input_filename: events.hepmc3
 minimalKineticEnergy: 0.1  # Minimum kinetic energy in GeV to register in truth
 truthParticleHandler: "Geant4FullTruthParticleHandler"
