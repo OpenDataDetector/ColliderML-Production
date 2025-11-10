@@ -1,12 +1,12 @@
 # Particle Gun Configuration - Single Muons with Uniform Energy
-campaign: "single_particle_pilot"
-dataset: "single_muon_uniform"
+campaign: "single_particle"
+dataset: "muon_loguniform"
 version: "v1"
 stage: "particlegun_generation"
 
 job_config:
-  n_runs: 1
-  runs_per_node: 1
+  n_runs: 100
+  runs_per_node: 25
   time_limit: "00:30:00"
   qos: "debug"
   execution_mode: "multi_node_slurm"
@@ -15,10 +15,10 @@ events: 10000
 seed: 42
 
 particle: "mu-"
-energy_min: 1.0
-energy_max: 100.0
-log_uniform: false
-transverse: true  # If true, energy is transverse momentum (pt); if false, total momentum (p)
+energy_min: 0.3
+energy_max: 1000.0
+log_uniform: true
+transverse: false  # If true, energy is transverse momentum (pt); if false, total momentum (p)
 
 eta_min: -3.0
 eta_max: 3.0
