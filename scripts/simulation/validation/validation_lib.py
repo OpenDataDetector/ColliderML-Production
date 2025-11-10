@@ -27,6 +27,7 @@ import statistics
 from glob import glob
 from typing import Dict, List, Tuple, Optional
 import json
+from datetime import datetime, timezone
 
 logging.basicConfig(
     level=logging.INFO,
@@ -174,6 +175,7 @@ def validate_stage(
     logger.info(f"Validating stage: {stage}")
     logger.info(f"Base directory: {runs_dir}")
     logger.info(f"=" * 80)
+    report_timestamp = datetime.now(timezone.utc).isoformat()
     
     # Get stage rules
     if stage not in validation_rules.get('stages', {}):
@@ -181,7 +183,8 @@ def validate_stage(
         return {
             "stage": stage,
             "status": "CONFIGURATION_ERROR",
-            "error": f"No rules defined for stage '{stage}'"
+            "error": f"No rules defined for stage '{stage}'",
+            "report_timestamp": report_timestamp
         }
     
     stage_rules = validation_rules['stages'][stage]
@@ -213,7 +216,8 @@ def validate_stage(
                 "successful_runs": 0,
                 "failed_runs": 0,
                 "failure_rate": 1.0,
-                "error": f"Output directory not found: {search_dir}"
+                "error": f"Output directory not found: {search_dir}",
+                "report_timestamp": report_timestamp
             }
         
         if validate_as_chunks:
@@ -237,7 +241,8 @@ def validate_stage(
                     "successful_runs": 0,
                     "failed_runs": 0,
                     "failure_rate": 1.0,
-                    "error": "No chunk files found"
+                    "error": "No chunk files found",
+                    "report_timestamp": report_timestamp
                 }
             
             # Extract chunk IDs from filenames (e.g., "events0-999.parquet" -> chunk 0)
@@ -326,7 +331,8 @@ def validate_stage(
             "failure_rate": 1.0,
             "failed_run_ids": [],
             "failure_reasons": {},
-            "error": "No run directories found"
+            "error": "No run directories found",
+            "report_timestamp": report_timestamp
         }
     
     logger.info(f"Found {len(run_dirs)} run directories to validate")
@@ -486,6 +492,7 @@ def validate_stage(
     result = {
         "stage": stage,
         "status": status,
+        "report_timestamp": report_timestamp,
         "total_runs": total_runs,
         "successful_runs": successful_runs_count,
         "failed_runs": failed_runs_count,
