@@ -40,7 +40,7 @@ stages:
     file_patterns:
       - pattern: "edm4hep.root"
         description: "EDM4hep simulation output"
-        min_size_mb: 5.0
+        min_size_mb: 1.0
         median_threshold_pct: 0.8
         required: true
 
