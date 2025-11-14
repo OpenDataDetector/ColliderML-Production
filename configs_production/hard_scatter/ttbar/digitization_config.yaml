@@ -5,7 +5,7 @@
 # --- Dataset & Version ---
 campaign: "hard_scatter"
 dataset: "ttbar"
-version: "v1"
+version: "v2"
 stage: "digitization"  # One of: generation, merge_smear, simulation, digitization
 
 # --- Job Configuration ---
@@ -14,15 +14,16 @@ job_config:
   runs_per_node: 16  # Number of runs per node
   time_limit: "01:00:00"  # Time limit per job
   qos: "regular"
-  execution_mode: "multi_node_slurm"
-  # execution_mode: "interactive"
+  # execution_mode: "multi_node_slurm"
+  execution_mode: "interactive"
   depends_on:
 
 # --- Validation Configuration ---
 validation_config:
 
 # --- Stage-specific Configurations ---
-events: 1280  # Number of events per run, total number of events will be n_runs * events
+# events: 1280  # Number of events per run, total number of events will be n_runs * events
+events: 8
 threads: 8
 digi: True
 reco: True
@@ -42,4 +43,4 @@ digi_config: /global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml
 # spacepoint_geometry_selection: /global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/OtherLibraries/acts_versions/acts_v4/Examples/Configs/odd-strip-spacepoint-selection.json
 
 # --- Debugging Commands ---
-# debug_output_dir: /global/cfs/cdirs/m4958/data/ColliderML/simulation/hard_scatter/ttbar/v1/runs/0
+debug_output_dir: /global/cfs/cdirs/m4958/data/ColliderML/simulation/hard_scatter/ttbar/v2/runs/0

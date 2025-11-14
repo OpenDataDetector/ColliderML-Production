@@ -75,15 +75,9 @@ def parse_args():
     )
     parser.add_argument(
         "--output-root",
-        help="Write ROOT output files",
+        help="Write ROOT output files (default: True)",
         action="store_true",
-        default=None
-    )
-    parser.add_argument(
-        "--output-csv",
-        help="Write CSV output files",
-        action="store_true",
-        default=None
+        default=True
     )
     parser.add_argument(
         "--digi",
@@ -359,7 +353,6 @@ def setup_acts_reconstruction(input_path, output_dir, config, rnd, logger=None):
             ),
             twoWay=True,
             outputDirRoot=perf_output if getattr(config, 'output_root', True) else None,
-            outputDirCsv=perf_output if getattr(config, 'output_csv', False) else None,
             writeCovMat=getattr(config, 'performance_metrics', False),
             writeTrackStates=getattr(config, 'performance_metrics', False),
             writeTrackSummary=getattr(config, 'performance_metrics', False),
@@ -379,7 +372,6 @@ def setup_acts_reconstruction(input_path, output_dir, config, rnd, logger=None):
                     nMeasurementsMin=7,
                 ),
                 outputDirRoot=perf_output if getattr(config, 'output_root', True) else None,
-                outputDirCsv=perf_output if getattr(config, 'output_csv', False) else None,
                 onnxModelFile=str(ambi_config),
             )
         elif ambi_solver == "scoring":
@@ -391,7 +383,6 @@ def setup_acts_reconstruction(input_path, output_dir, config, rnd, logger=None):
                     maxSharedTracksPerMeasurement=2
                 ),
                 outputDirRoot=perf_output if getattr(config, 'output_root', True) else None,
-                outputDirCsv=perf_output if getattr(config, 'output_csv', False) else None,
                 ambiVolumeFile=ambi_config,
             )
         else:
@@ -403,7 +394,6 @@ def setup_acts_reconstruction(input_path, output_dir, config, rnd, logger=None):
                     nMeasurementsMin=6,
                 ),
                 outputDirRoot=perf_output if getattr(config, 'output_root', True) else None,
-                outputDirCsv=perf_output if getattr(config, 'output_csv', False) else None,
                 writeCovMat=getattr(config, 'performance_metrics', False),
                 writeTrackStates=getattr(config, 'performance_metrics', False),
                 writeTrackSummary=getattr(config, 'performance_metrics', False),
@@ -418,7 +408,6 @@ def setup_acts_reconstruction(input_path, output_dir, config, rnd, logger=None):
                 field,
                 vertexFinder=VertexFinder.AMVF,
                 outputDirRoot=perf_output if getattr(config, 'output_root', True) else None,
-                outputDirCsv=perf_output if getattr(config, 'output_csv', False) else None,
             )
     
     # Add ROOT writers if enabled and performance metrics are on
