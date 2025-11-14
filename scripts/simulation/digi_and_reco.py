@@ -414,11 +414,11 @@ def setup_acts_reconstruction(input_path, output_dir, config, rnd, logger=None):
     output_root = getattr(config, 'output_root', True)
     performance_metrics = getattr(config, 'performance_metrics', False)
     if output_root and performance_metrics:
-        add_root_writers(s, output_dir)
+        add_root_writers(s, output_dir, field, config)
     
     return s
 
-def add_root_writers(s, output_dir):
+def add_root_writers(s, output_dir, field, config=None):
     """Add ROOT output writers to the sequencer"""
     # Write tracking hits
     s.addWriter(acts.examples.RootSimHitWriter(
@@ -431,7 +431,10 @@ def add_root_writers(s, output_dir):
     s.addWriter(acts.examples.RootParticleWriter(
         config=acts.examples.RootParticleWriter.Config(
             filePath=str(output_dir / "particles.root"),
-            inputParticles="particles"
+            inputParticles="particles",
+            referencePoint=acts.Vector3(0.0, 0.0, 0.0),
+            bField=field,
+            writeHelixParameters=True,
         ),
         level=LOG_LEVEL
     ))
