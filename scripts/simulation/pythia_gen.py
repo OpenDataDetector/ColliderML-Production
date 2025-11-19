@@ -127,6 +127,15 @@ def create_vertex_generator(config, logger):
         logger.info("No vertex smearing configured")
         return None
 
+def load_pdg_properties(config, logger):
+    """Load PDG properties from particle.tbl if configured."""
+    pdg_file = getattr(config, 'pdg_file', None)
+    if pdg_file:
+        acts.PdgParticle2Hit.addParticleProperties(Path(pdg_file))
+        logger.info(f"Loaded PDG properties from {pdg_file}")
+    else:
+        logger.debug("No custom PDG file configured")
+
 def parse_pythia_settings(config, logger):
     """Parse Pythia8 settings from config and hard process."""
     pythia_settings = []
@@ -331,11 +340,7 @@ def merge_events(hard_scatter_file, pileup_file, output_dir, config, logger):
             HepMC3Reader.Input.Fixed(pileup_file, max(1, int(pileup_multiplicity)))
         ]
     
-    # Check for particle.tbl in config or args
-    pdg_file = getattr(config, 'pdg_file', None)
-    if pdg_file:
-        acts.PdgParticle2Hit.addParticleProperties(Path(pdg_file))
-        logger.info(f"Loaded PDG properties from {pdg_file}")
+    # PDG properties loaded globally in main()
 
     s.addReader(
         HepMC3Reader(
@@ -445,6 +450,9 @@ def main():
         logger.info(f"Output directory: {output_dir}")
         logger.info(f"Events: {config.events}")
         
+        # Load PDG properties early
+        load_pdg_properties(config, logger)
+
         # Initialize timing
         timer = TimingRecorder(output_dir)
         
