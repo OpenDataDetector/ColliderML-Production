@@ -339,12 +339,12 @@ Block msoft Q= 8.83270075e+02 # MSSM DRbar SUSY breaking parameters
     22    -3.74275829e+05     # mH2^2(Q)
 
 # ----------------------------------------------------------------------
-# R-parity violating trilinear couplings (small values → LLP neutralino)
+# R-parity violating trilinear couplings (1.0e-5 -> ~cm scale LLP neutralino)
 # ----------------------------------------------------------------------
-Block RVLAMLQD  # L_i Q_j D_k^c couplings (example: single small entry)
-  1  1  1   1.0e-6
+Block RVLAMLQD  # L_i Q_j D_k^c couplings
+  1  1  1   1.0e-5
 
-Block RVLAMUDD  # U_i^c D_j^c D_k^c couplings (example: single small entry)
-  1  1  2   1.0e-6
+Block RVLAMUDD  # U_i^c D_j^c D_k^c couplings
+  1  1  2   1.0e-5
 
 
