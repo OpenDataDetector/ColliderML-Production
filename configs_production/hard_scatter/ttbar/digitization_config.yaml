@@ -5,7 +5,7 @@
 # --- Dataset & Version ---
 campaign: "hard_scatter"
 dataset: "ttbar"
-version: "v1"
+version: "v2"
 stage: "digitization"  # One of: generation, merge_smear, simulation, digitization
 
 # --- Job Configuration ---
@@ -14,8 +14,8 @@ job_config:
   runs_per_node: 16  # Number of runs per node
   time_limit: "01:00:00"  # Time limit per job
   qos: "regular"
-  execution_mode: "multi_node_slurm"
-  # execution_mode: "interactive"
+  # execution_mode: "multi_node_slurm"
+  execution_mode: "interactive"
   depends_on:
 
 # --- Validation Configuration ---
@@ -37,6 +37,8 @@ output_measurements_root: True
 ambi_root_output: True
 ambi_finding_performance: True
 ambi_fitting_performance: True
+
+write_helix_parameters: True
 
 # --- Digitization config ---
 digi_config: /global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml_dev/scripts/simulation/odd-full-geo-digi-config.json

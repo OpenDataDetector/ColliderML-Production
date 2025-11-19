@@ -488,6 +488,7 @@ def add_root_writers(s, output_dir, field, config=None):
     # Control via config flags only
     output_particles_root = getattr(config, "output_particles_root", False) if config else False
     output_simhits_root = getattr(config, "output_simhits_root", False) if config else False
+    write_helix_parameters = getattr(config, "write_helix_parameters", True) if config else True
 
     # Write tracking hits (simhits) if requested
     if output_simhits_root:
@@ -510,7 +511,7 @@ def add_root_writers(s, output_dir, field, config=None):
                     inputParticles="particles",
                     referencePoint=acts.Vector3(0.0, 0.0, 0.0),
                     bField=field,
-                    writeHelixParameters=True,
+                    writeHelixParameters=write_helix_parameters,
                 ),
                 level=LOG_LEVEL,
             )
