@@ -30,10 +30,12 @@ reco: True
 num_seeds_per_spm: 40
 
 # --- Writing Configuration ---
-output_root: True
-performance_metrics: True
-output_csv: True
-output_all_particles: True
+output_particles_root: True
+output_measurements_root: True
+
+ambi_root_output: True
+ambi_finding_performance: True
+ambi_fitting_performance: True
 
 # --- Digitization config ---
 digi_config: /global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml_dev/scripts/simulation/odd-full-geo-digi-config.json
