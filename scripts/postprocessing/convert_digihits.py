@@ -27,6 +27,8 @@ from utils.path_utils import get_run_paths, make_dir
 from utils.driver import iterate_and_process_chunks, local_events_for_run
 from utils.track_utils import load_root_file
 from utils.parquet_utils import build_parquet_from_flat_df
+from utils.parquet_schemas import DIGIHITS_PARQUET_TYPES
+from utils.detector_enums import encode_tracker_detector
 
 sys.path.append("/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/OtherLibraries/pyedm4hep")
 from pyedm4hep import EDM4hepEvent, EDM4hepEventBatch
@@ -37,22 +39,19 @@ logger = logging.getLogger(__name__)
 
 def _convert_detector_to_int(df: pd.DataFrame) -> pd.DataFrame:
     """
-    Convert detector column from strings to integers to avoid HDF5 object dtype issues.
+    Convert tracker detector column from strings + geometry into a stable uint8 enum.
     """
-    if 'detector' not in df.columns:
+    if "detector" not in df.columns:
         return df
-    
-    detector_mapping = {
-        'PixelBarrelReadout': 0,
-        'PixelEndcapReadout': 1, 
-        'ShortStripBarrelReadout': 2,
-        'ShortStripEndcapReadout': 3,
-        'LongStripBarrelReadout': 4,
-        'LongStripEndcapReadout': 5
-    }
-    
     df = df.copy()
-    df['detector'] = df['detector'].map(detector_mapping)
+    # Prefer true_z (SimHit) for endcap sign; fall back to z if needed.
+    if "true_z" in df.columns:
+        z = df["true_z"]
+    elif "z" in df.columns:
+        z = df["z"]
+    else:
+        z = None
+    df["detector"] = encode_tracker_detector(df["detector"], z)
     return df
 
 
@@ -79,7 +78,17 @@ def _merge_measurements_with_tracker(meas_df: pd.DataFrame, tracker_df: pd.DataF
     # Select columns to keep
     if not include_simhits_cols:
         include_simhits_cols = [
-            "x", "y", "z", "time", "px", "py", "pz", "particle_id", "cellID", "detector", "EDep", "pathLength"
+            "x",
+            "y",
+            "z",
+            "time",
+            "px",
+            "py",
+            "pz",
+            "particle_id",
+            "detector",
+            "EDep",
+            "pathLength",
         ]
     if not include_meas_cols:
         include_meas_cols = [
@@ -121,17 +130,39 @@ def _merge_measurements_with_tracker(meas_df: pd.DataFrame, tracker_df: pd.DataF
     merged = merged.drop(columns=["_seq", "true_x", "true_y", "true_z"], errors='ignore')
 
     # Rename: simhits x,y,z -> true_x,true_y,true_z; measurements rec_* -> x,y,z
-    merged = merged.rename(columns={
-        "x": "true_x",
-        "y": "true_y",
-        "z": "true_z",
-        "rec_gx": "x",
-        "rec_gy": "y",
-        "rec_gz": "z",
-        "cellID": "cell_id",
-        "EDep": "e_dep",
-        "pathLength": "path_length",
-    }, errors='ignore')
+    merged = merged.rename(
+        columns={
+            "x": "true_x",
+            "y": "true_y",
+            "z": "true_z",
+            "rec_gx": "x",
+            "rec_gy": "y",
+            "rec_gz": "z",
+            "EDep": "e_dep",
+            "pathLength": "path_length",
+        },
+        errors="ignore",
+    )
+
+    # Downcast geometry identifiers to minimal unsigned types based on Acts limits.
+    # This applies both to HDF5 and Parquet outputs.
+    geometry_dtypes: dict[str, str] = {
+        "volume_id": "uint8",
+        "layer_id": "uint16",
+        "surface_id": "uint32",
+    }
+    for col, target_dtype in geometry_dtypes.items():
+        if col in merged.columns:
+            try:
+                merged[col] = merged[col].astype(target_dtype)
+            except Exception:
+                # If casting fails (unexpected values), keep original dtype and log at debug level.
+                logging.debug(
+                    "Failed to cast %s to %s; keeping original dtype %s",
+                    col,
+                    target_dtype,
+                    merged[col].dtype,
+                )
 
     # Convert detector strings to integers
     merged = _convert_detector_to_int(merged)
@@ -178,8 +209,13 @@ def build_parquet_digihits(df: pd.DataFrame, output_file: str) -> None:
         logger.warning(f"Skipping empty DataFrame for Parquet digihits: {output_file}")
         return
     
-    # Use shared utility to group by event and write
-    build_parquet_from_flat_df(df, output_file, compression='snappy')
+    # Use shared utility to group by event and write with canonical schema
+    build_parquet_from_flat_df(
+        df,
+        output_file,
+        compression='snappy',
+        schema_overrides=DIGIHITS_PARQUET_TYPES,
+    )
 
 
 def write_digihits_with_selection(
@@ -199,10 +235,15 @@ def write_digihits_with_selection(
     """
     if df.empty:
         return
+
+    # Drop cell_id from outputs; it is redundant once geometry identifiers are stored.
+    if "cell_id" in df.columns:
+        df = df.drop(columns=["cell_id"])
+
     if columns_keep:
         cols = [c for c in columns_keep if c in df.columns]
-        if 'event_id' not in cols and 'event_id' in df.columns:
-            cols = cols + ['event_id']
+        if "event_id" not in cols and "event_id" in df.columns:
+            cols = cols + ["event_id"]
         df = df[cols].copy()
     
     # Route to appropriate writer based on format

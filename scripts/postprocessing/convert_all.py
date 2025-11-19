@@ -25,10 +25,9 @@ from utils.path_utils import make_dir, get_run_paths
 from utils.driver import iterate_and_process_chunks, local_events_for_run
 from utils.track_utils import (
     load_root_file,
-    load_track_summary,
     build_hdf5_tracks,
     write_tracks_with_selection,
-    build_track_fitting_df_run,
+    normalize_tracksummary_df,
 )
 
 logger = logging.getLogger(__name__)
@@ -93,9 +92,7 @@ def _process_chunk_for_all(
     min_tracker_hits: int | None,
     min_calo_hits: int | None,
     digihits_measurements_columns: list[str] | None,
-    tracks_csv_pattern: str,
     tracksummary_file: str,
-    simhits_file: str,
     # new optional selection for tracks output
     tracks_columns_keep: list[str] | None = None,
     calo_columns_keep: list[str] | None = None,
@@ -222,6 +219,8 @@ def _process_chunk_for_all(
                         "py",
                         "pz",
                         "vertex_primary",
+                        "perigee_d0",
+                        "perigee_z0",
                     ]
                     digi_particles_df_run = load_root_file(str(particles_root_path), included_columns=included_columns, events=local_events)
                 except Exception as e:
@@ -310,11 +309,15 @@ def _process_chunk_for_all(
         if "tracks" in objects and digihits_run_df is not None:
             tracks_load_start = time.time()
             ts_path = Path(run_dir) / tracksummary_file
+            track_fitting_df_run = None
             if ts_path.exists():
                 try:
                     included_tracksummary_columns = [
+                        "event_id",
                         "event_nr",
+                        "track_id",
                         "track_nr",
+                        "measurementIDs",
                         "eLOC0_fit",
                         "eLOC1_fit",
                         "ePHI_fit",
@@ -330,7 +333,12 @@ def _process_chunk_for_all(
                         "t_pT",
                         "t_time",
                     ]
-                    track_fitting_df_run = load_root_file(str(ts_path), included_columns=included_tracksummary_columns, events=local_events)
+                    df_raw = load_root_file(
+                        str(ts_path),
+                        included_columns=included_tracksummary_columns,
+                        events=local_events,
+                    )
+                    track_fitting_df_run = normalize_tracksummary_df(df_raw)
                 except Exception as e:
                     logger.warning(f"Failed to load tracksummary at {ts_path}: {e}")
             tracks_load_time = time.time() - tracks_load_start
@@ -347,8 +355,11 @@ def _process_chunk_for_all(
                         run_dir=Path(run_dir),
                         local_event_num=local_event_num,
                         global_event_num=global_event_num,
-                        track_fitting_df_event=track_fitting_df_run[track_fitting_df_run.event_id == local_event_num],
-                        tracks_csv_pattern=tracks_csv_pattern,
+                        track_fitting_df_event=(
+                            track_fitting_df_run[track_fitting_df_run["event_id"] == local_event_num].copy()
+                            if track_fitting_df_run is not None and "event_id" in track_fitting_df_run.columns
+                            else pd.DataFrame()
+                        ),
                         digihits_run_df=digihits_run_df,
                     )
                     logger.debug(
@@ -511,9 +522,7 @@ def convert_all(config: dict, chunk_index: int | None = None) -> None:
 
     particles_columns_keep = config.get("particles_columns_keep")
     digihits_columns_keep = config.get("digihits_columns_keep")
-    tracks_csv_pattern = config.get("tracks_csv_pattern", "event{:09d}-tracks_ambi.csv")
     tracksummary_file = config.get("tracksummary_file", "tracksummary_ambi.root")
-    simhits_file = config.get("simhits_file", "simhits.root")
     tracks_columns_keep = config.get("tracks_columns_keep")
     calo_columns_keep = config.get("calo_columns_keep")
     min_particle_energy = config.get("min_particle_energy")
@@ -558,9 +567,7 @@ def convert_all(config: dict, chunk_index: int | None = None) -> None:
             min_tracker_hits=min_tracker_hits,
             min_calo_hits=min_calo_hits,
             digihits_measurements_columns=digihits_measurements_columns,
-            tracks_csv_pattern=tracks_csv_pattern,
             tracksummary_file=tracksummary_file,
-            simhits_file=simhits_file,
             tracks_columns_keep=tracks_columns_keep,
             calo_columns_keep=calo_columns_keep,
             ecal_energy_threshold=ecal_energy_threshold,

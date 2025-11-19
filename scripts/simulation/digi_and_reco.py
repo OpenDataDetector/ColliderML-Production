@@ -126,6 +126,7 @@ def setup_acts_reconstruction(input_path, output_dir, config, rnd, logger=None):
     
     # Granular control of ROOT output and performance writers
     output_particles_root = getattr(config, "output_particles_root", False)
+    output_simhits_root = getattr(config, "output_simhits_root", False)
     output_measurements_root = getattr(config, "output_measurements_root", False)
     output_seeds_root = getattr(config, "output_seeds_root", False)
     output_spacepoints_root = getattr(config, "output_spacepoints_root", False)
@@ -477,7 +478,7 @@ def setup_acts_reconstruction(input_path, output_dir, config, rnd, logger=None):
             )
     
     # Add ROOT writers for particles/simhits if requested
-    if output_particles_root:
+    if output_particles_root or output_simhits_root:
         add_root_writers(s, output_dir, field, config)
     
     return s
@@ -486,9 +487,10 @@ def add_root_writers(s, output_dir, field, config=None):
     """Add ROOT output writers to the sequencer"""
     # Control via config flags only
     output_particles_root = getattr(config, "output_particles_root", False) if config else False
+    output_simhits_root = getattr(config, "output_simhits_root", False) if config else False
 
-    if output_particles_root:
-        # Write tracking hits (simhits)
+    # Write tracking hits (simhits) if requested
+    if output_simhits_root:
         s.addWriter(
             acts.examples.RootSimHitWriter(
                 config=acts.examples.RootSimHitWriter.Config(
@@ -498,7 +500,9 @@ def add_root_writers(s, output_dir, field, config=None):
                 level=LOG_LEVEL,
             )
         )
-        # Write simulated particles
+
+    # Write simulated particles if requested
+    if output_particles_root:
         s.addWriter(
             acts.examples.RootParticleWriter(
                 config=acts.examples.RootParticleWriter.Config(

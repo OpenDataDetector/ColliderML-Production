@@ -26,6 +26,8 @@ import time
 from utils.path_utils import get_run_paths, make_dir
 from utils.driver import iterate_and_process_chunks, local_events_for_run
 from utils.parquet_utils import build_parquet_from_flat_df
+from utils.parquet_schemas import CALOHITS_PARQUET_TYPES
+from utils.detector_enums import encode_calo_detector
 
 sys.path.append("/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/OtherLibraries/pyedm4hep")
 from pyedm4hep import EDM4hepEvent, EDM4hepEventBatch
@@ -420,18 +422,28 @@ def build_parquet_calohits(df: pd.DataFrame, output_file: str) -> None:
     
     # Standardize column name to cell_id (with underscore)
     # This matches the naming convention used for other ID columns
-    if 'cellID' in df.columns:
-        df.rename(columns={'cellID': 'cell_id'}, inplace=True)
-    
-    # Convert cell_id to string to handle large bitfield-encoded values
+    if "cellID" in df.columns:
+        df.rename(columns={"cellID": "cell_id"}, inplace=True)
+
+    # Convert cell_id to string to handle large bitfield-encoded values.
     # These can exceed int64 range (2^63-1) due to bitfield encoding, and PyArrow
     # has issues with uint64 in lists. Storing as string is the most reliable approach.
-    if 'cell_id' in df.columns:
-        df['cell_id'] = df['cell_id'].astype(str)
+    if "cell_id" in df.columns:
+        df["cell_id"] = df["cell_id"].astype(str)
+
+    # Encode calorimeter detector names to a stable uint8 enum using shared helper.
+    if "detector" in df.columns:
+        z = df.get("z")
+        df["detector"] = encode_calo_detector(df["detector"], z)
     
-    # Use shared utility to group by event and write
+    # Use shared utility to group by event and write with canonical schema
     # The list columns will automatically become list[list[...]] after groupby
-    build_parquet_from_flat_df(df, output_file, compression='snappy')
+    build_parquet_from_flat_df(
+        df,
+        output_file,
+        compression='snappy',
+        schema_overrides=CALOHITS_PARQUET_TYPES,
+    )
     logger.info(f"Wrote calorimeter parquet file: {output_file}")
 
 

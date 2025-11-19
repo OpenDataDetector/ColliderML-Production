@@ -12,12 +12,14 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-# Import parquet utilities
+# Import parquet utilities and schemas
 try:
     from .parquet_utils import build_parquet_from_flat_df
+    from .parquet_schemas import TRACKS_PARQUET_TYPES
 except ImportError:
     # Fallback if relative import fails
-    from parquet_utils import build_parquet_from_flat_df
+    from parquet_utils import build_parquet_from_flat_df  # type: ignore[no-redef]
+    from parquet_schemas import TRACKS_PARQUET_TYPES  # type: ignore[no-redef]
 
 def get_particle_ids_from_events(events, tracker_readouts):
     """Get particle IDs from events for each tracker readout.
@@ -403,9 +405,14 @@ def build_parquet_tracks(df: pd.DataFrame, output_file: str) -> None:
         logger.warning(f"Skipping empty DataFrame for Parquet tracks: {output_file}")
         return
     
-    # Use shared utility to group by event and write
-    # hit_ids column will become list[list[int]] automatically
-    build_parquet_from_flat_df(df, output_file, compression='snappy')
+    # Use shared utility to group by event and write with canonical schema.
+    # hit_ids column will become list[list[int]] automatically.
+    build_parquet_from_flat_df(
+        df,
+        output_file,
+        compression='snappy',
+        schema_overrides=TRACKS_PARQUET_TYPES,
+    )
 
 
 def write_tracks_with_selection(
@@ -482,7 +489,11 @@ def build_track_fitting_df_run(tracksummary_arrays: Any, run_size: int) -> pd.Da
             if field == 'event_nr':
                 continue
             try:
-                row_dict[field] = ak.to_numpy(entry[field])
+                # measurementIDs is a jagged array (per-track list of indices)
+                if field == 'measurementIDs':
+                    row_dict[field] = ak.to_list(entry[field])
+                else:
+                    row_dict[field] = ak.to_numpy(entry[field])
             except Exception:
                 continue
         if not row_dict:
@@ -509,4 +520,49 @@ def build_track_fitting_df_run(tracksummary_arrays: Any, run_size: int) -> pd.Da
     logger.debug(
         f"build_track_fitting_df_run events={len(per_event_frames)} output_shape={out.shape if hasattr(out, 'shape') else None} time={pd.Timestamp.now().timestamp() - t_start:.3f}s"
     )
+    return out
+
+
+def normalize_tracksummary_df(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Normalize a tracksummary DataFrame loaded via load_root_file:
+    - Collapse exploded measurementIDs rows (one row per element) into
+      one row per (event, track) with measurementIDs as a list.
+    - Leave other columns unchanged (take first value per group).
+    If measurementIDs is not present or required keys are missing, return df.
+    """
+    if df is None or df.empty:
+        return df
+    if "measurementIDs" not in df.columns:
+        return df
+
+    # Identify grouping keys
+    event_col = None
+    if "event_id" in df.columns:
+        event_col = "event_id"
+    elif "event_nr" in df.columns:
+        event_col = "event_nr"
+
+    track_col = None
+    if "track_id" in df.columns:
+        track_col = "track_id"
+    elif "track_nr" in df.columns:
+        track_col = "track_nr"
+
+    if event_col is None or track_col is None:
+        return df
+
+    df_flat = df.reset_index(drop=True)
+    group_cols = [event_col, track_col]
+    other_cols = [c for c in df_flat.columns if c not in group_cols + ["measurementIDs"]]
+
+    agg: dict[str, Any] = {col: "first" for col in other_cols}
+    agg["measurementIDs"] = lambda s: list(s.values)
+
+    out = df_flat.groupby(group_cols, as_index=False).agg(agg)
+
+    # Normalized representation: prefer track_id naming
+    if "track_nr" in out.columns and "track_id" not in out.columns:
+        out = out.rename(columns={"track_nr": "track_id"})
+
     return out
