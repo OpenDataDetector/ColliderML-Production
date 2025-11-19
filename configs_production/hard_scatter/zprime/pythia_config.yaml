@@ -16,6 +16,7 @@ validation_config:
 # Stage-specific configurations
 events: 64          # Events per run
 pileup: 0           # Hard-scatter Z' sample without pileup
+pdg_file: "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml_dev/configs_production/hard_scatter/zprime/particle.tbl"
 
 # Sequential Standard Model Z' benchmark (Drell–Yan production)
 hard_process: "NewGaugeBoson:ffbar2gmZprime"

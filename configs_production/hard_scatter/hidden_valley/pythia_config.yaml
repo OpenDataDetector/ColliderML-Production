@@ -16,6 +16,7 @@ validation_config:
 # Stage-specific configurations
 events: 64          # Events per run
 pileup: 0           # Default: no additional pileup in hard-scatter HV sample
+pdg_file: "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml_dev/configs_production/hard_scatter/hidden_valley/particle.tbl"
 
 # Higgs portal production of a long-lived scalar (dark pion–like)
 hard_process: "HiggsBSM:gg2H2"
