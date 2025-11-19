@@ -1,7 +1,7 @@
 # Config to drive convert_all.py
 campaign: "hard_scatter"
 dataset: "ttbar"
-version: "v2"
+version: "v1"
 stage: "convert_all"
 
 # Job submission configuration
