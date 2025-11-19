@@ -57,6 +57,12 @@ def parse_args():
         type=Path,
         default=None,
     )
+    parser.add_argument(
+        "--pdg-file",
+        help="Path to particle.tbl file containing PDG data",
+        type=Path,
+        default=None
+    )
     
     # Pythia8 settings
     parser.add_argument(
@@ -324,6 +330,12 @@ def merge_events(hard_scatter_file, pileup_file, output_dir, config, logger):
             HepMC3Reader.Input.Fixed(hard_scatter_file, 1),
             HepMC3Reader.Input.Fixed(pileup_file, max(1, int(pileup_multiplicity)))
         ]
+    
+    # Check for particle.tbl in config or args
+    pdg_file = getattr(config, 'pdg_file', None)
+    if pdg_file:
+        acts.PdgParticle2Hit.addParticleProperties(Path(pdg_file))
+        logger.info(f"Loaded PDG properties from {pdg_file}")
 
     s.addReader(
         HepMC3Reader(

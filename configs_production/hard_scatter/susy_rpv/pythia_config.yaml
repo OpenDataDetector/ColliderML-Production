@@ -16,6 +16,7 @@ validation_config:
 # Stage-specific configurations
 events: 1          # Events per run
 pileup: 0           # No pileup in hard-scatter SUSY sample
+pdg_file: "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml_dev/configs_production/hard_scatter/susy_rpv/particle.tbl"
 
 # Neutralino pair production; detailed spectrum and decays come from SLHA file
 hard_process: "SUSY:qqbar2chi0chi0"
