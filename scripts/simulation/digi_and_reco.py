@@ -39,8 +39,8 @@ from acts.examples.edm4hep import EDM4hepSimInputConverter
 u = acts.UnitConstants
 
 # LOG_LEVEL = acts.logging.DEBUG
-LOG_LEVEL = acts.logging.INFO
-# LOG_LEVEL = acts.logging.FATAL
+# LOG_LEVEL = acts.logging.INFO
+LOG_LEVEL = acts.logging.FATAL
 
 def parse_args():
     """Parse command line arguments"""
