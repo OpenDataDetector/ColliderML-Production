@@ -23,7 +23,7 @@ validation_config:
 
 # --- Stage-specific Configurations ---
 # events: 1280  # Number of events per run, total number of events will be n_runs * events
-events: 8
+events: 32
 threads: 8
 digi: True
 reco: True

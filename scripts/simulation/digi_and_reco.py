@@ -40,6 +40,7 @@ u = acts.UnitConstants
 
 # LOG_LEVEL = acts.logging.DEBUG
 LOG_LEVEL = acts.logging.INFO
+LOG_LEVEL = acts.logging.CRITICAL
 
 def parse_args():
     """Parse command line arguments"""
