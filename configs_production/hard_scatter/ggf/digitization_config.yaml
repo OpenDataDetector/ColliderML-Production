@@ -36,6 +36,8 @@ ambi_root_output: True
 ambi_finding_performance: True
 ambi_fitting_performance: True
 
+write_helix_parameters: True
+
 # --- Digitization config ---
 digi_config: /global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml_dev/scripts/simulation/odd-full-geo-digi-config.json
 
