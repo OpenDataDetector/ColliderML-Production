@@ -4,6 +4,16 @@
 # Used by validation_lib.py to check stage outputs.
 
 stages:
+  # Stage 0: MadGraph Initialization
+  madgraph_init:
+    description: "Validate MadGraph process initialization"
+    output_location: "." # Relative to version directory
+    file_patterns:
+      - pattern: "madgraph_process.tgz"
+        description: "Compressed MadGraph process directory"
+        min_size_mb: 100.0
+        required: true
+
   # Stage 1a: Particle Gun Generation
   particlegun_generation:
     description: "Validate particle gun generation outputs (HepMC3 files)"

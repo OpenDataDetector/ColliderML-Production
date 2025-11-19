@@ -1,0 +1,50 @@
+campaign: "hard_scatter"
+dataset: "susy_rpv"
+version: "v1"
+stage: "pythia_generation"  # One of: pythia_generation, madgraph_generation, simulation, digitization
+
+job_config:
+  # Number of nodes will be calculated as n_runs / runs_per_node
+  n_runs: 200              # Number of runs (where a run produces N events)
+  runs_per_node: 1         # Number of runs per node
+  time_limit: "01:00:00"   # Time limit per job
+  qos: "regular"
+  execution_mode: "distributed_slurm"
+
+validation_config:
+
+# Stage-specific configurations
+events: 64          # Events per run
+pileup: 0           # No pileup in hard-scatter SUSY sample
+
+# Neutralino pair production; detailed spectrum and decays come from SLHA file
+hard_process: "SUSY:qqbar2chi0chi0"
+
+# Pythia settings list - all settings in Pythia8 format
+pythia_settings:
+  # Debug / output control
+  - "Init:showProcesses = false"
+  - "Init:showChangedSettings = false"
+  - "Init:showAllSettings = false"
+  - "Next:numberShowInfo = 0"
+  - "Next:numberShowProcess = 0"
+  - "Next:numberShowEvent = 0"
+  - "Print:quiet = on"
+
+  # SUSY spectrum and RPV LLP behaviour from SLHA
+  - "SLHA:file = /global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml_dev/configs_production/hard_scatter/susy_rpv/rpv_llp.spc"
+  - "SLHA:verbose = 3"
+  - "SLHA:minMassSM = 100."
+  - "SLHA:useDecayTable = off"
+
+  # Parton-level and hadronisation settings
+  - "PartonLevel:MPI = on"
+  - "PartonLevel:ISR = on"
+  - "PartonLevel:FSR = on"
+  - "HadronLevel:Hadronize = on"
+
+  # Generic tune / PDFs
+  - "Tune:ee = 7"
+  - "PDF:pSet = 13"
+
+
