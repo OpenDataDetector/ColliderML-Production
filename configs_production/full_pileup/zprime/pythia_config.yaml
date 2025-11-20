@@ -1,7 +1,7 @@
 campaign: "full_pileup"
 dataset: "zprime_ssm"
 version: "v1"
-stage: "pythia_generation"  # Pileup generation and merge for Z' SSM signal
+stage: "pythia_generation"  # Full-pileup Z' SSM generation (signal + pileup + merge)
 
 job_config:
   # Number of nodes will be calculated as n_runs / runs_per_node
@@ -12,15 +12,33 @@ job_config:
   execution_mode: "multi_node_slurm"
 
 # Stage-specific configurations
-# This config ONLY generates pileup and merges with the existing Z' hard-scatter
-# sample produced in configs_production/hard_scatter/zprime.
+# This config generates Z' hard scatter, SoftQCD pileup, and the merged sample
+# in a single stage. It still writes out both signal and pileup HepMC3 files
+# as well as the merged file.
 events: 64        # Events per run; total events = n_runs * events
 pileup: 200       # Target average pileup multiplicity
 
-# Vertex smearing matching ttbar full-pileup configuration
+pdg_file: "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml_dev/configs_production/hard_scatter/zprime/particle.tbl"
+
+# Sequential Standard Model Z' benchmark (Drell–Yan production)
+hard_process: "NewGaugeBoson:ffbar2gmZprime"
+
+# Vertex smearing matching full-pileup configuration for merge
 vertex_sigma_xy: 0.0125  # mm
 vertex_sigma_z: 55.5     # mm
 vertex_sigma_t: 0.185    # ns
+
+pythia_settings:
+  # Z' mass and width (3 TeV, ~1% width as a starting point)
+  - "32:m0 = 3000.0"
+  - "32:mWidth = 30.0"
+
+  # Focus on dilepton final states (e, μ); user can extend to τ / jets as needed
+  - "32:onMode = off"
+  - "32:onIfAny = 11 13"
+
+  # Use standard Pythia8 treatment of γ/Z/Z' mixing; SSM-like couplings
+  # (Default gmZmode provides interference; this is the usual benchmark choice)
 
 # Enable merge of signal + pileup in the Pythia/ACTS stage
 merge: true

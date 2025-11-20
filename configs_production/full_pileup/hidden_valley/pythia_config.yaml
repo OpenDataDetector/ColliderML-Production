@@ -1,7 +1,7 @@
 campaign: "full_pileup"
 dataset: "hidden_valley"
 version: "v1"
-stage: "pythia_generation"  # Pileup generation and merge for Hidden Valley signal
+stage: "pythia_generation"  # Full-pileup Hidden Valley generation (signal + pileup + merge)
 
 job_config:
   # Number of nodes will be calculated as n_runs / runs_per_node
@@ -12,15 +12,44 @@ job_config:
   execution_mode: "multi_node_slurm"
 
 # Stage-specific configurations
-# This config ONLY generates pileup and merges with the existing Hidden Valley
-# hard-scatter sample produced in configs_production/hard_scatter/hidden_valley.
+# This config generates Hidden Valley hard scatter, SoftQCD pileup, and the merged
+# sample in a single stage. It still writes out both signal and pileup HepMC3 files
+# as well as the merged file.
 events: 64        # Events per run; total events = n_runs * events
 pileup: 200       # Target average pileup multiplicity
 
-# Vertex smearing matching ttbar full-pileup configuration
+pdg_file: "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml_dev/configs_production/hard_scatter/hidden_valley/particle.tbl"
+
+# Higgs portal production of a long-lived scalar (dark pion–like)
+hard_process: "HiggsBSM:gg2H2"
+
+# Vertex smearing matching full-pileup configuration for merge
 vertex_sigma_xy: 0.0125  # mm
 vertex_sigma_z: 55.5     # mm
 vertex_sigma_t: 0.185    # ns
+
+pythia_settings:
+  # Enable BSM Higgs sector
+  - "Higgs:useBSM = on"
+
+  # SM-like Higgs (state 35) properties
+  - "35:m0 = 125.0"
+  - "35:mWidth = 0.00407"
+  - "35:doForceWidth = on"
+  - "35:onMode = off"
+  - "35:onIfMatch = 36 36"
+
+  # Hidden scalar (state 36) decays: 36 → b b̄, long-lived
+  - "36:oneChannel = 1 1.0 101 5 -5"
+  - "36:m0 = 55.0"
+  - "36:mMin = 54.5"
+  - "36:mMax = 55.5"
+  - "36:mWidth = 1.97327e-14"
+  - "36:tau0 = 10.0"
+
+  # Allow very long lifetimes
+  - "ParticleDecays:limitTau0 = off"
+  - "ParticleDecays:tau0Max = 100000.0"
 
 # Enable merge of signal + pileup in the Pythia/ACTS stage
 merge: true

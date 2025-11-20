@@ -1,7 +1,7 @@
 campaign: "full_pileup"
 dataset: "susy_rpv"
 version: "v1"
-stage: "pythia_generation"  # Pileup generation and merge for SUSY RPV signal
+stage: "pythia_generation"  # Full-pileup SUSY RPV generation (signal + pileup + merge)
 
 job_config:
   # Number of nodes will be calculated as n_runs / runs_per_node
@@ -9,13 +9,45 @@ job_config:
   runs_per_node: 16       # Number of runs per node
   time_limit: "00:30:00"  # Time limit per job
   qos: "regular"
-  execution_mode: "multi_node_slurm"
+  # execution_mode: "multi_node_slurm"
+  execution_mode: "interactive"
 
 # Stage-specific configurations
-# This config ONLY generates pileup and merges with the existing SUSY RPV
-# hard-scatter sample produced in configs_production/hard_scatter/susy_rpv.
-events: 64        # Events per run; total events = n_runs * events
+# This config generates SUSY RPV hard scatter, SoftQCD pileup, and the merged sample
+# in a single stage. It still writes out both signal and pileup HepMC3 files as well
+# as the merged file.
+events: 1        # Events per run; total events = n_runs * events
 pileup: 200       # Target average pileup multiplicity
+
+# Neutralino pair production; detailed spectrum and decays come from SLHA file
+hard_process: "SUSY:qqbar2chi0chi0"
+
+# Pythia settings list - all settings in Pythia8 format
+pythia_settings:
+  # Debug / output control
+  - "Init:showProcesses = false"
+  - "Init:showChangedSettings = false"
+  - "Init:showAllSettings = false"
+  - "Next:numberShowInfo = 0"
+  - "Next:numberShowProcess = 0"
+  - "Next:numberShowEvent = 0"
+  - "Print:quiet = on"
+
+  # SUSY spectrum and RPV LLP behaviour from SLHA
+  - "SLHA:file = /global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml_dev/configs_production/hard_scatter/susy_rpv/rpv_llp.spc"
+  - "SLHA:verbose = 3"
+  - "SLHA:minMassSM = 100."
+  - "SLHA:useDecayTable = off"
+
+  # Parton-level and hadronisation settings
+  - "PartonLevel:MPI = on"
+  - "PartonLevel:ISR = on"
+  - "PartonLevel:FSR = on"
+  - "HadronLevel:Hadronize = on"
+
+  # Generic tune / PDFs
+  - "Tune:ee = 7"
+  - "PDF:pSet = 13"
 
 # Vertex smearing matching ttbar full-pileup configuration
 vertex_sigma_xy: 0.0125  # mm
@@ -30,4 +62,4 @@ merge: true
 poisson_sample: true
 poisson_buffer_sigma: 5.0
 
-
+debug_output_dir: "/global/cfs/cdirs/m4958/data/ColliderML/simulation/full_pileup/susy_rpv/v1/runs/0"
