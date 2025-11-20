@@ -3,6 +3,7 @@ import math
 from pathlib import Path
 import acts
 import acts.examples
+import acts.examples.pythia8
 from acts.examples import Sequencer
 from acts.examples.simulation import addPythia8
 from acts.examples.hepmc3 import (
@@ -127,15 +128,6 @@ def create_vertex_generator(config, logger):
         logger.info("No vertex smearing configured")
         return None
 
-def load_pdg_properties(config, logger):
-    """Load PDG properties from particle.tbl if configured."""
-    pdg_file = getattr(config, 'pdg_file', None)
-    if pdg_file:
-        acts.PdgParticle2Hit.addParticleProperties(Path(pdg_file))
-        logger.info(f"Loaded PDG properties from {pdg_file}")
-    else:
-        logger.debug("No custom PDG file configured")
-
 def parse_pythia_settings(config, logger):
     """Parse Pythia8 settings from config and hard process."""
     pythia_settings = []
@@ -175,17 +167,27 @@ def generate_hard_scatter(output_dir, config, logger):
     # No vertex smearing during generation - ACTS will handle this during merge
     output_path = output_dir / "events_signal.hepmc3"
     
-    addPythia8(
-        s,
-        npileup=0,  # No pileup in signal generation
-        nhard=1,    # One hard process per event
-        hardProcess=pythia_settings,
-        outputDirCsv=None,
-        outputDirRoot=None,
-        rnd=rnd,
-        logLevel=acts.logging.INFO,
-        vtxGen=None,
+    # Manually configure EventGenerator to avoid implicit HepMC3InputConverter
+    # which would trigger ACTS particle validation (failing for BSM particles)
+    
+    hard_process_gen = acts.examples.EventGenerator.Generator(
+        multiplicity=acts.examples.FixedMultiplicityGenerator(n=1),
+        vertex=acts.examples.GaussianVertexGenerator(
+            stddev=acts.Vector4(0, 0, 0, 0), mean=acts.Vector4(0, 0, 0, 0)
+        ),
+        particles=acts.examples.pythia8.Pythia8Generator(
+            level=acts.logging.INFO,
+            settings=pythia_settings
+        ),
     )
+
+    evGen = acts.examples.EventGenerator(
+        level=acts.logging.INFO,
+        generators=[hard_process_gen],
+        randomNumbers=rnd,
+        outputEvent="pythia8-event"
+    )
+    s.addReader(evGen)
     
     s.addWriter(
         HepMC3Writer(
@@ -231,17 +233,26 @@ def generate_pileup(output_dir, config, logger):
     output_path = output_dir / "events_pileup.hepmc3"
     
     # Generate individual pileup events (no hard process)
-    addPythia8(
-        s,
-        npileup=1,  # Generate individual pileup events
-        nhard=0,    # No hard process
-        hardProcess=None,
-        outputDirCsv=None,
-        outputDirRoot=None,
-        rnd=rnd,
-        logLevel=acts.logging.INFO,
-        vtxGen=None,  # No vertex smearing during generation
+    # Manually configure EventGenerator to avoid implicit HepMC3InputConverter
+    
+    pileup_gen = acts.examples.EventGenerator.Generator(
+        multiplicity=acts.examples.FixedMultiplicityGenerator(n=1),
+        vertex=acts.examples.GaussianVertexGenerator(
+            stddev=acts.Vector4(0, 0, 0, 0), mean=acts.Vector4(0, 0, 0, 0)
+        ),
+        particles=acts.examples.pythia8.Pythia8Generator(
+            level=acts.logging.INFO,
+            settings=["SoftQCD:all = on"]
+        ),
     )
+
+    evGen = acts.examples.EventGenerator(
+        level=acts.logging.INFO,
+        generators=[pileup_gen],
+        randomNumbers=rnd,
+        outputEvent="pythia8-event"
+    )
+    s.addReader(evGen)
     
     s.addWriter(
         HepMC3Writer(
@@ -340,8 +351,6 @@ def merge_events(hard_scatter_file, pileup_file, output_dir, config, logger):
             HepMC3Reader.Input.Fixed(pileup_file, max(1, int(pileup_multiplicity)))
         ]
     
-    # PDG properties loaded globally in main()
-
     s.addReader(
         HepMC3Reader(
             inputs=inputs,
@@ -450,9 +459,6 @@ def main():
         logger.info(f"Output directory: {output_dir}")
         logger.info(f"Events: {config.events}")
         
-        # Load PDG properties early
-        load_pdg_properties(config, logger)
-
         # Initialize timing
         timer = TimingRecorder(output_dir)
         

@@ -5,15 +5,18 @@
 # --- Dataset & Version ---
 campaign: "hard_scatter"
 dataset: "ttbar"
-version: "v2"
+version: "v1"
 stage: "digitization"  # One of: generation, merge_smear, simulation, digitization
 
 # --- Job Configuration ---
 job_config:
-  n_runs: 1000  # Number of jobs to submit
+  # n_runs: 1000  # Number of jobs to submit
+  n_runs: 64
   runs_per_node: 16  # Number of runs per node
-  time_limit: "02:00:00"  # Time limit per job
-  qos: "regular"
+  # time_limit: "02:00:00"  # Time limit per job
+  time_limit: "00:30:00"
+  # qos: "regular"
+  qos: "debug"
   execution_mode: "multi_node_slurm"
   # execution_mode: "interactive"
   depends_on:
