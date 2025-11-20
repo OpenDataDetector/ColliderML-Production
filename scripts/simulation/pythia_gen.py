@@ -3,9 +3,7 @@ import math
 from pathlib import Path
 import acts
 import acts.examples
-import acts.examples.pythia8
 from acts.examples import Sequencer
-from acts.examples.simulation import addPythia8
 from acts.examples.hepmc3 import (
         HepMC3Writer,
         HepMC3Reader,
@@ -144,6 +142,28 @@ def parse_pythia_settings(config, logger):
 
     return pythia_settings if pythia_settings else None
 
+def _build_pythia_event(settings, seed, vertex=None):
+    """Create an EventGenerator producing HepMC3 events via Pythia8."""
+    rnd = acts.examples.RandomNumbers(seed=seed)
+    generator = acts.examples.EventGenerator.Generator(
+        multiplicity=acts.examples.FixedMultiplicityGenerator(n=1),
+        vertex=vertex
+        or acts.examples.GaussianVertexGenerator(
+            mean=acts.Vector4(0, 0, 0, 0), stddev=acts.Vector4(0, 0, 0, 0)
+        ),
+        particles=acts.examples.pythia8.Pythia8Generator(
+            level=LOG_LEVEL,
+            settings=settings or [],
+        ),
+    )
+    return acts.examples.EventGenerator(
+        level=LOG_LEVEL,
+        generators=[generator],
+        randomNumbers=rnd,
+        outputEvent="pythia8-event",
+    )
+
+
 def generate_hard_scatter(output_dir, config, logger):
     """Generate hard scatter events with Pythia8.
     
@@ -157,37 +177,15 @@ def generate_hard_scatter(output_dir, config, logger):
     logger.info(f"Generating {config.events} hard scatter events")
     
     s = Sequencer(numThreads=1, events=config.events)
-    s.config.logLevel = acts.logging.INFO
-    rnd = acts.examples.RandomNumbers(seed=config.seed or int(time.time()))
-    
-    # No vertex smearing during generation - ACTS will handle this during merge
+    s.config.logLevel = LOG_LEVEL
+    seed = config.seed or int(time.time())
     output_path = output_dir / "events_signal.hepmc3"
     
-    # Manually configure EventGenerator to avoid implicit HepMC3InputConverter
-    # which would trigger ACTS particle validation (failing for BSM particles)
-    
-    hard_process_gen = acts.examples.EventGenerator.Generator(
-        multiplicity=acts.examples.FixedMultiplicityGenerator(n=1),
-        vertex=acts.examples.GaussianVertexGenerator(
-            stddev=acts.Vector4(0, 0, 0, 0), mean=acts.Vector4(0, 0, 0, 0)
-        ),
-        particles=acts.examples.pythia8.Pythia8Generator(
-            level=acts.logging.INFO,
-            settings=pythia_settings
-        ),
-    )
-
-    evGen = acts.examples.EventGenerator(
-        level=acts.logging.INFO,
-        generators=[hard_process_gen],
-        randomNumbers=rnd,
-        outputEvent="pythia8-event"
-    )
-    s.addReader(evGen)
+    s.addReader(_build_pythia_event(pythia_settings, seed, vertex=None))
     
     s.addWriter(
         HepMC3Writer(
-            acts.logging.INFO,
+            LOG_LEVEL,
             inputEvent="pythia8-event",
             outputPath=output_path,
         )
@@ -223,36 +221,16 @@ def generate_pileup(output_dir, config, logger):
         )
     
     s = Sequencer(numThreads=1, events=total_pileup_events)
-    s.config.logLevel = acts.logging.INFO
-    rnd = acts.examples.RandomNumbers(seed=(config.seed or int(time.time())) + 1000)  # Different seed for pileup
-    
+    s.config.logLevel = LOG_LEVEL
+    seed = (config.seed or int(time.time())) + 1000
     output_path = output_dir / "events_pileup.hepmc3"
     
-    # Generate individual pileup events (no hard process)
-    # Manually configure EventGenerator to avoid implicit HepMC3InputConverter
-    
-    pileup_gen = acts.examples.EventGenerator.Generator(
-        multiplicity=acts.examples.FixedMultiplicityGenerator(n=1),
-        vertex=acts.examples.GaussianVertexGenerator(
-            stddev=acts.Vector4(0, 0, 0, 0), mean=acts.Vector4(0, 0, 0, 0)
-        ),
-        particles=acts.examples.pythia8.Pythia8Generator(
-            level=acts.logging.INFO,
-            settings=["SoftQCD:all = on"]
-        ),
-    )
-
-    evGen = acts.examples.EventGenerator(
-        level=acts.logging.INFO,
-        generators=[pileup_gen],
-        randomNumbers=rnd,
-        outputEvent="pythia8-event"
-    )
-    s.addReader(evGen)
+    pileup_settings = ["SoftQCD:all = on"]
+    s.addReader(_build_pythia_event(pileup_settings, seed, vertex=None))
     
     s.addWriter(
         HepMC3Writer(
-            acts.logging.INFO,
+            LOG_LEVEL,
             inputEvent="pythia8-event",
             outputPath=output_path,
         )
