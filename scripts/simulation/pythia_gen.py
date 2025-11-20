@@ -18,6 +18,8 @@ from utils.config import create_base_parser, load_config
 
 u = acts.UnitConstants
 
+LOG_LEVEL = acts.logging.DEBUG
+
 def parse_args():
     """Parse command line arguments"""
     parser = create_base_parser("Pythia8 event generation and ACTS merging")
@@ -174,7 +176,7 @@ def generate_hard_scatter(output_dir, config, logger):
     
     s.addWriter(
         HepMC3Writer(
-            acts.logging.INFO,
+            LOG_LEVEL,
             inputEvent="pythia8-event",
             outputPath=output_path,
         )
@@ -224,13 +226,13 @@ def generate_pileup(output_dir, config, logger):
         outputDirCsv=None,
         outputDirRoot=None,
         rnd=rnd,
-        logLevel=acts.logging.INFO,
+        logLevel=LOG_LEVEL,
         vtxGen=None,  # No vertex smearing during generation
     )
     
     s.addWriter(
         HepMC3Writer(
-            acts.logging.INFO,
+            LOG_LEVEL,
             inputEvent="pythia8-event",
             outputPath=output_path,
         )
@@ -305,7 +307,7 @@ def merge_events(hard_scatter_file, pileup_file, output_dir, config, logger):
     
     # Create sequencer
     s = acts.examples.Sequencer(numThreads=1, events=config.events)
-    s.config.logLevel = acts.logging.INFO
+    s.config.logLevel = LOG_LEVEL
     
     # Random number generator
     rng = acts.examples.RandomNumbers(seed=config.seed or 42)
@@ -328,7 +330,7 @@ def merge_events(hard_scatter_file, pileup_file, output_dir, config, logger):
     s.addReader(
         HepMC3Reader(
             inputs=inputs,
-            level=acts.logging.INFO,
+            level=LOG_LEVEL,
             outputEvent="merged_events",
             randomNumbers=rng,
             vertexGenerator=vtxGen,
@@ -342,7 +344,7 @@ def merge_events(hard_scatter_file, pileup_file, output_dir, config, logger):
         HepMC3Writer(
             inputEvent="merged_events",
             outputPath=merged_path,
-            level=acts.logging.INFO,
+            level=LOG_LEVEL,
             writeEventsInOrder=False,
         )
     )
