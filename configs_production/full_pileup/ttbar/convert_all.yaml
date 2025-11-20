@@ -6,9 +6,9 @@ stage: "convert_all"
 
 # Job submission configuration
 job_config:
-  n_runs: 5  # Number of jobs to submit
+  n_runs: 8  # Number of jobs to submit
   # n_runs: 1
-  runs_per_node: 5  # Number of runs per node
+  runs_per_node: 8  # Number of runs per node
   # runs_per_node: 1
   time_limit: "00:30:00"  # Time limit per job
   qos: "debug"
@@ -37,9 +37,9 @@ output_format: "parquet"
 # Chunking
 # chunk_size: 1000
 chunk_size: 100
-run_size: 128
+run_size: 64
 
-# Column selection for H5 outputs
+# Column selection for parquet outputs
 particles_columns_keep:
   - "particle_id"
   - "pdg_id"
@@ -53,8 +53,11 @@ particles_columns_keep:
   - "px"
   - "py"
   - "pz"
+  - "perigee_d0"
+  - "perigee_z0"
   - "vertex_primary"
   - "parent_id"
+  - "primary"
 
 digihits_columns_keep:
   - "x"
@@ -65,7 +68,6 @@ digihits_columns_keep:
   - "true_z"
   - "time"
   - "particle_id"
-  - "cell_id"
   - "detector"
   - "volume_id"
   - "layer_id"
@@ -93,7 +95,7 @@ calo_columns_keep:
 
 # Processing parameters
 max_chunks: 1
-min_tracker_hits: 1
-min_calo_hits: 1
+min_tracker_hits: 0
+min_calo_hits: 0
 
 log_level: "DEBUG"

@@ -1,0 +1,33 @@
+campaign: "full_pileup"
+dataset: "hidden_valley"
+version: "v1"
+stage: "pythia_generation"  # Pileup generation and merge for Hidden Valley signal
+
+job_config:
+  # Number of nodes will be calculated as n_runs / runs_per_node
+  n_runs: 2100            # Number of runs (tune as needed)
+  runs_per_node: 16       # Number of runs per node
+  time_limit: "00:30:00"  # Time limit per job
+  qos: "regular"
+  execution_mode: "multi_node_slurm"
+
+# Stage-specific configurations
+# This config ONLY generates pileup and merges with the existing Hidden Valley
+# hard-scatter sample produced in configs_production/hard_scatter/hidden_valley.
+events: 64        # Events per run; total events = n_runs * events
+pileup: 200       # Target average pileup multiplicity
+
+# Vertex smearing matching ttbar full-pileup configuration
+vertex_sigma_xy: 0.0125  # mm
+vertex_sigma_z: 55.5     # mm
+vertex_sigma_t: 0.185    # ns
+
+# Enable merge of signal + pileup in the Pythia/ACTS stage
+merge: true
+
+# Enable Poisson sampling of pileup multiplicity during merge,
+# and buffer generation in the pileup stage.
+poisson_sample: true
+poisson_buffer_sigma: 5.0
+
+

@@ -80,7 +80,7 @@ stages:
         median_threshold_pct: 0.6
         required: true
 
-      - pattern: "track_summary_ambi.root"
+      - pattern: "tracksummary_ambi.root"
         description: "Track summary after digitization"
         min_size_mb: 0.001
         median_threshold_pct: 0.6
