@@ -73,33 +73,27 @@ stages:
         min_size_mb: 0.001
         median_threshold_pct: 0.6
         required: true
-      
-      - pattern: "*-track_parameters_ambi.csv"
-        description: "Ambiguity-resolved track parameters"
+
+      - pattern: "particles.root"
+        description: "Particles after digitization"
         min_size_mb: 0.001
-        median_threshold_pct: 0.5
+        median_threshold_pct: 0.6
         required: true
 
-      - pattern: "*-track_parameters_ckf.csv"
-        description: "CKF track parameters"
+      - pattern: "track_summary_ambi.root"
+        description: "Track summary after digitization"
         min_size_mb: 0.001
-        median_threshold_pct: 0.5
+        median_threshold_pct: 0.6
         required: true
 
-      - pattern: "*-tracks_ambi.csv"
-        description: "Ambiguity-resolved tracks"
-        min_size_mb: 0.001
-        median_threshold_pct: 0.5
-        required: true
-
-      - pattern: "*-tracks_ckf.csv"
-        description: "CKF tracks"
-        min_size_mb: 0.001
-        median_threshold_pct: 0.5
-        required: true
-
-      - pattern: "performance_finding_ckf.root"
+      - pattern: "performance_finding_ambi.root"
         description: "Track finding performance metrics"
+        min_size_mb: 0.001
+        median_threshold_pct: 0.5
+        required: true
+
+      - pattern: "performance_fitting_ambi.root"
+        description: "Track fitting performance metrics"
         min_size_mb: 0.001
         median_threshold_pct: 0.5
         required: true
