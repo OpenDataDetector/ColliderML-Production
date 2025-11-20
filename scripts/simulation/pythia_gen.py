@@ -175,7 +175,7 @@ def generate_hard_scatter(output_dir, config, logger):
     s.addWriter(
         HepMC3Writer(
             acts.logging.INFO,
-            inputEvent="particles",
+            inputEvent="pythia8-event",
             outputPath=output_path,
         )
     )

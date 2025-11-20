@@ -29,7 +29,7 @@ PARTICLES_PARQUET_TYPES = {
     "event_id": pa.uint32(),
     # Particle identifiers and properties
     "particle_id": list_of(pa.uint64()),
-    "pdg_id": list_of(pa.int32()),
+    "pdg_id": list_of(pa.int64()),
     "mass": list_of(pa.float32()),
     "energy": list_of(pa.float32()),
     "charge": list_of(pa.float32()),
