@@ -20,7 +20,8 @@ import os
 def log_memory(label: str):
     process = psutil.Process(os.getpid())
     mem_info = process.memory_info()
-    logger.info(f"MEMORY [{label}]: RSS={mem_info.rss / 1024 / 1024:.2f} MB, VMS={mem_info.vms / 1024 / 1024:.2f} MB")
+    vm = psutil.virtual_memory()
+    logger.info(f"MEMORY [{label}]: RSS={mem_info.rss / 1024 / 1024:.2f} MB, VMS={mem_info.vms / 1024 / 1024:.2f} MB, Global Used={vm.used / 1024 / 1024:.2f} MB, Global Free={vm.free / 1024 / 1024:.2f} MB, Global Percent={vm.percent}%")
 
 from convert_particles import convert_particles, build_particles_df_with_parents_and_vertex, write_particles_with_selection
 from convert_calorimeter import process_calohits_batch, write_calohits_with_selection
