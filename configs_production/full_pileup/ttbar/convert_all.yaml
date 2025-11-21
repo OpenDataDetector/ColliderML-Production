@@ -6,25 +6,17 @@ stage: "convert_all"
 
 # Job submission configuration
 job_config:
-  n_runs: 8  # Number of jobs to submit
+  n_runs: 1000  # Number of jobs to submit
   # n_runs: 1
-  runs_per_node: 4 # Number of runs per node
+  runs_per_node: 2 # Number of runs per node
   # runs_per_node: 1
-  time_limit: "00:30:00"  # Time limit per job
-  qos: "debug"
+  time_limit: "01:00:00"  # Time limit per job
+  qos: "regular"
   # execution_mode: "interactive"
   execution_mode: "multi_node_slurm"
 
 # Optional validation job to run after convert_all
 # validation_config:
-#   qos: "debug"
-#   time_limit: "00:30:00"
-#   publish_after_validation: true
-#   publish_mode: hardlink
-#   public_output_base_dir: "/global/cfs/cdirs/m4958/data/ColliderML/public/testing"
-#   publish_overwrite: true
-#   update_manifest: true
-#   manifest_path: "/global/cfs/cdirs/m4958/data/ColliderML/public/manifest.json"
 
 # Objects to convert (any subset of: digihits, hits, tracks, particles, calorimeter)
 objects:
@@ -32,6 +24,7 @@ objects:
   - tracks
   - particles
   - calo_hits
+  
 output_format: "parquet"
 
 # Chunking
