@@ -14,6 +14,13 @@ from tqdm import tqdm
 import pandas as pd
 from pyedm4hep import EDM4hepEventBatch
 import awkward as ak
+import psutil
+import os
+
+def log_memory(label: str):
+    process = psutil.Process(os.getpid())
+    mem_info = process.memory_info()
+    logger.info(f"MEMORY [{label}]: RSS={mem_info.rss / 1024 / 1024:.2f} MB, VMS={mem_info.vms / 1024 / 1024:.2f} MB")
 
 from convert_particles import convert_particles, build_particles_df_with_parents_and_vertex, write_particles_with_selection
 from convert_calorimeter import process_calohits_batch, write_calohits_with_selection
@@ -105,6 +112,7 @@ def _process_chunk_for_all(
 ) -> None:
     chunk_start_time = time.time()
     logger.info(f"Starting chunk processing for events {start_event}-{end_event}")
+    log_memory("Start Chunk")
 
     particles_frames: list[pd.DataFrame] = []
     digihits_frames: list[pd.DataFrame] = []
@@ -393,6 +401,7 @@ def _process_chunk_for_all(
         # Delete batch object and force garbage collection to free memory
         del batch
         gc.collect()
+        log_memory(f"End Run {abs_run}")
 
     # File writing phase
     writing_start_time = time.time()
@@ -403,7 +412,9 @@ def _process_chunk_for_all(
     
     if "particles" in objects and particles_frames:
         particles_write_start = time.time()
+        log_memory("Before Particles Concat")
         particles_all = pd.concat(particles_frames, ignore_index=True)
+        log_memory("After Particles Concat")
         particles_out = Path(particles_out_dir) / (
             f"{dataset_name_dot}.truth.particles.events{start_event}-{end_event}{file_ext}"
         )
@@ -423,6 +434,9 @@ def _process_chunk_for_all(
         
     if "tracker_hits" in objects and digihits_frames:
         digihits_write_start = time.time()
+        log_memory("Before TrackerHits Concat")
+        digihits_all = pd.concat(digihits_frames, ignore_index=True)
+        log_memory("After TrackerHits Concat")
         digihits_all = pd.concat(digihits_frames, ignore_index=True)
         trkhits_out = Path(trkhits_out_dir) / (
             f"{dataset_name_dot}.reco.tracker_hits.events{start_event}-{end_event}{file_ext}"
@@ -445,7 +459,9 @@ def _process_chunk_for_all(
         
     if "tracks" in objects and tracks_frames:
         tracks_write_start = time.time()
+        log_memory("Before Tracks Concat")
         tracks_all = pd.concat(tracks_frames, ignore_index=True)
+        log_memory("After Tracks Concat")
         tracks_out = Path(tracks_out_dir) / (
             f"{dataset_name_dot}.reco.tracks.events{start_event}-{end_event}{file_ext}"
         )
@@ -465,7 +481,9 @@ def _process_chunk_for_all(
 
     if "calo_hits" in objects and calo_frames:
         calo_write_start = time.time()
+        log_memory("Before CaloHits Concat")
         calo_all = pd.concat(calo_frames, ignore_index=True)
+        log_memory("After CaloHits Concat")
         calo_out = Path(calo_out_dir) / (
             f"{dataset_name_dot}.reco.calo_hits.events{start_event}-{end_event}{file_ext}"
         )
