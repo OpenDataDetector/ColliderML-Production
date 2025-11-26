@@ -7,7 +7,6 @@ stage: "convert_all"
 # Job submission configuration
 job_config:
   n_runs: 100  # Number of jobs to submit
-  # n_runs: 1
   runs_per_node: 5  # Number of runs per node
   time_limit: "01:00:00"  # Time limit per job
   qos: "regular"
@@ -38,7 +37,7 @@ output_format: "parquet"
 chunk_size: 8
 run_size: 1280
 
-# Column selection for H5 outputs
+# Column selection for parquet outputs
 particles_columns_keep:
   - "particle_id"
   - "pdg_id"
