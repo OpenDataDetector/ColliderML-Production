@@ -1,6 +1,6 @@
 # Config to drive convert_all.py
 campaign: "full_pileup"
-dataset: "ggf"
+dataset: "zee"
 version: "v1"
 stage: "convert_all"
 
