@@ -26,7 +26,14 @@ from .test_tracks import TrackTests
 from .test_calorimeter import CalorimeterTests
 from .test_hepmc import HepMCValidationTests
 from .test_cross_object import CrossObjectTests
-from .run_all_tests import run_all_tests, get_all_test_suites
+from .run_all_tests import (
+    run_all_tests,
+    get_all_test_suites,
+    get_test_summary_df,
+    get_failed_tests,
+    generate_test_report,
+    run_tests_multiple_events,
+)
 
 __all__ = [
     "TestResult",
@@ -42,4 +49,8 @@ __all__ = [
     "CrossObjectTests",
     "run_all_tests",
     "get_all_test_suites",
+    "get_test_summary_df",
+    "get_failed_tests",
+    "generate_test_report",
+    "run_tests_multiple_events",
 ]
