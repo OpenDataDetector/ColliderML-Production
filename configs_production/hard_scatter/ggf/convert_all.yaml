@@ -15,17 +15,6 @@ job_config:
   # execution_mode: "interactive"
   execution_mode: "multi_node_slurm"
 
-# Optional validation job to run after convert_all
-# validation_config:
-#   qos: "debug"
-#   time_limit: "00:30:00"
-#   publish_after_validation: true
-#   publish_mode: hardlink
-#   public_output_base_dir: "/global/cfs/cdirs/m4958/data/ColliderML/public/testing"
-#   publish_overwrite: true
-#   update_manifest: true
-#   manifest_path: "/global/cfs/cdirs/m4958/data/ColliderML/public/manifest.json"
-
 # Objects to convert (any subset of: digihits, hits, tracks, particles, calorimeter)
 objects:
   - tracker_hits

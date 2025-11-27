@@ -46,19 +46,26 @@ class TrackHitIdValidityTest(ConsistencyTest):
             )
         
         # Get all valid hit indices
-        valid_hit_indices = set(range(len(tracker_hits)))
+        max_hit_idx = len(tracker_hits) - 1
         
-        # Collect all hit_ids from tracks
-        all_track_hit_ids = set()
-        invalid_hit_ids = []
-        
-        for idx, row in track_hits_df.iterrows():
-            hit_ids = row['hit_ids']
-            if isinstance(hit_ids, (list, np.ndarray)):
-                for hid in hit_ids:
-                    all_track_hit_ids.add(hid)
-                    if hid not in valid_hit_indices:
-                        invalid_hit_ids.append((idx, hid))
+        # Vectorized approach: explode hit_ids if they're lists
+        if 'hit_ids' in track_hits_df.columns:
+            # Handle case where hit_ids might be lists/arrays
+            hit_ids_col = track_hits_df['hit_ids']
+            
+            # Flatten all hit_ids efficiently
+            if hit_ids_col.apply(lambda x: isinstance(x, (list, np.ndarray))).any():
+                all_hit_ids = np.concatenate([
+                    np.atleast_1d(h) for h in hit_ids_col if h is not None and len(np.atleast_1d(h)) > 0
+                ])
+            else:
+                all_hit_ids = hit_ids_col.values
+            
+            all_track_hit_ids = set(all_hit_ids)
+            invalid_hit_ids = [int(h) for h in all_hit_ids if h < 0 or h > max_hit_idx]
+        else:
+            all_track_hit_ids = set()
+            invalid_hit_ids = []
         
         if len(invalid_hit_ids) == 0:
             return TestResult(

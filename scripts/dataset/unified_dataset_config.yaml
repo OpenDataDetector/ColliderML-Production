@@ -1,0 +1,203 @@
+# Configuration for uploading unified ColliderML dataset to HuggingFace Hub
+# This config spans ALL campaigns and physics channels into one unified dataset
+# Usage: python scripts/dataset/upload_to_hf_unified.py scripts/dataset/unified_dataset_config.yaml
+
+# ============================================================================
+# HuggingFace Repository Configuration
+# ============================================================================
+huggingface:
+  # Unified repository ID for all ColliderML data
+  repo_id: "OpenDataDetector/ColliderML-Release-1"
+
+  # Dataset display name
+  pretty_name: "ColliderML Dataset Release 1"
+
+  # License
+  license: "cc-by-4.0"
+
+  # Dataset tags for discoverability
+  tags:
+    - physics
+    - high-energy-physics
+    - particle-physics
+    - collider-physics
+    - tracking
+    - calorimetry
+    - machine-learning
+    - simulation
+    - particle-tracking
+    - jet-tagging
+
+  # Size category (will grow as we add more data)
+  size_category: "100K<n<1M"
+
+  # Contact information
+  contact: "daniel.thomas.murnane@cern.ch"
+
+  # HuggingFace token environment variable name
+  token_env: "HF_TOKEN"
+
+  # Make repository private initially (set to false when ready for public release)
+  private: false
+
+# ============================================================================
+# Data Location Configuration
+# ============================================================================
+data:
+  # Base directory for all ColliderML public data
+  base_dir: "/global/cfs/cdirs/m4958/data/ColliderML/public"
+
+  # Version to use
+  version: "v1"
+
+  # Parquet subdirectory name
+  format_subdir: "parquet"
+
+# ============================================================================
+# Object Types to Include
+# ============================================================================
+# These will be combined with campaigns/datasets to create config names
+object_types:
+  - particles      # Truth-level particles (in truth/particles/)
+  - tracker_hits   # Tracker detector hits (in reco/tracker_hits/)
+  - calo_hits      # Calorimeter hits (in reco/calo_hits/)
+  - tracks         # Reconstructed tracks (in reco/tracks/)
+
+# ============================================================================
+# Campaigns and Datasets to Include
+# ============================================================================
+# Each entry creates configs like: {dataset}_pu{pileup}_{object_type}
+# Examples: ttbar_pu0_particles, ttbar_pu200_tracker_hits, ggf_pu0_calo_hits
+
+campaigns:
+  # ============================================================================
+  # Campaign 1: Hard Scatter (no pileup)
+  # ============================================================================
+  - campaign_name: "hard_scatter"
+    pileup: 0
+    pileup_label: "pu0"  # Used in config name
+    description: "Hard scatter events with no pileup"
+    datasets:
+      - name: "ttbar"
+        description: "Top-quark pair production"
+        enabled: true  # Parquet files available
+      - name: "ggf"
+        description: "Gluon-gluon fusion Higgs production"
+        enabled: true  # Parquet files available
+      - name: "dihiggs"
+        description: "Di-Higgs production"
+        enabled: false  # Set to true when parquet files are ready
+      - name: "susy_rpv"
+        description: "SUSY with R-parity violation"
+        enabled: false  # Set to true when parquet files are ready
+
+  # ============================================================================
+  # Campaign 2: Full Pileup (~200 interactions)
+  # ============================================================================
+  - campaign_name: "full_pileup"
+    pileup: 200
+    pileup_label: "pu200"
+    description: "Events with realistic HL-LHC pileup (~200 interactions)"
+    datasets:
+      - name: "ttbar"
+        description: "Top-quark pair production with full pileup"
+        enabled: false  # Set to true when parquet files are ready
+      - name: "ggf"
+        description: "Gluon-gluon fusion Higgs with full pileup"
+        enabled: false
+      - name: "dihiggs"
+        description: "Di-Higgs production with full pileup"
+        enabled: false
+      - name: "diphoton"
+        description: "Diphoton production with full pileup"
+        enabled: false
+      - name: "jets"
+        description: "QCD jet production with full pileup"
+        enabled: false
+      - name: "susy_rpv"
+        description: "SUSY with R-parity violation and full pileup"
+        enabled: false
+      - name: "zee"
+        description: "Z to electron-electron with full pileup"
+        enabled: false
+      - name: "zmumu"
+        description: "Z to muon-muon with full pileup"
+        enabled: false
+
+  # ============================================================================
+  # Campaign 3: Single Particle (particle gun studies)
+  # ============================================================================
+  # Note: These use campaign_name "single_particle_pilot" in the public directory
+  - campaign_name: "single_particle_pilot"
+    pileup: 0
+    pileup_label: "single"  # Special label for single particle
+    description: "Single particle gun events for detector studies"
+    datasets:
+      - name: "single_muon_1GeV"
+        description: "Single muons at 1 GeV"
+        enabled: false  # Set to true when parquet files are ready
+      - name: "single_muon_10GeV"
+        description: "Single muons at 10 GeV"
+        enabled: false
+      - name: "single_muon_100GeV"
+        description: "Single muons at 100 GeV"
+        enabled: false
+      - name: "single_muon_uniform"
+        description: "Single muons with uniform energy distribution"
+        enabled: false
+      - name: "single_electron"
+        description: "Single electrons"
+        enabled: false
+      - name: "single_photon"
+        description: "Single photons"
+        enabled: false
+      - name: "single_pion"
+        description: "Single pions"
+        enabled: false
+
+# ============================================================================
+# Upload Configuration
+# ============================================================================
+upload:
+  # Maximum shard size for parquet files (controls file splitting)
+  max_shard_size: "500MB"
+
+  # Number of parallel upload workers (use 1 for sequential uploads)
+  num_workers: 1
+
+  # Skip configs that already exist on HuggingFace
+  skip_existing: true
+
+  # Dry run mode - print what would be uploaded without actually uploading
+  dry_run: false
+
+# ============================================================================
+# Metadata for Dataset Card
+# ============================================================================
+metadata:
+  # General information
+  detector: "Open Data Detector (ODD)"
+  simulation_framework: "DD4hep + Key4hep + ACTS"
+  collision_energy: "14 TeV"
+  collision_type: "pp"  # proton-proton
+
+  # Software versions
+  event_generator: "MadGraph + Pythia8"
+  detector_simulation: "Geant4 via DD4hep"
+  track_reconstruction: "ACTS"
+
+  # Release information
+  release_version: "1.0"
+  release_date: "2025"
+
+  # Additional notes
+  notes: |
+    This unified dataset contains simulated high-energy physics collision events
+    across multiple physics processes and pileup conditions. Each configuration
+    represents a specific combination of physics process, pileup level, and
+    detector object type.
+
+    Configuration naming: {dataset}_pu{pileup}_{object_type}
+    Examples: ttbar_pu0_particles, ttbar_pu200_tracker_hits
+
+    For more information, visit: https://github.com/YourOrg/ColliderML

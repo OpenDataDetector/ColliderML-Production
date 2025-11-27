@@ -165,18 +165,17 @@ class ParentChildRelationshipTest(ConsistencyTest):
         
         particle_ids = set(parquet_particles['particle_id'].unique())
         
-        # Check each particle's parent_id
-        invalid_parents = []
-        for idx, row in parquet_particles.iterrows():
-            parent_id = row['parent_id']
-            # parent_id == 0 typically means no parent (or root particle)
-            if parent_id != 0 and parent_id not in particle_ids:
-                invalid_parents.append({
-                    'particle_id': row['particle_id'],
-                    'parent_id': parent_id,
-                })
+        # Vectorized check for invalid parent_ids (avoid iterrows for performance!)
+        parent_ids = parquet_particles['parent_id']
+        # parent_id == 0 typically means no parent (or root particle)
+        has_parent = parent_ids != 0
+        parent_exists = parent_ids.isin(particle_ids)
+        invalid_mask = has_parent & ~parent_exists
         
-        if len(invalid_parents) == 0:
+        invalid_parents = parquet_particles.loc[invalid_mask, ['particle_id', 'parent_id']].head(10).to_dict('records')
+        num_invalid = invalid_mask.sum()
+        
+        if num_invalid == 0:
             return TestResult(
                 name=self.name,
                 status=TestStatus.PASSED,
@@ -186,10 +185,10 @@ class ParentChildRelationshipTest(ConsistencyTest):
             return TestResult(
                 name=self.name,
                 status=TestStatus.FAILED,
-                message=f"{len(invalid_parents)} particles have invalid parent_id",
+                message=f"{num_invalid} particles have invalid parent_id",
                 details={
-                    "invalid_count": len(invalid_parents),
-                    "invalid_sample": invalid_parents[:10],
+                    "invalid_count": int(num_invalid),
+                    "invalid_sample": invalid_parents,
                 }
             )
 
