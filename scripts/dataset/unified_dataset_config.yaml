@@ -7,7 +7,7 @@
 # ============================================================================
 huggingface:
   # Unified repository ID for all ColliderML data
-  repo_id: "OpenDataDetector/ColliderML-Release-1"
+  repo_id: "CERN/ColliderML-Release-1"
 
   # Dataset display name
   pretty_name: "ColliderML Dataset Release 1"
@@ -89,7 +89,7 @@ campaigns:
         enabled: true  # Parquet files available
       - name: "dihiggs"
         description: "Di-Higgs production"
-        enabled: false  # Set to true when parquet files are ready
+        enabled: true  # Set to true when parquet files are ready
       - name: "susy_rpv"
         description: "SUSY with R-parity violation"
         enabled: false  # Set to true when parquet files are ready
