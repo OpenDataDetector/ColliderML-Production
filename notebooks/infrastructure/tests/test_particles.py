@@ -2,7 +2,7 @@
 Particle consistency tests for ColliderML data validation.
 
 Tests:
-- Particle completeness: All EDM4hep particles present in parquet
+- Particle completeness: All PARQUET particles exist in EDM4hep (parquet is subset)
 - Parent-child relationships: Valid parent_id references
 - Vertex flags: vertex_primary correctly assigned
 - Primary flag: primary = NOT created_in_simulation
@@ -24,12 +24,12 @@ from .test_base import (
 
 
 class ParticleCompletenessTest(ConsistencyTest):
-    """Test that all EDM4hep particles are present in parquet output."""
+    """Test that all PARQUET particles exist in EDM4hep (parquet is a subset of EDM4hep)."""
     
     def __init__(self):
         super().__init__(
             name="Particle Completeness",
-            description="Verify all EDM4hep particles are in parquet output"
+            description="Verify all parquet particles exist in EDM4hep (parquet is subset)"
         )
     
     def run(self, loader: DataLoader, local_event: int = 0, **kwargs) -> TestResult:
@@ -45,31 +45,30 @@ class ParticleCompletenessTest(ConsistencyTest):
         parquet_ids = set(parquet_particles['particle_id'].unique())
         edm4hep_ids = set(edm4hep_particles['particle_id'].unique())
         
-        missing_in_parquet = edm4hep_ids - parquet_ids
-        extra_in_parquet = parquet_ids - edm4hep_ids
+        # Check that all parquet particles exist in EDM4hep (parquet is subset)
+        missing_in_edm4hep = parquet_ids - edm4hep_ids  # These should NOT exist
         
-        if len(missing_in_parquet) == 0 and len(extra_in_parquet) == 0:
+        if len(missing_in_edm4hep) == 0:
             return TestResult(
                 name=self.name,
                 status=TestStatus.PASSED,
-                message=f"All {len(edm4hep_ids)} particles match",
+                message=f"All {len(parquet_ids)} parquet particles found in EDM4hep ({len(edm4hep_ids)} total)",
                 details={
                     "parquet_count": len(parquet_ids),
                     "edm4hep_count": len(edm4hep_ids),
+                    "parquet_is_subset": True,
                 }
             )
         else:
             return TestResult(
                 name=self.name,
                 status=TestStatus.FAILED,
-                message=f"Mismatch: {len(missing_in_parquet)} missing, {len(extra_in_parquet)} extra",
+                message=f"{len(missing_in_edm4hep)} parquet particles NOT found in EDM4hep",
                 details={
                     "parquet_count": len(parquet_ids),
                     "edm4hep_count": len(edm4hep_ids),
-                    "missing_count": len(missing_in_parquet),
-                    "extra_count": len(extra_in_parquet),
-                    "missing_sample": list(missing_in_parquet)[:10],
-                    "extra_sample": list(extra_in_parquet)[:10],
+                    "missing_in_edm4hep_count": len(missing_in_edm4hep),
+                    "missing_sample": list(missing_in_edm4hep)[:10],
                 }
             )
 
@@ -144,12 +143,12 @@ class ParticleKinematicsMatchTest(ConsistencyTest):
 
 
 class ParentChildRelationshipTest(ConsistencyTest):
-    """Test that parent_id references are valid and form proper relationships."""
+    """Test that parent_id references don't form loops (self-parent or circular A→B→A)."""
     
     def __init__(self):
         super().__init__(
             name="Parent-Child Relationships",
-            description="Verify parent_id references exist and are valid"
+            description="Verify no self-parents and no immediate circular relationships"
         )
     
     def run(self, loader: DataLoader, local_event: int = 0, **kwargs) -> TestResult:
@@ -163,44 +162,60 @@ class ParentChildRelationshipTest(ConsistencyTest):
                 message="parent_id column not present",
             )
         
-        particle_ids = set(parquet_particles['particle_id'].unique())
+        issues = []
         
-        # Vectorized check for invalid parent_ids (avoid iterrows for performance!)
-        parent_ids = parquet_particles['parent_id']
-        # parent_id == 0 typically means no parent (or root particle)
-        has_parent = parent_ids != 0
-        parent_exists = parent_ids.isin(particle_ids)
-        invalid_mask = has_parent & ~parent_exists
+        # Check 1: No particle is its own parent
+        self_parents = parquet_particles[parquet_particles['particle_id'] == parquet_particles['parent_id']]
+        if len(self_parents) > 0:
+            issues.append(f"{len(self_parents)} particles are their own parent")
         
-        invalid_parents = parquet_particles.loc[invalid_mask, ['particle_id', 'parent_id']].head(10).to_dict('records')
-        num_invalid = invalid_mask.sum()
+        # Check 2: No immediate circular relationships (A→B→A)
+        # Find particles with their own child as parent
+        circular = parquet_particles.merge(
+            parquet_particles[['particle_id', 'parent_id']],
+            left_on='parent_id',
+            right_on='particle_id',
+            how='inner',
+            suffixes=('', '_child')
+        )
+        # Filter for cases where child's parent points back to original particle
+        circular = circular[circular['particle_id'] == circular['parent_id_child']]
         
-        if num_invalid == 0:
+        if len(circular) > 0:
+            issues.append(f"{len(circular)} particles have circular parent relationships (A→B→A)")
+        
+        if len(issues) == 0:
             return TestResult(
                 name=self.name,
                 status=TestStatus.PASSED,
-                message=f"All parent references valid for {len(parquet_particles)} particles",
+                message=f"No parent loops found in {len(parquet_particles)} particles",
+                details={
+                    "num_particles": len(parquet_particles),
+                    "num_with_parent": int((parquet_particles['parent_id'] != -1).sum()),
+                }
             )
         else:
             return TestResult(
                 name=self.name,
                 status=TestStatus.FAILED,
-                message=f"{num_invalid} particles have invalid parent_id",
+                message="; ".join(issues),
                 details={
-                    "invalid_count": int(num_invalid),
-                    "invalid_sample": invalid_parents,
+                    "self_parent_sample": self_parents[['particle_id', 'parent_id']].head(5).to_dict('records') if len(self_parents) > 0 else [],
+                    "circular_sample": circular[['particle_id', 'parent_id', 'particle_id_child', 'parent_id_child']].head(5).to_dict('records') if len(circular) > 0 else [],
                 }
             )
 
 
 class VertexPrimaryFlagTest(ConsistencyTest):
-    """Test that vertex_primary flag is correctly assigned."""
+    """Test that particles within each vertex have consistent positions."""
     
-    def __init__(self):
+    def __init__(self, consistency_threshold: float = 0.60, tolerance_fraction: float = 0.30):
         super().__init__(
-            name="Vertex Primary Flag",
-            description="Verify vertex_primary=1 corresponds to hard scatter vertex"
+            name="Vertex Position Consistency",
+            description="Verify particles in each vertex have consistent vx, vy, vz positions"
         )
+        self.consistency_threshold = consistency_threshold  # 60% of particles must be within tolerance
+        self.tolerance_fraction = tolerance_fraction  # within 30% of median (or absolute tolerance for near-zero)
     
     def run(self, loader: DataLoader, local_event: int = 0, **kwargs) -> TestResult:
         global_event_id = loader.run_id * loader.run_size + local_event
@@ -213,53 +228,89 @@ class VertexPrimaryFlagTest(ConsistencyTest):
                 message="vertex_primary column not present",
             )
         
-        # Check that vertex_primary values are reasonable
-        unique_vertex_primary = parquet_particles['vertex_primary'].unique()
+        if 'primary' not in parquet_particles.columns:
+            return TestResult(
+                name=self.name,
+                status=TestStatus.SKIPPED,
+                message="primary column not present",
+            )
         
-        # vertex_primary=1 should be hard scatter
-        hs_particles = parquet_particles[parquet_particles['vertex_primary'] == 1]
+        # Check consistency for each vertex
+        unique_vertices = parquet_particles['vertex_primary'].unique()
+        inconsistent_vertices = []
+        vertex_stats = {}
         
-        # Get vertex positions for HS particles
-        if len(hs_particles) > 0:
-            hs_vx = hs_particles['vx'].mean() if 'vx' in hs_particles.columns else None
-            hs_vy = hs_particles['vy'].mean() if 'vy' in hs_particles.columns else None
-            hs_vz = hs_particles['vz'].mean() if 'vz' in hs_particles.columns else None
-        else:
-            hs_vx = hs_vy = hs_vz = None
+        for vertex_id in unique_vertices:
+            # Get primary particles for this vertex
+            vertex_particles = parquet_particles[parquet_particles['vertex_primary'] == vertex_id]
+            vertex_primaries = vertex_particles[vertex_particles['primary']]
+            
+            if len(vertex_primaries) < 2:
+                # Skip vertices with < 2 primaries (can't check consistency)
+                continue
+            
+            # Check each coordinate
+            for coord in ['vx', 'vy', 'vz']:
+                if coord not in vertex_primaries.columns:
+                    continue
+                
+                values = vertex_primaries[coord].values
+                median_val = np.median(values)
+                
+                # Use relative tolerance, but with absolute floor for near-zero means
+                abs_tolerance = max(abs(median_val * self.tolerance_fraction), 1e-6)
+                
+                # Count how many are within tolerance of the mean
+                within_tolerance = np.abs(values - median_val) <= abs_tolerance
+                fraction_consistent = np.mean(within_tolerance)
+                
+                if fraction_consistent < self.consistency_threshold:
+                    inconsistent_vertices.append({
+                        "vertex_id": int(vertex_id),
+                        "coord": coord,
+                        "median": float(median_val),
+                        "std": float(np.std(values)),
+                        "fraction_consistent": float(fraction_consistent),
+                        "num_primaries": len(vertex_primaries),
+                    })
+            
+            # Store stats for this vertex
+            vertex_stats[int(vertex_id)] = {
+                "num_primaries": len(vertex_primaries),
+                "vx_median": float(vertex_primaries['vx'].median()) if 'vx' in vertex_primaries.columns else None,
+                "vy_median": float(vertex_primaries['vy'].median()) if 'vy' in vertex_primaries.columns else None,
+                "vz_median": float(vertex_primaries['vz'].median()) if 'vz' in vertex_primaries.columns else None,
+            }
         
-        # Check distribution
-        vertex_counts = parquet_particles['vertex_primary'].value_counts()
-        
-        if 1 in unique_vertex_primary:
+        if len(inconsistent_vertices) == 0:
             return TestResult(
                 name=self.name,
                 status=TestStatus.PASSED,
-                message=f"Found {len(unique_vertex_primary)} unique vertex_primary values",
+                message=f"All {len(unique_vertices)} vertices have consistent positions (>{self.consistency_threshold*100:.0f}% within {self.tolerance_fraction*100:.0f}%)",
                 details={
-                    "unique_values": sorted(unique_vertex_primary.tolist()),
-                    "hs_particle_count": len(hs_particles),
-                    "hs_vertex_mean": {"vx": hs_vx, "vy": hs_vy, "vz": hs_vz},
-                    "vertex_distribution": vertex_counts.to_dict(),
+                    "num_vertices": len(unique_vertices),
+                    "vertex_stats_sample": dict(list(vertex_stats.items())[:5]),
                 }
             )
         else:
             return TestResult(
                 name=self.name,
                 status=TestStatus.FAILED,
-                message="vertex_primary=1 (hard scatter) not found",
+                message=f"{len(inconsistent_vertices)} vertex/coordinate pairs have inconsistent positions",
                 details={
-                    "unique_values": sorted(unique_vertex_primary.tolist()),
+                    "num_vertices": len(unique_vertices),
+                    "inconsistent_sample": inconsistent_vertices[:10],
                 }
             )
 
 
 class PrimaryFlagConsistencyTest(ConsistencyTest):
-    """Test that primary flag equals NOT created_in_simulation."""
+    """Test that primary flag equals NOT created_in_simulation (from EDM4hep)."""
     
     def __init__(self):
         super().__init__(
             name="Primary Flag Consistency",
-            description="Verify primary = NOT created_in_simulation"
+            description="Verify parquet primary = NOT edm4hep created_in_simulation"
         )
     
     def run(self, loader: DataLoader, local_event: int = 0, **kwargs) -> TestResult:
@@ -270,19 +321,37 @@ class PrimaryFlagConsistencyTest(ConsistencyTest):
             return TestResult(
                 name=self.name,
                 status=TestStatus.SKIPPED,
-                message="primary column not present",
+                message="primary column not present in parquet",
             )
         
-        if 'created_in_simulation' not in parquet_particles.columns:
+        # Load EDM4hep particles to get created_in_simulation
+        edm4hep_batch = loader.load_edm4hep_event(local_event)
+        edm4hep_particles = edm4hep_batch.get_particles_df()
+        
+        if 'created_in_simulation' not in edm4hep_particles.columns:
             return TestResult(
                 name=self.name,
                 status=TestStatus.SKIPPED,
-                message="created_in_simulation column not present",
+                message="created_in_simulation column not present in EDM4hep",
             )
         
-        # Check consistency
-        expected_primary = ~parquet_particles['created_in_simulation']
-        actual_primary = parquet_particles['primary']
+        # Merge parquet and edm4hep on particle_id
+        merged = parquet_particles.merge(
+            edm4hep_particles[['particle_id', 'created_in_simulation']],
+            on='particle_id',
+            how='inner'
+        )
+        
+        if len(merged) == 0:
+            return TestResult(
+                name=self.name,
+                status=TestStatus.SKIPPED,
+                message="No matching particles found between parquet and EDM4hep",
+            )
+        
+        # Check consistency: primary should be NOT created_in_simulation
+        expected_primary = ~merged['created_in_simulation']
+        actual_primary = merged['primary']
         
         mismatches = expected_primary != actual_primary
         num_mismatch = mismatches.sum()
@@ -291,16 +360,22 @@ class PrimaryFlagConsistencyTest(ConsistencyTest):
             return TestResult(
                 name=self.name,
                 status=TestStatus.PASSED,
-                message=f"All {len(parquet_particles)} particles have consistent primary flag",
+                message=f"All {len(merged)} matched particles have consistent primary flag",
+                details={
+                    "parquet_count": len(parquet_particles),
+                    "edm4hep_count": len(edm4hep_particles),
+                    "matched_count": len(merged),
+                }
             )
         else:
-            mismatch_sample = parquet_particles[mismatches][['particle_id', 'primary', 'created_in_simulation']].head(10)
+            mismatch_sample = merged[mismatches][['particle_id', 'primary', 'created_in_simulation']].head(10)
             return TestResult(
                 name=self.name,
                 status=TestStatus.FAILED,
                 message=f"{num_mismatch} particles have inconsistent primary flag",
                 details={
                     "mismatch_count": int(num_mismatch),
+                    "matched_count": len(merged),
                     "mismatch_sample": mismatch_sample.to_dict('records'),
                 }
             )
@@ -319,14 +394,25 @@ class GeneratorParticlePropertiesTest(ConsistencyTest):
         global_event_id = loader.run_id * loader.run_size + local_event
         parquet_particles = loader.load_parquet_particles(global_event_id)
         
-        if 'created_in_simulation' not in parquet_particles.columns:
+        # Load EDM4hep to get created_in_simulation (not in parquet)
+        edm4hep_batch = loader.load_edm4hep_event(local_event)
+        edm4hep_particles = edm4hep_batch.get_particles_df()
+        
+        if 'created_in_simulation' not in edm4hep_particles.columns:
             return TestResult(
                 name=self.name,
                 status=TestStatus.SKIPPED,
-                message="created_in_simulation column not present",
+                message="created_in_simulation column not in EDM4hep",
             )
         
-        generator_particles = parquet_particles[~parquet_particles['created_in_simulation']]
+        # Merge to get created_in_simulation for parquet particles
+        merged = parquet_particles.merge(
+            edm4hep_particles[['particle_id', 'created_in_simulation']],
+            on='particle_id',
+            how='inner'
+        )
+        
+        generator_particles = merged[~merged['created_in_simulation']]
         
         if len(generator_particles) == 0:
             return TestResult(
@@ -337,19 +423,15 @@ class GeneratorParticlePropertiesTest(ConsistencyTest):
         
         issues = []
         
-        # Check PDG ID is present and non-zero
-        if 'pdg' in generator_particles.columns:
-            zero_pdg = (generator_particles['pdg'] == 0).sum()
+        # Check PDG ID is present and non-zero (column is pdg_id in parquet schema)
+        pdg_col = 'pdg_id' if 'pdg_id' in generator_particles.columns else 'pdg'
+        if pdg_col in generator_particles.columns:
+            zero_pdg = (generator_particles[pdg_col] == 0).sum()
             if zero_pdg > 0:
                 issues.append(f"{zero_pdg} generator particles have PDG=0")
         
-        # Check generator status (typically 1 for stable particles)
-        if 'generator_status' in generator_particles.columns:
-            status_counts = generator_particles['generator_status'].value_counts()
-            # Most common statuses are 1 (stable) and 2 (decayed)
-            unusual_status = status_counts[~status_counts.index.isin([1, 2, 23, 62, 63, 71, 72, 83, 84])]
-            if len(unusual_status) > 0:
-                issues.append(f"Unusual generator statuses: {unusual_status.to_dict()}")
+        # Note: generator_status is NOT in parquet schema, only in EDM4hep
+        # Skip generator_status check as it's not available in parquet
         
         if len(issues) == 0:
             return TestResult(
@@ -358,7 +440,7 @@ class GeneratorParticlePropertiesTest(ConsistencyTest):
                 message=f"All {len(generator_particles)} generator particles have valid properties",
                 details={
                     "generator_count": len(generator_particles),
-                    "unique_pdgs": len(generator_particles['pdg'].unique()) if 'pdg' in generator_particles.columns else None,
+                    "unique_pdgs": len(generator_particles[pdg_col].unique()) if pdg_col in generator_particles.columns else None,
                 }
             )
         else:

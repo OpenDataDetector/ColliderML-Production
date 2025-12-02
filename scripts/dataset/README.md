@@ -1,97 +1,204 @@
-# Dataset Upload Scripts
+# ColliderML Dataset Upload to HuggingFace
 
-Scripts for managing and uploading ColliderML datasets to HuggingFace Hub.
+Tools for uploading the unified ColliderML dataset to HuggingFace Hub.
 
-## upload_to_huggingface.py
+## Overview
 
-Upload ColliderML parquet datasets to HuggingFace Hub with automatic validation and README generation.
+The ColliderML dataset is uploaded to HuggingFace as a **single unified dataset** with multiple configurations (subsets) for different physics processes, pileup conditions, and object types.
 
-### Features
+**Unified Dataset:** `OpenDataDetector/ColliderML-Release-1`
 
-- ✅ Validates that parquet files exist in expected locations
-- ✅ Automatically fixes file permissions (world-readable) by default
-- ✅ Populates README template with dataset information
-- ✅ Saves README to local data directory
-- ✅ Uploads same README to HuggingFace Hub
-- ✅ Extracts parquet schemas automatically
-- ✅ Template-based approach ensures consistency
+**Configuration naming:** `{dataset}_{pileup_label}_{object_type}`
 
-### Usage
+**Examples:**
+- `ttbar_pu0_particles` - ttbar with no pileup, truth particles
+- `ttbar_pu0_tracker_hits` - ttbar with no pileup, tracker hits
+- `ttbar_pu200_particles` - ttbar with 200 pileup, truth particles
+- `ggf_pu0_tracks` - gluon fusion with no pileup, reconstructed tracks
+
+## Quick Start
+
+### 1. Install Requirements
 
 ```bash
-# Basic usage (upload to HuggingFace)
-python scripts/dataset/upload_to_huggingface.py configs_production/hard_scatter/ttbar/huggingface_config.yaml
-
-# Dry run (generate README but don't upload)
-python scripts/dataset/upload_to_huggingface.py configs_production/hard_scatter/ttbar/huggingface_config.yaml --dry-run
-
-# Save generated README to additional location
-python scripts/dataset/upload_to_huggingface.py configs_production/hard_scatter/ttbar/huggingface_config.yaml --output /tmp/README.md
-
-# Skip automatic permission fixing (permissions are fixed by default)
-python scripts/dataset/upload_to_huggingface.py configs_production/hard_scatter/ttbar/huggingface_config.yaml --skip-fix-permissions
-
-# Use custom template
-python scripts/dataset/upload_to_huggingface.py configs_production/hard_scatter/ttbar/huggingface_config.yaml --template /path/to/custom_template.md
+pip install datasets huggingface_hub
 ```
 
-### README Template
+### 2. Authenticate with HuggingFace
 
-The script uses `scripts/dataset/README_template.md` as the template for generating the dataset card. This template:
-- Uses Jinja2 syntax for dynamic values
-- Contains all dataset documentation (structure, fields, usage examples)
-- Is populated with dataset-specific information from the config
-- Results in identical README for local data directory and HuggingFace
+```bash
+# Option 1: Interactive login
+huggingface-cli login
 
-### Configuration File
+# Option 2: Set token as environment variable
+export HF_TOKEN=your_token_here
+```
 
-The script requires a YAML configuration file. See `configs_production/hard_scatter/ttbar/huggingface_config.yaml` for an example.
+Get your token from: https://huggingface.co/settings/tokens
 
-Required fields:
-- `campaign`: Campaign name (e.g., "hard_scatter")
-- `dataset`: Dataset name (e.g., "ttbar")
-- `version`: Version string (e.g., "v1")
-- `data.base_dir`: Local path to parquet files
-- `data.public_url_base`: Public NERSC portal URL
-- `huggingface.repo_id`: HuggingFace repository ID
-- `objects`: List of object types to include
+### 3. Configure Upload
 
-### Workflow
+Edit `unified_dataset_config.yaml` to:
+- Enable/disable specific datasets
+- Add new campaigns or physics processes
+- Adjust upload settings
 
-1. **Generate parquet files** using `convert_all.py`
+### 4. Upload Dataset
 
-2. **Move to public location** (if needed):
-   ```bash
-   rsync -avz /path/to/output/ /global/cfs/cdirs/m4958/data/ColliderML/public/campaign/dataset/version/parquet/
-   ```
+```bash
+# Dry run first (no upload, just shows what would happen)
+python scripts/dataset/upload_to_hf_unified.py scripts/dataset/unified_dataset_config.yaml --dry-run
 
-3. **Create/update HuggingFace config**:
-   ```bash
-   cp configs_production/hard_scatter/ttbar/huggingface_config.yaml configs_production/campaign/dataset/huggingface_config.yaml
-   # Edit the config file
-   ```
+# Upload all enabled configs
+python scripts/dataset/upload_to_hf_unified.py scripts/dataset/unified_dataset_config.yaml
 
-4. **Test with dry run**:
-   ```bash
-   python scripts/dataset/upload_to_huggingface.py configs_production/campaign/dataset/huggingface_config.yaml --dry-run
-   ```
+# Upload specific configs only
+python scripts/dataset/upload_to_hf_unified.py scripts/dataset/unified_dataset_config.yaml --configs ttbar_pu0_particles
 
-5. **Upload to HuggingFace**:
-   ```bash
-   python scripts/dataset/upload_to_huggingface.py configs_production/campaign/dataset/huggingface_config.yaml
-   ```
+# Resume from specific config (if interrupted)
+python scripts/dataset/upload_to_hf_unified.py scripts/dataset/unified_dataset_config.yaml --start-from ggf_pu0_particles
+```
 
-   This will:
-   - Generate README from template
-   - Save to `{base_dir}/README.md` (e.g., `/global/cfs/.../parquet/README.md`)
-   - Upload same file to HuggingFace Hub
+## Upload Script: `upload_to_hf_unified.py`
 
-### Directory Structure Expected
+### How It Works
 
-The script expects parquet files to be organized as:
+The script uses the `datasets` library's `push_to_hub()` method to upload parquet files directly to HuggingFace:
+
+1. Loads parquet files from local directory
+2. Creates a HuggingFace Dataset object
+3. Pushes to hub with a specific config name
+4. Automatically generates/updates README.md with YAML metadata
+
+Each config is uploaded **independently** - you can add new configs without affecting existing ones.
+
+### Key Features
+
+- ✅ **Progressive uploads** - Add configs one at a time
+- ✅ **Skip existing configs** - Avoid re-uploading (default behavior)
+- ✅ **Automatic sharding** - Control file sizes with `max_shard_size`
+- ✅ **Automatic README** - YAML metadata generated automatically
+- ✅ **Dry run mode** - Test before uploading
+- ✅ **Resume capability** - Continue from where you left off
+- ✅ **Custom cache directory** - Uses project filesystem to avoid home quota issues
+
+### Command-Line Options
+
+```bash
+python upload_to_hf_unified.py CONFIG_FILE [OPTIONS]
+
+Options:
+  --dry-run              Show what would be uploaded without uploading
+  --configs CONFIG ...   Upload only these specific configs
+  --start-from CONFIG    Start from this config (skip earlier ones)
+  --skip-existing        Skip configs that already exist (default)
+  --no-skip-existing     Re-upload even if config exists
+  --verbose              Enable detailed logging
+```
+
+## Configuration File: `unified_dataset_config.yaml`
+
+### Structure
+
+```yaml
+huggingface:
+  repo_id: "OpenDataDetector/ColliderML-Release-1"
+  license: "cc-by-4.0"
+  private: false
+
+data:
+  base_dir: "/global/cfs/cdirs/m4958/data/ColliderML/simulation"
+  version: "v1"
+  format_subdir: "parquet"
+
+object_types:
+  - particles
+  - tracker_hits
+  - calo_hits
+  - tracks
+
+campaigns:
+  - campaign_name: "hard_scatter"
+    pileup_label: "pu0"
+    datasets:
+      - name: "ttbar"
+        enabled: true
+      - name: "ggf"
+        enabled: true
+```
+
+### Available Campaigns
+
+1. **hard_scatter** (pu0) - Hard scatter events with no pileup
+   - ttbar, ggf, dihiggs, susy_rpv
+
+2. **full_pileup** (pu200) - Realistic HL-LHC pileup (~200 interactions)
+   - ttbar, ggf, dihiggs, diphoton, jets, susy_rpv, zee, zmumu
+
+3. **single_particle_pilot** (single) - Particle gun studies
+   - single_muon_1GeV, single_muon_10GeV, single_muon_100GeV, single_electron, etc.
+
+### Enabling Datasets
+
+To enable a dataset for upload, set `enabled: true`:
+
+```yaml
+- name: "ttbar"
+  enabled: true  # Will be uploaded
+- name: "ggf"
+  enabled: false  # Will be skipped
+```
+
+## Usage Examples
+
+### Example 1: Test with Dry Run
+
+```bash
+python scripts/dataset/upload_to_hf_unified.py \
+    scripts/dataset/unified_dataset_config.yaml \
+    --dry-run
+```
+
+### Example 2: Upload Single Config for Testing
+
+```bash
+python scripts/dataset/upload_to_hf_unified.py \
+    scripts/dataset/unified_dataset_config.yaml \
+    --configs ttbar_pu0_particles
+```
+
+### Example 3: Upload All ttbar Configs
+
+```bash
+python scripts/dataset/upload_to_hf_unified.py \
+    scripts/dataset/unified_dataset_config.yaml \
+    --configs ttbar_pu0_particles ttbar_pu0_tracker_hits ttbar_pu0_calo_hits ttbar_pu0_tracks
+```
+
+### Example 4: Resume Interrupted Upload
+
+If upload was interrupted, skip already-uploaded configs:
+
+```bash
+python scripts/dataset/upload_to_hf_unified.py \
+    scripts/dataset/unified_dataset_config.yaml \
+    --skip-existing  # This is the default
+```
+
+Or start from a specific config:
+
+```bash
+python scripts/dataset/upload_to_hf_unified.py \
+    scripts/dataset/unified_dataset_config.yaml \
+    --start-from ggf_pu0_particles
+```
+
+## Directory Structure
+
+The script expects parquet files organized as:
 
 ```
-{base_dir}/
+{base_dir}/{campaign_name}/{dataset_name}/{version}/{format_subdir}/
 ├── truth/
 │   └── particles/
 │       └── *.parquet
@@ -104,34 +211,92 @@ The script expects parquet files to be organized as:
         └── *.parquet
 ```
 
-### Troubleshooting
-
-**Files not found**:
-- Check that `data.base_dir` in config points to correct location
-- Verify subdirectory structure matches expected layout
-
-**Permission errors**:
-- Permissions are automatically fixed by default
-- To skip: use `--skip-fix-permissions` flag
-- Or fix manually: `chmod -R a+rX /path/to/parquet/files`
-
-**Upload fails**:
-- Ensure you're authenticated with HuggingFace: `huggingface-cli login`
-- Check that repo exists on HuggingFace Hub
-- Verify you have write access to the repository
-
-**Files not accessible via URL**:
-- Verify files are in `/global/cfs/cdirs/m4958/data/ColliderML/public/`
-- Check permissions: `ls -la /path/to/files`
-- Test URL manually: `curl -I https://portal.nersc.gov/cfs/m4958/...`
-
-### HuggingFace Authentication
-
-Before uploading, authenticate with HuggingFace:
-
-```bash
-pip install huggingface_hub
-huggingface-cli login
+**Example:**
+```
+/global/cfs/cdirs/m4958/data/ColliderML/simulation/hard_scatter/ttbar/v1/parquet/
+├── truth/particles/*.parquet
+└── reco/tracker_hits/*.parquet
 ```
 
-Enter your HuggingFace token when prompted (get it from https://huggingface.co/settings/tokens).
+## Loading Data (User Perspective)
+
+Once uploaded, users can access the dataset like this:
+
+```python
+from datasets import load_dataset, get_dataset_config_names
+
+# List all available configs
+configs = get_dataset_config_names("OpenDataDetector/ColliderML-Release-1")
+print(f"Available configs: {configs}")
+
+# Load a specific config
+ds = load_dataset("OpenDataDetector/ColliderML-Release-1", "ttbar_pu0_particles")
+
+# Load first 100 events only
+ds = load_dataset(
+    "OpenDataDetector/ColliderML-Release-1",
+    "ttbar_pu0_particles",
+    split="train[:100]"
+)
+
+# Load specific columns only (efficient!)
+ds = load_dataset(
+    "OpenDataDetector/ColliderML-Release-1",
+    "ttbar_pu0_particles",
+    split="train[:100]",
+    columns=["event_id", "px", "py", "pz", "energy"]
+)
+```
+
+## Troubleshooting
+
+### Authentication Errors
+
+```bash
+# Make sure you're logged in
+huggingface-cli login
+
+# Or check if token is set
+echo $HF_TOKEN
+```
+
+### Files Not Found
+
+Check that:
+- `base_dir` in config points to the correct location
+- Parquet files exist in expected structure: `{campaign}/{dataset}/v1/parquet/truth/particles/` or `reco/{object_type}/`
+- Dataset is enabled in the config file
+
+### Upload Failures
+
+- Use `--verbose` flag for detailed error messages
+- Try uploading one config at a time with `--configs`
+- Check HuggingFace service status
+- Verify sufficient disk space and network connectivity
+
+### Disk Quota Exceeded
+
+The script automatically uses a cache directory on the project filesystem (`/global/cfs/cdirs/m4958/data/ColliderML/.hf_cache`) to avoid home directory quota issues on NERSC. If you still encounter quota issues:
+
+```bash
+# Clear the HuggingFace cache
+rm -rf /global/cfs/cdirs/m4958/data/ColliderML/.hf_cache/*
+
+# Or manually set cache location before running
+export HF_HOME=/global/cfs/cdirs/m4958/data/ColliderML/.hf_cache
+```
+
+### Config Already Exists
+
+By default, existing configs are skipped. To force re-upload:
+
+```bash
+python upload_to_hf_unified.py unified_dataset_config.yaml --no-skip-existing
+```
+
+## Support
+
+For issues or questions:
+- Email: daniel.thomas.murnane@cern.ch
+- GitHub: https://github.com/OpenDataDetector/ColliderML
+- HuggingFace Discussions: https://huggingface.co/datasets/OpenDataDetector/ColliderML-Release-1/discussions

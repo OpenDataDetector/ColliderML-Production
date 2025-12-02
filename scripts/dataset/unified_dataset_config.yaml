@@ -12,6 +12,9 @@ huggingface:
   # Dataset display name
   pretty_name: "ColliderML Dataset Release 1"
 
+  # Path to README.md file to upload to HuggingFace
+  readme_path: "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml_dev/scripts/dataset/DATASET_README.md"
+
   # License
   license: "cc-by-4.0"
 
@@ -35,7 +38,7 @@ huggingface:
   contact: "daniel.thomas.murnane@cern.ch"
 
   # HuggingFace token environment variable name
-  token_env: "HF_TOKEN"
+  token_env: "HUGGINGFACE_TOKEN"
 
   # Make repository private initially (set to false when ready for public release)
   private: false
@@ -45,7 +48,7 @@ huggingface:
 # ============================================================================
 data:
   # Base directory for all ColliderML public data
-  base_dir: "/global/cfs/cdirs/m4958/data/ColliderML/public"
+  base_dir: "/global/cfs/cdirs/m4958/data/ColliderML/simulation"
 
   # Version to use
   version: "v1"
@@ -101,10 +104,10 @@ campaigns:
     datasets:
       - name: "ttbar"
         description: "Top-quark pair production with full pileup"
-        enabled: false  # Set to true when parquet files are ready
+        enabled: true  # Set to true when parquet files are ready
       - name: "ggf"
         description: "Gluon-gluon fusion Higgs with full pileup"
-        enabled: false
+        enabled: true
       - name: "dihiggs"
         description: "Di-Higgs production with full pileup"
         enabled: false
@@ -200,4 +203,4 @@ metadata:
     Configuration naming: {dataset}_pu{pileup}_{object_type}
     Examples: ttbar_pu0_particles, ttbar_pu200_tracker_hits
 
-    For more information, visit: https://github.com/YourOrg/ColliderML
+    For more information, visit: https://github.com/OpenDataDetector/ColliderML

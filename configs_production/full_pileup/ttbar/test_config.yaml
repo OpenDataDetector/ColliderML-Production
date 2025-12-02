@@ -1,0 +1,32 @@
+# ColliderML Test Runner Configuration
+# 
+# Usage:
+#   python run_tests.py --config /path/to/this/config.yaml
+#   python run_tests.py --config /path/to/this/config.yaml --run-id 5 --event 10
+#
+# Command-line arguments override config values.
+
+# Base path to the simulation data directory (required)
+base_path: /global/cfs/cdirs/m4958/data/ColliderML/simulation/full_pileup/ttbar/v1
+
+# Run ID to test (required)
+run_id: 0
+
+# Number of events per run (required)
+run_size: 64
+
+# Parquet chunk size for loading (required)
+chunk_size: 100
+
+# Local event index to test within the run (optional, default: 0)
+event: 0
+
+# Test suites to run (optional, default: all)
+# Available suites: particles, tracker_hits, tracks, calorimeter, hepmc, cross_object
+# suites:
+#   - particles
+#   - tracker_hits
+#   - tracks
+#   - calorimeter
+#   - hepmc
+#   - cross_object

@@ -124,7 +124,12 @@ class DataLoader:
         return self.base_path / f"runs/{self.run_id}/tracksummary_ambi.root"
     
     def load_parquet_particles(self, global_event_id: Optional[int] = None) -> pd.DataFrame:
-        """Load particles from parquet file."""
+        """Load particles from parquet file.
+        
+        Args:
+            global_event_id: The GLOBAL event ID (not local). In parquet files,
+                event_id column contains global event IDs.
+        """
         cache_key = f"parquet_particles_{global_event_id}"
         if cache_key in self._cache:
             return self._cache[cache_key]
@@ -135,12 +140,18 @@ class DataLoader:
             # Load all events in the chunk
             path = self._get_parquet_path("particles", self.run_id * self.run_size)
         
-        df = self._load_parquet_file(path, event_id=global_event_id % self.run_size if global_event_id else None)
+        # NOTE: parquet event_id is the GLOBAL event ID, not local index
+        df = self._load_parquet_file(path, event_id=global_event_id)
         self._cache[cache_key] = df
         return df
     
     def load_parquet_tracker_hits(self, global_event_id: Optional[int] = None) -> pd.DataFrame:
-        """Load tracker hits from parquet file."""
+        """Load tracker hits from parquet file.
+        
+        Args:
+            global_event_id: The GLOBAL event ID (not local). In parquet files,
+                event_id column contains global event IDs.
+        """
         cache_key = f"parquet_tracker_hits_{global_event_id}"
         if cache_key in self._cache:
             return self._cache[cache_key]
@@ -150,12 +161,18 @@ class DataLoader:
         else:
             path = self._get_parquet_path("tracker_hits", self.run_id * self.run_size)
         
-        df = self._load_parquet_file(path, event_id=global_event_id % self.run_size if global_event_id else None)
+        # NOTE: parquet event_id is the GLOBAL event ID, not local index
+        df = self._load_parquet_file(path, event_id=global_event_id)
         self._cache[cache_key] = df
         return df
     
     def load_parquet_tracks(self, global_event_id: Optional[int] = None) -> Tuple[pd.DataFrame, pd.DataFrame]:
-        """Load tracks from parquet file. Returns (tracks_df, track_hits_df)."""
+        """Load tracks from parquet file. Returns (tracks_df, track_hits_df).
+        
+        Args:
+            global_event_id: The GLOBAL event ID (not local). In parquet files,
+                event_id column contains global event IDs.
+        """
         cache_key = f"parquet_tracks_{global_event_id}"
         if cache_key in self._cache:
             return self._cache[cache_key]
@@ -165,12 +182,18 @@ class DataLoader:
         else:
             path = self._get_parquet_path("tracks", self.run_id * self.run_size)
         
-        result = self._load_parquet_tracks(path, event_id=global_event_id % self.run_size if global_event_id else None)
+        # NOTE: parquet event_id is the GLOBAL event ID, not local index
+        result = self._load_parquet_tracks(path, event_id=global_event_id)
         self._cache[cache_key] = result
         return result
     
     def load_parquet_calo_hits(self, global_event_id: Optional[int] = None) -> Tuple[pd.DataFrame, pd.DataFrame]:
-        """Load calo hits from parquet file. Returns (cells_df, contributions_df)."""
+        """Load calo hits from parquet file. Returns (cells_df, contributions_df).
+        
+        Args:
+            global_event_id: The GLOBAL event ID (not local). In parquet files,
+                event_id column contains global event IDs.
+        """
         cache_key = f"parquet_calo_hits_{global_event_id}"
         if cache_key in self._cache:
             return self._cache[cache_key]
@@ -180,7 +203,8 @@ class DataLoader:
         else:
             path = self._get_parquet_path("calo_hits", self.run_id * self.run_size)
         
-        result = self._load_parquet_calo(path, event_id=global_event_id % self.run_size if global_event_id else None)
+        # NOTE: parquet event_id is the GLOBAL event ID, not local index
+        result = self._load_parquet_calo(path, event_id=global_event_id)
         self._cache[cache_key] = result
         return result
     

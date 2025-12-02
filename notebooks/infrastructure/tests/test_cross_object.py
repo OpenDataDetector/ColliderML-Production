@@ -49,8 +49,13 @@ class AllHitParticleIdsValidTest(ConsistencyTest):
         # Check calo contributions
         invalid_calo = set()
         if len(parquet_contribs) > 0:
-            pid_col = 'particle_ids' if 'particle_ids' in parquet_contribs.columns else 'particle_id'
-            if pid_col in parquet_contribs.columns:
+            # Schema uses 'contrib_particle_ids' (after exploding nested list)
+            pid_col = None
+            for col in ['contrib_particle_ids', 'particle_ids', 'particle_id']:
+                if col in parquet_contribs.columns:
+                    pid_col = col
+                    break
+            if pid_col is not None:
                 contrib_particle_ids = set(parquet_contribs[pid_col].unique())
                 contrib_particle_ids.discard(0)
                 invalid_calo = contrib_particle_ids - valid_particle_ids
@@ -204,6 +209,7 @@ class EventIdConsistencyTest(ConsistencyTest):
         event_ids = {}
         
         # Load all data types and check event_id
+        # Note: Parquet stores GLOBAL event_id, not local event index
         parquet_particles = loader.load_parquet_particles(global_event_id)
         if 'event_id' in parquet_particles.columns:
             event_ids['particles'] = set(parquet_particles['event_id'].unique())
@@ -227,8 +233,8 @@ class EventIdConsistencyTest(ConsistencyTest):
                 message="No event_id columns found",
             )
         
-        # All should have exactly one event_id (the local_event)
-        expected_event_id = local_event
+        # All should have exactly one event_id (the GLOBAL event_id, not local)
+        expected_event_id = global_event_id
         
         issues = []
         for obj_type, ids in event_ids.items():
@@ -238,6 +244,8 @@ class EventIdConsistencyTest(ConsistencyTest):
                 issues.append(f"{obj_type} has event_id {ids}, expected {expected_event_id}")
         
         details = {
+            "global_event_id": global_event_id,
+            "local_event_index": local_event,
             "expected_event_id": expected_event_id,
             "found_event_ids": {k: list(v) for k, v in event_ids.items()},
         }

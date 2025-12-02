@@ -94,7 +94,7 @@ class TrackHitIdValidityTest(ConsistencyTest):
 class TrackMajorityParticleTest(ConsistencyTest):
     """Test that majority_particle_id is correctly computed from hit modes."""
     
-    def __init__(self, sample_size: int = 10):
+    def __init__(self, sample_size: int = 100):
         super().__init__(
             name="Track Majority Particle Computation",
             description="Verify majority_particle_id = mode of particle_ids from hits"
@@ -136,6 +136,7 @@ class TrackMajorityParticleTest(ConsistencyTest):
         )
         
         mismatches = []
+        ties_skipped = 0
         
         for idx in sample_indices:
             track_row = tracks_df.iloc[idx]
@@ -154,8 +155,25 @@ class TrackMajorityParticleTest(ConsistencyTest):
             
             # Compute mode
             counter = Counter(particle_ids)
-            computed_majority = counter.most_common(1)[0][0]
+            most_common = counter.most_common()
+            computed_majority = most_common[0][0]
+            max_count = most_common[0][1]
             stored_majority = track_row['majority_particle_id']
+            
+            # Check for ties - if multiple particles have the same max count,
+            # any of them is a valid majority particle
+            if max_count == 1:
+                # Every hit is from a different particle - skip this track
+                # as any particle_id would be a valid "majority"
+                ties_skipped += 1
+                continue
+            
+            # Check if there's a tie at the maximum count
+            tied_particles = [pid for pid, cnt in most_common if cnt == max_count]
+            
+            # If stored majority is one of the tied particles, it's valid
+            if stored_majority in tied_particles:
+                continue
             
             if computed_majority != stored_majority:
                 mismatches.append({
@@ -163,22 +181,25 @@ class TrackMajorityParticleTest(ConsistencyTest):
                     'stored': int(stored_majority),
                     'computed': int(computed_majority),
                     'hit_count': len(hit_ids),
+                    'max_count': max_count,
+                    'num_tied': len(tied_particles),
                 })
         
         if len(mismatches) == 0:
             return TestResult(
                 name=self.name,
                 status=TestStatus.PASSED,
-                message=f"All {len(sample_indices)} sampled tracks have correct majority_particle_id",
-                details={"sampled_tracks": len(sample_indices)}
+                message=f"All {len(sample_indices)} sampled tracks have correct majority_particle_id ({ties_skipped} skipped due to ties)",
+                details={"sampled_tracks": len(sample_indices), "ties_skipped": ties_skipped}
             )
         else:
             return TestResult(
                 name=self.name,
                 status=TestStatus.FAILED,
-                message=f"{len(mismatches)}/{len(sample_indices)} tracks have incorrect majority_particle_id",
+                message=f"{len(mismatches)}/{len(sample_indices)} tracks have incorrect majority_particle_id ({ties_skipped} skipped due to ties)",
                 details={
                     "mismatch_count": len(mismatches),
+                    "ties_skipped": ties_skipped,
                     "mismatches": mismatches,
                 }
             )

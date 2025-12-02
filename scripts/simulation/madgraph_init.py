@@ -156,6 +156,41 @@ def customize_default_cards(process_dir, config, logger):
     logger.info("Default card customization completed.")
 
 
+def fix_make_opts_for_large_processes(process_dir: Path, logger: logging.Logger):
+    """
+    Add -mcmodel=medium to FFLAGS in Source/make_opts to fix relocation errors.
+
+    This is necessary for large NLO processes where the loop matrix compilation
+    can exceed 2GB of static data, causing 'relocation truncated to fit' errors.
+    """
+    make_opts_path = process_dir / "Source" / "make_opts"
+
+    if not make_opts_path.exists():
+        logger.warning(f"make_opts not found at {make_opts_path}, skipping memory model fix")
+        return
+
+    logger.info("Adding -mcmodel=medium to FFLAGS in Source/make_opts to prevent relocation errors")
+
+    with open(make_opts_path, 'r') as f:
+        lines = f.readlines()
+
+    modified = False
+    new_lines = []
+    for line in lines:
+        new_lines.append(line)
+        # Add -mcmodel=medium after the FFLAGS+= -fno-automatic line
+        if 'FFLAGS+= -fno-automatic' in line and not modified:
+            new_lines.append('# Fix for large NLO processes (relocation truncated to fit errors)\n')
+            new_lines.append('FFLAGS+= -mcmodel=medium\n')
+            modified = True
+            logger.info("Added 'FFLAGS+= -mcmodel=medium' to make_opts")
+
+    if modified:
+        with open(make_opts_path, 'w') as f:
+            f.writelines(new_lines)
+    else:
+        logger.warning("Could not find location to add -mcmodel=medium flag")
+
 def compile_grids_and_envelopes(process_dir: Path, config, logger: logging.Logger):
     """
     Edit cards for a zero-event integration run and execute generate_events to
@@ -181,6 +216,9 @@ def compile_grids_and_envelopes(process_dir: Path, config, logger: logging.Logge
     except Exception as e:
         logger.error(f"Failed to update run_card.dat for grid compilation: {e}")
         raise
+
+    # Fix make_opts to add -mcmodel=medium for large processes
+    fix_make_opts_for_large_processes(process_dir, logger)
 
     generate_events_exe = process_dir / "bin" / "generate_events"
     logger.info(f"Running grid/envelope compilation via {generate_events_exe} (-f --name run_build)")
