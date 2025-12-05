@@ -30,7 +30,7 @@ import tempfile
 import time
 import yaml
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, TextIO
 
 # Set HuggingFace cache to LOCAL disk to avoid lock contention on network FS
 # Using /tmp for local disk instead of shared CFS
@@ -44,13 +44,61 @@ try:
     from huggingface_hub import HfApi, CommitOperationAdd, CommitOperationDelete
     from datasets import get_dataset_config_names
     import pyarrow.parquet as pq
+    import shutil
     HF_AVAILABLE = True
 except ImportError as e:
     print(f"ERROR: Required libraries not available: {e}")
     print("Install with: pip install datasets huggingface_hub pyarrow")
     sys.exit(1)
 
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+class TeeOutput:
+    """Redirect stdout/stderr to both console and file."""
+    def __init__(self, console: TextIO, log_file: TextIO):
+        self.console = console
+        self.log_file = log_file
+
+    def write(self, message):
+        self.console.write(message)
+        self.log_file.write(message)
+        self.log_file.flush()  # Ensure writes are immediate
+
+    def flush(self):
+        self.console.flush()
+        self.log_file.flush()
+
+
+def setup_logging(log_file: Optional[Path] = None):
+    """Configure logging to console and optionally to file."""
+    # Console handler
+    console_handler = logging.StreamHandler()
+    console_handler.setLevel(logging.INFO)
+    console_formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+    console_handler.setFormatter(console_formatter)
+
+    # Root logger
+    root_logger = logging.getLogger()
+    root_logger.setLevel(logging.INFO)
+    root_logger.addHandler(console_handler)
+
+    # File handler (if log file specified)
+    log_file_handle = None
+    if log_file:
+        log_file.parent.mkdir(parents=True, exist_ok=True)
+        file_handler = logging.FileHandler(log_file, mode='a')
+        file_handler.setLevel(logging.INFO)
+        file_formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+        file_handler.setFormatter(file_formatter)
+        root_logger.addHandler(file_handler)
+
+        # Also redirect stdout to capture HuggingFace progress reports
+        log_file_handle = open(log_file, 'a')
+        sys.stdout = TeeOutput(sys.__stdout__, log_file_handle)
+
+        print(f"Logging to: {log_file}")
+
+    return root_logger, log_file_handle
+
+# Will be configured in main() with log file
 logger = logging.getLogger(__name__)
 
 
@@ -314,6 +362,108 @@ def upload_config_direct(
         return False, elapsed
 
 
+def upload_config_large_folder(
+    config_info: Dict,
+    repo_id: str,
+    token: str,
+    num_workers: int = 32,
+    skip_validation: bool = False,
+    dry_run: bool = False
+) -> Tuple[bool, float]:
+    """
+    Upload a single config using upload_large_folder (multi-threaded, resumable).
+
+    This approach:
+    - Uses 32 worker threads for parallel SHA256 hashing (10-15x faster)
+    - Creates staging directory with symlinks (no data copying)
+    - Resumable uploads with local caching
+    - Creates multiple commits (not single atomic commit)
+
+    Returns (success: bool, elapsed_time: float).
+    """
+    config_name = config_info['config_name']
+    data_path = config_info['path']
+
+    logger.info(f"{'[DRY RUN] ' if dry_run else ''}Uploading: {config_name} (using upload_large_folder)")
+    logger.info(f"  Data path: {data_path}")
+
+    parquet_files = list(data_path.glob("*.parquet"))
+    total_size = sum(f.stat().st_size for f in parquet_files)
+    logger.info(f"  Found {len(parquet_files)} parquet files ({total_size / 1e9:.2f} GB)")
+
+    if dry_run:
+        logger.info(f"  Would upload to: data/{config_name}/")
+        return True, 0.0
+
+    start_time = time.time()
+
+    # Staging directory on local disk (/tmp) - fixed per config for resumability
+    staging_base = Path(f"/tmp/upload_staging/{config_name}")
+    staging_path = staging_base / "data" / config_name
+
+    try:
+        # Sort files numerically
+        sorted_files = sort_parquet_files_numerically(parquet_files)
+
+        # Validate event IDs using streaming (memory-efficient)
+        if not skip_validation:
+            object_type = config_info['object_type']
+            if not validate_event_ids_streaming(sorted_files, config_name, object_type):
+                logger.error(f"  ✗ Validation failed - aborting upload")
+                return False, time.time() - start_time
+        else:
+            logger.info(f"  Skipping validation (--skip-validation)")
+
+        # Create staging directory with symlinks
+        logger.info(f"  Creating staging directory with symlinks...")
+        staging_path.mkdir(parents=True, exist_ok=True)
+
+        n_files = len(sorted_files)
+        for i, src_file in enumerate(sorted_files):
+            dst_name = f"train-{i:05d}-of-{n_files:05d}.parquet"
+            dst_path = staging_path / dst_name
+
+            if dst_path.exists():
+                dst_path.unlink()
+            dst_path.symlink_to(src_file.absolute())
+
+        logger.info(f"  ✓ Staging directory ready with {n_files} symlinks")
+
+        # Upload with upload_large_folder (multi-threaded)
+        logger.info(f"  Uploading with upload_large_folder ({num_workers} workers)...")
+        api = HfApi(token=token)
+        api.upload_large_folder(
+            repo_id=repo_id,
+            repo_type="dataset",
+            folder_path=str(staging_base),
+            print_report=True,
+            print_report_every=30,  # Print status every 30 seconds
+            num_workers=num_workers,
+        )
+
+        elapsed = time.time() - start_time
+        logger.info(f"✓ Successfully uploaded: {config_name} ({elapsed:.1f}s)")
+
+        # Cleanup staging directory
+        logger.info(f"  Cleaning up staging directory...")
+        shutil.rmtree(staging_base)
+
+        return True, elapsed
+
+    except Exception as e:
+        elapsed = time.time() - start_time
+        logger.error(f"✗ Failed to upload {config_name}: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+
+        # Cleanup staging directory on error
+        if staging_base.exists():
+            logger.info(f"  Cleaning up staging directory...")
+            shutil.rmtree(staging_base)
+
+        return False, elapsed
+
+
 # ============================================================================
 # README Configuration Management
 # ============================================================================
@@ -548,16 +698,16 @@ def main():
         epilog="""
 Examples:
   # Upload all enabled configs
-  python upload_to_hf_unified_simple.py unified_dataset_config.yaml
+  python upload_to_hf_unified.py unified_dataset_config.yaml
 
   # Dry run
-  python upload_to_hf_unified_simple.py unified_dataset_config.yaml --dry-run
+  python upload_to_hf_unified.py unified_dataset_config.yaml --dry-run
 
   # Upload specific configs
-  python upload_to_hf_unified_simple.py unified_dataset_config.yaml --configs ttbar_pu0_particles
+  python upload_to_hf_unified.py unified_dataset_config.yaml --configs ttbar_pu200_particles
 
   # Skip validation for large datasets
-  python upload_to_hf_unified_simple.py unified_dataset_config.yaml --skip-validation
+  python upload_to_hf_unified.py unified_dataset_config.yaml --skip-validation
         """
     )
 
@@ -573,11 +723,18 @@ Examples:
                         help='Skip event ID validation (faster but risky)')
     parser.add_argument('--clean-repo', action='store_true',
                         help='Delete all parquet files before uploading')
-    parser.add_argument('--num-workers', type=int, default=5,
-                        help='Number of concurrent upload threads (default: 5)')
+    parser.add_argument('--num-workers', type=int, default=32,
+                        help='Number of concurrent upload threads (default: 32)')
     parser.add_argument('--verbose', action='store_true', help='Enable verbose logging')
 
     args = parser.parse_args()
+
+    # Setup logging with timestamped log file
+    from datetime import datetime
+    timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    log_dir = Path("./logs")
+    log_file = log_dir / f"upload_{timestamp}.log"
+    _, log_file_handle = setup_logging(log_file)
 
     if args.verbose:
         logging.getLogger().setLevel(logging.DEBUG)
@@ -649,7 +806,7 @@ Examples:
             for i, config_info in enumerate(configs_to_upload, 1):
                 logger.info(f"\n[{i}/{len(configs_to_upload)}] {config_info['config_name']}...")
 
-                success, elapsed = upload_config_direct(
+                success, elapsed = upload_config_large_folder(
                     config_info,
                     repo_id,
                     token,
@@ -692,6 +849,11 @@ Examples:
     except Exception as e:
         logger.error(f"Error: {e}", exc_info=args.verbose)
         sys.exit(1)
+    finally:
+        # Cleanup: restore stdout and close log file
+        if log_file_handle:
+            sys.stdout = sys.__stdout__
+            log_file_handle.close()
 
 
 if __name__ == "__main__":
