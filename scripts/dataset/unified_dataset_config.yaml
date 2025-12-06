@@ -110,7 +110,7 @@ campaigns:
         enabled: true
       - name: "dihiggs"
         description: "Di-Higgs production with full pileup"
-        enabled: false
+        enabled: true
       - name: "diphoton"
         description: "Diphoton production with full pileup"
         enabled: false
@@ -122,10 +122,10 @@ campaigns:
         enabled: false
       - name: "zee"
         description: "Z to electron-electron with full pileup"
-        enabled: false
+        enabled: true
       - name: "zmumu"
         description: "Z to muon-muon with full pileup"
-        enabled: false
+        enabled: true
 
   # ============================================================================
   # Campaign 3: Single Particle (particle gun studies)
