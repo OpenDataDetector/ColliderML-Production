@@ -40,12 +40,14 @@ pythia_settings:
   - "35:onIfMatch = 36 36"
 
   # Hidden scalar (state 36) decays: 36 → b b̄, long-lived
-  - "36:oneChannel = 1 1.0 101 5 -5"
+  # meMode changed from 101 to 0 (isotropic) for scalar decay validity
+  - "36:oneChannel = 1 1.0 0 5 -5"
   - "36:m0 = 55.0"
   - "36:mMin = 54.5"
   - "36:mMax = 55.5"
   - "36:mWidth = 1.97327e-14"
   - "36:tau0 = 10.0"
+  - "36:mayDecay = on"
 
   # Allow very long lifetimes
   - "ParticleDecays:limitTau0 = off"
@@ -58,5 +60,3 @@ merge: true
 # and buffer generation in the pileup stage.
 poisson_sample: true
 poisson_buffer_sigma: 5.0
-
-
