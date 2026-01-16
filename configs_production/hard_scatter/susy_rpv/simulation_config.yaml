@@ -18,7 +18,7 @@ validation_config:
 
 # Stage-specific configurations
 events: 1  # Number of events per run, total number of events will be n_runs * events
-input_filename: events.hepmc
+input_filename: events_signal.hepmc
 threads: 1
 minimalKineticEnergy: 0.1  # Minimum kinetic energy in GeV to register in truth
 truthParticleHandler: "Geant4FullTruthParticleHandler"
@@ -33,4 +33,4 @@ ddsim_printLevel: 6  # 1=VERBOSE, 2=DEBUG, 3=INFO, 4=WARNING(default), 5=ERROR, 
 # Filter out specific Geant4 warnings (optional)
 filter_g4_warnings: true  # Filter out mass tolerance and other G4Exception warnings
 
-# debug_output_dir: /global/cfs/cdirs/m4958/data/ColliderML/simulation/hard_scatter/ttbar/v1/runs/0
+debug_output_dir: /global/cfs/cdirs/m4958/data/ColliderML/simulation/hard_scatter/ttbar/v1/runs/0
