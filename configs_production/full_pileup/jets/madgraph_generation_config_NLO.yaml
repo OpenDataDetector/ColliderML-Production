@@ -1,5 +1,5 @@
 #========================================================================
-# YAML Configuration for MadGraph Event Generation (LO+MLM jets)
+# YAML Configuration for MadGraph Event Generation (NLO ttbar)
 #========================================================================
 # 
 # This configuration is for the second step of the two-step MadGraph workflow:
@@ -11,7 +11,7 @@
 
 # --- Dataset & Version ---
 campaign: "full_pileup"
-dataset: "jets"
+dataset: "ttbar"
 version: "v1"
 stage: "madgraph_generation"
 
@@ -19,9 +19,13 @@ stage: "madgraph_generation"
 job_config:
   # Number of nodes will be calculated as n_runs / runs_per_node
   n_runs: 21        # Number of runs (where a run produces N events)
+  # n_runs: 4        # Number of runs (where a run produces N events)
   runs_per_node: 1  # Number of runs per node (adjust based on memory/time constraints)
-  time_limit: "02:00:00"  # Time limit per job
+  time_limit: "02:00:00"  # Time limit per job - MadGraph NLO generation is slower than Pythia
   qos: "regular"
+  # time_limit: "00:30:00"
+  # qos: "debug"
+  # execution_mode: "monolithic_slurm"  # Use distributed mode for parallel generation
   execution_mode: "multi_node_slurm"
   # execution_mode: "interactive"
 
@@ -30,6 +34,8 @@ validation_config:
 # --- Event Generation Parameters ---
 # These follow the exact same pattern as pythia_gen.py and ddsim_run.py
 events: 20000  # Number of events per run, total events = n_runs * events
+# events: 5000
+# NOTE: ttbar pythia matching survival rate is around 45%
 seed: 42     # Base seed - will be modified per run using run_id
 
 # --- Essential Paths & Environment ---
@@ -37,12 +43,23 @@ seed: 42     # Base seed - will be modified per run using run_id
 mg_base_path: "{madgraph.mg_base_path}"
 generation_scratch_dir: "{madgraph.generation_scratch_dir}" 
 
-# --- Card Customizations (run-level overrides) ---
-run_mode: "lo_mlm"
+# --- Card Customizations (Optional Override) ---
+# These settings will be merged with base settings and run-specific parameters (events, seed)
+# The process directory already contains cards customized during madgraph_init,
+# but you can override specific run-level parameters here if needed
 card_customizations:
   run_card:
     "ptj": 20.0      # Minimum jet pT
-  pythia8_card: {}
+    "event_norm": "sum"
+
+  # For NLO processes (born), customize shower_card.dat
+  shower_card:
+    "Qcut": 40.0       # MUST match run_card value for FxFx
+    "time_shower_me_corrections": "F"
+
+  # For loop-induced processes (noborn), customize pythia8_card.dat  
+  pythia8_card:
+    # Most settings come from madgraph_init, but you can override run-specific ones
 
 # --- HepMC Splitting Configuration (Optional) ---
 # Configure splitting with keys expected by the generation script
