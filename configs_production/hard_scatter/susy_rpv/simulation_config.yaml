@@ -33,4 +33,4 @@ ddsim_printLevel: 6  # 1=VERBOSE, 2=DEBUG, 3=INFO, 4=WARNING(default), 5=ERROR, 
 # Filter out specific Geant4 warnings (optional)
 filter_g4_warnings: true  # Filter out mass tolerance and other G4Exception warnings
 
-# debug_output_dir: /global/cfs/cdirs/m4958/data/ColliderML/simulation/hard_scatter/ttbar/v1/runs/0
+debug_output_dir: /global/cfs/cdirs/m4958/data/ColliderML/simulation/hard_scatter/susy_rpv/v1/runs/0
