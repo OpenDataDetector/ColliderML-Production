@@ -17,9 +17,9 @@ job_config:
 validation_config:
 
 # Stage-specific configurations
-events: 10  # Number of events per run, total number of events will be n_runs * events
+events: 1  # Number of events per run, total number of events will be n_runs * events
 input_filename: events_signal.hepmc3
-threads: 1
+threads: 8
 minimalKineticEnergy: 0.1  # Minimum kinetic energy in GeV to register in truth
 truthParticleHandler: "Geant4FullTruthParticleHandler"
 pdg_file: "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml_dev/configs_production/hard_scatter/susy_gmsb/particle.tbl"
