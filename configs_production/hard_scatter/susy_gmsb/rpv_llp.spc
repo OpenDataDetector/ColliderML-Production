@@ -1,4 +1,4 @@
-# SOFTSUSY3.5.1 SLHA compliant output (adapted for ColliderML RPV LLP benchmark)
+# SOFTSUSY3.5.1 SLHA compliant output (adapted for ColliderML GMSB-style benchmark)
 # B.C. Allanach, Comput. Phys. Commun. 143 (2002) 305-331, hep-ph/0104145
 Block SPINFO          # Program information
      1    SOFTSUSY    # spectrum calculator
@@ -49,6 +49,7 @@ Block MASS                      # Mass spectrum
    1000025    -6.27346605e+02   # ~neutralino(3)
    1000035     6.41551457e+02   # ~neutralino(4)
    1000037     6.41837512e+02   # ~chargino(2)
+   1000039     1.00000000e-09   # ~gravitino (GMSB: effectively massless)
    1000011     2.22759611e+02   # ~e_1
    1000013     2.29799065e+02   # ~e_2
    1000015     2.29821187e+02   # ~e_3
@@ -338,13 +339,9 @@ Block msoft Q= 8.83270075e+02 # MSSM DRbar SUSY breaking parameters
     21     1.09553132e+05     # mH1^2(Q)
     22    -3.74275829e+05     # mH2^2(Q)
 
-# ----------------------------------------------------------------------
-# R-parity violating trilinear couplings (1.0e-5 -> ~cm scale LLP neutralino)
-# ----------------------------------------------------------------------
-Block RVLAMLQD  # L_i Q_j D_k^c couplings
-  1  1  1   1.0e-5
-
-Block RVLAMUDD  # U_i^c D_j^c D_k^c couplings
-  1  1  2   1.0e-5
+#
+# NOTE:
+# This benchmark is configured as a GMSB-style neutralino NLSP with a gravitino LSP.
+# Any RPV trilinear coupling blocks have been removed to avoid mixing model assumptions.
 
 

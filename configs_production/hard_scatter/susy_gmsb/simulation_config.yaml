@@ -1,6 +1,6 @@
 # Example configuration
 campaign: "hard_scatter"
-dataset: "susy_rpv"
+dataset: "susy_gmsb"
 version: "v1"
 stage: "simulation"  # One of: generation, merge_smear, simulation, digitization
 job_config:
@@ -34,4 +34,4 @@ ddsim_printLevel: 1  # 1=VERBOSE, 2=DEBUG, 3=INFO, 4=WARNING(default), 5=ERROR, 
 # Filter out specific Geant4 warnings (optional)
 filter_g4_warnings: true  # Filter out mass tolerance and other G4Exception warnings
 
-debug_output_dir: /global/cfs/cdirs/m4958/data/ColliderML/simulation/hard_scatter/susy_rpv/v1/runs/0
+debug_output_dir: /global/cfs/cdirs/m4958/data/ColliderML/simulation/hard_scatter/susy_gmsb/v1/runs/0

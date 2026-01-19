@@ -28,8 +28,8 @@ job_config:
 validation_config:
 
 # --- Event Generation Parameters ---
-# These follow the exact same pattern as pythia_gen.py and ddsim_run.py
-events: 1000  # Number of events per run, total events = n_runs * events
+# These follow the exact same pattern as pythia_gen.py and ddsim_run.py. Pythia acceptance around 27%
+events: 40000  # Number of events per run, total events = n_runs * events
 seed: 42     # Base seed - will be modified per run using run_id
 
 # --- Essential Paths & Environment ---
