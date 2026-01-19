@@ -32,10 +32,10 @@ pythia_settings:
   - "Print:quiet = on"
 
   # SUSY spectrum from SLHA (GMSB-style neutralino NLSP benchmark)
-  - "SLHA:file = /global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml_dev/configs_production/hard_scatter/susy_rpv/rpv_llp.spc"
+  - "SLHA:file = /global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml_dev/configs_production/hard_scatter/susy_gmsb/gmsb_llp.spc"
   - "SLHA:verbose = 3"
   - "SLHA:minMassSM = 100."
-  # Enable decay table usage to respect RPV settings or overrides
+  # Enable decay table usage to respect GMSB settings or overrides
   - "SLHA:useDecayTable = on"
 
   # GMSB Configuration for Neutralino (NLSP) -> Gravitino (LSP) + Photon
