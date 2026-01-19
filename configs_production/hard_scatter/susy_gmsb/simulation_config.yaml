@@ -17,8 +17,8 @@ job_config:
 validation_config:
 
 # Stage-specific configurations
-events: 1  # Number of events per run, total number of events will be n_runs * events
-input_filename: events_signal.hepmc
+events: 8  # Number of events per run, total number of events will be n_runs * events
+input_filename: events_signal.hepmc3
 threads: 8
 minimalKineticEnergy: 0.1  # Minimum kinetic energy in GeV to register in truth
 truthParticleHandler: "Geant4FullTruthParticleHandler"
