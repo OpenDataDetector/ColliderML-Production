@@ -1,7 +1,7 @@
 campaign: "full_pileup"
-dataset: "susy_rpv"
+dataset: "susy_gmsb"
 version: "v1"
-stage: "pythia_generation"  # Full-pileup SUSY RPV generation (signal + pileup + merge)
+stage: "pythia_generation"  # Full-pileup SUSY GMSB generation (signal + pileup + merge)
 
 job_config:
   # Number of nodes will be calculated as n_runs / runs_per_node
@@ -13,7 +13,7 @@ job_config:
   execution_mode: "interactive"
 
 # Stage-specific configurations
-# This config generates SUSY RPV hard scatter, SoftQCD pileup, and the merged sample
+# This config generates SUSY GMSB hard scatter, SoftQCD pileup, and the merged sample
 # in a single stage. It still writes out both signal and pileup HepMC3 files as well
 # as the merged file.
 events: 1        # Events per run; total events = n_runs * events
@@ -33,14 +33,14 @@ pythia_settings:
   - "Next:numberShowEvent = 0"
   - "Print:quiet = on"
 
-  # SUSY spectrum and RPV LLP behaviour from SLHA
-  - "SLHA:file = /global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml_dev/configs_production/hard_scatter/susy_rpv/rpv_llp.spc"
+  # SUSY spectrum and GMSB LLP behaviour from SLHA
+  - "SLHA:file = /global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml_dev/configs_production/hard_scatter/susy_gmsb/gmsb_llp.spc"
   - "SLHA:verbose = 3"
   - "SLHA:minMassSM = 100."
   # Enable decay table usage to respect RPV settings or overrides
   - "SLHA:useDecayTable = on"
 
-  # RPV Decay Configuration for Neutralino (LSP) -> 3 quarks (UDD)
+  # GMSB Decay Configuration for Neutralino (LSP) -> 3 quarks (UDD)
   # Force decay of neutralino (1000022) to d s b (ids 1 3 5)
   # meMode 0 = Isotropic decay
   - "1000022:oneChannel = 1 1.0 0 1 3 5"
@@ -70,4 +70,4 @@ merge: true
 poisson_sample: true
 poisson_buffer_sigma: 5.0
 
-debug_output_dir: "/global/cfs/cdirs/m4958/data/ColliderML/simulation/full_pileup/susy_rpv/v1/runs/0"
+debug_output_dir: "/global/cfs/cdirs/m4958/data/ColliderML/simulation/full_pileup/susy_gmsb/v1/runs/0"
