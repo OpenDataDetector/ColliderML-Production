@@ -46,4 +46,4 @@ pythia_settings:
   - "4900113:oneChannel = 1 1.0 0 1 -1"
   - "4900113:tau0 = 0.0"
 
-  debug_output_dir: /global/cfs/cdirs/m4958/data/ColliderML/simulation/hard_scatter/hidden_valley/v1/runs/0
+debug_output_dir: /global/cfs/cdirs/m4958/data/ColliderML/simulation/hard_scatter/hidden_valley/v1/runs/0
