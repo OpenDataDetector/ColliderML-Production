@@ -26,6 +26,7 @@ vertex_sigma_z: 55.5     # mm
 vertex_sigma_t: 5.0      # ns
 
 pythia_settings:
+  - "Print:quiet = off"
   # Hidden Valley shower + hadronization
   - "HiddenValley:Ngauge = 3"
   - "HiddenValley:nFlav = 4"
@@ -61,4 +62,4 @@ pythia_settings:
   - "-4900213:oneChannel = 1 1.0 0 -2 1"
   - "-4900213:tau0 = 0.0"
 
-debug_output_dir: /global/cfs/cdirs/m4958/data/ColliderML/simulation/hard_scatter/hidden_valley/v1/runs
+debug_output_dir: /global/cfs/cdirs/m4958/data/ColliderML/simulation/hard_scatter/hidden_valley/v1/runs/0
