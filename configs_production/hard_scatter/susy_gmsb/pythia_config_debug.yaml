@@ -1,0 +1,65 @@
+campaign: "hard_scatter"
+dataset: "susy_gmsb"
+version: "v1"
+stage: "pythia_generation"  # One of: pythia_generation, madgraph_generation, simulation, digitization
+
+job_config:
+  n_runs: 1              # Number of runs (where a run produces N events)
+  runs_per_node: 1       # Number of runs per node
+  time_limit: "01:00:00" # Time limit per job
+  qos: "regular"
+  execution_mode: "interactive"
+
+validation_config:
+
+# Stage-specific configurations
+events: 1          # DEBUG: keep output small and readable
+pileup: 0          # No pileup in hard-scatter SUSY sample
+
+# Neutralino pair production; detailed spectrum and decays come from SLHA file
+hard_process: "SUSY:qqbar2chi0chi0"
+
+# Pythia settings list - all settings in Pythia8 format
+pythia_settings:
+  # DEBUG / VERBOSITY (Option A)
+  - "Print:quiet = off"
+  - "Init:showProcesses = true"
+  - "Init:showChangedSettings = true"
+  - "Init:showAllSettings = false"
+  - "Init:showChangedParticleData = on"
+  - "Next:numberShowInfo = 1"
+  - "Next:numberShowProcess = 1"
+  - "Next:numberShowEvent = 1"
+
+  # SUSY spectrum from SLHA (GMSB-style neutralino NLSP benchmark)
+  - "SLHA:file = /global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml_dev/configs_production/hard_scatter/susy_gmsb/gmsb_llp.spc"
+  - "SLHA:verbose = 3"
+  - "SLHA:minMassSM = 100."
+  - "SLHA:useDecayTable = on"
+
+  # Define gravitino in ParticleData (Option B)
+  # spinType = 2s+1 = 4 for spin-3/2; chargeType = 3*Q = 0; colType = 0 (singlet)
+  - "1000039:new = gravitino gravitino 4 0 0 1.0e-09 0.0 0.0 0.0 0.0"
+  - "1000039:mayDecay = off"
+
+  # GMSB Configuration for Neutralino (NLSP) -> Gravitino (LSP) + Photon
+  - "1000022:oneChannel = 1 1.0 0 1000039 22"
+  - "1000022:mayDecay = on"
+  - "ParticleDecays:limitTau0 = off"
+  - "1000022:tau0 = 100.0"
+
+  # Force production of chi0_1 (1000022) only in the hard process
+  - "SUSY:idA = 1000022"
+  - "SUSY:idB = 1000022"
+
+  # Parton-level and hadronisation settings
+  - "PartonLevel:MPI = on"
+  - "PartonLevel:ISR = on"
+  - "PartonLevel:FSR = on"
+  - "HadronLevel:Hadronize = on"
+
+  # Generic tune / PDFs
+  - "Tune:ee = 7"
+  - "PDF:pSet = 13"
+
+debug_output_dir: "/global/cfs/cdirs/m4958/data/ColliderML/simulation/hard_scatter/susy_gmsb/v1/runs/0"
