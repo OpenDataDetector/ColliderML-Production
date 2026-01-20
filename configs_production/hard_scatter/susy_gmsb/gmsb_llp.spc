@@ -71,6 +71,17 @@ Block MASS                      # Mass spectrum
    2000002     1.02051353e+03   # ~u_4
    2000004     1.05858554e+03   # ~u_5
    2000006     1.05858894e+03   # ~u_6
+
+# -------------------------------------------------------------------------
+# GMSB-style neutralino NLSP decay
+#
+# Target:  chi_10 (1000022) -> gravitino (1000039) + gamma (22) with c*tau ~ 100 mm
+# Width used here: Gamma = ħ / (c*tau) ≈ 1.97327e-15 GeV for c*tau = 100 mm
+#
+# Note: This provides the decay channel via the SLHA decay table. Pythia must be
+# configured with SLHA:useDecayTable = on to use this.
+DECAY  1000022  1.97327e-15
+  1.00000000e+00  2  1000039  22
 Block alpha                     # Effective Higgs mixing parameter
           -1.06880799e-01       # alpha - evaluated at p^2=0
 Block nmix                  # neutralino mixing matrix

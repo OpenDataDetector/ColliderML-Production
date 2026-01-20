@@ -4,49 +4,43 @@ version: "v1"
 stage: "pythia_generation"
 
 job_config:
-  # Number of nodes will be calculated as n_runs / runs_per_node
-  n_runs: 200              # Number of runs (where a run produces N events)
-  runs_per_node: 1         # Number of runs per node
-  time_limit: "01:00:00"   # Time limit per job
+  n_runs: 200
+  runs_per_node: 1
+  time_limit: "01:00:00"
   qos: "regular"
   execution_mode: "distributed_slurm"
 
 validation_config:
 
-# Stage-specific configurations
-events: 64          # Events per run
-pileup: 0           # Default: no additional pileup in hard-scatter HV sample
+events: 64
+pileup: 0
 pdg_file: "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml_dev/configs_production/hard_scatter/hidden_valley/particle.tbl"
 
-# Higgs portal production of a long-lived scalar (dark pion–like)
-hard_process: "HiggsBSM:gg2H2"
+# True Hidden Valley (dark QCD) benchmark for semi-visible jets.
+# Literature-like: Lambda=40 GeV, pTminFSR=44 GeV (pTminFSR >= 1.1*Lambda).
+hard_process: "HiddenValley:gg2DvDvbar"
 
-# Vertex smearing consistent with other ColliderML configs (OpenDataDetector)
 vertex_sigma_xy: 0.0125  # mm
 vertex_sigma_z: 55.5     # mm
 vertex_sigma_t: 5.0      # ns
 
 pythia_settings:
-  # Enable BSM Higgs sector
-  - "Higgs:useBSM = on"
+  # Hidden Valley shower + hadronization
+  - "HiddenValley:Ngauge = 3"
+  - "HiddenValley:nFlav = 4"
+  - "HiddenValley:FSR = on"
+  - "HiddenValley:fragment = on"
 
-  # SM-like Higgs (state 35) properties
-  - "35:m0 = 125.0"
-  - "35:mWidth = 0.00407"
-  - "35:doForceWidth = on"
-  - "35:onMode = off"
-  - "35:onIfMatch = 36 36"
+  # Running coupling via Lambda_HV
+  - "HiddenValley:alphaOrder = 1"
+  - "HiddenValley:setLambda = on"
+  - "HiddenValley:Lambda = 40.0"
+  - "HiddenValley:pTminFSR = 44.0"
 
-  # Hidden scalar (state 36) decays: 36 → b b̄, long-lived
-  # meMode changed from 101 to 0 (isotropic) for scalar decay validity
-  - "36:oneChannel = 1 1.0 0 5 -5"
-  - "36:m0 = 55.0"
-  - "36:mMin = 54.5"
-  - "36:mMax = 55.5"
-  - "36:mWidth = 1.97327e-14"
-  - "36:tau0 = 10.0"
-  - "36:mayDecay = on"
-
-  # Allow very long lifetimes
-  - "ParticleDecays:limitTau0 = off"
-  - "ParticleDecays:tau0Max = 100000.0"
+  # Semi-visible: define dark hadrons and make a fraction stable (MET).
+  # Ensure the PDG codes below are present in particle.tbl for simulation.
+  - "4900111:m0 = 10.0"
+  - "4900111:mayDecay = off"
+  - "4900113:m0 = 20.0"
+  - "4900113:oneChannel = 1 1.0 0 1 -1"
+  - "4900113:tau0 = 0.0"

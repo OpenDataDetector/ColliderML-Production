@@ -1,5 +1,5 @@
 campaign: "full_pileup"
-dataset: "hidden_valley"
+dataset: "higgs_portal"
 version: "v1"
 stage: "pythia_generation"  # Full-pileup Hidden Valley generation (signal + pileup + merge)
 
@@ -18,9 +18,9 @@ job_config:
 events: 64        # Events per run; total events = n_runs * events
 pileup: 200       # Target average pileup multiplicity
 
-pdg_file: "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml_dev/configs_production/hard_scatter/hidden_valley/particle.tbl"
+pdg_file: "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml_dev/configs_production/hard_scatter/higgs_portal/particle.tbl"
 
-# Higgs portal production of a long-lived scalar (dark pion–like)
+# Higgs portal production of a long-lived scalar: h → aa → b b̄ b b̄
 hard_process: "HiggsBSM:gg2H2"
 
 # Vertex smearing matching full-pileup configuration for merge
@@ -39,14 +39,14 @@ pythia_settings:
   - "35:onMode = off"
   - "35:onIfMatch = 36 36"
 
-  # Hidden scalar (state 36) decays: 36 → b b̄, long-lived
-  # meMode changed from 101 to 0 (isotropic) for scalar decay validity
-  - "36:oneChannel = 1 1.0 0 5 -5"
+  # Long-lived pseudoscalar a (state 36) decays: a → b b̄, long-lived
+  # Align with Jackson full chain settings (meMode=101)
+  - "36:oneChannel = 1 1.0 101 5 -5"
   - "36:m0 = 55.0"
   - "36:mMin = 54.5"
   - "36:mMax = 55.5"
-  - "36:mWidth = 1.97327e-14"
-  - "36:tau0 = 10.0"
+  - "36:mWidth = 1.97327e-15"
+  - "36:tau0 = 100.0"
   - "36:mayDecay = on"
 
   # Allow very long lifetimes

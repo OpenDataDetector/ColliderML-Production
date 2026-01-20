@@ -1,0 +1,54 @@
+campaign: "hard_scatter"
+dataset: "higgs_portal"
+version: "v1"
+stage: "pythia_generation"
+
+job_config:
+  # Number of nodes will be calculated as n_runs / runs_per_node
+  n_runs: 200              # Number of runs (where a run produces N events)
+  runs_per_node: 1         # Number of runs per node
+  time_limit: "01:00:00"   # Time limit per job
+  qos: "regular"
+  execution_mode: "distributed_slurm"
+
+validation_config:
+
+# Stage-specific configurations
+events: 64          # Events per run
+pileup: 0           # Default: no additional pileup in hard-scatter HV sample
+pdg_file: "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml_dev/configs_production/hard_scatter/higgs_portal/particle.tbl"
+
+# Higgs portal production of a long-lived scalar: h → aa → b b̄ b b̄
+hard_process: "HiggsBSM:gg2H2"
+
+# Vertex smearing consistent with other ColliderML configs (OpenDataDetector)
+vertex_sigma_xy: 0.0125  # mm
+vertex_sigma_z: 55.5     # mm
+vertex_sigma_t: 5.0      # ns
+
+pythia_settings:
+  # Enable BSM Higgs sector
+  - "Higgs:useBSM = on"
+
+  # SM-like Higgs (state 35) properties
+  - "35:m0 = 125.0"
+  - "35:mWidth = 0.00407"
+  - "35:doForceWidth = on"
+  - "35:onMode = off"
+  - "35:onIfMatch = 36 36"
+
+  # Long-lived pseudoscalar a (state 36) decays: a → b b̄, long-lived
+  # Align with Jackson full chain settings (meMode=101)
+  - "36:oneChannel = 1 1.0 101 5 -5"
+  - "36:m0 = 55.0"
+  - "36:mMin = 54.5"
+  - "36:mMax = 55.5"
+  - "36:mWidth = 1.97327e-15"
+  - "36:tau0 = 100.0"
+  - "36:mayDecay = on"
+
+  # Allow very long lifetimes
+  - "ParticleDecays:limitTau0 = off"
+  - "ParticleDecays:tau0Max = 100000.0"
+
+debug_output_dir: /global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml_dev/configs_production/hard_scatter/higgs_portal/0
