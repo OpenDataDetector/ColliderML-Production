@@ -35,7 +35,7 @@ pythia_settings:
   - "SLHA:file = /global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml_dev/configs_production/hard_scatter/susy_gmsb/gmsb_llp.spc"
   - "SLHA:verbose = 3"
   - "SLHA:minMassSM = 100."
-  - "SLHA:useDecayTable = on"
+  - "SLHA:useDecayTable = off"
 
   # Define gravitino in ParticleData (Option B)
   # spinType = 2s+1 = 4 for spin-3/2; chargeType = 3*Q = 0; colType = 0 (singlet)
