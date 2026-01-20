@@ -29,6 +29,7 @@ vertex_sigma_t: 5.0      # ns
 
 pythia_settings:
   # Enable BSM Higgs sector
+  - "Print:quiet = off"
   - "Higgs:useBSM = on"
 
   # SM-like Higgs (state 35) properties
@@ -52,4 +53,4 @@ pythia_settings:
   - "ParticleDecays:limitTau0 = off"
   - "ParticleDecays:tau0Max = 100000.0"
 
-debug_output_dir: /global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml_dev/configs_production/hard_scatter/higgs_portal/0
+debug_output_dir: /global/cfs/cdirs/m4958/data/ColliderML/simulation/hard_scatter/higgs_portal/v1/runs/0
