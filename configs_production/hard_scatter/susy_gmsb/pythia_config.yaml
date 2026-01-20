@@ -42,6 +42,10 @@ pythia_settings:
   # Force decay of neutralino (1000022) to gravitino (1000039) + gamma (22)
   # meMode 0 = Isotropic decay
   - "1000022:oneChannel = 1 1.0 0 1000039 22"
+  # Neutralino is stable by default in RPC SUSY; explicitly enable decays
+  - "1000022:mayDecay = on"
+  # Ensure long-lived particles are still decayed in Pythia (some wrappers enable tau0 limits)
+  - "ParticleDecays:limitTau0 = off"
   # Set lifetime c*tau in mm (approx 100 mm) for Displaced Vertex signature
   - "1000022:tau0 = 100.0"
   
