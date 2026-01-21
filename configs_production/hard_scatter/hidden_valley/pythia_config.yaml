@@ -5,7 +5,7 @@ stage: "pythia_generation"
 
 job_config:
   n_runs: 32
-  runs_per_node: 1
+  runs_per_node: 16
   time_limit: "00:30:00"
   qos: "debug"
   execution_mode: "multi_node_slurm"
