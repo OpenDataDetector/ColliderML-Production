@@ -4,16 +4,14 @@ version: "v1"
 stage: "pythia_generation"
 
 job_config:
-  n_runs: 200
+  n_runs: 32
   runs_per_node: 1
-  time_limit: "01:00:00"
-  qos: "regular"
-  # execution_mode: "distributed_slurm"
-  execution_mode: "interactive"
+  time_limit: "00:30:00"
+  qos: "debug"
+  execution_mode: "multi_node_slurm"
+  # execution_mode: "interactive"
 
-validation_config:
-
-events: 8
+events: 64
 pileup: 0
 pdg_file: "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml_dev/configs_production/hard_scatter/hidden_valley/particle.tbl"
 
@@ -26,7 +24,7 @@ vertex_sigma_z: 55.5     # mm
 vertex_sigma_t: 5.0      # ns
 
 pythia_settings:
-  - "Print:quiet = off"
+  - "Print:quiet = on"
   # Hidden Valley shower + hadronization
   - "HiddenValley:Ngauge = 3"
   - "HiddenValley:nFlav = 4"
@@ -62,4 +60,4 @@ pythia_settings:
   - "-4900213:oneChannel = 1 1.0 0 -2 1"
   - "-4900213:tau0 = 0.0"
 
-debug_output_dir: /global/cfs/cdirs/m4958/data/ColliderML/simulation/hard_scatter/hidden_valley/v1/runs/0
+# debug_output_dir: /global/cfs/cdirs/m4958/data/ColliderML/simulation/hard_scatter/hidden_valley/v1/runs/0

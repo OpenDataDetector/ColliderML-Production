@@ -1,5 +1,5 @@
 campaign: "full_pileup"
-dataset: "zprime_ssm"
+dataset: "zprime"
 version: "v1"
 stage: "pythia_generation"  # Full-pileup Z' SSM generation (signal + pileup + merge)
 
@@ -22,7 +22,7 @@ pdg_file: "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml_d
 
 # Sequential Standard Model Z' benchmark (Drell–Yan production)
 # Explicitly enable the process
-hard_process: "NewGaugeBoson:ffbar2gmZprime = on"
+hard_process: "NewGaugeBoson:ffbar2gmZZprime"
 
 # Vertex smearing matching full-pileup configuration for merge
 vertex_sigma_xy: 0.0125  # mm

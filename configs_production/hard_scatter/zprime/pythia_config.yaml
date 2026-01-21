@@ -5,17 +5,15 @@ stage: "pythia_generation"
 
 job_config:
   # Number of nodes will be calculated as n_runs / runs_per_node
-  n_runs: 200              # Number of runs (where a run produces N events)
-  runs_per_node: 1         # Number of runs per node
-  time_limit: "01:00:00"   # Time limit per job
-  qos: "regular"
-  # execution_mode: "distributed_slurm"
-  execution_mode: interactive
-
-validation_config:
+  n_runs: 32              # Number of runs (where a run produces N events)
+  runs_per_node: 16         # Number of runs per node
+  time_limit: "00:30:00"   # Time limit per job
+  qos: "debug"
+  execution_mode: "multi_node_slurm"
+  # execution_mode: interactive
 
 # Stage-specific configurations
-events: 8          # Events per run
+events: 64          # Events per run
 pileup: 0           # Hard-scatter Z' sample without pileup
 pdg_file: "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml_dev/configs_production/hard_scatter/zprime/particle.tbl"
 
@@ -42,6 +40,6 @@ pythia_settings:
   # This is crucial for realistic SSM simulation
   - "Zprime:gmZmode = 3"
 
-  - "Print:quiet = off"
+  - "Print:quiet = on"
 
-debug_output_dir: /global/cfs/cdirs/m4958/data/ColliderML/simulation/hard_scatter/zprime/v1/runs/0
+# debug_output_dir: /global/cfs/cdirs/m4958/data/ColliderML/simulation/hard_scatter/zprime/v1/runs/0
