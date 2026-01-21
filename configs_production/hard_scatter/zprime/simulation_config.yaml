@@ -5,19 +5,17 @@ version: "v1"
 stage: "simulation"  # One of: generation, merge_smear, simulation, digitization
 job_config:
   # Number of nodes will be calculated as n_runs / runs_per_node
-  n_runs: 1000  # Number of jobs to submit
-  # n_runs: 32
+  # n_runs: 1000  # Number of jobs to submit
+  n_runs: 32
   runs_per_node: 16  # Number of runs per node
-  time_limit: "03:00:00"  # Time limit per job
-  qos: "regular"
-  # execution_mode: "multi_node_slurm"
-  execution_mode: "interactive"
-  depends_on: 
-
-validation_config:
+  time_limit: "00:30:00"  # Time limit per job
+  qos: "debug"
+  execution_mode: "multi_node_slurm"
+  # execution_mode: "interactive"
+  # depends_on: 
 
 # Stage-specific configurations
-events: 8  # Number of events per run, total number of events will be n_runs * events
+events: 64  # Number of events per run, total number of events will be n_runs * events
 input_filename: events_signal.hepmc3
 threads: 8
 minimalKineticEnergy: 0.1  # Minimum kinetic energy in GeV to register in truth
@@ -34,4 +32,4 @@ ddsim_printLevel: 5  # 1=VERBOSE, 2=DEBUG, 3=INFO, 4=WARNING(default), 5=ERROR, 
 # Filter out specific Geant4 warnings (optional)
 filter_g4_warnings: true  # Filter out mass tolerance and other G4Exception warnings
 
-debug_output_dir: /global/cfs/cdirs/m4958/data/ColliderML/simulation/hard_scatter/zprime/v1/runs/0
+# debug_output_dir: /global/cfs/cdirs/m4958/data/ColliderML/simulation/hard_scatter/zprime/v1/runs/0

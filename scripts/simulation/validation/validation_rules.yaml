@@ -37,12 +37,28 @@ stages:
   # Stage 3: Pythia Hadronization + Pileup Merging
   pythia_generation:
     description: "Validate Pythia generation and merged events"
+    # Require at least one of the following files to exist per run.
+    # This supports cases where pileup merging is optional / conditional.
+    require_any_of:
+      - pattern: "merged_events.hepmc3"
+        description: "Merged hard-scatter + pileup events"
+        check_type: "size"
+        min_size_mb: 1.0
+      - pattern: "events_signal.hepmc3"
+        description: "Unmerged signal-only events"
+        check_type: "size"
+        min_size_mb: 0.1
     file_patterns:
       - pattern: "merged_events.hepmc3"
         description: "Merged hard-scatter + pileup events"
         min_size_mb: 1.0
         median_threshold_pct: 0.8
-        required: true
+        required: false
+      - pattern: "events_signal.hepmc3"
+        description: "Unmerged signal-only events"
+        min_size_mb: 0.1
+        median_threshold_pct: 0.8
+        required: false
 
   # Stage 4: Geant4 Detector Simulation
   simulation:

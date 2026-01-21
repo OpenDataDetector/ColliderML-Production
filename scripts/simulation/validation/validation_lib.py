@@ -149,6 +149,50 @@ def calculate_size_statistics(sizes: List[int]) -> Dict[str, float]:
     }
 
 
+def _check_require_any_of_for_run(run_dir: Path, any_of_patterns: List[dict]) -> Tuple[bool, Optional[str]]:
+    """
+    Check that at least one pattern in a group is satisfied for a single run.
+
+    A pattern is satisfied if:
+    - It exists (at least one matching file), and
+    - If check_type == "size", the total size is >= min_size_mb.
+
+    Args:
+        run_dir: Run directory path.
+        any_of_patterns: List of pattern configs. Each config must contain:
+            - pattern: Glob pattern relative to run_dir
+          Optional keys:
+            - check_type: "exists" or "size" (default: "size")
+            - min_size_mb: float, minimum size in MB when check_type == "size" (default: 0)
+
+    Returns:
+        (satisfied, failure_reason). failure_reason is None when satisfied.
+    """
+    if not any_of_patterns:
+        return True, None
+
+    attempted: List[str] = []
+    for cfg in any_of_patterns:
+        pattern = cfg["pattern"]
+        check_type = cfg.get("check_type", "size")
+        min_size_mb = cfg.get("min_size_mb", 0)
+
+        files_found, size, issue = check_file_pattern(run_dir, pattern, check_type)
+        if not files_found:
+            attempted.append(f"{pattern} ({issue})")
+            continue
+
+        if check_type == "size" and size is not None:
+            size_mb = size / (1024**2)
+            if size_mb < min_size_mb:
+                attempted.append(f"{pattern} (size {size_mb:.2f} MB < minimum {min_size_mb} MB)")
+                continue
+
+        return True, None
+
+    return False, "None of the require_any_of patterns were satisfied: " + "; ".join(attempted)
+
+
 def validate_stage(
     runs_dir: Path,
     stage: str,
@@ -189,6 +233,7 @@ def validate_stage(
     
     stage_rules = validation_rules['stages'][stage]
     file_patterns = stage_rules.get('file_patterns', [])
+    require_any_of = stage_rules.get('require_any_of', [])
     output_location = stage_rules.get('output_location')  # Optional: alternative output directory
     validate_as_chunks = stage_rules.get('validate_as_chunks', False)  # For chunk-based outputs
     
@@ -339,6 +384,19 @@ def validate_stage(
     
     # Detect if we're in chunk validation mode (run_dirs contains files not directories)
     chunk_mode = validate_as_chunks and output_location and run_dirs and run_dirs[0].is_file()
+
+    # Enforce stage-level "at least one of these patterns" requirements (directory-based validation only).
+    if require_any_of and not chunk_mode:
+        logger.info("\nChecking require_any_of patterns (at least one must pass per run)")
+        for run_dir in run_dirs:
+            run_id = run_dir.name
+            satisfied, reason = _check_require_any_of_for_run(run_dir, require_any_of)
+            if not satisfied:
+                logger.warning(f"  Run {run_id}: {reason}")
+                failed_runs.add(run_id)
+                if run_id not in failure_reasons:
+                    failure_reasons[run_id] = []
+                failure_reasons[run_id].append(reason)
     
     # Validate each pattern across all runs
     # Note: failed_runs, failure_reasons, and missing_chunks_info already initialized above
