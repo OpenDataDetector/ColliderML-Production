@@ -1,0 +1,84 @@
+#========================================================================
+# YAML Configuration for MadGraph Process Initialization (LO+MLM jets)
+#========================================================================
+# 
+# This configuration is for the first step of the two-step MadGraph workflow:
+# 1. madgraph_init: Generate and compile the process (this config)
+# 2. madgraph_generation: Parallel event generation using the compiled process
+#
+# The madgraph_init stage is typically run once per dataset version as a 
+# monolithic job, since the process generation cannot be parallelized.
+
+# --- Dataset & Version ---
+campaign: "full_pileup"
+dataset: "jets"
+version: "v2"
+stage: "madgraph_init"
+
+# --- Job Configuration ---
+job_config:
+  # Number of nodes will be calculated as n_runs / runs_per_node
+  n_runs: 1        # Number of runs (where a run produces N events)
+  runs_per_node: 1  # Number of runs per node (adjust based on memory/time constraints)
+  time_limit: "48:00:00"  # Time limit per job - MadGraph NLO generation is slower than Pythia
+  qos: "regular"
+  # execution_mode: "monolithic_slurm"  # Use distributed mode for parallel generation
+  execution_mode: "interactive"
+
+# --- MadGraph Process Definition ---
+mg_model: "sm-no_b_mass"
+mg_definitions: []
+mg_generate_command: |
+  define p = g u c b d s u~ c~ b~ d~ s~
+  define j = p
+  generate p p > j j @0
+  add process p p > j j j @1
+  add process p p > j j j j @2
+
+# --- Essential Paths & Environment ---
+# These use variables from env_setup.yaml config_defaults
+mg_base_path: "{madgraph.mg_base_path}"
+generation_scratch_dir: "{madgraph.generation_scratch_dir}" 
+
+# --- Card Customizations ---
+card_customizations:
+  run_card:
+    "ebeam1": 7000.0
+    "ebeam2": 7000.0
+    "ptj": 20.0
+    "ickkw": 1
+    # Matching scale (GeV) for LO+MLM. Keep consistent with JetMatching:qCut below.
+    "xqcut": 40.0
+    "auto_ptj_mjj": True
+    "maxjetflavor": 5
+    "use_syst": False
+    "systematics_program": none
+  pythia8_card:
+    "JetMatching:merge": on
+    "JetMatching:scheme": 1
+    "JetMatching:jetAlgorithm": 2
+    "JetMatching:coneRadius": 1.0
+    "JetMatching:slowJetPower": 1
+    "JetMatching:nQmatch": 5
+    "JetMatching:nJetMax": 4
+    "JetMatching:qCut": 50.0
+    "JetMatching:doShowerKt": off
+    "JetMatching:setMad": off
+    "UncertaintyBands:doVariations": off
+
+# --- Card Customizations (LO+MLM) ---
+run_mode: "lo_mlm"
+
+# --- Logging ---
+log_level: "INFO"
+
+# --- Documentation ---
+# After running this stage successfully, the compiled process will be stored at:
+# {output_base_dir}/{campaign}/{dataset}/{version}/madgraph_process/
+# and archived as a tarball at:
+# {output_base_dir}/{campaign}/{dataset}/{version}/madgraph_process.tgz
+# 
+# The tarball is the canonical artifact consumed by madgraph_generation.
+# 
+# Expected runtime: 2-12 hours for NLO ttbar process compilation
+# Expected storage: ~100-500 MB for the compiled process directory

@@ -4,7 +4,6 @@ from pathlib import Path
 import acts
 import acts.examples
 from acts.examples import Sequencer
-from acts.examples.simulation import addPythia8
 from acts.examples.hepmc3 import (
         HepMC3Writer,
         HepMC3Reader,
@@ -17,6 +16,8 @@ from utils.config import create_base_parser, load_config
 
 
 u = acts.UnitConstants
+
+LOG_LEVEL = acts.logging.DEBUG
 
 def parse_args():
     """Parse command line arguments"""
@@ -141,6 +142,28 @@ def parse_pythia_settings(config, logger):
 
     return pythia_settings if pythia_settings else None
 
+def _build_pythia_event(settings, seed, vertex=None):
+    """Create an EventGenerator producing HepMC3 events via Pythia8."""
+    rnd = acts.examples.RandomNumbers(seed=seed)
+    generator = acts.examples.EventGenerator.Generator(
+        multiplicity=acts.examples.FixedMultiplicityGenerator(n=1),
+        vertex=vertex
+        or acts.examples.GaussianVertexGenerator(
+            mean=acts.Vector4(0, 0, 0, 0), stddev=acts.Vector4(0, 0, 0, 0)
+        ),
+        particles=acts.examples.pythia8.Pythia8Generator(
+            level=LOG_LEVEL,
+            settings=settings or [],
+        ),
+    )
+    return acts.examples.EventGenerator(
+        level=LOG_LEVEL,
+        generators=[generator],
+        randomNumbers=rnd,
+        outputEvent="pythia8-event",
+    )
+
+
 def generate_hard_scatter(output_dir, config, logger):
     """Generate hard scatter events with Pythia8.
     
@@ -154,28 +177,16 @@ def generate_hard_scatter(output_dir, config, logger):
     logger.info(f"Generating {config.events} hard scatter events")
     
     s = Sequencer(numThreads=1, events=config.events)
-    s.config.logLevel = acts.logging.INFO
-    rnd = acts.examples.RandomNumbers(seed=config.seed or int(time.time()))
-    
-    # No vertex smearing during generation - ACTS will handle this during merge
+    s.config.logLevel = LOG_LEVEL
+    seed = config.seed or int(time.time())
     output_path = output_dir / "events_signal.hepmc3"
     
-    addPythia8(
-        s,
-        npileup=0,  # No pileup in signal generation
-        nhard=1,    # One hard process per event
-        hardProcess=pythia_settings,
-        outputDirCsv=None,
-        outputDirRoot=None,
-        rnd=rnd,
-        logLevel=acts.logging.INFO,
-        vtxGen=None,
-    )
+    s.addReader(_build_pythia_event(pythia_settings, seed, vertex=None))
     
     s.addWriter(
         HepMC3Writer(
-            acts.logging.INFO,
-            inputEvent="particles",
+            LOG_LEVEL,
+            inputEvent="pythia8-event",
             outputPath=output_path,
         )
     )
@@ -210,27 +221,16 @@ def generate_pileup(output_dir, config, logger):
         )
     
     s = Sequencer(numThreads=1, events=total_pileup_events)
-    s.config.logLevel = acts.logging.INFO
-    rnd = acts.examples.RandomNumbers(seed=(config.seed or int(time.time())) + 1000)  # Different seed for pileup
-    
+    s.config.logLevel = LOG_LEVEL
+    seed = (config.seed or int(time.time())) + 1000
     output_path = output_dir / "events_pileup.hepmc3"
     
-    # Generate individual pileup events (no hard process)
-    addPythia8(
-        s,
-        npileup=1,  # Generate individual pileup events
-        nhard=0,    # No hard process
-        hardProcess=None,
-        outputDirCsv=None,
-        outputDirRoot=None,
-        rnd=rnd,
-        logLevel=acts.logging.INFO,
-        vtxGen=None,  # No vertex smearing during generation
-    )
+    pileup_settings = ["SoftQCD:all = on"]
+    s.addReader(_build_pythia_event(pileup_settings, seed, vertex=None))
     
     s.addWriter(
         HepMC3Writer(
-            acts.logging.INFO,
+            LOG_LEVEL,
             inputEvent="pythia8-event",
             outputPath=output_path,
         )
@@ -305,43 +305,30 @@ def merge_events(hard_scatter_file, pileup_file, output_dir, config, logger):
     
     # Create sequencer
     s = acts.examples.Sequencer(numThreads=1, events=config.events)
-    s.config.logLevel = acts.logging.INFO
+    s.config.logLevel = LOG_LEVEL
     
     # Random number generator
     rng = acts.examples.RandomNumbers(seed=config.seed or 42)
     
     # ACTS HepMC3Reader with merging
-    # Build inputs using new Config::Input API
+    # Build inputs using HepMC3Reader.Input API
     if getattr(config, 'poisson_sample', False):
         # Use Poisson sampling for pileup
         inputs = [
-            acts.examples.hepmc3.Input(
-                path=hard_scatter_file,
-                numEvents=1
-            ),
-            acts.examples.hepmc3.Input(
-                path=pileup_file,
-                numEvents=1,  # ignored when multiplicityGenerator is set
-                multiplicityGenerator=acts.examples.PoissonMultiplicityGenerator(mean=float(pileup_multiplicity))
-            )
+            HepMC3Reader.Input.Fixed(hard_scatter_file, 1),
+            HepMC3Reader.Input.Poisson(pileup_file, float(pileup_multiplicity))
         ]
     else:
         # Use fixed multiplicity (backward compatible)
         inputs = [
-            acts.examples.hepmc3.Input(
-                path=hard_scatter_file,
-                numEvents=1
-            ),
-            acts.examples.hepmc3.Input(
-                path=pileup_file,
-                numEvents=max(1, int(pileup_multiplicity))
-            )
+            HepMC3Reader.Input.Fixed(hard_scatter_file, 1),
+            HepMC3Reader.Input.Fixed(pileup_file, max(1, int(pileup_multiplicity)))
         ]
 
     s.addReader(
         HepMC3Reader(
             inputs=inputs,
-            level=acts.logging.INFO,
+            level=LOG_LEVEL,
             outputEvent="merged_events",
             randomNumbers=rng,
             vertexGenerator=vtxGen,
@@ -355,7 +342,7 @@ def merge_events(hard_scatter_file, pileup_file, output_dir, config, logger):
         HepMC3Writer(
             inputEvent="merged_events",
             outputPath=merged_path,
-            level=acts.logging.INFO,
+            level=LOG_LEVEL,
             writeEventsInOrder=False,
         )
     )

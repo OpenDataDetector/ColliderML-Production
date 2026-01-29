@@ -1,6 +1,6 @@
-# EDM4HEP to HDF5 Conversion Scripts
+# EDM4HEP to Parquet Conversion Scripts
 
-This directory contains scripts for converting EDM4HEP ROOT files into HDF5 format for easier analysis and machine learning applications.
+This directory contains scripts for converting EDM4HEP ROOT files into Parquet (and legacy HDF5) format for easier analysis and machine learning applications.
 
 ## Overview
 
@@ -15,17 +15,20 @@ The output is organized into HDF5 files with an event-based hierarchy, making it
 
 ## Usage
 
-### Converting All Data Types
+### Converting All Data Types (config-driven)
 
-To convert all data types at once, use the `convert_all.py` script:
+To convert all data types at once and write Parquet outputs, use the `convert_all.py` script with a YAML config:
 
 ```bash
-python convert_all.py /path/to/edm4hep/files /path/to/output dataset_name
+python convert_all.py --config /path/to/config.yaml
 ```
 
-Optional arguments:
-- `--chunk-size`: Number of events per output file (default: 1000)
-- `--run-size`: Number of events per run (default: 10)
+Key config fields:
+- `campaign`, `dataset`, `version`
+- `common.output_base_dir`: base directory for inputs/outputs
+- `chunk_size`: number of events per output file (default: 1000)
+- `run_size`: number of events per run (default: 10)
+- `output_format: parquet` to enable Parquet (HDF5 is deprecated)
 
 ### Converting Individual Components
 
@@ -36,11 +39,11 @@ You can also convert individual components using their specific scripts:
 python convert_hits.py /path/to/edm4hep/files /path/to/output dataset_name
 ```
 
-2. Digitized Measurements:
+2. Digitized Measurements (tracker hits in reco space):
 ```bash
 python convert_digihits.py --config /path/to/config.yaml
 ```
-The config should provide at least: base_dir, output_dir, dataset_name, chunk_size, run_size.
+The config should provide at least: campaign, dataset, version, `common.output_base_dir`, `chunk_size`, `run_size`, and `output_format: parquet`.
 
 2. Reconstructed Tracks:
 ```bash
@@ -97,25 +100,64 @@ The batch script will:
 - Process files in parallel for speed
 - Provide progress tracking and error reporting
 
-## Output Structure
+## Output Structure (legacy HDF5)
 
-The converted data is stored in HDF5 files with the following structure:
+Legacy HDF5 outputs are stored with an `/events/event_#/` hierarchy where each group contains a structured `data` dataset per event. This path is retained for backwards compatibility.
 
-```
-/events/
-    /event_0/
-        /data    # Dataset containing properties
-    /event_1/
-        /data
-    ...
-```
+## Output Structure (Parquet v1 schema)
 
-Each event's data is stored as a structured array containing all relevant properties for that component:
+Parquet outputs are written one file per event range (e.g. `...events0-999.parquet`). Each row corresponds to a single event and contains list-valued columns for per-object data.
 
-- **Hits**: cellID, energy deposit, time, position, momentum, etc.
-- **Tracks**: track parameters, quality metrics, states (IP, first/last hit), hit associations
-- **Particles**: PDG code, charge, mass, vertex, momentum, parent/daughter relations
-- **Calorimeter**: cellID, energy, time, position, etc.
+At a high level, the content is:
+
+- **Truth particles (`truth/particles`)**:
+  - `event_id` (int64): global event index
+  - `particle_id` (uint32): EDM4hep particle index (stable across files), **not** the Parquet row index
+  - `pdg_id`, `mass`, `energy`, `charge`
+  - `vx`, `vy`, `vz`, `time`, `px`, `py`, `pz`
+  - `num_tracker_hits`, `num_calo_hits`
+  - `primary` (bool): `True` if `created_in_simulation == False` (generator primary)
+  - `vertex_primary` (when available), `parent_id` (first parent `particle_id`, when available)
+
+- **Tracker hits (`reco/tracker_hits`)**:
+  - `event_id` (int64): global event index
+  - Geometry identifiers:
+    - `volume_id` (uint8)
+    - `layer_id` (uint16)
+    - `surface_id` (uint32)
+  - Hit positions:
+    - `x`, `y`, `z` (reconstructed global coordinates)
+    - `true_x`, `true_y`, `true_z` (SimHit coordinates)
+  - Kinematics: `time`, `px`, `py`, `pz` (when available)
+  - `particle_id` (uint32): EDM4hep particle index of the associated truth particle
+  - `detector` (uint8): tracker detector enum
+    - Pixel: negative endcap = 0, barrel = 1, positive endcap = 2
+    - Short strip: negative endcap = 3, barrel = 4, positive endcap = 5
+    - Long strip: negative endcap = 6, barrel = 7, positive endcap = 8
+  - **Note**: `cell_id` is not stored for tracker hits; it is redundant given `(volume_id, layer_id, surface_id)` and the underlying geometry.
+
+- **Tracks (`reco/tracks`)**:
+  - `event_id` (int64)
+  - `track_id` (int32): per-event track index
+  - Quality: `num_hits`, `num_outliers`, `num_holes`, `num_shared_hits`, `chi2`
+  - Fit parameters: `d0`, `z0`, `phi`, `theta`, `qop`, `time`
+  - Truth parameters: `d0_truth`, `z0_truth`, `phi_truth`, `theta_truth`,
+    `charge_truth`, `p_truth`, `pT_truth`, `time_truth`
+  - `majority_particle_id` (uint32 or NaN): most frequent `particle_id` among associated hits
+  - `hit_ids`: list of indices into the corresponding event’s tracker hits list
+
+- **Calorimeter hits (`reco/calo_hits`)**:
+  - `event_id` (int64)
+  - `cell_id` (string): calorimeter cell identifier (bitfield encoded)
+  - Positions: `x`, `y`, `z`
+  - `detector` (uint8): calorimeter detector enum
+    - ECal: negative endcap = 9, barrel = 10, positive endcap = 11
+    - HCal: negative endcap = 12, barrel = 13, positive endcap = 14
+  - `total_energy`: total calibrated energy per cell
+  - Nested contribution lists:
+    - `contrib_particle_ids`: list of `particle_id` values per cell
+    - `contrib_energies`: list of energies per contributing particle
+    - `contrib_times`: list of (energy-weighted) times per contributing particle
 
 ## Requirements
 
@@ -138,3 +180,15 @@ python convert_all.py \
 ```
 
 This will create separate HDF5 files for hits, tracks, particles, and calorimeter data under the specified output directory. 
+
+## Particle ↔ Hit Linkage
+
+- The `particle_id` column in all tables is the EDM4hep particle index. It is **stable across files** within a dataset and is **not** the Parquet row index.
+- To join particles to hits or tracks, you can:
+  - Set the index on the particles table: `particles = particles_df.set_index("particle_id")`
+  - Use standard joins on `particle_id` between tables (e.g. tracker hits, calo contributions, tracks via `majority_particle_id`).
+
+## Geometry and Acts Compatibility
+
+- The triplet `(volume_id, layer_id, surface_id)` is aligned with Acts geometry identifiers.
+- Given the appropriate Acts/DD4hep geometry description, these identifiers can be mapped back to the corresponding detector elements.

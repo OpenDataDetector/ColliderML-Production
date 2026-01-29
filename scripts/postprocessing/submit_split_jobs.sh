@@ -2,7 +2,7 @@
 #SBATCH --job-name=split_test
 #SBATCH --output=logs/split_test_%j.out
 #SBATCH --error=logs/split_test_%j.err
-#SBATCH --time=01:00:00
+#SBATCH --time=02:00:00
 #SBATCH --qos=regular
 #SBATCH --constraint=cpu
 #SBATCH --nodes=4
@@ -17,10 +17,10 @@
 # ==============================================================================
 
 # Path to the TEST runs directory
-RUNS_DIR="/global/cfs/cdirs/m4958/data/ColliderML/simulation/full_pileup/ggf/v1/runs"
+RUNS_DIR="/global/cfs/cdirs/m4958/data/ColliderML/simulation/full_pileup/zmumu/v1/runs"
 
 # Offset for new run directories
-OFFSET=998
+OFFSET=1000
 
 # Events per split
 EVENTS_PER_SPLIT=64
@@ -34,7 +34,7 @@ PYTHON_SCRIPT="${SCRIPT_DIR}/batch_split_runs.py"
 # ==============================================================================
 
 # Total runs and runs per task for automatic calculation
-TOTAL_RUNS=998
+TOTAL_RUNS=1000
 RUNS_PER_TASK=250
 
 export SLURM_CPU_BIND="cores"

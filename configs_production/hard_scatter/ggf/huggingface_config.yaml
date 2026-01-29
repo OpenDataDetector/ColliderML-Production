@@ -1,0 +1,83 @@
+# Configuration for uploading ColliderML datasets to HuggingFace Hub
+# Usage: python scripts/dataset/upload_to_huggingface.py configs_production/hard_scatter/ttbar/huggingface_config.yaml
+
+# Dataset identification
+campaign: "hard_scatter"
+dataset: "ggf"
+version: "v1"
+pileup: 0
+year: 2025
+date: "October 2025"
+
+# Data location configuration
+data:
+  # Local base directory containing the parquet files
+  base_dir: "/global/cfs/cdirs/m4958/data/ColliderML/public/hard_scatter/ggf/v1/parquet"
+
+  # Public URL base for accessing files via NERSC portal
+  # Note: This should match the public web-accessible path
+  public_url_base: "https://portal.nersc.gov/cfs/m4958/ColliderML/hard_scatter/ggf/v1/parquet"
+
+# Objects to include in the dataset (subdirectories to look for)
+# Each object type will become a separate configuration in HuggingFace
+objects:
+  - particles      # Truth-level particles (in truth/particles/)
+  - tracker_hits   # Tracker detector hits (in reco/tracker_hits/)
+  - calo_hits      # Calorimeter hits (in reco/calo_hits/)
+  - tracks         # Reconstructed tracks (in reco/tracks/)
+
+# HuggingFace Hub configuration
+huggingface:
+  # HuggingFace repository ID (format: organization/dataset-name)
+  repo_id: "OpenDataDetector/ColliderML_higgs_pu0"
+
+  # Dataset display name
+  pretty_name: "ColliderML Higgs Boson Production from Gluon-Gluon Fusion (No Pileup)"
+
+  # Short description of the physics process
+  process_description: "Higgs boson production from gluon-gluon fusion"
+
+  # Long description for the header
+  process_description_long: "Higgs boson production from gluon-gluon fusion with no pileup (single interaction per event)"
+
+  # License
+  license: "cc-by-4.0"
+
+  # Dataset tags for discoverability
+  tags:
+    - physics
+    - high-energy-physics
+    - particle-physics
+    - tracking
+    - calorimetry
+    - machine-learning
+    - simulation
+
+  # Approximate size category for HuggingFace
+  # Options: n<1K, 1K<n<10K, 10K<n<100K, 100K<n<1M, etc.
+  size_category: "10K<n<100K"
+
+  # Contact information
+  contact: "daniel.thomas.murnane@cern.ch"
+
+# Optional: Additional metadata for README generation
+metadata:
+  # Detector information
+  detector: "Open Data Detector (ODD)"
+  simulation_framework: "DD4hep"
+
+  # Physics information
+  collision_energy: "14 TeV" 
+  collision_type: "pp"  # proton-proton
+
+  # Data generation information
+  event_generator: "MadGraph"
+  showering_tool: "Pythia8"
+  detector_simulation: "Geant4 via DD4hep"
+  track_reconstruction: "ACTS"
+
+  # Additional notes
+  notes: |
+    This dataset contains simulated Higgs boson events with no pileup,
+    useful for developing and testing machine learning algorithms
+    for particle tracking and physics analysis.

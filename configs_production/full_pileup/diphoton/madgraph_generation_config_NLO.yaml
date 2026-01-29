@@ -1,0 +1,66 @@
+#========================================================================
+# YAML Configuration for MadGraph Event Generation (NLO ttbar)
+#========================================================================
+# 
+# This configuration is for the second step of the two-step MadGraph workflow:
+# 1. madgraph_init: Generate and compile the process 
+# 2. madgraph_generation: Parallel event generation using the compiled process (this config)
+#
+# This stage performs parallel event generation using the pre-compiled process
+# directory created by madgraph_init. It follows the same pattern as pythia_generation.
+
+# --- Dataset & Version ---
+campaign: "full_pileup_pilot"
+dataset: "diphoton"
+version: "v1"
+stage: "madgraph_generation"
+
+# --- Job Configuration ---
+job_config:
+  # Number of nodes will be calculated as n_runs / runs_per_node
+  n_runs: 21        # Number of runs (where a run produces N events)
+  runs_per_node: 1  # Number of runs per node (adjust based on memory/time constraints)
+  time_limit: "04:00:00"  # Time limit per job - MadGraph NLO generation is slower than Pythia
+  qos: "regular"
+  depends_on: 
+  execution_mode: "multi_node_slurm"  # Use distributed mode for parallel generation
+  # execution_mode: "interactive"
+
+validation_config:
+
+# --- Event Generation Parameters ---
+# These follow the exact same pattern as pythia_gen.py and ddsim_run.py
+events: 30000  # Number of events per run, total events = n_runs * events
+seed: 42     # Base seed - will be modified per run using run_id
+
+# --- Essential Paths & Environment ---
+# These use variables from env_setup.yaml config_defaults
+mg_base_path: "{madgraph.mg_base_path}"
+generation_scratch_dir: "{madgraph.generation_scratch_dir}" 
+
+# --- Card Customizations (Optional Override) ---
+card_customizations:
+  run_card:
+    "ptj": 10.0      # Minimum jet pT
+    "req_acc": 0.01  # Reduce from 0.001 to 0.01 to speed up generation
+
+
+  # For NLO processes (born), customize shower_card.dat
+  shower_card:
+    "Qcut": 20.0       # MUST match run_card value for FxFx
+    "time_shower_me_corrections": "F"
+
+  # For loop-induced processes (noborn), customize pythia8_card.dat  
+  pythia8_card:
+    # Most settings come from madgraph_init, but you can override run-specific ones
+
+# --- HepMC Splitting Configuration (Optional) ---
+# Configure splitting with keys expected by the generation script
+splitting_config:
+  enable: true
+  events_per_file: 64
+  max_files_per_mg_run: 100
+  output_filename: "events.hepmc"
+
+# --- Logging ---
+log_level: "INFO"

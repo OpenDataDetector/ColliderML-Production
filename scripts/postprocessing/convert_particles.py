@@ -7,6 +7,7 @@ structured HDF5 or Parquet files with particle properties and hit count statisti
 """
 
 import argparse
+import gc
 import yaml
 from pathlib import Path
 from typing import List
@@ -24,6 +25,7 @@ from utils.path_utils import get_run_paths, make_dir
 from utils.driver import iterate_and_process_chunks, local_events_for_run
 from utils.track_utils import load_root_file
 from utils.parquet_utils import build_parquet_from_flat_df
+from utils.parquet_schemas import PARTICLES_PARQUET_TYPES
 
 sys.path.append("/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/OtherLibraries/pyedm4hep")
 from pyedm4hep import EDM4hepEvent, EDM4hepEventBatch
@@ -63,9 +65,9 @@ def process_event_for_particles(
             particles_df = event.get_particles_df()
             logger.debug(f"Particles event load local={local_event_num} time={time.time() - _t_ev_load:.3f}s")
         
-        # Reset index and add particle_id
+        # Reset index and add particle_id as an unsigned identifier
         particles_df.reset_index(drop=True, inplace=True)
-        particles_df["particle_id"] = particles_df.index
+        particles_df["particle_id"] = particles_df.index.astype("uint32")
         
         # Normalize column names if needed
         if "pdg_id" not in particles_df.columns and "PDG" in particles_df.columns:
@@ -77,8 +79,8 @@ def process_event_for_particles(
             if "event_id" not in digi_particles_df.columns and "event_nr" in digi_particles_df.columns:
                 digi_particles_df = digi_particles_df.rename(columns={"event_nr": "event_id"})
 
-            # Select this local event's digi particles
-            local_digi = digi_particles_df[digi_particles_df.get("event_id", -1) == local_event_num].copy()
+            # Select this local event's digi particles (boolean indexing creates view)
+            local_digi = digi_particles_df[digi_particles_df.get("event_id", -1) == local_event_num]
 
             # Ensure required merge columns exist
             merge_cols = ["vx", "vy", "vz", "px", "py", "pz"]
@@ -88,7 +90,8 @@ def process_event_for_particles(
                     particles_df[col] = particles_df[col].astype("float32")
                     local_digi[col] = local_digi[col].astype("float32")
 
-                right_cols = merge_cols + [c for c in ["vertex_primary"] if c in local_digi.columns]
+                extra_cols = ["vertex_primary", "perigee_d0", "perigee_z0"]
+                right_cols = merge_cols + [c for c in extra_cols if c in local_digi.columns]
                 if right_cols:
                     _t_merge = time.time()
                     particles_df = pd.merge(
@@ -99,25 +102,32 @@ def process_event_for_particles(
                     )
                     # Drop duplicates
                     particles_df = particles_df.drop_duplicates(subset="particle_id")
+
+                    # Cast perigee_d0 and perigee_z0 to float32
+                    particles_df["perigee_d0"] = particles_df["perigee_d0"].astype("float32")
+                    particles_df["perigee_z0"] = particles_df["perigee_z0"].astype("float32")
+
                     logger.debug(f"Merged vertex_primary for local={local_event_num} time={time.time() - _t_merge:.3f}s")
 
         # Assign parent_id (first parent) when link info is available
         if preloaded_parents_df is not None and not preloaded_parents_df.empty:
             # Ensure we have the link-range columns
             if {"parents_begin", "parents_end"}.issubset(particles_df.columns):
-                parent_id_series = pd.Series([np.nan] * len(particles_df), dtype="float64")
+                parent_id_series = pd.Series([-1] * len(particles_df), dtype="int64", index=particles_df.index)
                 # Rows with at least one parent
                 has_parent = particles_df["parents_end"].values > particles_df["parents_begin"].values
                 if has_parent.any():
                     begin_idx = particles_df.loc[has_parent, "parents_begin"].astype(int).values
-                    try:
-                        # parents df is per-event; iloc indices refer to per-event flattened list
-                        parent_ids = preloaded_parents_df.iloc[begin_idx]["particle_id"].values
-                        parent_id_series.loc[has_parent] = parent_ids
-                    except Exception:
-                        pass
+                    # parents df is per-event; iloc indices refer to per-event flattened list
+                    parent_ids = preloaded_parents_df.iloc[begin_idx]["particle_id"].values
+                    parent_id_series.loc[has_parent] = parent_ids
                 particles_df = particles_df.copy()
                 particles_df["parent_id"] = parent_id_series
+
+        # Derive primary flag from created_in_simulation when available
+        if "created_in_simulation" in particles_df.columns:
+            # Generator primaries are those not created in simulation
+            particles_df["primary"] = ~particles_df["created_in_simulation"].astype(bool)
 
         # Start particle cut mask as all True
         particle_cut_mask = np.ones(len(particles_df), dtype=bool)
@@ -125,14 +135,14 @@ def process_event_for_particles(
         # Apply configurable minimum energy filter if requested
         if min_particle_energy is not None and "energy" in particles_df.columns:
             try:
-                particle_cut_mask = particle_cut_mask & (particles_df["energy"] >= float(min_particle_energy))
+                particle_cut_mask = particle_cut_mask | (particles_df["energy"] >= float(min_particle_energy))
             except Exception:
                 pass
 
         # Apply configurable minimum tracker hits filter if available
         if min_tracker_hits is not None and "num_tracker_hits" in particles_df.columns:
             try:
-                particle_cut_mask = particle_cut_mask & (particles_df["num_tracker_hits"] >= int(min_tracker_hits))
+                particle_cut_mask = particle_cut_mask | (particles_df["num_tracker_hits"] >= int(min_tracker_hits))
                 logger.debug(f"Event {event_id}: {particle_cut_mask.sum()} particles after min_tracker_hits filter ")
             except Exception:
                 pass
@@ -140,13 +150,14 @@ def process_event_for_particles(
         # Apply configurable minimum calo hits filter if available
         if min_calo_hits is not None and "num_calo_hits" in particles_df.columns:
             try:
-                particle_cut_mask = particle_cut_mask & (particles_df["num_calo_hits"] >= int(min_calo_hits))
+                particle_cut_mask = particle_cut_mask | (particles_df["num_calo_hits"] >= int(min_calo_hits))
                 logger.debug(f"Event {event_id}: {particle_cut_mask.sum()} particles after min_calo_hits filter ")
             except Exception:
                 pass
 
         # Also ensure all generator particles are included
-        particle_cut_mask = particle_cut_mask | (particles_df["created_in_simulation"] == False)
+        if "created_in_simulation" in particles_df.columns:
+            particle_cut_mask = particle_cut_mask | (particles_df["created_in_simulation"] == False)
         
         # Apply particle cut mask
         logger.debug(f"Event {event_id}: {particle_cut_mask.sum()} particles after particle cut mask")
@@ -155,17 +166,24 @@ def process_event_for_particles(
         # Select relevant particle columns (include vertex_primary/parent_id if present)
         desired_columns = [
             "particle_id",
-            "pdg_id", 
+            "pdg_id",
             "mass",
             "energy",
             "charge",
-            "vx", "vy", "vz",
+            "vx",
+            "vy",
+            "vz",
             "time",
-            "px", "py", "pz",
+            "px",
+            "py",
+            "pz",
             "num_tracker_hits",
             "num_calo_hits",
+            "primary",
             "vertex_primary",
             "parent_id",
+            "perigee_d0",
+            "perigee_z0",
         ]
         particle_columns = [c for c in desired_columns if c in particles_df.columns]
         
@@ -247,8 +265,13 @@ def build_parquet_particles(df: pd.DataFrame, output_file: str) -> None:
         logger.warning(f"Skipping empty DataFrame for Parquet particles: {output_file}")
         return
     
-    # Use shared utility to group by event and write
-    build_parquet_from_flat_df(df, output_file, compression='snappy')
+    # Use shared utility to group by event and write with canonical schema
+    build_parquet_from_flat_df(
+        df,
+        output_file,
+        compression='snappy',
+        schema_overrides=PARTICLES_PARQUET_TYPES,
+    )
 
 
 def write_particles_with_selection(
@@ -471,6 +494,11 @@ def process_chunk_for_particles(
             logging.info(
                 f"Run {abs_run}: particles rows={rows_run} events={ev_count}"
             )
+            
+            # Delete batch object and force garbage collection to free memory
+            del batch
+            gc.collect()
+            
         except Exception as e:
             logging.error(f"Error processing run {abs_run}: {e}")
 

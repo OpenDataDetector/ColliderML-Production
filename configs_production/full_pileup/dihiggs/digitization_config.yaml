@@ -1,0 +1,40 @@
+#========================================================================
+# YAML Configuration for Digitization of ttbar Events
+#========================================================================
+
+# --- Dataset & Version ---
+campaign: "full_pileup"
+dataset: "dihiggs"
+version: "v1"
+stage: "digitization"  # One of: generation, merge_smear, simulation, digitization
+
+# --- Job Configuration ---
+job_config:
+  n_runs: 2100  # Number of jobs to submit
+  runs_per_node: 8  # Number of runs per node
+  time_limit: "01:00:00"  # Time limit per job
+  qos: "regular"
+  execution_mode: "multi_node_slurm"
+  # execution_mode: "interactive"
+  depends_on:
+
+# --- Validation Configuration ---
+validation_config:
+
+# --- Stage-specific Configurations ---
+events: 64  # Number of events per run, total number of events will be n_runs * events
+threads: 16
+digi: True
+reco: True
+num_seeds_per_spm: 40
+
+# --- Writing Configuration ---
+output_particles_root: True
+output_measurements_root: True
+
+ambi_root_output: True
+ambi_finding_performance: True
+ambi_fitting_performance: True
+
+# --- Digitization config ---
+digi_config: /global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml_dev/scripts/simulation/odd-full-geo-digi-config.json

@@ -20,12 +20,13 @@ from acts.examples.reconstruction import (
     addAmbiguityResolution,
     addAmbiguityResolutionML,
     addScoreBasedAmbiguityResolution,
+    addTrackWriters,
     VertexFinder,
     TrackSelectorConfig,
     CkfConfig,
     AmbiguityResolutionConfig,
     AmbiguityResolutionMLConfig,
-    ScoreBasedAmbiguityResolutionConfig
+    ScoreBasedAmbiguityResolutionConfig,
 )
 import traceback
 from utils.app_logging import setup_logging, TimingRecorder
@@ -38,7 +39,9 @@ from acts.examples.edm4hep import EDM4hepSimInputConverter
 u = acts.UnitConstants
 
 # LOG_LEVEL = acts.logging.DEBUG
-LOG_LEVEL = acts.logging.INFO
+# LOG_LEVEL = acts.logging.INFO
+# LOG_LEVEL = acts.logging.ERROR
+LOG_LEVEL = acts.logging.FATAL
 
 def parse_args():
     """Parse command line arguments"""
@@ -75,15 +78,9 @@ def parse_args():
     )
     parser.add_argument(
         "--output-root",
-        help="Write ROOT output files",
+        help="Write ROOT output files (default: True)",
         action="store_true",
-        default=None
-    )
-    parser.add_argument(
-        "--output-csv",
-        help="Write CSV output files",
-        action="store_true",
-        default=None
+        default=True
     )
     parser.add_argument(
         "--digi",
@@ -129,8 +126,20 @@ def setup_acts_reconstruction(input_path, output_dir, config, rnd, logger=None):
     # Get detector and field
     geoDir = getOpenDataDetectorDirectory()
     
-    # Set performance output directory based on flag
-    perf_output = output_dir if getattr(config, 'performance_metrics', False) else None
+    # Granular control of ROOT output and performance writers
+    output_particles_root = getattr(config, "output_particles_root", False)
+    output_simhits_root = getattr(config, "output_simhits_root", False)
+    output_measurements_root = getattr(config, "output_measurements_root", False)
+    output_seeds_root = getattr(config, "output_seeds_root", False)
+    output_spacepoints_root = getattr(config, "output_spacepoints_root", False)
+
+    ckf_root_output = getattr(config, "ckf_root_output", False)
+    ambi_root_output = getattr(config, "ambi_root_output", False)
+
+    ckf_finding_performance = getattr(config, "ckf_finding_performance", False)
+    ckf_fitting_performance = getattr(config, "ckf_fitting_performance", False)
+    ambi_finding_performance = getattr(config, "ambi_finding_performance", False)
+    ambi_fitting_performance = getattr(config, "ambi_fitting_performance", False)
     
     # Load material map
     material_config = getattr(config, 'material_config', None)
@@ -216,12 +225,15 @@ def setup_acts_reconstruction(input_path, output_dir, config, rnd, logger=None):
     digi_enabled = getattr(config, 'digi', True)  # Default True
     if digi_enabled:
         logger.info("Adding digitization")
+        # ROOT output for digitized measurements (purely controlled by config flag)
+        measurements_root_dir = output_dir if output_measurements_root else None
+
         addDigitization(
             s,
             trackingGeometry,
             field,
             digiConfigFile=oddDigiConfig,
-            outputDirRoot=perf_output if getattr(config, 'output_root', True) else None,
+            outputDirRoot=measurements_root_dir,
             outputDirCsv=None,
             rnd=rnd,
             logLevel=LOG_LEVEL,
@@ -290,21 +302,25 @@ def setup_acts_reconstruction(input_path, output_dir, config, rnd, logger=None):
             )
         )
         
-        # Write spacepoints to ROOT
-        s.addWriter(
-            acts.examples.RootSpacepointWriter(
-                level=LOG_LEVEL,
-                inputSpacepoints="spacepoints",
-                inputMeasurementParticlesMap="measurement_particles_map",
-                filePath=str(output_dir / "spacepoints.root"),
+        # Write spacepoints to ROOT if requested
+        if output_spacepoints_root:
+            s.addWriter(
+                acts.examples.RootSpacepointWriter(
+                    level=LOG_LEVEL,
+                    inputSpacepoints="spacepoints",
+                    inputMeasurementParticlesMap="measurement_particles_map",
+                    filePath=str(output_dir / "spacepoints.root"),
+                )
             )
-        )
     
     # Add reconstruction components if enabled
-    reco_enabled = getattr(config, 'reco', False)  # Default False
+    reco_enabled = getattr(config, "reco", False)  # Default False
     if reco_enabled:
         logger.info("Adding reconstruction chain")
         # Add seeding
+        # ROOT output for seeding performance (purely controlled by config flag)
+        seeds_root_dir = output_dir if output_seeds_root else None
+
         addSeeding(
             s,
             trackingGeometry,
@@ -336,10 +352,10 @@ def setup_acts_reconstruction(input_path, output_dir, config, rnd, logger=None):
             initialSigmaPtRel = 0.1,
             initialVarInflation = [1e0, 1e0, 1e0, 1e0, 1e0, 1e0],
             geoSelectionConfigFile=oddSeedingSel,
-            outputDirRoot=perf_output if getattr(config, 'output_root', True) else None
+            outputDirRoot=seeds_root_dir,
         )
-        
-        # Add CKF tracking
+
+        # Add CKF tracking (no ROOT writers here; handled explicitly below)
         addCKFTracks(
             s,
             trackingGeometry,
@@ -358,17 +374,33 @@ def setup_acts_reconstruction(input_path, output_dir, config, rnd, logger=None):
                 stayOnSeed=True,
             ),
             twoWay=True,
-            outputDirRoot=perf_output if getattr(config, 'output_root', True) else None,
-            outputDirCsv=perf_output if getattr(config, 'output_csv', False) else None,
-            writeCovMat=getattr(config, 'performance_metrics', False),
-            writeTrackStates=getattr(config, 'performance_metrics', False),
-            writeTrackSummary=getattr(config, 'performance_metrics', False),
-            writePerformance=getattr(config, 'performance_metrics', False),
+            # Disable internal ROOT/CSV writers; we add them explicitly below
+            outputDirRoot=None,
+            writeCovMat=False,
+            writeTrackStates=False,
+            writeTrackSummary=False,
+            writePerformance=False,
         )
+
+        # Optional ROOT output & performance writers for CKF stage
+        if ckf_root_output or ckf_finding_performance or ckf_fitting_performance:
+            addTrackWriters(
+                s,
+                name="ckf",
+                tracks="tracks",  # CKF alias
+                outputDirCsv=None,
+                outputDirRoot=output_dir,
+                writeSummary=ckf_root_output,
+                writeStates=False,
+                writeFitterPerformance=ckf_fitting_performance,
+                writeFinderPerformance=ckf_finding_performance,
+                logLevel=LOG_LEVEL,
+                writeCovMat=getattr(config, "performance_metrics", False),
+            )
         
         # Add ambiguity resolution
-        ambi_solver = getattr(config, 'ambi_solver', 'greedy')  # Default greedy
-        ambi_config = getattr(config, 'ambi_config', None)
+        ambi_solver = getattr(config, "ambi_solver", "greedy")  # Default greedy
+        ambi_config = getattr(config, "ambi_config", None)
         
         if ambi_solver == "ML":
             addAmbiguityResolutionML(
@@ -378,10 +410,15 @@ def setup_acts_reconstruction(input_path, output_dir, config, rnd, logger=None):
                     maximumIterations=1000000,
                     nMeasurementsMin=7,
                 ),
-                outputDirRoot=perf_output if getattr(config, 'output_root', True) else None,
-                outputDirCsv=perf_output if getattr(config, 'output_csv', False) else None,
+                # Disable internal ROOT writers; handled explicitly below
+                outputDirRoot=None,
+                writeTrackSummary=False,
+                writeTrackStates=False,
+                writePerformance=False,
+                writeCovMat=False,
                 onnxModelFile=str(ambi_config),
             )
+            ambi_name = "ambiML"
         elif ambi_solver == "scoring":
             addScoreBasedAmbiguityResolution(
                 s,
@@ -390,10 +427,15 @@ def setup_acts_reconstruction(input_path, output_dir, config, rnd, logger=None):
                     maxShared=2,
                     maxSharedTracksPerMeasurement=2
                 ),
-                outputDirRoot=perf_output if getattr(config, 'output_root', True) else None,
-                outputDirCsv=perf_output if getattr(config, 'output_csv', False) else None,
+                # Disable internal ROOT writers; handled explicitly below
+                outputDirRoot=None,
+                writeTrackSummary=False,
+                writeTrackStates=False,
+                writePerformance=False,
+                writeCovMat=False,
                 ambiVolumeFile=ambi_config,
             )
+            ambi_name = "ambi_scorebased"
         else:
             addAmbiguityResolution(
                 s,
@@ -402,12 +444,29 @@ def setup_acts_reconstruction(input_path, output_dir, config, rnd, logger=None):
                     maximumIterations=1000000,
                     nMeasurementsMin=6,
                 ),
-                outputDirRoot=perf_output if getattr(config, 'output_root', True) else None,
-                outputDirCsv=perf_output if getattr(config, 'output_csv', False) else None,
-                writeCovMat=getattr(config, 'performance_metrics', False),
-                writeTrackStates=getattr(config, 'performance_metrics', False),
-                writeTrackSummary=getattr(config, 'performance_metrics', False),
-                writePerformance=getattr(config, 'performance_metrics', False),
+                # Disable internal ROOT writers; handled explicitly below
+                outputDirRoot=None,
+                writeTrackSummary=False,
+                writeTrackStates=False,
+                writePerformance=False,
+                writeCovMat=False,
+            )
+            ambi_name = "ambi"
+
+        # Optional ROOT output & performance writers for ambiguity-resolved tracks
+        if ambi_root_output or ambi_finding_performance or ambi_fitting_performance:
+            addTrackWriters(
+                s,
+                name=ambi_name,
+                tracks="tracks",  # ambiguity-resolved alias
+                outputDirCsv=None,
+                outputDirRoot=output_dir,
+                writeSummary=ambi_root_output,
+                writeStates=False,
+                writeFitterPerformance=ambi_fitting_performance,
+                writeFinderPerformance=ambi_finding_performance,
+                logLevel=LOG_LEVEL,
+                writeCovMat=getattr(config, "performance_metrics", False),
             )
         
         # Add vertex fitting
@@ -417,35 +476,48 @@ def setup_acts_reconstruction(input_path, output_dir, config, rnd, logger=None):
                 s,
                 field,
                 vertexFinder=VertexFinder.AMVF,
-                outputDirRoot=perf_output if getattr(config, 'output_root', True) else None,
-                outputDirCsv=perf_output if getattr(config, 'output_csv', False) else None,
+                outputDirRoot=output_dir if getattr(config, 'output_root', True) else None,
             )
     
-    # Add ROOT writers if enabled and performance metrics are on
-    output_root = getattr(config, 'output_root', True)
-    performance_metrics = getattr(config, 'performance_metrics', False)
-    if output_root and performance_metrics:
-        add_root_writers(s, output_dir)
+    # Add ROOT writers for particles/simhits if requested
+    if output_particles_root or output_simhits_root:
+        add_root_writers(s, output_dir, field, config)
     
     return s
 
-def add_root_writers(s, output_dir):
+def add_root_writers(s, output_dir, field, config=None):
     """Add ROOT output writers to the sequencer"""
-    # Write tracking hits
-    s.addWriter(acts.examples.RootSimHitWriter(
-        config=acts.examples.RootSimHitWriter.Config(
-            filePath=str(output_dir / "simhits.root"),
-            inputSimHits="simhits"
-        ),
-        level=LOG_LEVEL
-    ))
-    s.addWriter(acts.examples.RootParticleWriter(
-        config=acts.examples.RootParticleWriter.Config(
-            filePath=str(output_dir / "particles.root"),
-            inputParticles="particles"
-        ),
-        level=LOG_LEVEL
-    ))
+    # Control via config flags only
+    output_particles_root = getattr(config, "output_particles_root", False) if config else False
+    output_simhits_root = getattr(config, "output_simhits_root", False) if config else False
+    write_helix_parameters = getattr(config, "write_helix_parameters", True) if config else True
+
+    # Write tracking hits (simhits) if requested
+    if output_simhits_root:
+        s.addWriter(
+            acts.examples.RootSimHitWriter(
+                config=acts.examples.RootSimHitWriter.Config(
+                    filePath=str(output_dir / "simhits.root"),
+                    inputSimHits="simhits",
+                ),
+                level=LOG_LEVEL,
+            )
+        )
+
+    # Write simulated particles if requested
+    if output_particles_root:
+        s.addWriter(
+            acts.examples.RootParticleWriter(
+                config=acts.examples.RootParticleWriter.Config(
+                    filePath=str(output_dir / "particles.root"),
+                    inputParticles="particles",
+                    referencePoint=acts.Vector3(0.0, 0.0, 0.0),
+                    bField=field,
+                    writeHelixParameters=write_helix_parameters,
+                ),
+                level=LOG_LEVEL,
+            )
+        )
 
 def main():
     logger = setup_logging()

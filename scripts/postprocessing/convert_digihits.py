@@ -8,6 +8,7 @@ in the measurements file to match to EDM4hep hit x/y/z.
 """
 
 import argparse
+import gc
 import yaml
 from pathlib import Path
 from typing import List
@@ -26,6 +27,8 @@ from utils.path_utils import get_run_paths, make_dir
 from utils.driver import iterate_and_process_chunks, local_events_for_run
 from utils.track_utils import load_root_file
 from utils.parquet_utils import build_parquet_from_flat_df
+from utils.parquet_schemas import DIGIHITS_PARQUET_TYPES
+from utils.detector_enums import encode_tracker_detector
 
 sys.path.append("/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/OtherLibraries/pyedm4hep")
 from pyedm4hep import EDM4hepEvent, EDM4hepEventBatch
@@ -36,22 +39,19 @@ logger = logging.getLogger(__name__)
 
 def _convert_detector_to_int(df: pd.DataFrame) -> pd.DataFrame:
     """
-    Convert detector column from strings to integers to avoid HDF5 object dtype issues.
+    Convert tracker detector column from strings + geometry into a stable uint8 enum.
     """
-    if 'detector' not in df.columns:
+    if "detector" not in df.columns:
         return df
-    
-    detector_mapping = {
-        'PixelBarrelReadout': 0,
-        'PixelEndcapReadout': 1, 
-        'ShortStripBarrelReadout': 2,
-        'ShortStripEndcapReadout': 3,
-        'LongStripBarrelReadout': 4,
-        'LongStripEndcapReadout': 5
-    }
-    
     df = df.copy()
-    df['detector'] = df['detector'].map(detector_mapping)
+    # Prefer true_z (SimHit) for endcap sign; fall back to z if needed.
+    if "true_z" in df.columns:
+        z = df["true_z"]
+    elif "z" in df.columns:
+        z = df["z"]
+    else:
+        z = None
+    df["detector"] = encode_tracker_detector(df["detector"], z)
     return df
 
 
@@ -70,46 +70,53 @@ def _merge_measurements_with_tracker(meas_df: pd.DataFrame, tracker_df: pd.DataF
     If required coordinate columns are missing, return the measurements unchanged.
     """
     # Guard on required columns
-    coord_meas = [c for c in ["true_x", "true_y", "true_z"] if c in meas_df.columns]
-    coord_trk = [c for c in ["x", "y", "z"] if c in tracker_df.columns]
-    if len(coord_meas) != 3 or len(coord_trk) != 3:
+    if not all(c in meas_df.columns for c in ["true_x", "true_y", "true_z"]):
+        return meas_df
+    if not all(c in tracker_df.columns for c in ["x", "y", "z"]):
         return meas_df
 
-    # Prepare copies and cast to float32 for stable equality
-    meas_df = meas_df.copy()
-    tracker_df = tracker_df.copy()
-    meas_df.loc[:, ["true_x", "true_y", "true_z"]] = (
-        meas_df[["true_x", "true_y", "true_z"]].astype(np.float32)
-    )
-    tracker_df.loc[:, ["x", "y", "z"]] = (
-        tracker_df[["x", "y", "z"]].astype(np.float32)
-    )
-
-    # Preserve original measurement order explicitly
-    meas_df["_orig_pos"] = np.arange(len(meas_df), dtype=np.int64)
-
-    # Select minimal simulation hits columns to append (intersect with available)
+    # Select columns to keep
     if not include_simhits_cols:
         include_simhits_cols = [
-            "x", "y", "z", "time", "px", "py", "pz", "particle_id", "cellID", "detector", "EDep", "pathLength"
+            "x",
+            "y",
+            "z",
+            "time",
+            "px",
+            "py",
+            "pz",
+            "particle_id",
+            "detector",
+            "EDep",
+            "pathLength",
         ]
-    rhs_cols = [c for c in include_simhits_cols if c in tracker_df.columns]
-    rhs = tracker_df[rhs_cols].copy() if rhs_cols else tracker_df.copy()
-
-    # Select minimal measurement columns to bring through (intersect with available)
     if not include_meas_cols:
         include_meas_cols = [
             "true_x", "true_y", "true_z", "rec_gx", "rec_gy", "rec_gz",
             "volume_id", "layer_id", "surface_id"
         ]
-    lhs_cols = [c for c in include_meas_cols if c in meas_df.columns] + ["_orig_pos"]
-    lhs = meas_df[lhs_cols].copy() if lhs_cols else meas_df[["_orig_pos"]].copy()
-
-    # Create per-key sequence numbers to avoid cartesian product on duplicates
+    
+    rhs_cols = [c for c in include_simhits_cols if c in tracker_df.columns]
+    lhs_cols = [c for c in include_meas_cols if c in meas_df.columns]
+    
+    # Copy selected columns
+    lhs = meas_df[lhs_cols].copy()
+    rhs = tracker_df[rhs_cols].copy()
+    
+    # Cast coordinate columns to float32 for merge
+    lhs['true_x'] = lhs['true_x'].astype(np.float32)
+    lhs['true_y'] = lhs['true_y'].astype(np.float32)
+    lhs['true_z'] = lhs['true_z'].astype(np.float32)
+    rhs['x'] = rhs['x'].astype(np.float32)
+    rhs['y'] = rhs['y'].astype(np.float32)
+    rhs['z'] = rhs['z'].astype(np.float32)
+    
+    # Add helper columns for merge and order preservation
+    lhs['_orig_pos'] = np.arange(len(lhs), dtype=np.int64)
     lhs["_seq"] = lhs.groupby(["true_x", "true_y", "true_z"], dropna=False).cumcount()
     rhs["_seq"] = rhs.groupby(["x", "y", "z"], dropna=False).cumcount()
 
-    # Perform LEFT merge on keys + sequence number (stable 1:1 pairing)
+    # Perform LEFT merge on coordinates + sequence number
     merged = pd.merge(
         lhs,
         rhs,
@@ -117,33 +124,51 @@ def _merge_measurements_with_tracker(meas_df: pd.DataFrame, tracker_df: pd.DataF
         right_on=["x", "y", "z", "_seq"],
         how="left",
         sort=False,
-        copy=False,
     )
 
-    # Drop helper columns and the measurement-side true_* prior to renaming to avoid duplicates
+    # Drop helper columns and measurement-side coordinates before renaming
     merged = merged.drop(columns=["_seq", "true_x", "true_y", "true_z"], errors='ignore')
 
-    # Simhits x,y,z become true_x, true_y, true_z
-    # Measurements rec_x, rec_y, rec_z become x, y, z
-    merged = merged.rename(columns={
-        "x": "true_x",
-        "y": "true_y",
-        "z": "true_z",
-        "rec_gx": "x",
-        "rec_gy": "y",
-        "rec_gz": "z",
-        "cellID": "cell_id",
-        "EDep": "e_dep",
-        "pathLength": "path_length",
-    }, errors='ignore')
+    # Rename: simhits x,y,z -> true_x,true_y,true_z; measurements rec_* -> x,y,z
+    merged = merged.rename(
+        columns={
+            "x": "true_x",
+            "y": "true_y",
+            "z": "true_z",
+            "rec_gx": "x",
+            "rec_gy": "y",
+            "rec_gz": "z",
+            "EDep": "e_dep",
+            "pathLength": "path_length",
+        },
+        errors="ignore",
+    )
+
+    # Downcast geometry identifiers to minimal unsigned types based on Acts limits.
+    # This applies both to HDF5 and Parquet outputs.
+    geometry_dtypes: dict[str, str] = {
+        "volume_id": "uint8",
+        "layer_id": "uint16",
+        "surface_id": "uint32",
+    }
+    for col, target_dtype in geometry_dtypes.items():
+        if col in merged.columns:
+            try:
+                merged[col] = merged[col].astype(target_dtype)
+            except Exception:
+                # If casting fails (unexpected values), keep original dtype and log at debug level.
+                logging.debug(
+                    "Failed to cast %s to %s; keeping original dtype %s",
+                    col,
+                    target_dtype,
+                    merged[col].dtype,
+                )
 
     # Convert detector strings to integers
     merged = _convert_detector_to_int(merged)
 
-    # Restore original measurement order explicitly
+    # Restore original order and drop position tracker
     merged = merged.sort_values("_orig_pos", kind="stable").drop(columns=["_orig_pos"], errors='ignore')
-
-    logger.debug(f"Merged columns: {merged.columns}")
 
     return merged
 
@@ -184,8 +209,13 @@ def build_parquet_digihits(df: pd.DataFrame, output_file: str) -> None:
         logger.warning(f"Skipping empty DataFrame for Parquet digihits: {output_file}")
         return
     
-    # Use shared utility to group by event and write
-    build_parquet_from_flat_df(df, output_file, compression='snappy')
+    # Use shared utility to group by event and write with canonical schema
+    build_parquet_from_flat_df(
+        df,
+        output_file,
+        compression='snappy',
+        schema_overrides=DIGIHITS_PARQUET_TYPES,
+    )
 
 
 def write_digihits_with_selection(
@@ -205,10 +235,15 @@ def write_digihits_with_selection(
     """
     if df.empty:
         return
+
+    # Drop cell_id from outputs; it is redundant once geometry identifiers are stored.
+    if "cell_id" in df.columns:
+        df = df.drop(columns=["cell_id"])
+
     if columns_keep:
         cols = [c for c in columns_keep if c in df.columns]
-        if 'event_id' not in cols and 'event_id' in df.columns:
-            cols = cols + ['event_id']
+        if "event_id" not in cols and "event_id" in df.columns:
+            cols = cols + ["event_id"]
         df = df[cols].copy()
     
     # Route to appropriate writer based on format
@@ -395,9 +430,9 @@ def process_chunk_for_digihits(
 
                 # Slice measurements for this local event from in-memory DataFrame
                 if "event_nr" in meas_df_all.columns:
-                    ev_meas = meas_df_all[meas_df_all.event_nr == local_event_num].copy()
+                    ev_meas = meas_df_all[meas_df_all.event_nr == local_event_num]
                 else:
-                    ev_meas = meas_df_all.copy()
+                    ev_meas = meas_df_all
 
                 ev_hits = hits_all[hits_all.event_id == local_event_num] if not hits_all.empty else None
                 ev_df = process_event_for_digihits(global_event_num, local_event_num, ev_meas, ev_hits)
@@ -409,6 +444,11 @@ def process_chunk_for_digihits(
             logging.info(
                 f"Run {abs_run}: tracker_hits rows={rows_run} events={len(evs)}"
             )
+            
+            # Delete batch object and force garbage collection to free memory
+            del batch
+            gc.collect()
+            
         except Exception as e:
             logging.error(f"Error processing run {abs_run}: {e}")
 

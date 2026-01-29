@@ -264,13 +264,9 @@ def make_decision(
     logger.info("=" * 80)
     logger.info("ERROR GUARDIAN DECISION ENGINE")
     logger.info("=" * 80)
-    logger.info(f"Validation status: {validation_result['status']}")
-    logger.info(f"Failure rate: {validation_result['failure_rate']:.1%}")
-    logger.info(f"Failed runs: {validation_result['failed_runs']}/{validation_result['total_runs']}")
-    logger.info(f"Retry count: {retry_count}/{max_retries}")
-    
     # Check for configuration errors
     if validation_result['status'] == 'CONFIGURATION_ERROR':
+        logger.error(f"Configuration error: {validation_result.get('error', 'Unknown error')}")
         return {
             "action": "FAIL",
             "reason": validation_result.get('error', 'Configuration error'),
@@ -280,6 +276,11 @@ def make_decision(
             "max_retries": max_retries,
             "actions_taken": []
         }
+
+    logger.info(f"Validation status: {validation_result['status']}")
+    logger.info(f"Failure rate: {validation_result['failure_rate']:.1%}")
+    logger.info(f"Failed runs: {validation_result['failed_runs']}/{validation_result['total_runs']}")
+    logger.info(f"Retry count: {retry_count}/{max_retries}")
     
     # Classify failure severity
     severity = classify_failure_severity(validation_result['failure_rate'], guardian_policy)

@@ -1,0 +1,12 @@
+{
+  "stage": "pythia_generation",
+  "status": "COMPLETE_FAILURE",
+  "total_runs": 0,
+  "successful_runs": 0,
+  "failed_runs": 0,
+  "failure_rate": 1.0,
+  "failed_run_ids": [],
+  "failure_reasons": {},
+  "error": "No run directories found",
+  "report_timestamp": "2026-01-20T14:37:46.793972+00:00"
+}

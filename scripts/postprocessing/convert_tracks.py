@@ -20,8 +20,9 @@ from utils.driver import iterate_and_process_chunks, local_events_for_run
 from utils.edm4hep_utils import pixel_readouts, strip_readouts
 
 from utils.track_utils import (
-    convert_hit_ids, load_track_summary,
-    write_tracks_with_selection, build_track_fitting_df_run,
+    load_root_file,
+    write_tracks_with_selection,
+    normalize_tracksummary_df,
 )
 from convert_digihits import process_event_for_digihits
 
@@ -56,43 +57,42 @@ def process_event_for_tracks(
     local_event_num: int,
     global_event_num: int,
     track_fitting_df_event: pd.DataFrame,
-    tracks_csv_pattern: str,
     *,
     digihits_run_df: pd.DataFrame,
 ) -> pd.DataFrame:
     """
-    Process a single event.
-    
-    Args:
-        run_dir: Path to run directory
-        local_event_num: Event number within the run
-        global_event_num: Global event number across all runs
-        tracksummary_arrays: Arrays from tracksummary ROOT file
-        tracks_csv_pattern: Pattern for tracks CSV filenames
-        simhits_df: DataFrame containing simhits data
-        edm4hep_hits_df: DataFrame containing edm4hep hits data
-        
-    Returns:
-        DataFrame containing track data for this event
+    Process a single event using tracksummary ROOT and digitized hits only.
     """
-    # Load tracks CSV
-    tracks_csv = pd.read_csv(run_dir / tracks_csv_pattern.format(local_event_num))
-    
+    if track_fitting_df_event is None or track_fitting_df_event.empty:
+        return pd.DataFrame()
+
     # Use prebuilt per-event slice of track fitting summary
-    track_fitting_df = track_fitting_df_event.rename(columns={"track_nr": "track_id"}) if 'track_nr' in track_fitting_df_event.columns else track_fitting_df_event.copy()
+    track_fitting_df = (
+        track_fitting_df_event.rename(columns={"track_nr": "track_id"})
+        if "track_nr" in track_fitting_df_event.columns
+        else track_fitting_df_event.copy()
+    )
 
-    # Compute majority particle_id using Measurements_ID indexing into per-event measurements
-    if 'Measurements_ID' not in tracks_csv.columns:
-        raise ValueError("Tracks CSV missing Measurements_ID column; cannot compute majority_particle_id")
+    if "track_id" not in track_fitting_df.columns:
+        raise ValueError("tracksummary slice is missing track_id/track_nr column")
 
+    if "measurementIDs" not in track_fitting_df.columns:
+        raise ValueError("tracksummary is missing measurementIDs column; cannot build hit_ids")
+
+    # Per-event digitized measurements/hits (global event id)
     ev_meas = digihits_run_df[digihits_run_df.event_id == global_event_num].reset_index(drop=True)
 
-    def majority_from_measurements_id(ids_str: str) -> int | float:
-        ids = convert_hit_ids(ids_str)
-        if ids is None or len(ids) == 0:
+    def to_hit_array(ids_list) -> np.ndarray:
+        if ids_list is None:
+            return np.array([], dtype=np.int32)
+        return np.asarray(ids_list, dtype=np.int32)
+
+    def majority_from_ids(ids_list) -> int | float:
+        ids = to_hit_array(ids_list)
+        if ids.size == 0:
             return np.nan
         try:
-            labels = ev_meas.loc[ids, 'particle_id']
+            labels = ev_meas.loc[ids, "particle_id"]
         except Exception:
             return np.nan
         if len(labels) == 0:
@@ -100,43 +100,57 @@ def process_event_for_tracks(
         mode_vals = labels.mode()
         return mode_vals.iat[0] if len(mode_vals) else np.nan
 
-    majority_particle_ids = tracks_csv.Measurements_ID.apply(majority_from_measurements_id)
-    
+    hit_ids_series = track_fitting_df["measurementIDs"].apply(to_hit_array)
+    majority_particle_ids = track_fitting_df["measurementIDs"].apply(majority_from_ids)
+
     # Combine data
     track_finding_data = {
         "event_id": global_event_num,
-        "track_id": tracks_csv.track_id.values,
-        "num_hits": tracks_csv.nMeasurements.values,
-        "num_outliers": tracks_csv.nOutliers.values,
-        "num_holes": tracks_csv.nHoles.values,
-        "num_shared_hits": tracks_csv.nSharedHits.values,
-        "chi2": tracks_csv.chi2.values,
-        "hit_ids": tracks_csv.Measurements_ID.apply(convert_hit_ids).values,
+        "track_id": track_fitting_df["track_id"].values,
+        "num_hits": hit_ids_series.apply(len).values,
+        "hit_ids": hit_ids_series.values,
         "majority_particle_id": majority_particle_ids.values,
     }
-    
+
+    # Carry over standard summary quantities when present
+    for col, out_name in [
+        ("nMeasurements", "num_measurements"),
+        ("nOutliers", "num_outliers"),
+        ("nHoles", "num_holes"),
+        ("nSharedHits", "num_shared_hits"),
+        ("chi2", "chi2"),
+        ("nMajorityHits", "nMajorityHits"),
+        ("trackClassification", "trackClassification"),
+    ]:
+        if col in track_fitting_df.columns:
+            track_finding_data[out_name] = track_fitting_df[col].values
+
     track_fitting_data = {
         "event_id": global_event_num,
-        "track_id": track_fitting_df.track_id.values if 'track_id' in track_fitting_df else [],
-        "d0": track_fitting_df.eLOC0_fit.values if 'eLOC0_fit' in track_fitting_df else [],
-        "z0": track_fitting_df.eLOC1_fit.values if 'eLOC1_fit' in track_fitting_df else [],
-        "phi": track_fitting_df.ePHI_fit.values if 'ePHI_fit' in track_fitting_df else [],
-        "theta": track_fitting_df.eTHETA_fit.values if 'eTHETA_fit' in track_fitting_df else [],
-        "qop": track_fitting_df.eQOP_fit.values if 'eQOP_fit' in track_fitting_df else [],
-        "time": track_fitting_df.eT_fit.values if 'eT_fit' in track_fitting_df else [],
-        "d0_truth": track_fitting_df.t_d0.values if 't_d0' in track_fitting_df else [],
-        "z0_truth": track_fitting_df.t_z0.values if 't_z0' in track_fitting_df else [],
-        "phi_truth": track_fitting_df.t_phi.values if 't_phi' in track_fitting_df else [],
-        "theta_truth": track_fitting_df.t_theta.values if 't_theta' in track_fitting_df else [],
-        "charge_truth": track_fitting_df.t_charge.values if 't_charge' in track_fitting_df else [],
-        "p_truth": track_fitting_df.t_p.values if 't_p' in track_fitting_df else [],
-        "pT_truth": track_fitting_df.t_pT.values if 't_pT' in track_fitting_df else [],
-        "time_truth": track_fitting_df.t_time.values if 't_time' in track_fitting_df else [],
+        "track_id": track_fitting_df.track_id.values,
+        "d0": track_fitting_df.eLOC0_fit.values if "eLOC0_fit" in track_fitting_df else [],
+        "z0": track_fitting_df.eLOC1_fit.values if "eLOC1_fit" in track_fitting_df else [],
+        "phi": track_fitting_df.ePHI_fit.values if "ePHI_fit" in track_fitting_df else [],
+        "theta": track_fitting_df.eTHETA_fit.values if "eTHETA_fit" in track_fitting_df else [],
+        "qop": track_fitting_df.eQOP_fit.values if "eQOP_fit" in track_fitting_df else [],
+        "time": track_fitting_df.eT_fit.values if "eT_fit" in track_fitting_df else [],
+        "d0_truth": track_fitting_df.t_d0.values if "t_d0" in track_fitting_df else [],
+        "z0_truth": track_fitting_df.t_z0.values if "t_z0" in track_fitting_df else [],
+        "phi_truth": track_fitting_df.t_phi.values if "t_phi" in track_fitting_df else [],
+        "theta_truth": track_fitting_df.t_theta.values if "t_theta" in track_fitting_df else [],
+        "charge_truth": track_fitting_df.t_charge.values if "t_charge" in track_fitting_df else [],
+        "p_truth": track_fitting_df.t_p.values if "t_p" in track_fitting_df else [],
+        "pT_truth": track_fitting_df.t_pT.values if "t_pT" in track_fitting_df else [],
+        "time_truth": track_fitting_df.t_time.values if "t_time" in track_fitting_df else [],
     }
-    
+
     full_track_df = pd.DataFrame(track_finding_data)
-    event_df = full_track_df.merge(pd.DataFrame(track_fitting_data), 
-                                 on=["event_id", "track_id"])
+    logging.info(f"Full track dataframe columns: {full_track_df.columns}")
+    event_df = full_track_df.merge(
+        pd.DataFrame(track_fitting_data),
+        on=["event_id", "track_id"],
+    )
+    logging.info(f"Event dataframe columns: {event_df.columns}")
     return event_df
 
 def build_hdf5_tracks(df: pd.DataFrame, output_file: str) -> None:
@@ -205,11 +219,32 @@ def process_run_for_tracks(
             raise FileNotFoundError(f"Measurements file not found: {measurements_path}")
         
         # Load and normalize track summary data once for the whole run into a per-run DataFrame
-        try:
-            arrays = load_track_summary(tracksummary_path)
-        except Exception as e:
-            raise ValueError(f"Failed to load track summary: {str(e)}")
-        track_fitting_df_run = build_track_fitting_df_run(arrays, run_size)
+        included_tracksummary_columns = [
+            "event_id",
+            "event_nr",
+            "track_id",
+            "track_nr",
+            "measurementIDs",
+            "eLOC0_fit",
+            "eLOC1_fit",
+            "ePHI_fit",
+            "eTHETA_fit",
+            "eQOP_fit",
+            "eT_fit",
+            "t_d0",
+            "t_z0",
+            "t_phi",
+            "t_theta",
+            "t_charge",
+            "t_p",
+            "t_pT",
+            "t_time",
+        ]
+        df_raw = load_root_file(
+            str(tracksummary_path),
+            included_columns=included_tracksummary_columns,
+        )
+        track_fitting_df_run = normalize_tracksummary_df(df_raw)
 
         # Build run-level digihits by merging measurements with tracker hits once per run
         try:
@@ -242,15 +277,18 @@ def process_run_for_tracks(
                 # Calculate global event number
                 global_event_num = run_number * run_size + local_event_num
                 
-                # Check for tracks CSV file
-                tracks_csv_path = run_dir / file_patterns["tracks_csv_pattern"].format(local_event_num)
-                if not tracks_csv_path.exists():
-                    print(f"  Skipping missing tracks CSV for event {local_event_num} in run {run_number}")
-                    continue
-                
-                # Slice per-event fitting rows by event_nr == local_event_num
-                if not track_fitting_df_run.empty:
-                    per_event_fit = track_fitting_df_run[track_fitting_df_run.get('event_nr', -1) == local_event_num].copy()
+                # Slice per-event fitting rows by event_id == local_event_num
+                if track_fitting_df_run is not None and not track_fitting_df_run.empty:
+                    if "event_id" in track_fitting_df_run.columns:
+                        per_event_fit = track_fitting_df_run[
+                            track_fitting_df_run["event_id"] == local_event_num
+                        ].copy()
+                    elif "event_nr" in track_fitting_df_run.columns:
+                        per_event_fit = track_fitting_df_run[
+                            track_fitting_df_run["event_nr"] == local_event_num
+                        ].copy()
+                    else:
+                        per_event_fit = pd.DataFrame()
                 else:
                     per_event_fit = pd.DataFrame()
                 event_df = process_event_for_tracks(
@@ -258,7 +296,6 @@ def process_run_for_tracks(
                     local_event_num,
                     global_event_num,
                     per_event_fit,
-                    file_patterns["tracks_csv_pattern"],
                     digihits_run_df=digihits_run_df,
                 )
                 run_events.append(event_df)
@@ -389,10 +426,8 @@ def main():
 
     # File patterns
     file_patterns = {
-        "tracks_csv_pattern": config.get("tracks_csv_pattern", "event{:09d}-tracks_ambi.csv"),
         "tracksummary_file": config.get("tracksummary_file", "tracksummary_ambi.root"),
-        "simhits_file": config.get("simhits_file", "simhits.root"),
-        "edm4hep_file": config.get("edm4hep_file", "edm4hep.root")
+        "edm4hep_file": config.get("edm4hep_file", "edm4hep.root"),
     }
     
     print("\nStarting track conversion with configuration:")

@@ -205,6 +205,7 @@ def generate_particle_gun_events(output_dir, config, logger):
                     etaUniform=True,
                     numParticles=1,
                     pdg=particle_pdg,
+                    randomizeCharge=True
                 ),
             )
         ],

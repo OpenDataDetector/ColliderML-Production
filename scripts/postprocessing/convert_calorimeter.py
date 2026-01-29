@@ -8,11 +8,13 @@ with nested contributions per cell.
 """
 
 import argparse
+import gc
 import yaml
 from pathlib import Path
 from typing import List
 import numpy as np
 import pandas as pd
+import polars as pl
 
 import h5py
 from tqdm import tqdm
@@ -24,11 +26,155 @@ import time
 from utils.path_utils import get_run_paths, make_dir
 from utils.driver import iterate_and_process_chunks, local_events_for_run
 from utils.parquet_utils import build_parquet_from_flat_df
+from utils.parquet_schemas import CALOHITS_PARQUET_TYPES
+from utils.detector_enums import encode_calo_detector
 
 sys.path.append("/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/OtherLibraries/pyedm4hep")
 from pyedm4hep import EDM4hepEvent, EDM4hepEventBatch
 
 logger = logging.getLogger(__name__)
+
+
+def process_calohits_batch(
+    calo_hits: pd.DataFrame,
+    calo_contributions: pd.DataFrame,
+    ecal_energy_threshold: float = 5.0e-5,  # GeV
+    hcal_energy_threshold: float = 2.5e-4,  # GeV
+    time_min: float = -1.0,  # ns
+    time_max: float = 10.0,  # ns
+) -> pd.DataFrame:
+    """
+    Process calorimeter data for multiple events with nested contributions.
+    
+    This creates a cell-level DataFrame where each row is a calorimeter cell,
+    with contributions stored as nested lists (particle_id, energy, time).
+    Processes all events in the input DataFrames simultaneously.
+    
+    Args:
+        calo_hits: DataFrame with calorimeter hits (multi-event)
+        calo_contributions: DataFrame with calorimeter contributions (multi-event)
+        ecal_energy_threshold: ECal energy threshold in GeV (cell level)
+        hcal_energy_threshold: HCal energy threshold in GeV (cell level)
+        time_min: ECal minimum time in ns
+        time_max: ECal maximum time in ns
+        
+    Returns:
+        DataFrame with columns: event_id, cellID, detector, x, y, z, total_energy, 
+                                contrib_particle_ids, contrib_energies, contrib_times
+    """
+    try:
+        t0 = time.time()
+        
+        if calo_contributions is None or calo_contributions.empty:
+            logger.warning("No calorimeter contributions")
+            return pd.DataFrame()
+        
+        if calo_hits is None or calo_hits.empty:
+            logger.warning("No calorimeter hits")
+            return pd.DataFrame()
+        
+        # Step 1: Apply timing filters to contributions
+        # We'll filter and add columns in-place to avoid full copy
+        if 'time' in calo_contributions.columns:
+            # Calculate time-of-flight correction (creates new columns but no full copy)
+            r = np.sqrt(calo_contributions['x']**2 + calo_contributions['y']**2 + calo_contributions['z']**2)
+            dt = r / 300.0 - 0.1  # time-of-flight in ns
+            corrected_time = calo_contributions['time'] - dt
+            
+            # Apply timing filters to get mask
+            timing_mask = (corrected_time >= time_min) & (corrected_time <= time_max)
+            contribs = calo_contributions[timing_mask]
+            logger.debug(f"Batch: {len(contribs)} contributions after timing filter")
+        else:
+            contribs = calo_contributions
+        
+        if contribs.empty:
+            return pd.DataFrame()
+        
+        # Step 2: Aggregate contributions by (event_id, cellID, particle_id)
+        # Use energy-weighted time for aggregated time per particle contribution
+        energy_time = contribs['energy'] * contribs.get('time', 0.0)
+        
+        # Create temporary dataframe with only needed columns for groupby
+        temp_df = pd.DataFrame({
+            'event_id': contribs['event_id'].values,
+            'cellID': contribs['cellID'].values,
+            'particle_id': contribs['particle_id'].values,
+            'energy': contribs['energy'].values,
+            'energy_time': energy_time.values,
+            'detector': contribs['detector'].values,
+        })
+        
+        contrib_per_particle = (
+            temp_df.groupby(['event_id', 'cellID', 'particle_id'], sort=False)
+            .agg(
+                energy=('energy', 'sum'),
+                energy_time=('energy_time', 'sum'),
+                detector=('detector', 'first'),
+            )
+            .reset_index()
+        )
+        
+        # Calculate energy-weighted time per particle contribution
+        contrib_per_particle['time'] = contrib_per_particle['energy_time'] / contrib_per_particle['energy']
+        contrib_per_particle = contrib_per_particle.drop(columns=['energy_time'])
+        
+        # Step 3a-3d: Use Polars for fast grouping (10-50x speedup!)
+        # Convert to Polars for processing
+        contrib_pl = pl.from_pandas(contrib_per_particle)
+        
+        # Step 3a: Group by cell to get total energy (for threshold)
+        cell_energy_pl = (
+            contrib_pl
+            .group_by(['event_id', 'cellID'])
+            .agg([
+                pl.col('detector').first(),
+                pl.col('energy').sum().alias('total_energy'),
+            ])
+        )
+        
+        # Step 3b: Apply cell-level energy thresholds BEFORE creating nested lists
+        cells_passing_pl = cell_energy_pl.filter(
+            ((pl.col('detector').str.contains('ECal')) & (pl.col('total_energy') >= ecal_energy_threshold)) |
+            ((pl.col('detector').str.contains('HCal')) & (pl.col('total_energy') >= hcal_energy_threshold))
+        ).select(['event_id', 'cellID'])
+        logger.debug(f"Batch: {len(cells_passing_pl)} cells pass energy threshold")
+        
+        # Step 3c: Filter contributions to only cells passing threshold
+        contrib_filtered_pl = contrib_pl.join(cells_passing_pl, on=['event_id', 'cellID'], how='inner')
+        
+        if contrib_filtered_pl.is_empty():
+            return pd.DataFrame()
+        
+        # Step 3d: Create nested lists (fast in Polars!)
+        cell_level_pl = (
+            contrib_filtered_pl
+            .group_by(['event_id', 'cellID'])
+            .agg([
+                pl.col('detector').first(),
+                pl.col('energy').sum().alias('total_energy'),
+                pl.col('particle_id').alias('contrib_particle_ids'),
+                pl.col('energy').alias('contrib_energies'),
+                pl.col('time').alias('contrib_times'),
+            ])
+        )
+        
+        # Convert back to pandas for compatibility
+        cell_level = cell_level_pl.to_pandas()
+        
+        # Step 4: Merge with calo_hits to get cell positions (x, y, z)
+        calo_cells = cell_level.merge(
+            calo_hits[['event_id', 'cellID', 'x', 'y', 'z']],
+            on=['event_id', 'cellID'],
+            how='inner'
+        )
+        
+        logger.debug(f"Batch: processed {len(calo_cells)} calorimeter cells in {time.time() - t0:.3f}s")
+        return calo_cells
+        
+    except Exception as e:
+        logger.error(f"Failed to process calorimeter data: {e}")
+        return pd.DataFrame()
 
 
 def process_event_for_calohits(
@@ -123,50 +269,48 @@ def process_event_for_calohits(
         contrib_per_particle['time'] = contrib_per_particle['energy_time'] / contrib_per_particle['energy']
         contrib_per_particle = contrib_per_particle.drop(columns=['energy_time'])
         
-        # Step 3a: First group by cell to get total energy (for threshold)
-        cell_energy = (
-            contrib_per_particle.groupby(['event_id', 'cellID'], sort=False)
-            .agg(
-                detector=('detector', 'first'),
-                total_energy=('energy', 'sum'),
-            )
-            .reset_index()
+        # Step 3a-3d: Use Polars for fast grouping (10-50x speedup!)
+        # Convert to Polars for processing
+        contrib_pl = pl.from_pandas(contrib_per_particle)
+        
+        # Step 3a: Group by cell to get total energy (for threshold)
+        cell_energy_pl = (
+            contrib_pl
+            .group_by(['event_id', 'cellID'])
+            .agg([
+                pl.col('detector').first(),
+                pl.col('energy').sum().alias('total_energy'),
+            ])
         )
         
-        # Step 3b: Apply cell-level energy thresholds BEFORE creating nested lists (much faster!)
-        ecal_mask = cell_energy['detector'].str.contains('ECal', na=False)
-        hcal_mask = cell_energy['detector'].str.contains('HCal', na=False)
-        
-        energy_mask = (
-            (ecal_mask & (cell_energy['total_energy'] >= ecal_energy_threshold)) |
-            (hcal_mask & (cell_energy['total_energy'] >= hcal_energy_threshold))
-        )
-        
-        cells_passing_threshold = cell_energy[energy_mask][['event_id', 'cellID']].copy()
-        logger.debug(f"Event {event_id}: {len(cells_passing_threshold)} cells pass energy threshold")
+        # Step 3b: Apply cell-level energy thresholds BEFORE creating nested lists
+        cells_passing_pl = cell_energy_pl.filter(
+            ((pl.col('detector').str.contains('ECal')) & (pl.col('total_energy') >= ecal_energy_threshold)) |
+            ((pl.col('detector').str.contains('HCal')) & (pl.col('total_energy') >= hcal_energy_threshold))
+        ).select(['event_id', 'cellID'])
+        logger.debug(f"Event {event_id}: {len(cells_passing_pl)} cells pass energy threshold")
         
         # Step 3c: Filter contributions to only cells passing threshold
-        contrib_filtered = contrib_per_particle.merge(
-            cells_passing_threshold,
-            on=['event_id', 'cellID'],
-            how='inner'
-        )
+        contrib_filtered_pl = contrib_pl.join(cells_passing_pl, on=['event_id', 'cellID'], how='inner')
         
-        if contrib_filtered.empty:
+        if contrib_filtered_pl.is_empty():
             return pd.DataFrame()
         
-        # Step 3d: Now group to create nested lists (much smaller dataset!)
-        cell_level = (
-            contrib_filtered.groupby(['event_id', 'cellID'], sort=False)
-            .agg(
-                detector=('detector', 'first'),
-                total_energy=('energy', 'sum'),
-                contrib_particle_ids=('particle_id', list),
-                contrib_energies=('energy', list),
-                contrib_times=('time', list),
-            )
-            .reset_index()
+        # Step 3d: Create nested lists (fast in Polars!)
+        cell_level_pl = (
+            contrib_filtered_pl
+            .group_by(['event_id', 'cellID'])
+            .agg([
+                pl.col('detector').first(),
+                pl.col('energy').sum().alias('total_energy'),
+                pl.col('particle_id').alias('contrib_particle_ids'),
+                pl.col('energy').alias('contrib_energies'),
+                pl.col('time').alias('contrib_times'),
+            ])
         )
+        
+        # Convert back to pandas for compatibility
+        cell_level = cell_level_pl.to_pandas()
         
         # Step 4: Merge with calo_hits to get cell positions (x, y, z)
         calo_cells = cell_level.merge(
@@ -278,18 +422,28 @@ def build_parquet_calohits(df: pd.DataFrame, output_file: str) -> None:
     
     # Standardize column name to cell_id (with underscore)
     # This matches the naming convention used for other ID columns
-    if 'cellID' in df.columns:
-        df.rename(columns={'cellID': 'cell_id'}, inplace=True)
-    
-    # Convert cell_id to string to handle large bitfield-encoded values
+    if "cellID" in df.columns:
+        df.rename(columns={"cellID": "cell_id"}, inplace=True)
+
+    # Convert cell_id to string to handle large bitfield-encoded values.
     # These can exceed int64 range (2^63-1) due to bitfield encoding, and PyArrow
     # has issues with uint64 in lists. Storing as string is the most reliable approach.
-    if 'cell_id' in df.columns:
-        df['cell_id'] = df['cell_id'].astype(str)
+    if "cell_id" in df.columns:
+        df["cell_id"] = df["cell_id"].astype(str)
+
+    # Encode calorimeter detector names to a stable uint8 enum using shared helper.
+    if "detector" in df.columns:
+        z = df.get("z")
+        df["detector"] = encode_calo_detector(df["detector"], z)
     
-    # Use shared utility to group by event and write
+    # Use shared utility to group by event and write with canonical schema
     # The list columns will automatically become list[list[...]] after groupby
-    build_parquet_from_flat_df(df, output_file, compression='snappy')
+    build_parquet_from_flat_df(
+        df,
+        output_file,
+        compression='snappy',
+        schema_overrides=CALOHITS_PARQUET_TYPES,
+    )
     logger.info(f"Wrote calorimeter parquet file: {output_file}")
 
 
@@ -502,6 +656,10 @@ def process_chunk_for_calohits(
                 logger.info(
                     f"Run {abs_run}: calo_hits rows={len(run_df)} events={run_df.event_id.nunique()}"
                 )
+            
+            # Delete batch object and force garbage collection to free memory
+            del batch
+            gc.collect()
                 
         except Exception as e:
             logger.error(f"Error processing run {abs_run}: {e}")

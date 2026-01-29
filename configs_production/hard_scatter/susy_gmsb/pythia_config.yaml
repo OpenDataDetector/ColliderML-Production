@@ -1,0 +1,68 @@
+campaign: "hard_scatter"
+dataset: "susy_gmsb"
+version: "v1"
+stage: "pythia_generation"  # One of: pythia_generation, madgraph_generation, simulation, digitization
+
+job_config:
+  n_runs: 1              # Number of runs (where a run produces N events)
+  runs_per_node: 1         # Number of runs per node
+  time_limit: "01:00:00"   # Time limit per job
+  qos: "regular"
+  # execution_mode: "multi_node_slurm"
+  execution_mode: "interactive"
+
+validation_config:
+
+# Stage-specific configurations
+events: 10          # Events per run
+pileup: 0           # No pileup in hard-scatter SUSY sample
+
+# Neutralino pair production; detailed spectrum and decays come from SLHA file
+hard_process: "SUSY:qqbar2chi0chi0"
+
+# Pythia settings list - all settings in Pythia8 format
+pythia_settings:
+  # Debug / output control
+  - "Init:showProcesses = false"
+  - "Init:showChangedSettings = false"
+  - "Init:showAllSettings = false"
+  - "Next:numberShowInfo = 0"
+  - "Next:numberShowProcess = 0"
+  - "Next:numberShowEvent = 0"
+  - "Print:quiet = on"
+
+  # SUSY spectrum from SLHA (GMSB-style neutralino NLSP benchmark)
+  - "SLHA:file = /global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml_dev/configs_production/hard_scatter/susy_gmsb/gmsb_llp.spc"
+  - "SLHA:verbose = 3"
+  - "SLHA:minMassSM = 100."
+  # Enable decay table usage to respect GMSB settings or overrides
+  - "SLHA:useDecayTable = on"
+
+  # GMSB Configuration for Neutralino (NLSP) -> Gravitino (LSP) + Photon
+  # Force decay of neutralino (1000022) to gravitino (1000039) + gamma (22)
+  # meMode 0 = Isotropic decay
+  - "1000022:oneChannel = 1 1.0 0 1000039 22"
+  # Neutralino is stable by default in RPC SUSY; explicitly enable decays
+  - "1000022:mayDecay = on"
+  # Ensure long-lived particles are still decayed in Pythia (some wrappers enable tau0 limits)
+  - "ParticleDecays:limitTau0 = off"
+  # Set lifetime c*tau in mm (approx 100 mm) for Displaced Vertex signature
+  - "1000022:tau0 = 100.0"
+  
+  # Force production of chi0_1 (1000022) only in the hard process
+  # (Prevent producing chi0_2, chi0_3 etc which are not the desired NLSP)
+  - "SUSY:idA = 1000022"
+  - "SUSY:idB = 1000022"
+
+  # Parton-level and hadronisation settings
+  - "PartonLevel:MPI = on"
+  - "PartonLevel:ISR = on"
+  - "PartonLevel:FSR = on"
+  - "HadronLevel:Hadronize = on"
+
+  # Generic tune / PDFs
+  - "Tune:ee = 7"
+  - "PDF:pSet = 13"
+
+
+debug_output_dir: "/global/cfs/cdirs/m4958/data/ColliderML/simulation/hard_scatter/susy_gmsb/v1/runs/0"

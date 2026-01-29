@@ -18,9 +18,9 @@ stage: "madgraph_generation"
 # --- Job Configuration ---
 job_config:
   # Number of nodes will be calculated as n_runs / runs_per_node
-  n_runs: 10        # Number of runs (where a run produces N events)
+  n_runs: 21        # Number of runs (where a run produces N events)
   runs_per_node: 1  # Number of runs per node (adjust based on memory/time constraints)
-  time_limit: "04:00:00"  # Time limit per job - MadGraph NLO generation is slower than Pythia
+  time_limit: "02:00:00"  # Time limit per job - MadGraph NLO generation is slower than Pythia
   qos: "regular"
   depends_on:
   execution_mode: "multi_node_slurm"  # Use distributed mode for parallel generation
@@ -30,7 +30,7 @@ validation_config:
 
 # --- Event Generation Parameters ---
 # These follow the exact same pattern as pythia_gen.py and ddsim_run.py
-events: 30000  # Number of events per run, total events = n_runs * events
+events: 15000  # Number of events per run, total events = n_runs * events
 seed: 42     # Base seed - will be modified per run using run_id
 
 # --- Essential Paths & Environment ---
@@ -65,7 +65,7 @@ card_customizations:
 # This follows the same pattern as pythia_generation
 splitting_config:
   enable: true
-  events_per_file: 128
+  events_per_file: 64
   max_files_per_mg_run: 100
   output_filename: "events.hepmc"
 

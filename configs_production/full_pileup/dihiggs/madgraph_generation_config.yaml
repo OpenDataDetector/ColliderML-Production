@@ -10,9 +10,9 @@ stage: "madgraph_generation"
 
 # --- Job Configuration ---
 job_config:
-  n_runs: 10
+  n_runs: 21
   runs_per_node: 1
-  time_limit: "01:00:00"
+  time_limit: "02:00:00"
   qos: "regular"
   # execution_mode: "monolithic_slurm"
   execution_mode: "multi_node_slurm"
@@ -20,7 +20,7 @@ job_config:
 validation_config:
 
 # --- Event Generation Parameters ---
-events: 70000
+events: 35000
 seed: 42
 
 # --- Essential Paths & Environment ---
@@ -38,7 +38,7 @@ card_customizations:
 # --- HepMC Splitting Configuration (Optional) ---
 splitting_config:
   enable: true
-  events_per_file: 128
+  events_per_file: 64
   max_files_per_mg_run: 100
   output_filename: "events.hepmc"
 

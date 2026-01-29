@@ -1,0 +1,77 @@
+campaign: "full_pileup"
+dataset: "susy_gmsb"
+version: "v1"
+stage: "pythia_generation"  # Full-pileup SUSY GMSB generation (signal + pileup + merge)
+
+job_config:
+  # Number of nodes will be calculated as n_runs / runs_per_node
+  n_runs: 2100            # Number of runs (tune as needed)
+  runs_per_node: 16       # Number of runs per node
+  time_limit: "00:30:00"  # Time limit per job
+  qos: "regular"
+  # execution_mode: "multi_node_slurm"
+  execution_mode: "interactive"
+
+# Stage-specific configurations
+# This config generates SUSY GMSB hard scatter, SoftQCD pileup, and the merged sample
+# in a single stage. It still writes out both signal and pileup HepMC3 files as well
+# as the merged file.
+events: 1        # Events per run; total events = n_runs * events
+pileup: 200       # Target average pileup multiplicity
+
+# Neutralino pair production; detailed spectrum and decays come from SLHA file
+hard_process: "SUSY:qqbar2chi0chi0"
+
+# Pythia settings list - all settings in Pythia8 format
+pythia_settings:
+  # Debug / output control
+  - "Init:showProcesses = false"
+  - "Init:showChangedSettings = false"
+  - "Init:showAllSettings = false"
+  - "Next:numberShowInfo = 0"
+  - "Next:numberShowProcess = 0"
+  - "Next:numberShowEvent = 0"
+  - "Print:quiet = on"
+
+  # SUSY spectrum from SLHA (GMSB-style neutralino NLSP benchmark)
+  - "SLHA:file = /global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml_dev/configs_production/full_pileup/susy_gmsb/gmsb_llp.spc"
+  - "SLHA:verbose = 3"
+  - "SLHA:minMassSM = 100."
+  # Enable decay table usage to respect GMSB settings or overrides
+  - "SLHA:useDecayTable = on"
+
+  # GMSB Configuration for Neutralino (NLSP) -> Gravitino (LSP) + Photon
+  # Force decay of neutralino (1000022) to gravitino (1000039) + gamma (22)
+  # meMode 0 = Isotropic decay
+  - "1000022:oneChannel = 1 1.0 0 1000039 22"
+  # Neutralino is stable by default in RPC SUSY; explicitly enable decays
+  - "1000022:mayDecay = on"
+  # Ensure long-lived particles are still decayed in Pythia (some wrappers enable tau0 limits)
+  - "ParticleDecays:limitTau0 = off"
+  # Set lifetime c*tau in mm (approx 100 mm) for Displaced Vertex signature
+  - "1000022:tau0 = 100.0"
+
+  # Parton-level and hadronisation settings
+  - "PartonLevel:MPI = on"
+  - "PartonLevel:ISR = on"
+  - "PartonLevel:FSR = on"
+  - "HadronLevel:Hadronize = on"
+
+  # Generic tune / PDFs
+  - "Tune:ee = 7"
+  - "PDF:pSet = 13"
+
+# Vertex smearing matching ttbar full-pileup configuration
+vertex_sigma_xy: 0.0125  # mm
+vertex_sigma_z: 55.5     # mm
+vertex_sigma_t: 0.185    # ns
+
+# Enable merge of signal + pileup in the Pythia/ACTS stage
+merge: true
+
+# Enable Poisson sampling of pileup multiplicity during merge,
+# and buffer generation in the pileup stage.
+poisson_sample: true
+poisson_buffer_sigma: 5.0
+
+debug_output_dir: "/global/cfs/cdirs/m4958/data/ColliderML/simulation/full_pileup/susy_gmsb/v1/runs/0"

@@ -4,6 +4,7 @@ Run all EDM4HEP to HDF5 conversions in sequence, driven by a YAML config.
 """
 
 import argparse
+import gc
 import time
 from pathlib import Path
 import yaml
@@ -13,9 +14,17 @@ from tqdm import tqdm
 import pandas as pd
 from pyedm4hep import EDM4hepEventBatch
 import awkward as ak
+import psutil
+import os
+
+def log_memory(label: str):
+    process = psutil.Process(os.getpid())
+    mem_info = process.memory_info()
+    vm = psutil.virtual_memory()
+    logger.info(f"MEMORY [{label}]: RSS={mem_info.rss / 1024 / 1024:.2f} MB, VMS={mem_info.vms / 1024 / 1024:.2f} MB, Global Used={vm.used / 1024 / 1024:.2f} MB, Global Free={vm.free / 1024 / 1024:.2f} MB, Global Percent={vm.percent}%")
 
 from convert_particles import convert_particles, build_particles_df_with_parents_and_vertex, write_particles_with_selection
-from convert_calorimeter import process_event_for_calohits, write_calohits_with_selection
+from convert_calorimeter import process_calohits_batch, write_calohits_with_selection
 # Reuse per-event tracks processing from dedicated module
 from convert_tracks import process_event_for_tracks
 from convert_digihits import convert_digihits, process_event_for_digihits, write_digihits_with_selection
@@ -24,10 +33,9 @@ from utils.path_utils import make_dir, get_run_paths
 from utils.driver import iterate_and_process_chunks, local_events_for_run
 from utils.track_utils import (
     load_root_file,
-    load_track_summary,
     build_hdf5_tracks,
     write_tracks_with_selection,
-    build_track_fitting_df_run,
+    normalize_tracksummary_df,
 )
 
 logger = logging.getLogger(__name__)
@@ -43,7 +51,7 @@ def _compute_paths(config: dict) -> tuple[Path, Path, str, str]:
     dataset = config["dataset"]
     version = config["version"]
     common_cfg = config.get("common", {})
-    input_base_dir = Path(common_cfg["input_base_dir"]) / campaign / dataset / version
+    input_base_dir = Path(common_cfg["output_base_dir"]) / campaign / dataset / version
     output_base_dir = Path(config.get("h5_output_dir", common_cfg["output_base_dir"]))
     dataset_base = f"{campaign}/{dataset}/{version}"
     dataset_name_dot = dataset_base.replace("/", ".")
@@ -92,23 +100,20 @@ def _process_chunk_for_all(
     min_tracker_hits: int | None,
     min_calo_hits: int | None,
     digihits_measurements_columns: list[str] | None,
-    tracks_csv_pattern: str,
     tracksummary_file: str,
-    simhits_file: str,
     # new optional selection for tracks output
     tracks_columns_keep: list[str] | None = None,
     calo_columns_keep: list[str] | None = None,
     # calorimeter thresholds
     ecal_energy_threshold: float = 5.0e-5,
     hcal_energy_threshold: float = 2.5e-4,
-    ecal_time_min: float = -1.0,
-    ecal_time_max: float = 10.0,
-    hcal_time_min: float = -1.0,
-    hcal_time_max: float = 10.0,
+    time_min: float = -1.0,
+    time_max: float = 10.0,
     output_format: str = 'hdf5',
 ) -> None:
     chunk_start_time = time.time()
     logger.info(f"Starting chunk processing for events {start_event}-{end_event}")
+    log_memory("Start Chunk")
 
     particles_frames: list[pd.DataFrame] = []
     digihits_frames: list[pd.DataFrame] = []
@@ -174,36 +179,33 @@ def _process_chunk_for_all(
             
             if calo_hits_all is not None and not calo_hits_all.empty and \
                calo_contributions_all is not None and not calo_contributions_all.empty:
-                for local_event_num in range(local_events[0], local_events[1]):
-                    global_event_num = abs_run * run_size + local_event_num
-                    ev_calo_hits = calo_hits_all[calo_hits_all.event_id == local_event_num]
-                    ev_calo_contribs = calo_contributions_all[calo_contributions_all.event_id == local_event_num]
-                    
-                    if not ev_calo_hits.empty and not ev_calo_contribs.empty:
-                        ev_df = process_event_for_calohits(
-                            event_id=global_event_num,
-                            local_event_num=local_event_num,
-                            preloaded_calo_hits=ev_calo_hits,
-                            preloaded_calo_contributions=ev_calo_contribs,
-                            ecal_energy_threshold=ecal_energy_threshold,
-                            hcal_energy_threshold=hcal_energy_threshold,
-                            ecal_time_min=ecal_time_min,
-                            ecal_time_max=ecal_time_max,
-                            hcal_time_min=hcal_time_min,
-                            hcal_time_max=hcal_time_max,
-                        )
-                        if not ev_df.empty:
-                            pair = (abs_run, local_event_num)
-                            if pair in seen_pairs_calo:
-                                logger.error(
-                                    f"Overlap detected for calo_hits on (run,local_event)=({abs_run},{local_event_num})"
-                                )
-                            seen_pairs_calo.add(pair)
-                            calo_frames.append(ev_df)
+                # Process entire run at once (vectorized, no event loop!)
+                run_calo_df = process_calohits_batch(
+                    calo_hits_all,
+                    calo_contributions_all,
+                    ecal_energy_threshold=ecal_energy_threshold,
+                    hcal_energy_threshold=hcal_energy_threshold,
+                    time_min=time_min,
+                    time_max=time_max,
+                )
                 
-                if calo_frames:
+                if not run_calo_df.empty:
+                    # Update event_ids to global numbering
+                    run_calo_df['event_id'] = run_calo_df['event_id'] + abs_run * run_size
+                    
+                    # Track which events we processed
+                    for local_event_num in run_calo_df['event_id'].unique():
+                        local_event = local_event_num - abs_run * run_size
+                        pair = (abs_run, local_event)
+                        if pair in seen_pairs_calo:
+                            logger.error(
+                                f"Overlap detected for calo_hits on (run,local_event)=({abs_run},{local_event})"
+                            )
+                        seen_pairs_calo.add(pair)
+                    
+                    calo_frames.append(run_calo_df)
                     logger.info(
-                        f"Run {abs_run}: calo_hits rows={sum(len(f) for f in calo_frames[-local_count:])} events={local_count}"
+                        f"Run {abs_run}: calo_hits rows={len(run_calo_df)} events={run_calo_df['event_id'].nunique()}"
                     )
             else:
                 logger.warning(f"Missing or empty calorimeter data for run {abs_run}")
@@ -226,6 +228,8 @@ def _process_chunk_for_all(
                         "py",
                         "pz",
                         "vertex_primary",
+                        "perigee_d0",
+                        "perigee_z0",
                     ]
                     digi_particles_df_run = load_root_file(str(particles_root_path), included_columns=included_columns, events=local_events)
                 except Exception as e:
@@ -242,7 +246,7 @@ def _process_chunk_for_all(
                     min_calo_hits=min_calo_hits,
                 )
                 if not df_run.empty and "event_id" in df_run.columns:
-                    df_run = df_run.copy()
+                    # Update event_id in-place (no copy needed)
                     global_event_nums = df_run["event_id"] + abs_run * run_size
                     df_run["event_id"] = global_event_nums
                 if not df_run.empty:
@@ -289,7 +293,8 @@ def _process_chunk_for_all(
                 evs_for_run = []
                 for local_event_num in range(local_events[0], local_events[1]):
                     ev_hits = hits_all[hits_all.event_id == local_event_num] if not hits_all.empty else None
-                    ev_meas = digi_measurements_df_all[digi_measurements_df_all.event_id == local_event_num].copy()
+                    # Boolean indexing creates a view; process_event_for_digihits will copy if needed
+                    ev_meas = digi_measurements_df_all[digi_measurements_df_all.event_id == local_event_num]
                     ev_df = process_event_for_digihits(abs_run * run_size + local_event_num, local_event_num, ev_meas, ev_hits)
                     if not ev_df.empty:
                         pair = (abs_run, local_event_num)
@@ -313,11 +318,15 @@ def _process_chunk_for_all(
         if "tracks" in objects and digihits_run_df is not None:
             tracks_load_start = time.time()
             ts_path = Path(run_dir) / tracksummary_file
+            track_fitting_df_run = None
             if ts_path.exists():
                 try:
                     included_tracksummary_columns = [
+                        "event_id",
                         "event_nr",
+                        "track_id",
                         "track_nr",
+                        "measurementIDs",
                         "eLOC0_fit",
                         "eLOC1_fit",
                         "ePHI_fit",
@@ -333,7 +342,12 @@ def _process_chunk_for_all(
                         "t_pT",
                         "t_time",
                     ]
-                    track_fitting_df_run = load_root_file(str(ts_path), included_columns=included_tracksummary_columns, events=local_events)
+                    df_raw = load_root_file(
+                        str(ts_path),
+                        included_columns=included_tracksummary_columns,
+                        events=local_events,
+                    )
+                    track_fitting_df_run = normalize_tracksummary_df(df_raw)
                 except Exception as e:
                     logger.warning(f"Failed to load tracksummary at {ts_path}: {e}")
             tracks_load_time = time.time() - tracks_load_start
@@ -345,12 +359,16 @@ def _process_chunk_for_all(
                 global_event_num = abs_run * run_size + local_event_num
                 try:
                     per_ev_start = time.time()
+                    # Boolean indexing creates a view; function will copy if needed
                     event_df = process_event_for_tracks(
                         run_dir=Path(run_dir),
                         local_event_num=local_event_num,
                         global_event_num=global_event_num,
-                        track_fitting_df_event=track_fitting_df_run[track_fitting_df_run.event_id == local_event_num].copy(),
-                        tracks_csv_pattern=tracks_csv_pattern,
+                        track_fitting_df_event=(
+                            track_fitting_df_run[track_fitting_df_run["event_id"] == local_event_num].copy()
+                            if track_fitting_df_run is not None and "event_id" in track_fitting_df_run.columns
+                            else pd.DataFrame()
+                        ),
                         digihits_run_df=digihits_run_df,
                     )
                     logger.debug(
@@ -380,6 +398,11 @@ def _process_chunk_for_all(
         run_time = time.time() - run_start_time
         run_processing_time += run_time
         logger.debug(f"Run {abs_run} total processing time: {run_time:.3f}s")
+        
+        # Delete batch object and force garbage collection to free memory
+        del batch
+        gc.collect()
+        log_memory(f"End Run {abs_run}")
 
     # File writing phase
     writing_start_time = time.time()
@@ -390,7 +413,9 @@ def _process_chunk_for_all(
     
     if "particles" in objects and particles_frames:
         particles_write_start = time.time()
+        log_memory("Before Particles Concat")
         particles_all = pd.concat(particles_frames, ignore_index=True)
+        log_memory("After Particles Concat")
         particles_out = Path(particles_out_dir) / (
             f"{dataset_name_dot}.truth.particles.events{start_event}-{end_event}{file_ext}"
         )
@@ -410,6 +435,9 @@ def _process_chunk_for_all(
         
     if "tracker_hits" in objects and digihits_frames:
         digihits_write_start = time.time()
+        log_memory("Before TrackerHits Concat")
+        digihits_all = pd.concat(digihits_frames, ignore_index=True)
+        log_memory("After TrackerHits Concat")
         digihits_all = pd.concat(digihits_frames, ignore_index=True)
         trkhits_out = Path(trkhits_out_dir) / (
             f"{dataset_name_dot}.reco.tracker_hits.events{start_event}-{end_event}{file_ext}"
@@ -432,7 +460,9 @@ def _process_chunk_for_all(
         
     if "tracks" in objects and tracks_frames:
         tracks_write_start = time.time()
+        log_memory("Before Tracks Concat")
         tracks_all = pd.concat(tracks_frames, ignore_index=True)
+        log_memory("After Tracks Concat")
         tracks_out = Path(tracks_out_dir) / (
             f"{dataset_name_dot}.reco.tracks.events{start_event}-{end_event}{file_ext}"
         )
@@ -452,7 +482,9 @@ def _process_chunk_for_all(
 
     if "calo_hits" in objects and calo_frames:
         calo_write_start = time.time()
+        log_memory("Before CaloHits Concat")
         calo_all = pd.concat(calo_frames, ignore_index=True)
+        log_memory("After CaloHits Concat")
         calo_out = Path(calo_out_dir) / (
             f"{dataset_name_dot}.reco.calo_hits.events{start_event}-{end_event}{file_ext}"
         )
@@ -509,9 +541,7 @@ def convert_all(config: dict, chunk_index: int | None = None) -> None:
 
     particles_columns_keep = config.get("particles_columns_keep")
     digihits_columns_keep = config.get("digihits_columns_keep")
-    tracks_csv_pattern = config.get("tracks_csv_pattern", "event{:09d}-tracks_ambi.csv")
     tracksummary_file = config.get("tracksummary_file", "tracksummary_ambi.root")
-    simhits_file = config.get("simhits_file", "simhits.root")
     tracks_columns_keep = config.get("tracks_columns_keep")
     calo_columns_keep = config.get("calo_columns_keep")
     min_particle_energy = config.get("min_particle_energy")
@@ -523,10 +553,9 @@ def convert_all(config: dict, chunk_index: int | None = None) -> None:
     calo_config = config.get("calorimeter", {})
     ecal_energy_threshold = calo_config.get("ecal_energy_threshold", 5.0e-5)
     hcal_energy_threshold = calo_config.get("hcal_energy_threshold", 2.5e-4)
-    ecal_time_min = calo_config.get("ecal_time_min", -1.0)
-    ecal_time_max = calo_config.get("ecal_time_max", 10.0)
-    hcal_time_min = calo_config.get("hcal_time_min", -1.0)
-    hcal_time_max = calo_config.get("hcal_time_max", 10.0)
+    time_min = calo_config.get("time_min", -1.0)
+    time_max = calo_config.get("time_max", 10.0)
+    
 
     processing_start_time = time.time()
     
@@ -557,17 +586,13 @@ def convert_all(config: dict, chunk_index: int | None = None) -> None:
             min_tracker_hits=min_tracker_hits,
             min_calo_hits=min_calo_hits,
             digihits_measurements_columns=digihits_measurements_columns,
-            tracks_csv_pattern=tracks_csv_pattern,
             tracksummary_file=tracksummary_file,
-            simhits_file=simhits_file,
             tracks_columns_keep=tracks_columns_keep,
             calo_columns_keep=calo_columns_keep,
             ecal_energy_threshold=ecal_energy_threshold,
             hcal_energy_threshold=hcal_energy_threshold,
-            ecal_time_min=ecal_time_min,
-            ecal_time_max=ecal_time_max,
-            hcal_time_min=hcal_time_min,
-            hcal_time_max=hcal_time_max,
+            time_min=time_min,
+            time_max=time_max,
             output_format=output_format,
         ),
     )

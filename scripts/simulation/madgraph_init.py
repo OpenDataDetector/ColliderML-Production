@@ -74,6 +74,8 @@ def generate_madgraph_process(config, scratch_dir, logger):
     # Create MadGraph script for process generation
     temp_proc_script_path = temp_run_dir / "process_script.mg5"
     with open(temp_proc_script_path, 'w') as f_out:
+        # Force medium memory model for large processes (fixes relocation truncated to fit)
+        f_out.write("set fortran_compiler gfortran -mcmodel=medium\n")
         f_out.write(f"{mg_model_cmd}\n")
         for define_cmd in mg_define_cmds:
             f_out.write(f"{define_cmd}\n")
@@ -154,27 +156,69 @@ def customize_default_cards(process_dir, config, logger):
     logger.info("Default card customization completed.")
 
 
-def compile_grids_and_envelopes(process_dir: Path, logger: logging.Logger):
+def fix_make_opts_for_large_processes(process_dir: Path, logger: logging.Logger):
+    """
+    Add -mcmodel=medium to FFLAGS in Source/make_opts to fix relocation errors.
+
+    This is necessary for large NLO processes where the loop matrix compilation
+    can exceed 2GB of static data, causing 'relocation truncated to fit' errors.
+    """
+    make_opts_path = process_dir / "Source" / "make_opts"
+
+    if not make_opts_path.exists():
+        logger.warning(f"make_opts not found at {make_opts_path}, skipping memory model fix")
+        return
+
+    logger.info("Adding -mcmodel=medium to FFLAGS in Source/make_opts to prevent relocation errors")
+
+    with open(make_opts_path, 'r') as f:
+        lines = f.readlines()
+
+    modified = False
+    new_lines = []
+    for line in lines:
+        new_lines.append(line)
+        # Add -mcmodel=medium after the FFLAGS+= -fno-automatic line
+        if 'FFLAGS+= -fno-automatic' in line and not modified:
+            new_lines.append('# Fix for large NLO processes (relocation truncated to fit errors)\n')
+            new_lines.append('FFLAGS+= -mcmodel=medium\n')
+            modified = True
+            logger.info("Added 'FFLAGS+= -mcmodel=medium' to make_opts")
+
+    if modified:
+        with open(make_opts_path, 'w') as f:
+            f.writelines(new_lines)
+    else:
+        logger.warning("Could not find location to add -mcmodel=medium flag")
+
+def compile_grids_and_envelopes(process_dir: Path, config, logger: logging.Logger):
     """
     Edit cards for a zero-event integration run and execute generate_events to
     build grids/envelopes inside the process directory.
 
-    This uses nevents=0 and req_acc=0.001 to force grid construction without
+    This uses nevents=0 and a configurable req_acc (default 0.001) to force grid construction without
     producing events. The process directory is modified in place.
     """
     cards_dir = process_dir / "Cards"
     run_card_path = cards_dir / "run_card.dat"
 
-    logger.info("Preparing run_card.dat for grid/envelope compilation (nevents=0, req_acc=0.001)")
+    # Get req_acc from config, default to 0.001 if not specified
+    run_card_settings = config.card_customizations.get('run_card', {})
+    req_acc = run_card_settings.get('req_acc', 0.001)
+
+    logger.info(f"Preparing run_card.dat for grid/envelope compilation (nevents=0, req_acc={req_acc})")
     try:
         compile_settings = {
             'nevents': 0,
-            'req_acc': 0.001,
+            'req_acc': req_acc,
         }
         customize_card_with_regex(run_card_path, compile_settings)
     except Exception as e:
         logger.error(f"Failed to update run_card.dat for grid compilation: {e}")
         raise
+
+    # Fix make_opts to add -mcmodel=medium for large processes
+    fix_make_opts_for_large_processes(process_dir, logger)
 
     generate_events_exe = process_dir / "bin" / "generate_events"
     logger.info(f"Running grid/envelope compilation via {generate_events_exe} (-f --name run_build)")
@@ -291,7 +335,7 @@ def main():
         run_mode = getattr(config, 'run_mode', 'nlo_fxfx')
         if str(run_mode).lower() != 'lo_mlm':
             logger.info("=== Step 2b: Build Grids/Envelopes (No Events) ===")
-            compile_grids_and_envelopes(process_dir, logger)
+            compile_grids_and_envelopes(process_dir, config, logger)
         else:
             logger.info("=== Step 2b: Skipping grid/envelope build for run_mode=lo_mlm ===")
         

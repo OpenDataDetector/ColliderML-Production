@@ -1,5 +1,5 @@
 #========================================================================
-# YAML Configuration for MadGraph Process Initialization (NLO ttbar)
+# YAML Configuration for MadGraph Process Initialization (LO+MLM diphoton)
 #========================================================================
 # 
 # This configuration is for the first step of the two-step MadGraph workflow:
@@ -12,7 +12,7 @@
 # --- Dataset & Version ---
 campaign: "full_pileup"
 dataset: "diphoton"
-version: "v3"
+version: "v1"
 stage: "madgraph_init"
 
 # --- Job Configuration ---
@@ -20,60 +20,59 @@ job_config:
   # Number of nodes will be calculated as n_runs / runs_per_node
   n_runs: 1        # Number of runs (where a run produces N events)
   runs_per_node: 1  # Number of runs per node (adjust based on memory/time constraints)
-  time_limit: "24:00:00"  # Time limit per job - MadGraph NLO generation is slower than Pythia
+  time_limit: "48:00:00"  # Time limit per job - MadGraph NLO generation is slower than Pythia
   qos: "regular"
   execution_mode: "monolithic_slurm"  # Use distributed mode for parallel generation
   # execution_mode: "interactive"
 
 # --- MadGraph Process Definition ---
 mg_model: "sm-no_b_mass"
-mg_definitions: [] # No specific lepton definitions needed for inclusive ttbar
+mg_definitions: []
 mg_generate_command: |
-  generate p p > a a [QCD]
-  add process p p > a a j [QCD]
-  add process p p > a a j j [QCD]
+  define p = g u c b d s u~ c~ b~ d~ s~
+  define j = p
+  generate p p > a a @0
+  add process p p > a a j @1
+  add process p p > a a j j @2
 
 # --- Essential Paths & Environment ---
 # These use variables from env_setup.yaml config_defaults
 mg_base_path: "{madgraph.mg_base_path}"
 generation_scratch_dir: "{madgraph.generation_scratch_dir}" 
 
-# --- Card Customizations ---
+# --- Card Customizations (LO+MLM) ---
+run_mode: "lo_mlm"
 card_customizations:
   run_card:
-    # Physics settings
-    "parton_shower": "PYTHIA8" 
-    "ebeam1": 7000.0 # 14 TeV centre of mass energy
-    "ebeam2": 7000.0 # 14 TeV centre of mass energy
-    # "ickkw": 0       # FxFx merging scheme for NLO - This is set automatically by MadGraph
-    
-    # Scale and PDF settings - use defaults
-    
-    # Generator-level cuts (improves showering acceptance)
-    "ptj": 10.0      # Minimum jet pT
-
-  # For NLO processes (born), MadGraph creates shower_card.dat
-  shower_card: # Use MOSTLY defaults, but override xqcut
-    # Shower settings that will be applied if this is an NLO process
-    # "nevents": -1    # Will be set per-run during event generation
-    # "iseed": 0       # Will be set per-run during event generation
-    "Qcut": 20.0       # MUST match run_card value for FxFx
-    "time_shower_me_corrections": "F"
-    # "njmax": 2         # For t t~ + 0,1 jet ME from NLO process - This is set automatically by MadGraph
-    # "tune": 14         # Pythia8 Monash 2013 tune
-    # "jet_matching": "True"
-    # "matching_mode": 0  # FxFx mode
-    
-  # For loop-induced processes (noborn), MadGraph creates pythia8_card.dat  
-  pythia8_card: # Use all defaults
-    # Pythia8 settings that will be applied if this is a loop-induced process
-    # "Main:numberOfEvents": -1      # Will be set per-run during event generation
-    # "Random:setSeed": "on"
-    # "Random:seed": 0               # Will be set per-run during event generation
-    # "Tune:pp": 14                    # Monash 2013 tune
-    # "PDF:pSet": "LHAPDF6:NNPDF31_nlo_as_0118"
-    # "PartonLevel:MPI": "on"          # Multiple parton interactions
-    # "HadronLevel:all": "on"          # Full hadronization
+    "ebeam1": 7000.0
+    "ebeam2": 7000.0
+    "ptj": 10.0
+    "ickkw": 1
+    "xqcut": 20.0
+    "auto_ptj_mjj": True
+    "maxjetflavor": 5
+    "use_syst": False
+    "systematics_program": none
+    # Photon isolation (Frixione, hep-ph/9801442) to avoid LO soft/collinear pathologies.
+    # Inclusive-ish baseline: keep photons above 20 GeV and within a typical detector eta.
+    "ptgmin": 20.0
+    "etagamma": 2.5
+    "R0gamma": 0.4
+    "xn": 1.0
+    "epsgamma": 0.1
+    "isoEM": True
+  pythia8_card:
+    "JetMatching:merge": on
+    "JetMatching:scheme": 1
+    "JetMatching:jetAlgorithm": 2
+    "JetMatching:coneRadius": 1.0
+    "JetMatching:slowJetPower": 1
+    "JetMatching:nQmatch": 5
+    "JetMatching:nJetMax": 2
+    "JetMatching:qCut": 30.0
+    "JetMatching:doShowerKt": off
+    "JetMatching:setMad": off
+    "UncertaintyBands:doVariations": off
 
 # --- Logging ---
 log_level: "INFO"

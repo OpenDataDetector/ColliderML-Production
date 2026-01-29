@@ -249,7 +249,7 @@ class JobSubmitter:
             end_index = start_index + (tasks_for_node if tasks_for_node is not None else runs_per_node)
             node_run_ids = self.run_ids[start_index:end_index]
             run_ids_str = " ".join(str(r) for r in node_run_ids)
-            run_ids_setup_cmd = f"RUN_IDS=({run_ids_str}) && \\\\" 
+            run_ids_setup_cmd = f"RUN_IDS=({run_ids_str}) && \\"
             run_id_expr = r"\${RUN_IDS[\$SLURM_PROCID]}"
             if self.dry_run:
                 logger.info(f"Node {node_idx} RUN_IDS: {node_run_ids}")
@@ -260,7 +260,7 @@ class JobSubmitter:
         """For multi-node single job, return (escaped expr, RUN_IDS setup cmd) when using run_list; else (None, None)."""
         if self.run_list:
             run_ids_str = " ".join(str(r) for r in self.run_ids)
-            run_ids_setup_cmd = f"RUN_IDS=({run_ids_str}) && \\\\" 
+            run_ids_setup_cmd = f"RUN_IDS=({run_ids_str}) && \\"
             run_id_expr = r"\${RUN_IDS[\$SLURM_PROCID]}"
             if self.dry_run:
                 logger.info(f"Global RUN_IDS: {self.run_ids}")
@@ -287,7 +287,7 @@ class JobSubmitter:
         use_shifter = command_info["use_shifter"]
 
         if use_shifter:
-            # Original behavior: put env setup and python inside shifter bash -c
+            # Shifter stages: put env setup and python inside shifter bash -c
             slurm.add_cmd(command_info["shifter_command"])
             if run_ids_setup_cmd:
                 slurm.add_cmd(run_ids_setup_cmd)
@@ -295,7 +295,7 @@ class JobSubmitter:
                 slurm.add_cmd(cmd + " && \\")
             slurm.add_cmd(command_info["python_command"] + "\"")
         else:
-            # For non-shifter (postprocessing): move env setup OUTSIDE srun to avoid inner-quote issues
+            # Non-shifter (postprocessing): env setup OUTSIDE srun to avoid SLURM allocation issues
             for cmd in command_info["env_setup_commands"]:
                 slurm.add_cmd(cmd)
 
@@ -593,7 +593,7 @@ class JobSubmitter:
                     slurm.add_cmd(cmd + " && \\")
                 slurm.add_cmd(command_info["python_command"] + "\"")
             else:
-                # Move env setup outside srun for non-shifter
+                # Non-shifter (postprocessing): env setup OUTSIDE srun to avoid SLURM allocation issues
                 for cmd in command_info["env_setup_commands"]:
                     slurm.add_cmd(cmd)
                 srun_options = "--exact --kill-on-bad-exit=0"
