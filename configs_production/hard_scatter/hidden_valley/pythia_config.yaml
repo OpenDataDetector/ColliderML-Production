@@ -21,7 +21,7 @@ hard_process: "HiddenValley:gg2DvDvbar"
 
 vertex_sigma_xy: 0.0125  # mm
 vertex_sigma_z: 55.5     # mm
-vertex_sigma_t: 5.0      # ns
+vertex_sigma_t: 0.185      # ns
 
 pythia_settings:
   - "Print:quiet = on"

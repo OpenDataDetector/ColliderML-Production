@@ -5,10 +5,10 @@ stage: "pythia_generation"  # Full-pileup Hidden Valley generation (signal + pil
 
 job_config:
   # Number of nodes will be calculated as n_runs / runs_per_node
-  n_runs: 2100            # Number of runs (tune as needed)
+  n_runs: 32            # Number of runs (tune as needed)
   runs_per_node: 16       # Number of runs per node
   time_limit: "00:30:00"  # Time limit per job
-  qos: "regular"
+  qos: "debug"
   execution_mode: "multi_node_slurm"
 
 # Stage-specific configurations
