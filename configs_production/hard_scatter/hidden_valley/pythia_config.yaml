@@ -4,14 +4,14 @@ version: "v1"
 stage: "pythia_generation"
 
 job_config:
-  n_runs: 32
-  runs_per_node: 16
-  time_limit: "00:30:00"
-  qos: "debug"
+  n_runs: 1000
+  runs_per_node: 32
+  time_limit: "02:00:00"
+  qos: "regular"
   execution_mode: "multi_node_slurm"
   # execution_mode: "interactive"
 
-events: 64
+events: 1000
 pileup: 0
 pdg_file: "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml_dev/configs_production/hard_scatter/hidden_valley/particle.tbl"
 
