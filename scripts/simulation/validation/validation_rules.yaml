@@ -48,6 +48,10 @@ stages:
         description: "Unmerged signal-only events"
         check_type: "size"
         min_size_mb: 0.1
+      - pattern: "events_pileup.hepmc3"
+        description: "Unmerged pileup-only events"
+        check_type: "size"
+        min_size_mb: 0.1
     file_patterns:
       - pattern: "merged_events.hepmc3"
         description: "Merged hard-scatter + pileup events"
