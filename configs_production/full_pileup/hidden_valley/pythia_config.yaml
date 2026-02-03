@@ -1,0 +1,63 @@
+campaign: "hard_scatter"
+dataset: "hidden_valley"
+version: "v1"
+stage: "pythia_generation"
+
+job_config:
+  n_runs: 1000
+  runs_per_node: 32
+  time_limit: "02:00:00"
+  qos: "regular"
+  execution_mode: "multi_node_slurm"
+  # execution_mode: "interactive"
+
+events: 1000
+pileup: 0
+pdg_file: "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml_dev/configs_production/hard_scatter/hidden_valley/particle.tbl"
+
+# True Hidden Valley (dark QCD) benchmark for semi-visible jets.
+# Literature-like: Lambda=40 GeV, pTminFSR=44 GeV (pTminFSR >= 1.1*Lambda).
+hard_process: "HiddenValley:gg2DvDvbar"
+
+vertex_sigma_xy: 0.0125  # mm
+vertex_sigma_z: 55.5     # mm
+vertex_sigma_t: 0.185      # ns
+
+pythia_settings:
+  - "Print:quiet = on"
+  # Hidden Valley shower + hadronization
+  - "HiddenValley:Ngauge = 3"
+  - "HiddenValley:nFlav = 4"
+  - "HiddenValley:FSR = on"
+  - "HiddenValley:fragment = on"
+
+  # Running coupling via Lambda_HV
+  - "HiddenValley:alphaOrder = 1"
+  - "HiddenValley:setLambda = on"
+  - "HiddenValley:Lambda = 40.0"
+  - "HiddenValley:pTminFSR = 44.0"
+
+  # Semi-visible: define dark hadrons and make a fraction stable (MET).
+  # Ensure the PDG codes below are present in particle.tbl for simulation.
+  - "4900111:m0 = 10.0"
+  - "4900111:mayDecay = off"
+  - "4900113:m0 = 20.0"
+  - "4900113:oneChannel = 1 1.0 0 1 -1"
+  - "4900113:tau0 = 0.0"
+
+  # IMPORTANT: HV fragmentation can also produce charged dark hadrons.
+  # If these remain stable, DD4hep/Geant4 may crash when encountering unknown PDG codes.
+  # Force charged pseudoscalar/vector states to decay promptly to SM quarks.
+  - "4900211:m0 = 10.0"
+  - "4900211:oneChannel = 1 1.0 0 2 -1"
+  - "4900211:tau0 = 0.0"
+  - "-4900211:oneChannel = 1 1.0 0 -2 1"
+  - "-4900211:tau0 = 0.0"
+
+  - "4900213:m0 = 20.0"
+  - "4900213:oneChannel = 1 1.0 0 2 -1"
+  - "4900213:tau0 = 0.0"
+  - "-4900213:oneChannel = 1 1.0 0 -2 1"
+  - "-4900213:tau0 = 0.0"
+
+# debug_output_dir: /global/cfs/cdirs/m4958/data/ColliderML/simulation/hard_scatter/hidden_valley/v1/runs/0
