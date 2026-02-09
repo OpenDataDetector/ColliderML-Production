@@ -71,7 +71,7 @@ stages:
       - pattern: "edm4hep.root"
         description: "EDM4hep simulation output"
         min_size_mb: 1.0
-        median_threshold_pct: 0.8
+        median_threshold_pct: 0.95
         required: true
 
   # Stage 5: Calorimeter Digitization (Key4hep)
