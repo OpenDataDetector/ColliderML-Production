@@ -17,7 +17,7 @@ from utils.config import create_base_parser, load_config
 
 u = acts.UnitConstants
 
-LOG_LEVEL = acts.logging.DEBUG
+LOG_LEVEL = acts.logging.INFO
 
 def parse_args():
     """Parse command line arguments"""
