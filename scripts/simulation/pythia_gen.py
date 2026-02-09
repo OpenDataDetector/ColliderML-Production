@@ -98,6 +98,12 @@ def parse_args():
         type=float,
         default=None,
     )
+    parser.add_argument(
+        "--threads",
+        help="Number of threads to use",
+        type=int,
+        default=None,
+    )
     return parser.parse_args()
 
 def create_vertex_generator(config, logger):
@@ -176,7 +182,10 @@ def generate_hard_scatter(output_dir, config, logger):
     
     logger.info(f"Generating {config.events} hard scatter events")
     
-    s = Sequencer(numThreads=1, events=config.events)
+    s = Sequencer(
+        numThreads=config.threads if config.threads is not None else 1,
+        events=config.events
+    )
     s.config.logLevel = LOG_LEVEL
     seed = config.seed or int(time.time())
     output_path = output_dir / "events_signal.hepmc3"
@@ -220,7 +229,10 @@ def generate_pileup(output_dir, config, logger):
             f"({config.events} signal events × {pileup_mu} pileup per signal)"
         )
     
-    s = Sequencer(numThreads=1, events=total_pileup_events)
+    s = Sequencer(
+        numThreads=config.threads if config.threads is not None else 1,
+        events=total_pileup_events
+    )
     s.config.logLevel = LOG_LEVEL
     seed = (config.seed or int(time.time())) + 1000
     output_path = output_dir / "events_pileup.hepmc3"
@@ -304,7 +316,10 @@ def merge_events(hard_scatter_file, pileup_file, output_dir, config, logger):
     vtxGen = create_vertex_generator(config, logger)
     
     # Create sequencer
-    s = acts.examples.Sequencer(numThreads=1, events=config.events)
+    s = acts.examples.Sequencer(
+        numThreads=config.threads if config.threads is not None else 1,
+        events=config.events
+    )
     s.config.logLevel = LOG_LEVEL
     
     # Random number generator
