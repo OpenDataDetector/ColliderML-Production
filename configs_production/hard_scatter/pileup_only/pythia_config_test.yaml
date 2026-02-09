@@ -1,6 +1,6 @@
 campaign: "hard_scatter"
 dataset: "pileup_only"
-version: "v3"
+version: "v4"
 stage: "pythia_generation"
 
 job_config:
@@ -21,7 +21,7 @@ events: 1000             # Pileup events per run
 # events: 100
 pileup: 1                 # Generates events * 1 = 10,000 pileup events per run
                           # Total: 10,000 runs × 10,000 events = 100,000,000 pileup events
-threads: 1                  
+threads: 4                  
 
 # No hard_process field → no hard scatter generation
 # No merge: true → outputs standalone pileup file (events_pileup.hepmc3)
