@@ -4,7 +4,7 @@ version: "v1"
 stage: "pythia_generation"
 
 job_config:
-  n_runs: 1000
+  n_runs: 1010
   runs_per_node: 32
   time_limit: "02:00:00"
   qos: "regular"
