@@ -1,4 +1,6 @@
 #!/bin/bash
+# Upload ColliderML dataset to HuggingFace. Set HUGGINGFACE_TOKEN before submitting.
+# Replace hard-scatter ttbar (100k -> 1M): pass --replace-configs and the four ttbar_pu0_* config names.
 
 #SBATCH --account             m4958
 #SBATCH --constraint          cpu
@@ -15,4 +17,6 @@ cd /global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml_dev/scrip
 eval "$(conda shell.bash hook)"
 conda activate collider-env
 
-python upload_to_hf_unified.py unified_dataset_config.yaml
+# Pass any extra args through (e.g. --replace-configs ttbar_pu0_particles ttbar_pu0_tracks ...)
+# Example: sbatch slurm_upload.sh --replace-configs ttbar_pu0_particles ttbar_pu0_tracker_hits ttbar_pu0_calo_hits ttbar_pu0_tracks
+python upload_to_hf_unified.py unified_dataset_config.yaml "$@"

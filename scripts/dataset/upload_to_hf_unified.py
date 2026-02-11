@@ -664,6 +664,52 @@ def clean_repo(repo_id: str, token: str, dry_run: bool = False) -> bool:
         return False
 
 
+def delete_configs_from_repo(
+    repo_id: str,
+    token: str,
+    config_names: List[str],
+    dry_run: bool = False
+) -> bool:
+    """
+    Delete all parquet files under data/{config_name}/ for each config.
+    Use when replacing a config (e.g. 100k → 1M) so the new upload does not duplicate.
+    """
+    if not config_names:
+        return True
+    logger.info(f"{'[DRY RUN] ' if dry_run else ''}Deleting config(s) from repo: {config_names}")
+    try:
+        api = HfApi(token=token)
+        repo_files = api.list_repo_files(repo_id=repo_id, repo_type="dataset")
+        prefix = "data/"
+        files_to_delete = []
+        for config_name in config_names:
+            folder_prefix = f"{prefix}{config_name}/"
+            files_to_delete.extend(
+                f for f in repo_files
+                if f.startswith(folder_prefix) and f.endswith(".parquet")
+            )
+        if not files_to_delete:
+            logger.info("  No files to delete for these configs")
+            return True
+        logger.info(f"  Deleting {len(files_to_delete)} parquet file(s)")
+        if dry_run:
+            return True
+        operations = [CommitOperationDelete(path_in_repo=f) for f in files_to_delete]
+        api.create_commit(
+            repo_id=repo_id,
+            repo_type="dataset",
+            operations=operations,
+            commit_message=f"Replace config(s): delete {', '.join(config_names)}"
+        )
+        logger.info(f"✓ Deleted config(s): {config_names}")
+        return True
+    except Exception as e:
+        logger.error(f"✗ Failed to delete configs: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return False
+
+
 def get_existing_configs(repo_id: str, token: str) -> List[str]:
     """Get list of existing configs by checking data/ directory structure."""
     try:
@@ -708,12 +754,17 @@ Examples:
 
   # Skip validation for large datasets
   python upload_to_hf_unified.py unified_dataset_config.yaml --skip-validation
+
+  # Replace existing configs (e.g. 100k -> 1M): delete on HF then re-upload
+  python upload_to_hf_unified.py unified_dataset_config.yaml --replace-configs ttbar_pu0_particles ttbar_pu0_tracks ttbar_pu0_tracker_hits ttbar_pu0_calo_hits
         """
     )
 
     parser.add_argument('config', help='Path to YAML configuration file')
     parser.add_argument('--dry-run', action='store_true', help='Preview without uploading')
     parser.add_argument('--configs', nargs='+', help='Upload only these specific configs')
+    parser.add_argument('--replace-configs', nargs='+', metavar='CONFIG',
+                        help='Config(s) to replace: delete on HF then re-upload (e.g. ttbar_pu0_particles)')
     parser.add_argument('--start-from', help='Start from this config (skip earlier ones)')
     parser.add_argument('--skip-existing', action='store_true', default=True,
                         help='Skip configs that already exist (default: true)')
@@ -787,6 +838,24 @@ Examples:
             configs_to_upload = [c for c in configs_to_upload if c['config_name'] not in existing]
             if before > len(configs_to_upload):
                 logger.info(f"Skipping {before - len(configs_to_upload)} existing configs")
+            # Re-add configs we want to replace (will delete on HF then upload)
+            if args.replace_configs:
+                to_add = [c for c in all_configs if c['config_name'] in args.replace_configs
+                          and c not in configs_to_upload]
+                configs_to_upload.extend(to_add)
+                if to_add:
+                    logger.info(f"Will replace {len(to_add)} config(s) on HF: {[c['config_name'] for c in to_add]}")
+
+        # When replacing, upload only those configs (ignore other enabled configs)
+        if args.replace_configs:
+            configs_to_upload = [c for c in configs_to_upload if c['config_name'] in args.replace_configs]
+            logger.info(f"Replace mode: uploading only {len(configs_to_upload)} config(s)")
+
+        # Delete configs on HF that we are replacing (so upload is a full replace, not append)
+        if args.replace_configs and configs_to_upload and not args.dry_run:
+            to_replace = [c['config_name'] for c in configs_to_upload if c['config_name'] in args.replace_configs]
+            if to_replace and not delete_configs_from_repo(repo_id, token, to_replace, args.dry_run):
+                sys.exit(1)
 
         # Upload configs if any need uploading
         success_count = 0
