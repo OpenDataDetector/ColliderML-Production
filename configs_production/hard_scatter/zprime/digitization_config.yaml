@@ -17,7 +17,7 @@ job_config:
   # qos: "debug"
   execution_mode: "multi_node_slurm"
   # execution_mode: "interactive"
-  depends_on:
+  depends_on: "49289311"
 
 # --- Validation Configuration ---
 validation_config:
