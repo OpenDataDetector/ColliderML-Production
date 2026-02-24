@@ -12,7 +12,7 @@ job_config:
   qos: "regular"
   execution_mode: "multi_node_slurm"
   # execution_mode: "interactive"
-  # depends_on: 
+  depends_on: "49286365"
 
 validation_config:
 
