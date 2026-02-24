@@ -1,6 +1,6 @@
 # Config to drive convert_all.py
 campaign: "hard_scatter"
-dataset: "higgs_portal"
+dataset: "zprime"
 version: "v1"
 stage: "convert_all"
 
