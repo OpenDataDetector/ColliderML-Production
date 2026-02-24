@@ -4,7 +4,7 @@
 
 # --- Dataset & Version ---
 campaign: "hard_scatter"
-dataset: "ttbar"
+dataset: "pileup_only"
 version: "v1"
 stage: "digitization"  # One of: generation, merge_smear, simulation, digitization
 
