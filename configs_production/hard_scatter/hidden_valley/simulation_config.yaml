@@ -12,7 +12,7 @@ job_config:
   qos: "regular"
   execution_mode: "multi_node_slurm"
   # execution_mode: "interactive"
-  depends_on: "49286412"
+  # depends_on: "49286412"
 
 # Stage-specific configurations
 events: 1000  # Number of events per run, total number of events will be n_runs * events
