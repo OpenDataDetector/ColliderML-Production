@@ -25,7 +25,7 @@ job_config:
   depends_on: 
   execution_mode: "multi_node_slurm"  # Use distributed mode for parallel generation
   # execution_mode: "interactive"
-  depends_on: "49404255"
+  depends_on:
 
 validation_config:
 
