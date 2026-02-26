@@ -49,8 +49,8 @@ card_customizations:
 # Configure splitting with keys expected by the generation script
 splitting_config:
   enable: true
-  events_per_file: 64
-  max_files_per_mg_run: 100
+  events_per_file: 1000
+  max_files_per_mg_run: 10
   output_filename: "events.hepmc"
 
 # --- Logging ---
