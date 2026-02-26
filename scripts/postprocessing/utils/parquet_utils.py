@@ -118,6 +118,7 @@ def write_parquet_table(
     compression: str = 'snappy',
     optimize_dtypes: bool = True,
     schema_overrides: dict[str, pa.DataType] | None = None,
+    row_group_size: int | None = None,
 ) -> None:
     """
     Write a DataFrame to Parquet format.
@@ -158,6 +159,7 @@ def write_parquet_table(
             output_file,
             compression=compression,
             use_dictionary=True,
+            row_group_size=row_group_size,
         )
 
         logger.debug(f"Wrote Parquet file: {output_file} ({len(df)} rows)")
@@ -172,6 +174,7 @@ def build_parquet_from_flat_df(
     output_file: str,
     compression: str = 'snappy',
     schema_overrides: dict[str, pa.DataType] | None = None,
+    row_group_size: int | None = None,
 ) -> None:
     """
     Build Parquet file from a flat DataFrame (with per-particle/hit rows).
@@ -200,6 +203,7 @@ def build_parquet_from_flat_df(
         compression=compression,
         optimize_dtypes=not bool(schema_overrides),
         schema_overrides=schema_overrides,
+        row_group_size=row_group_size,
     )
 
 

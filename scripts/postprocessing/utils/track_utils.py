@@ -393,13 +393,14 @@ def build_hdf5_tracks(df: pd.DataFrame, output_file: str) -> None:
     )
 
 
-def build_parquet_tracks(df: pd.DataFrame, output_file: str) -> None:
+def build_parquet_tracks(df: pd.DataFrame, output_file: str, row_group_size: int | None = None) -> None:
     """
     Write tracks to Parquet format with nested lists (including hit_ids).
     
     Args:
         df: Flat DataFrame with event_id, track data, and hit_ids column
         output_file: Path to output Parquet file
+        row_group_size: Number of rows per Parquet row group (None = PyArrow default)
     """
     if df is None or df.empty:
         logger.warning(f"Skipping empty DataFrame for Parquet tracks: {output_file}")
@@ -412,6 +413,7 @@ def build_parquet_tracks(df: pd.DataFrame, output_file: str) -> None:
         output_file,
         compression='snappy',
         schema_overrides=TRACKS_PARQUET_TYPES,
+        row_group_size=row_group_size,
     )
 
 
@@ -420,6 +422,7 @@ def write_tracks_with_selection(
     output_file: str,
     columns_keep: List[str] | None = None,
     output_format: str = 'hdf5',
+    row_group_size: int | None = None,
 ) -> None:
     """
     Write tracks DataFrame to HDF5 or Parquet with optional column selection.
@@ -465,7 +468,7 @@ def write_tracks_with_selection(
     
     # Route to appropriate writer based on format
     if output_format == 'parquet':
-        build_parquet_tracks(filtered, output_file)
+        build_parquet_tracks(filtered, output_file, row_group_size=row_group_size)
     else:  # default to hdf5
         build_hdf5_tracks(filtered, output_file)
 

@@ -197,13 +197,14 @@ def process_event_for_digihits(event_id: int, local_event_num: int, measurements
     return event_measurements
 
 
-def build_parquet_digihits(df: pd.DataFrame, output_file: str) -> None:
+def build_parquet_digihits(df: pd.DataFrame, output_file: str, row_group_size: int | None = None) -> None:
     """
     Write digitized measurements to Parquet format.
     
     Args:
         df: Flat DataFrame with event_id and per-hit columns
         output_file: Path to output Parquet file
+        row_group_size: Number of rows per Parquet row group (None = PyArrow default)
     """
     if df.empty:
         logger.warning(f"Skipping empty DataFrame for Parquet digihits: {output_file}")
@@ -215,6 +216,7 @@ def build_parquet_digihits(df: pd.DataFrame, output_file: str) -> None:
         output_file,
         compression='snappy',
         schema_overrides=DIGIHITS_PARQUET_TYPES,
+        row_group_size=row_group_size,
     )
 
 
@@ -223,6 +225,7 @@ def write_digihits_with_selection(
     output_file: str,
     columns_keep: List[str] | None = None,
     output_format: str = 'hdf5',
+    row_group_size: int | None = None,
 ) -> None:
     """
     Write merged digi-hits DataFrame to HDF5 or Parquet with optional column selection.
@@ -232,6 +235,7 @@ def write_digihits_with_selection(
         output_file: Path to output file
         columns_keep: Optional list of columns to keep
         output_format: Output format - 'hdf5' (default) or 'parquet'
+        row_group_size: Number of rows per Parquet row group (None = PyArrow default)
     """
     if df.empty:
         return
@@ -248,7 +252,7 @@ def write_digihits_with_selection(
     
     # Route to appropriate writer based on format
     if output_format == 'parquet':
-        build_parquet_digihits(df, output_file)
+        build_parquet_digihits(df, output_file, row_group_size=row_group_size)
     else:  # default to hdf5
         build_hdf5_digihits(df, output_file)
 

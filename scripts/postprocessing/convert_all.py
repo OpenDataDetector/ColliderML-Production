@@ -110,6 +110,7 @@ def _process_chunk_for_all(
     time_min: float = -1.0,
     time_max: float = 10.0,
     output_format: str = 'hdf5',
+    row_group_size: int | None = None,
 ) -> None:
     chunk_start_time = time.time()
     logger.info(f"Starting chunk processing for events {start_event}-{end_event}")
@@ -425,7 +426,7 @@ def _process_chunk_for_all(
                 f"Particles chunk events expected={expected_events}, processed={processed_events_particles}"
             )
         logger.info(f"Writing particles to: {particles_out} (rows={len(particles_all)})")
-        write_particles_with_selection(particles_all, str(particles_out), columns_keep=particles_columns_keep, output_format=output_format)
+        write_particles_with_selection(particles_all, str(particles_out), columns_keep=particles_columns_keep, output_format=output_format, row_group_size=row_group_size)
         if particles_out.exists():
             logger.info(f"Wrote particles file: {particles_out}")
         else:
@@ -448,7 +449,7 @@ def _process_chunk_for_all(
                 f"Tracker hits chunk events expected={expected_events}, processed={processed_events_hits}"
             )
         logger.info(f"Writing tracker hits to: {trkhits_out} (rows={len(digihits_all)})")
-        write_digihits_with_selection(digihits_all, str(trkhits_out), columns_keep=digihits_columns_keep, output_format=output_format)
+        write_digihits_with_selection(digihits_all, str(trkhits_out), columns_keep=digihits_columns_keep, output_format=output_format, row_group_size=row_group_size)
         if trkhits_out.exists():
             logger.info(f"Wrote tracker hits file: {trkhits_out}")
         else:
@@ -472,7 +473,7 @@ def _process_chunk_for_all(
                 f"Tracks chunk events expected={expected_events}, processed={processed_events_tracks}"
             )
         logger.info(f"Writing tracks to: {tracks_out} (rows={len(tracks_all)})")
-        write_tracks_with_selection(tracks_all, str(tracks_out), columns_keep=tracks_columns_keep, output_format=output_format)
+        write_tracks_with_selection(tracks_all, str(tracks_out), columns_keep=tracks_columns_keep, output_format=output_format, row_group_size=row_group_size)
         if tracks_out.exists():
             logger.info(f"Wrote tracks file: {tracks_out}")
         else:
@@ -494,7 +495,7 @@ def _process_chunk_for_all(
                 f"Calo hits chunk events expected={expected_events}, processed={processed_events_calo}"
             )
         logger.info(f"Writing calo hits to: {calo_out} (rows={len(calo_all)})")
-        write_calohits_with_selection(calo_all, str(calo_out), columns_keep=calo_columns_keep, output_format=output_format)
+        write_calohits_with_selection(calo_all, str(calo_out), columns_keep=calo_columns_keep, output_format=output_format, row_group_size=row_group_size)
         if calo_out.exists():
             logger.info(f"Wrote calo hits file: {calo_out}")
         else:
@@ -555,7 +556,8 @@ def convert_all(config: dict, chunk_index: int | None = None) -> None:
     hcal_energy_threshold = calo_config.get("hcal_energy_threshold", 2.5e-4)
     time_min = calo_config.get("time_min", -1.0)
     time_max = calo_config.get("time_max", 10.0)
-    
+
+    row_group_size = config.get("row_group_size")  # None means PyArrow default (single row group)
 
     processing_start_time = time.time()
     
@@ -594,6 +596,7 @@ def convert_all(config: dict, chunk_index: int | None = None) -> None:
             time_min=time_min,
             time_max=time_max,
             output_format=output_format,
+            row_group_size=row_group_size,
         ),
     )
 

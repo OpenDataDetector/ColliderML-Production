@@ -6,8 +6,8 @@ stage: "convert_all"
 
 # Job submission configuration
 job_config:
-  n_runs: 1000  # Number of jobs to submit
-  # n_runs: 10
+  # n_runs: 1000  # Number of jobs to submit
+  n_runs: 10
   runs_per_node: 5  # Number of runs per node
   time_limit: "00:30:00"  # Time limit per job
   # qos: "regular"
@@ -27,6 +27,11 @@ output_format: "parquet"
 chunk_size: 1000
 # chunk_size: 8
 run_size: 1000
+
+# Parquet row group size (events per row group).
+# Smaller values allow HuggingFace to stream row-group-by-row-group rather than
+# file-by-file. With chunk_size=1000 events/file, 100 gives 10 row groups per file.
+row_group_size: 100
 
 # Column selection for parquet outputs
 particles_columns_keep:

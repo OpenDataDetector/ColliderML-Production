@@ -403,7 +403,7 @@ def build_calohits_df_batch(
     return out
 
 
-def build_parquet_calohits(df: pd.DataFrame, output_file: str) -> None:
+def build_parquet_calohits(df: pd.DataFrame, output_file: str, row_group_size: int | None = None) -> None:
     """
     Write calorimeter hits to Parquet format with nested contributions.
     
@@ -413,6 +413,7 @@ def build_parquet_calohits(df: pd.DataFrame, output_file: str) -> None:
     Args:
         df: Flat DataFrame with event_id, cell-level columns, and list columns
         output_file: Path to output Parquet file
+        row_group_size: Number of rows per Parquet row group (None = PyArrow default)
     """
     if df.empty:
         logger.warning(f"Skipping empty DataFrame for Parquet calorimeter: {output_file}")
@@ -443,6 +444,7 @@ def build_parquet_calohits(df: pd.DataFrame, output_file: str) -> None:
         output_file,
         compression='snappy',
         schema_overrides=CALOHITS_PARQUET_TYPES,
+        row_group_size=row_group_size,
     )
     logger.info(f"Wrote calorimeter parquet file: {output_file}")
 
@@ -452,6 +454,7 @@ def write_calohits_with_selection(
     output_file: str,
     columns_keep: List[str] | None = None,
     output_format: str = 'hdf5',
+    row_group_size: int | None = None,
 ) -> None:
     """
     Write calorimeter hits DataFrame to HDF5 or Parquet with optional column selection.
@@ -461,6 +464,7 @@ def write_calohits_with_selection(
         output_file: Path to output file
         columns_keep: Optional list of columns to keep
         output_format: Output format - 'hdf5' (default) or 'parquet'
+        row_group_size: Number of rows per Parquet row group (None = PyArrow default)
     """
     if df.empty:
         return
@@ -477,7 +481,7 @@ def write_calohits_with_selection(
     
     # Route to appropriate writer based on format
     if output_format == 'parquet':
-        build_parquet_calohits(df, output_file)
+        build_parquet_calohits(df, output_file, row_group_size=row_group_size)
     else:  # default to hdf5
         build_hdf5_calohits(df, output_file)
 
