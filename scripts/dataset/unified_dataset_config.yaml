@@ -90,9 +90,9 @@ campaigns:
       - name: "dihiggs"
         description: "Di-Higgs production"
         enabled: true  # Set to true when parquet files are ready
-      - name: "susy_rpv"
-        description: "SUSY with R-parity violation"
-        enabled: false  # Set to true when parquet files are ready
+      - name: "higgs_portal"
+        description: "Higgs Portal Dark Matter production"
+        enabled: true  # Set to true when parquet files are ready
 
   # ============================================================================
   # Campaign 2: Full Pileup (~200 interactions)

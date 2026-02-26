@@ -823,7 +823,13 @@ Examples:
         configs_to_upload = all_configs
 
         if args.configs:
-            configs_to_upload = [c for c in configs_to_upload if c['config_name'] in args.configs]
+            # Support both exact matches and prefix/substring matches, so e.g.
+            # --configs higgs_portal matches higgs_portal_pu0_particles etc.
+            configs_to_upload = [
+                c for c in configs_to_upload
+                if any(c['config_name'] == sel or c['config_name'].startswith(sel)
+                       for sel in args.configs)
+            ]
             logger.info(f"Filtered to {len(configs_to_upload)} specific configs")
 
         if args.start_from:
