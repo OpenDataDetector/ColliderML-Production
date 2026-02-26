@@ -56,7 +56,6 @@ card_customizations:
     # Photon isolation (Frixione, hep-ph/9801442) to avoid LO soft/collinear pathologies.
     # Inclusive-ish baseline: keep photons above 20 GeV and within a typical detector eta.
     "ptgmin": 20.0
-    "etagamma": 2.5
     "R0gamma": 0.4
     "xn": 1.0
     "epsgamma": 0.1
