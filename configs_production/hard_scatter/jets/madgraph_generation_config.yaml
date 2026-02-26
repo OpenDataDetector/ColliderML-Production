@@ -1,0 +1,71 @@
+#========================================================================
+# YAML Configuration for MadGraph Event Generation (LO+MLM jets)
+#========================================================================
+# 
+# This configuration is for the second step of the two-step MadGraph workflow:
+# 1. madgraph_init: Generate and compile the process 
+# 2. madgraph_generation: Parallel event generation using the compiled process (this config)
+#
+# This stage performs parallel event generation using the pre-compiled process
+# directory created by madgraph_init. It follows the same pattern as pythia_generation.
+
+# --- Dataset & Version ---
+campaign: "hard_scatter"
+dataset: "jets"
+version: "v1"
+stage: "madgraph_generation"
+
+# --- Job Configuration ---
+job_config:
+  # Number of nodes will be calculated as n_runs / runs_per_node
+  n_runs: 21        # Number of runs (where a run produces N events)
+  runs_per_node: 1  # Number of runs per node (adjust based on memory/time constraints)
+  time_limit: "02:00:00"  # Time limit per job
+  qos: "regular"
+  # execution_mode: "multi_node_slurm"
+  execution_mode: "interactive"
+
+validation_config:
+
+# --- Event Generation Parameters ---
+# These follow the exact same pattern as pythia_gen.py and ddsim_run.py. Pythia acceptance around 27%
+events: 40000  # Number of events per run, total events = n_runs * events
+seed: 42     # Base seed - will be modified per run using run_id
+
+# --- Essential Paths & Environment ---
+# These use variables from env_setup.yaml config_defaults
+mg_base_path: "{madgraph.mg_base_path}"
+generation_scratch_dir: "{madgraph.generation_scratch_dir}" 
+
+# --- Card Customizations (run-level overrides) ---
+run_mode: "lo_mlm"
+card_customizations:
+  run_card:
+    "ptj": 20.0      # Minimum jet pT
+  pythia8_card: {}
+
+# --- HepMC Splitting Configuration (Optional) ---
+# Configure splitting with keys expected by the generation script
+splitting_config:
+  enable: true
+  events_per_file: 64
+  max_files_per_mg_run: 100
+  # max_files_per_mg_run: 4
+  output_filename: "events.hepmc"
+
+# --- Logging ---
+log_level: "INFO"
+
+# --- Documentation ---
+# This stage expects that madgraph_init has been run successfully and the
+# tarball artifact exists at:
+# {output_base_dir}/{campaign}/{dataset}/{version}/madgraph_process.tgz
+# (The process directory may also exist; generation will use the tarball.)
+#
+# Output will be placed at:
+# {output_base_dir}/{campaign}/{dataset}/{version}/runs/
+# with structure: runs/0/events.lhe.gz, runs/1/events.lhe.gz, etc.
+# This matches the same pattern used by pythia_generation, simulation, etc.
+# 
+# Expected runtime per run: 10-60 minutes (depends on events count and process complexity)
+# Expected output per run: ~1-50 MB for LHE files (depends on events count)
