@@ -22,8 +22,8 @@ job_config:
   runs_per_node: 1  # Number of runs per node (adjust based on memory/time constraints)
   time_limit: "48:00:00"  # Time limit per job - MadGraph NLO generation is slower than Pythia
   qos: "regular"
-  execution_mode: "monolithic_slurm"  # Use distributed mode for parallel generation
-  # execution_mode: "interactive"
+  # execution_mode: "monolithic_slurm"  # Use distributed mode for parallel generation
+  execution_mode: "interactive"
 
 # --- MadGraph Process Definition ---
 mg_model: "sm-no_b_mass"
