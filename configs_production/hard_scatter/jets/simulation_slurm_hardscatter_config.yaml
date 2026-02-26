@@ -9,8 +9,8 @@ job_config:
   # n_runs: 64
   runs_per_node: 32  # Number of runs per node
   time_limit: "03:00:00"  # Time limit per job
-  # qos: "regular"
-  qos: "debug"
+  qos: "regular"
+  # qos: "debug"
   execution_mode: "multi_node_slurm"
   # execution_mode: "interactive"
   depends_on: 
@@ -18,7 +18,7 @@ job_config:
 validation_config:
 
 # Stage-specific configurations
-events: 100  # Number of events per run, total number of events will be n_runs * events
+events: 1000  # Number of events per run, total number of events will be n_runs * events
 input_filename: events.hepmc
 threads: 8
 minimalKineticEnergy: 0.1  # Minimum kinetic energy in GeV to register in truth
