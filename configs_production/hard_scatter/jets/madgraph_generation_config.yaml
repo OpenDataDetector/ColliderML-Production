@@ -18,12 +18,12 @@ stage: "madgraph_generation"
 # --- Job Configuration ---
 job_config:
   # Number of nodes will be calculated as n_runs / runs_per_node
-  n_runs: 21        # Number of runs (where a run produces N events)
-  runs_per_node: 1  # Number of runs per node (adjust based on memory/time constraints)
-  time_limit: "02:00:00"  # Time limit per job
-  qos: "regular"
-  # execution_mode: "multi_node_slurm"
-  execution_mode: "interactive"
+  n_runs: 110        # Number of runs (where a run produces N events)
+  runs_per_node: 32  # Number of runs per node (adjust based on memory/time constraints)
+  time_limit: "00:30:00"  # Time limit per job
+  qos: "debug"
+  execution_mode: "multi_node_slurm"
+  # execution_mode: "interactive"
 
 validation_config:
 
@@ -48,8 +48,8 @@ card_customizations:
 # Configure splitting with keys expected by the generation script
 splitting_config:
   enable: true
-  events_per_file: 64
-  max_files_per_mg_run: 100
+  events_per_file: 1000
+  max_files_per_mg_run: 10
   # max_files_per_mg_run: 4
   output_filename: "events.hepmc"
 
