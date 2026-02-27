@@ -27,6 +27,7 @@ output_format: "parquet"
 chunk_size: 1000
 # chunk_size: 10
 run_size: 1280
+row_group_size: 100
 
 # Column selection for parquet outputs
 particles_columns_keep:
