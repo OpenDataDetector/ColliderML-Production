@@ -87,4 +87,4 @@ max_chunks: 1
 min_tracker_hits: 0
 min_calo_hits: 0
 
-log_level: "DEBUG"
+log_level: "INFO"

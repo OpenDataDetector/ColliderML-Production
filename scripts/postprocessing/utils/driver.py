@@ -10,11 +10,33 @@ Responsibilities:
 from __future__ import annotations
 
 from pathlib import Path
+import sys
 from typing import Callable, List, Optional
 import logging
 from tqdm import tqdm
 
 from .path_utils import get_chunk_info
+
+
+def should_show_progress(config: dict | None = None) -> bool:
+    """
+    Decide whether tqdm progress bars should be rendered.
+
+    By default, only render progress bars when attached to an interactive
+    terminal. This keeps SLURM/stdout log files compact while preserving a nice
+    interactive experience. A config value `show_progress` can override the
+    default behavior.
+
+    Args:
+        config: Optional YAML config dict.
+
+    Returns:
+        True when progress bars should be shown.
+    """
+    if isinstance(config, dict) and config.get("show_progress") is not None:
+        return bool(config["show_progress"])
+
+    return sys.stderr.isatty()
 
 
 def determine_chunk_cap(config: dict | None, num_chunks: int) -> Optional[int]:
@@ -103,7 +125,8 @@ def iterate_and_process_chunks(
         logging.info(f"Capping chunks to {cap} (interactive/testing)")
 
     total = cap if cap is not None else num_chunks
-    for chunk_idx in tqdm(range(total), total=total, desc="Processing chunks"):
+    show_progress = should_show_progress(config)
+    for chunk_idx in tqdm(range(total), total=total, desc="Processing chunks", disable=not show_progress):
         start_event = chunk_idx * chunk_size
         end_event = min(num_events, start_event + chunk_size) - 1
         start_run = start_event // run_size

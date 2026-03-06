@@ -21,7 +21,7 @@ def log_memory(label: str):
     process = psutil.Process(os.getpid())
     mem_info = process.memory_info()
     vm = psutil.virtual_memory()
-    logger.info(f"MEMORY [{label}]: RSS={mem_info.rss / 1024 / 1024:.2f} MB, VMS={mem_info.vms / 1024 / 1024:.2f} MB, Global Used={vm.used / 1024 / 1024:.2f} MB, Global Free={vm.free / 1024 / 1024:.2f} MB, Global Percent={vm.percent}%")
+    logger.debug(f"MEMORY [{label}]: RSS={mem_info.rss / 1024 / 1024:.2f} MB, VMS={mem_info.vms / 1024 / 1024:.2f} MB, Global Used={vm.used / 1024 / 1024:.2f} MB, Global Free={vm.free / 1024 / 1024:.2f} MB, Global Percent={vm.percent}%")
 
 from convert_particles import convert_particles, build_particles_df_with_parents_and_vertex, write_particles_with_selection
 from convert_calorimeter import process_calohits_batch, write_calohits_with_selection
@@ -30,7 +30,7 @@ from convert_tracks import process_event_for_tracks
 from convert_digihits import convert_digihits, process_event_for_digihits, write_digihits_with_selection
 
 from utils.path_utils import make_dir, get_run_paths
-from utils.driver import iterate_and_process_chunks, local_events_for_run
+from utils.driver import iterate_and_process_chunks, local_events_for_run, should_show_progress
 from utils.track_utils import (
     load_root_file,
     build_hdf5_tracks,
@@ -111,6 +111,7 @@ def _process_chunk_for_all(
     time_max: float = 10.0,
     output_format: str = 'hdf5',
     row_group_size: int | None = None,
+    show_progress: bool = False,
 ) -> None:
     chunk_start_time = time.time()
     logger.info(f"Starting chunk processing for events {start_event}-{end_event}")
@@ -127,7 +128,7 @@ def _process_chunk_for_all(
 
     run_processing_time = 0.0
     
-    for abs_run in tqdm(range(start_run, end_run + 1), leave=False):
+    for abs_run in tqdm(range(start_run, end_run + 1), leave=False, disable=not show_progress):
         run_start_time = time.time()
         run_dir = run_dirs[abs_run]
         edm4hep_path = Path(run_dir) / "edm4hep.root"
@@ -151,7 +152,7 @@ def _process_chunk_for_all(
             local_events_str = f"{local_start}-{local_stop-1} (n={local_count})"
         else:
             local_events_str = "<empty>"
-        logger.info(
+        logger.debug(
             f"Run {abs_run}: dir={run_dir} edm4hep={edm4hep_path} local_events={local_events_str}"
         )
 
@@ -205,7 +206,7 @@ def _process_chunk_for_all(
                         seen_pairs_calo.add(pair)
                     
                     calo_frames.append(run_calo_df)
-                    logger.info(
+                    logger.debug(
                         f"Run {abs_run}: calo_hits rows={len(run_calo_df)} events={run_calo_df['event_id'].nunique()}"
                     )
             else:
@@ -257,7 +258,7 @@ def _process_chunk_for_all(
                             logger.error(f"Overlap detected for particles on (run,local_event)=({abs_run},{le})")
                         seen_pairs_particles.add(pair)
                     particles_frames.append(df_run)
-                    logger.info(
+                    logger.debug(
                         f"Run {abs_run}: particles rows={len(df_run)} events={df_run.event_id.nunique() if 'event_id' in df_run.columns else 'n/a'}"
                     )
             particles_time = time.time() - particles_start_time
@@ -308,7 +309,7 @@ def _process_chunk_for_all(
                         evs_for_run.append(ev_df)
                 if evs_for_run:
                     digihits_run_df = pd.concat(evs_for_run, ignore_index=True)
-                    logger.info(
+                    logger.debug(
                         f"Run {abs_run}: tracker_hits rows={len(digihits_run_df)} events={len(evs_for_run)}"
                     )
             else:
@@ -392,7 +393,7 @@ def _process_chunk_for_all(
                 run_tracks_rows += len(event_df)
             tracks_proc_time = time.time() - tracks_proc_start_time
             logger.debug(f"Tracks processing for run {abs_run}: {tracks_proc_time:.3f}s")
-            logger.info(
+            logger.debug(
                 f"Run {abs_run}: tracks rows={run_tracks_rows} events={local_count}"
             )
         
@@ -425,10 +426,10 @@ def _process_chunk_for_all(
             logger.warning(
                 f"Particles chunk events expected={expected_events}, processed={processed_events_particles}"
             )
-        logger.info(f"Writing particles to: {particles_out} (rows={len(particles_all)})")
+        logger.debug(f"Writing particles to: {particles_out} (rows={len(particles_all)})")
         write_particles_with_selection(particles_all, str(particles_out), columns_keep=particles_columns_keep, output_format=output_format, row_group_size=row_group_size)
         if particles_out.exists():
-            logger.info(f"Wrote particles file: {particles_out}")
+            logger.debug(f"Wrote particles file: {particles_out}")
         else:
             logger.warning(f"Particles file not created (possibly filtered to empty): {particles_out}")
         particles_write_time = time.time() - particles_write_start
@@ -448,10 +449,10 @@ def _process_chunk_for_all(
             logger.warning(
                 f"Tracker hits chunk events expected={expected_events}, processed={processed_events_hits}"
             )
-        logger.info(f"Writing tracker hits to: {trkhits_out} (rows={len(digihits_all)})")
+        logger.debug(f"Writing tracker hits to: {trkhits_out} (rows={len(digihits_all)})")
         write_digihits_with_selection(digihits_all, str(trkhits_out), columns_keep=digihits_columns_keep, output_format=output_format, row_group_size=row_group_size)
         if trkhits_out.exists():
-            logger.info(f"Wrote tracker hits file: {trkhits_out}")
+            logger.debug(f"Wrote tracker hits file: {trkhits_out}")
         else:
             logger.warning(
                 f"Tracker hits file not created (possibly filtered to empty): {trkhits_out}"
@@ -472,10 +473,10 @@ def _process_chunk_for_all(
             logger.warning(
                 f"Tracks chunk events expected={expected_events}, processed={processed_events_tracks}"
             )
-        logger.info(f"Writing tracks to: {tracks_out} (rows={len(tracks_all)})")
+        logger.debug(f"Writing tracks to: {tracks_out} (rows={len(tracks_all)})")
         write_tracks_with_selection(tracks_all, str(tracks_out), columns_keep=tracks_columns_keep, output_format=output_format, row_group_size=row_group_size)
         if tracks_out.exists():
-            logger.info(f"Wrote tracks file: {tracks_out}")
+            logger.debug(f"Wrote tracks file: {tracks_out}")
         else:
             logger.warning(f"Tracks file not created (possibly filtered to empty): {tracks_out}")
         tracks_write_time = time.time() - tracks_write_start
@@ -494,10 +495,10 @@ def _process_chunk_for_all(
             logger.warning(
                 f"Calo hits chunk events expected={expected_events}, processed={processed_events_calo}"
             )
-        logger.info(f"Writing calo hits to: {calo_out} (rows={len(calo_all)})")
+        logger.debug(f"Writing calo hits to: {calo_out} (rows={len(calo_all)})")
         write_calohits_with_selection(calo_all, str(calo_out), columns_keep=calo_columns_keep, output_format=output_format, row_group_size=row_group_size)
         if calo_out.exists():
-            logger.info(f"Wrote calo hits file: {calo_out}")
+            logger.debug(f"Wrote calo hits file: {calo_out}")
         else:
             logger.warning(f"Calo hits file not created (possibly filtered to empty): {calo_out}")
         calo_write_time = time.time() - calo_write_start
@@ -558,6 +559,7 @@ def convert_all(config: dict, chunk_index: int | None = None) -> None:
     time_max = calo_config.get("time_max", 10.0)
 
     row_group_size = config.get("row_group_size")  # None means PyArrow default (single row group)
+    show_progress = should_show_progress(config)
 
     processing_start_time = time.time()
     
@@ -597,6 +599,7 @@ def convert_all(config: dict, chunk_index: int | None = None) -> None:
             time_max=time_max,
             output_format=output_format,
             row_group_size=row_group_size,
+            show_progress=show_progress,
         ),
     )
 
