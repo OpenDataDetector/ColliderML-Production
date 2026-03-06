@@ -53,76 +53,60 @@ N/A (Physics data)
 
 ## Quick Start
 
-### Installation
+For the recommended way to download and load this data (with control over how many events are downloaded), see the **ColliderML documentation**: [https://opendatadetector.github.io/ColliderML/](https://opendatadetector.github.io/ColliderML/).
+
+You can use either **(a)** the ColliderML library (recommended) or **(b)** the Hugging Face `datasets` library with streaming.
+
+### Option (a): ColliderML library (recommended)
+
+**Install and download**
 
 ```bash
-pip install datasets pyarrow
+pip install colliderml
+colliderml download --channels ttbar --pileup pu0 --objects particles,tracker_hits,calo_hits,tracks --max-events 200
 ```
 
-### Load First 100 Events (All Objects)
+Adjust `--channels` and `--pileup` for your config (e.g. `ggf`, `pu200`); see the [ColliderML docs](https://opendatadetector.github.io/ColliderML/) for options.
+
+**Load in Python**
+
+```python
+from colliderml.core import load_tables, collect_tables
+
+cfg = {
+    "dataset_id": "{{ repo_id }}",
+    "channels": "ttbar",
+    "pileup": "pu0",
+    "objects": ["particles", "tracker_hits", "calo_hits", "tracks"],
+    "split": "train",
+    "lazy": False,
+    "max_events": 200,
+}
+tables = load_tables(cfg)
+frames = collect_tables(tables)  # dict[str, pl.DataFrame]
+# e.g. frames["particles"], frames["tracker_hits"] — one row per event, list columns
+```
+
+For exploding event tables into flat (object-per-row) tables, pileup subsampling, and calibration, see the [library docs](https://opendatadetector.github.io/ColliderML/library/overview.html) and the [exploration notebook](https://github.com/OpenDataDetector/ColliderML/blob/main/notebooks/colliderml_loader_exploration.ipynb).
+
+### Option (b): Hugging Face `datasets` with streaming
+
+To iterate over events without downloading the full split, use `streaming=True`. **Without** `streaming=True`, `load_dataset` downloads all files for the chosen config.
 
 ```python
 from datasets import load_dataset
 
-# Load first 100 rows of each configuration
-particles = load_dataset("{{ repo_id }}", "particles", split="train[:100]")
-tracker_hits = load_dataset("{{ repo_id }}", "tracker_hits", split="train[:100]")
-calo_hits = load_dataset("{{ repo_id }}", "calo_hits", split="train[:100]")
-tracks = load_dataset("{{ repo_id }}", "tracks", split="train[:100]")
-
-print(f"Loaded {len(particles)} particle events")
-print(f"Loaded {len(tracker_hits)} tracker hit events")
-print(f"Loaded {len(calo_hits)} calo hit events")
-print(f"Loaded {len(tracks)} track events")
+# Stream first 100 events (only fetches data as you iterate)
+ds = load_dataset("{{ repo_id }}", "particles", split="train", streaming=True)
+for i, event in enumerate(ds):
+    if i >= 100:
+        break
+    # use event (e.g. event["event_id"], event["px"], ...)
 ```
 
-### Load Specific Columns from First 100 Events
+### Selecting columns and working with tables
 
-```python
-from datasets import load_dataset
-import numpy as np
-
-# Load only specific columns from particles
-particles = load_dataset(
-    "{{ repo_id }}",
-    "particles",
-    split="train[:100]",
-    columns=["event_id", "px", "py", "pz", "energy", "pdg_id"]
-)
-
-# Access data
-for event in particles:
-    event_id = event['event_id']
-
-    # Convert to numpy arrays
-    px = np.array(event['px'])
-    py = np.array(event['py'])
-    pz = np.array(event['pz'])
-
-    # Calculate transverse momentum
-    pt = np.sqrt(px**2 + py**2)
-
-    print(f"Event {event_id}: {len(px)} particles, mean pt = {pt.mean():.2f} GeV")
-
-# Load only specific columns from tracks
-tracks = load_dataset(
-    "{{ repo_id }}",
-    "tracks",
-    split="train[:100]",
-    columns=["event_id", "qop", "theta", "phi"]
-)
-
-# Calculate derived quantities
-for event in tracks:
-    qop = np.array(event['qop'])
-    theta = np.array(event['theta'])
-
-    # Compute transverse momentum from track parameters
-    pt = np.abs(1.0 / qop) * np.sin(theta)
-    eta = -np.log(np.tan(theta / 2.0))
-
-    print(f"Event {event['event_id']}: {len(qop)} tracks, pt range [{pt.min():.2f}, {pt.max():.2f}] GeV")
-```
+With the ColliderML workflow, select columns via Polars, e.g. `frames["particles"].select(["event_id", "px", "py", "pz"])`. For more (exploding, calibration), see the [library docs](https://opendatadetector.github.io/ColliderML/library/overview.html) and [exploration notebook](https://github.com/OpenDataDetector/ColliderML/blob/main/notebooks/colliderml_loader_exploration.ipynb).
 
 ## Dataset Structure
 

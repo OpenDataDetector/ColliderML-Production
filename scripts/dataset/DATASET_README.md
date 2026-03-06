@@ -52,49 +52,60 @@ This dataset is designed for machine learning tasks in high-energy physics, incl
 
 ## Quick Start
 
-### Installation
+For the recommended way to download and load this data (with control over how many events are downloaded), see the **ColliderML documentation**: [https://opendatadetector.github.io/ColliderML/](https://opendatadetector.github.io/ColliderML/).
+
+You can use either **(a)** the ColliderML library (recommended) or **(b)** the Hugging Face `datasets` library with streaming.
+
+### Option (a): ColliderML library (recommended)
+
+**Install and download**
 
 ```bash
-pip install datasets pyarrow
+pip install colliderml
+colliderml download --channels ttbar --pileup pu0 --objects particles,tracker_hits,calo_hits,tracks --max-events 200
 ```
 
-### Load a Configuration
+Adjust `--channels` and `--pileup` for your config (e.g. `ggf`, `pu200`); see the [ColliderML docs](https://opendatadetector.github.io/ColliderML/) for options.
+
+**Load in Python**
+
+```python
+from colliderml.core import load_tables, collect_tables
+
+cfg = {
+    "dataset_id": "CERN/ColliderML-Release-1",
+    "channels": "ttbar",
+    "pileup": "pu0",
+    "objects": ["particles", "tracker_hits", "calo_hits", "tracks"],
+    "split": "train",
+    "lazy": False,
+    "max_events": 200,
+}
+tables = load_tables(cfg)
+frames = collect_tables(tables)  # dict[str, pl.DataFrame]
+# e.g. frames["particles"], frames["tracker_hits"] — one row per event, list columns
+```
+
+For exploding event tables into flat (object-per-row) tables, pileup subsampling, and calibration, see the [library docs](https://opendatadetector.github.io/ColliderML/library/overview.html) and the [exploration notebook](https://github.com/OpenDataDetector/ColliderML/blob/main/notebooks/colliderml_loader_exploration.ipynb).
+
+### Option (b): Hugging Face `datasets` with streaming
+
+To iterate over events without downloading the full split, use `streaming=True`. **Without** `streaming=True`, `load_dataset` downloads all files for the chosen config.
 
 ```python
 from datasets import load_dataset
 
-# Load truth particles from ttbar (no pileup)
-particles = load_dataset(
-    "OpenDataDetector/ColliderML-Release-1",
-    "ttbar_pu0_particles",
-    split="train"
-)
-
-print(f"Loaded {len(particles)} events")
-print(f"Columns: {particles.column_names}")
+# Stream first 100 events (only fetches data as you iterate)
+ds = load_dataset("CERN/ColliderML-Release-1", "ttbar_pu0_particles", split="train", streaming=True)
+for i, event in enumerate(ds):
+    if i >= 100:
+        break
+    # use event (e.g. event["event_id"], event["px"], ...)
 ```
 
-### Load First 100 Events with Specific Columns
+### Selecting columns and working with tables
 
-```python
-from datasets import load_dataset
-import numpy as np
-
-# Load only specific columns
-particles = load_dataset(
-    "OpenDataDetector/ColliderML-Release-1",
-    "ttbar_pu0_particles",
-    split="train[:100]",
-    columns=["event_id", "px", "py", "pz", "energy", "pdg_id"]
-)
-
-# Process events
-for event in particles:
-    px = np.array(event['px'])
-    py = np.array(event['py'])
-    pt = np.sqrt(px**2 + py**2)
-    print(f"Event {event['event_id']}: {len(px)} particles, mean pT = {pt.mean():.2f} GeV")
-```
+With the ColliderML workflow, select columns via Polars, e.g. `frames["particles"].select(["event_id", "px", "py", "pz"])`. For more (exploding, calibration), see the [library docs](https://opendatadetector.github.io/ColliderML/library/overview.html) and [exploration notebook](https://github.com/OpenDataDetector/ColliderML/blob/main/notebooks/colliderml_loader_exploration.ipynb).
 
 ## Dataset Structure
 

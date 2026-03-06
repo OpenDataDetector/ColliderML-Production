@@ -19,8 +19,8 @@ retry_policy:
 actions:
   minor_failure:
     description: "Small number of runs failed (<2%)"
-    auto_remove_failed: false        # Automatically delete failed run directories
-    auto_normalize: false            # Call normalise_runs.py to renumber remaining runs
+    auto_remove_failed: true        # Automatically delete failed run directories
+    auto_normalize: true            # Call normalise_runs.py to renumber remaining runs
     alert_level: "INFO"
     exit_code: 0                    # Success (after cleanup)
     

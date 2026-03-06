@@ -1,18 +1,18 @@
 #========================================================================
-# YAML Configuration for Digitization of ttbar Events
+# YAML Configuration for Digitization of jets Events
 #========================================================================
 
 # --- Dataset & Version ---
 campaign: "hard_scatter"
-dataset: "ttbar"
+dataset: "jets"
 version: "v1"
 stage: "digitization"  # One of: generation, merge_smear, simulation, digitization
 
 # --- Job Configuration ---
 job_config:
-  n_runs: 1000  # Number of jobs to submit
+  n_runs: 1100  # Number of jobs to submit
   runs_per_node: 16  # Number of runs per node
-  time_limit: "01:00:00"
+  time_limit: "02:00:00"
   qos: "regular"
   # qos: "debug"
   execution_mode: "multi_node_slurm"
@@ -23,7 +23,7 @@ job_config:
 validation_config:
 
 # --- Stage-specific Configurations ---
-events: 1280  # Number of events per run, total number of events will be n_runs * events
+events: 1000  # Number of events per run, total number of events will be n_runs * events
 threads: 8
 digi: True
 reco: True
