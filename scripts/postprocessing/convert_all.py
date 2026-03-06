@@ -41,6 +41,34 @@ from utils.track_utils import (
 logger = logging.getLogger(__name__)
 
 
+def configure_external_log_levels(config: dict) -> None:
+    """
+    Set log levels for external library loggers so batch logs stay compact.
+
+    Config keys (optional):
+        external_log_level: default level for external loggers (default: WARNING).
+        external_log_levels: dict of logger_name -> level_name overrides.
+
+    Args:
+        config: Runtime configuration dictionary.
+    Returns:
+        None.
+    """
+    default_level_name = str(config.get("external_log_level", "WARNING")).upper()
+    default_level = getattr(logging, default_level_name, logging.WARNING)
+    logger_levels = {"pyedm4hep": default_level}
+    config_overrides = config.get("external_log_levels", {})
+    if isinstance(config_overrides, dict):
+        for logger_name, level_name in config_overrides.items():
+            logger_levels[str(logger_name)] = getattr(
+                logging,
+                str(level_name).upper(),
+                default_level,
+            )
+    for logger_name, logger_level in logger_levels.items():
+        logging.getLogger(logger_name).setLevel(logger_level)
+
+
 def _get_objects(config: dict) -> list[str]:
     objs = config.get("objects", ["tracker_hits", "tracks", "particles", "calo_hits"])  # default set
     return [obj.lower() for obj in objs]
@@ -638,6 +666,7 @@ def main():
         format='%(asctime)s - %(levelname)s - %(name)s - %(message)s',
         force=True,
     )
+    configure_external_log_levels(config)
     
     logger.debug("Starting convert_all function")
     convert_all(config, chunk_index=args.chunk_index)
