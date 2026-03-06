@@ -78,6 +78,26 @@ def classify_failure_severity(failure_rate: float, policy: dict) -> str:
         return "critical"
 
 
+def lookup_failure_reason(validation_result: dict, run_id) -> str:
+    """
+    Look up a failure reason using int, string, or chunk-prefixed keys.
+
+    Args:
+        validation_result: Validation result dictionary.
+        run_id: Failed run or chunk identifier.
+
+    Returns:
+        Human-readable failure reason.
+    """
+    failure_reasons = validation_result.get('failure_reasons', {})
+    return (
+        failure_reasons.get(run_id)
+        or failure_reasons.get(str(run_id))
+        or failure_reasons.get(f"chunk_{run_id}")
+        or "Unknown"
+    )
+
+
 def remove_failed_runs(runs_dir: Path, failed_run_ids: List[str], dry_run: bool = False) -> Tuple[int, List[str]]:
     """
     Remove failed run directories.
@@ -203,7 +223,7 @@ def generate_failure_report(
         failed_ids = validation_result['failed_run_ids']
         # Show first 50
         for run_id in failed_ids[:50]:
-            reason = validation_result['failure_reasons'].get(run_id, "Unknown")
+            reason = lookup_failure_reason(validation_result, run_id)
             report_lines.append(f"  - Run {run_id}: {reason}")
         if len(failed_ids) > 50:
             report_lines.append(f"  ... and {len(failed_ids) - 50} more")
@@ -306,6 +326,17 @@ def make_decision(
         logger.info("Minor failures detected - attempting auto-recovery")
         
         policy_actions = guardian_policy['actions']['minor_failure']
+        if validation_result.get('stage') == 'convert_all':
+            logger.info("Chunk-based convert_all failures detected - skipping run directory cleanup")
+            return {
+                "action": "CONTINUE",
+                "reason": f"Minor failures ({validation_result['failure_rate']:.1%}) detected for chunk-based outputs",
+                "exit_code": 0,
+                "severity": severity,
+                "retry_count": retry_count,
+                "max_retries": max_retries,
+                "actions_taken": ["Skipped run directory cleanup for convert_all chunk failures"],
+            }
         
         # Remove failed runs
         if policy_actions.get('auto_remove_failed', True):

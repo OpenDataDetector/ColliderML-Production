@@ -1,15 +1,17 @@
 # Config to drive convert_all.py
 campaign: "hard_scatter"
-dataset: "ttbar"
+dataset: "pileup_only"
 version: "v1"
 stage: "convert_all"
 
 # Job submission configuration
 job_config:
-  n_runs: 1000  # Number of jobs to submit
+  # n_runs: 10000  # Number of jobs to submit
+  n_runs: 20
   runs_per_node: 5  # Number of runs per node
-  time_limit: "01:00:00"  # Time limit per job
-  qos: "regular"
+  time_limit: "00:30:00"  # Time limit per job
+  # qos: "regular"
+  qos: "debug"
   # execution_mode: "interactive"
   execution_mode: "multi_node_slurm"
 
@@ -22,9 +24,9 @@ objects:
 output_format: "parquet"
 
 # Chunking
-chunk_size: 1000
+chunk_size: 10000
 # chunk_size: 8
-run_size: 1280
+run_size: 10000
 
 # Column selection for parquet outputs
 particles_columns_keep:

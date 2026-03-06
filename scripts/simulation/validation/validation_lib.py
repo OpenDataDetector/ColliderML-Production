@@ -21,11 +21,12 @@ Usage:
 import argparse
 import logging
 from pathlib import Path
+import re
 import sys
 import yaml
 import statistics
 from glob import glob
-from typing import Dict, List, Tuple, Optional
+from typing import Dict, List, Tuple, Optional, Set
 import json
 from datetime import datetime, timezone
 
@@ -34,6 +35,7 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
+CHUNK_FILE_RE = re.compile(r'events(\d+)-(\d+)\.parquet$')
 
 
 def load_validation_rules(rules_path: Path) -> dict:
@@ -193,13 +195,382 @@ def _check_require_any_of_for_run(run_dir: Path, any_of_patterns: List[dict]) ->
     return False, "None of the require_any_of patterns were satisfied: " + "; ".join(attempted)
 
 
+def _infer_object_type(pattern: str) -> Optional[str]:
+    """
+    Infer the convert_all object type from a parquet glob pattern.
+
+    Args:
+        pattern: Glob pattern from validation rules.
+
+    Returns:
+        Canonical object type string, or None if it cannot be inferred.
+    """
+    if "reco/calo_hits/" in pattern:
+        return "calo_hits"
+    if "reco/tracker_hits/" in pattern:
+        return "tracker_hits"
+    if "reco/tracks/" in pattern:
+        return "tracks"
+    if "truth/particles/" in pattern:
+        return "particles"
+    return None
+
+
+def _get_chunk_pattern_configs(file_patterns: List[dict], config: Optional[dict]) -> List[dict]:
+    """
+    Filter chunk validation patterns to the enabled object types.
+
+    Args:
+        file_patterns: Validation rule entries for the stage.
+        config: Optional runtime config dict used for submission.
+
+    Returns:
+        Pattern configs augmented with canonical `object_type`.
+    """
+    enabled_objects = None
+    if config is not None:
+        enabled_objects = {
+            str(obj).lower()
+            for obj in config.get("objects", [])
+        }
+
+    pattern_configs: List[dict] = []
+    for pattern_config in file_patterns:
+        object_type = pattern_config.get("object_type") or _infer_object_type(pattern_config["pattern"])
+        if object_type is None:
+            logger.warning(f"Skipping chunk validation pattern without object type: {pattern_config['pattern']}")
+            continue
+        if enabled_objects is not None and object_type not in enabled_objects:
+            continue
+        config_copy = dict(pattern_config)
+        config_copy["object_type"] = object_type
+        pattern_configs.append(config_copy)
+    return pattern_configs
+
+
+def _get_expected_chunk_ids(run_ids: Optional[List[int]], config: Optional[dict]) -> Optional[List[int]]:
+    """
+    Determine the authoritative chunk IDs to validate.
+
+    Args:
+        run_ids: Explicit chunk subset override from CLI or job submission.
+        config: Optional runtime config dict.
+
+    Returns:
+        Sorted list of chunk IDs to validate, or None when unknown.
+    """
+    if run_ids is not None:
+        return sorted({int(run_id) for run_id in run_ids})
+
+    if config is None:
+        return None
+
+    job_config = config.get("job_config", {})
+    n_runs = job_config.get("n_runs")
+    if n_runs is None:
+        return None
+
+    return list(range(int(n_runs)))
+
+
+def _extract_chunk_id(file_path: Path, chunk_size: int) -> Optional[int]:
+    """
+    Extract the chunk ID from a convert_all parquet filename.
+
+    Args:
+        file_path: Parquet file path.
+        chunk_size: Configured events per chunk.
+
+    Returns:
+        Chunk ID, or None if the filename does not match expectations.
+    """
+    match = CHUNK_FILE_RE.search(file_path.name)
+    if not match:
+        return None
+    start_event = int(match.group(1))
+    return start_event // chunk_size
+
+
+def _record_chunk_failure(
+    failed_chunks: Set[int],
+    failure_reasons: Dict[str, List[str]],
+    chunk_id: int,
+    reason: str,
+) -> None:
+    """
+    Record a failure reason for a specific chunk ID.
+
+    Args:
+        failed_chunks: Set of failed chunk IDs.
+        failure_reasons: Mapping from chunk ID string to failure reasons.
+        chunk_id: Failed chunk ID.
+        reason: Human-readable failure reason.
+    """
+    failed_chunks.add(chunk_id)
+    key = str(chunk_id)
+    failure_reasons.setdefault(key, []).append(reason)
+
+
+def _validate_chunk_stage(
+    search_dir: Path,
+    stage: str,
+    pattern_configs: List[dict],
+    report_timestamp: str,
+    run_ids: Optional[List[int]],
+    chunk_size: Optional[int],
+    config: Optional[dict],
+) -> dict:
+    """
+    Validate chunk-based outputs such as `convert_all`.
+
+    Args:
+        search_dir: Directory containing chunked outputs.
+        stage: Stage name.
+        pattern_configs: Active pattern configs for enabled object types.
+        report_timestamp: Timestamp to embed in the result.
+        run_ids: Optional subset of chunk IDs to validate.
+        chunk_size: Events per chunk used for filename parsing.
+        config: Optional runtime config dict.
+
+    Returns:
+        Validation result dictionary.
+    """
+    if not search_dir.exists():
+        logger.error(f"Output directory does not exist: {search_dir}")
+        return {
+            "stage": stage,
+            "status": "COMPLETE_FAILURE",
+            "total_runs": 0,
+            "successful_runs": 0,
+            "failed_runs": 0,
+            "failure_rate": 1.0,
+            "error": f"Output directory not found: {search_dir}",
+            "report_timestamp": report_timestamp,
+        }
+
+    if chunk_size is None:
+        logger.error("Chunk validation requires chunk_size from --chunk-size or --config")
+        return {
+            "stage": stage,
+            "status": "CONFIGURATION_ERROR",
+            "error": "Chunk validation requires chunk_size",
+            "report_timestamp": report_timestamp,
+        }
+
+    expected_chunk_ids = _get_expected_chunk_ids(run_ids, config)
+    expected_chunk_set = set(expected_chunk_ids) if expected_chunk_ids is not None else None
+
+    file_index: Dict[Tuple[int, str], Path] = {}
+    duplicate_files: Dict[Tuple[int, str], List[Path]] = {}
+    discovered_chunk_ids: Set[int] = set()
+
+    for pattern_config in pattern_configs:
+        pattern = pattern_config["pattern"]
+        object_type = pattern_config["object_type"]
+        for file_path in search_dir.glob(pattern):
+            chunk_id = _extract_chunk_id(file_path, chunk_size)
+            if chunk_id is None:
+                logger.warning(f"Skipping chunk file with unrecognized filename: {file_path}")
+                continue
+            if expected_chunk_set is not None and chunk_id not in expected_chunk_set:
+                continue
+            discovered_chunk_ids.add(chunk_id)
+            key = (chunk_id, object_type)
+            if key in file_index:
+                duplicate_files.setdefault(key, [file_index[key]]).append(file_path)
+                continue
+            file_index[key] = file_path
+
+    if expected_chunk_ids is None:
+        expected_chunk_ids = sorted(discovered_chunk_ids)
+        expected_chunk_set = set(expected_chunk_ids)
+        logger.warning(
+            "No authoritative chunk set provided; validating only discovered chunk IDs"
+        )
+
+    if not expected_chunk_ids:
+        logger.error(f"No chunk files found in {search_dir}")
+        return {
+            "stage": stage,
+            "status": "COMPLETE_FAILURE",
+            "total_runs": 0,
+            "successful_runs": 0,
+            "failed_runs": 0,
+            "failure_rate": 1.0,
+            "error": "No chunk files found",
+            "report_timestamp": report_timestamp,
+        }
+
+    logger.info(f"Validating chunk-based outputs in {search_dir}")
+    logger.info(f"Expected chunk count: {len(expected_chunk_ids)}")
+
+    failed_chunks: Set[int] = set()
+    failure_reasons: Dict[str, List[str]] = {}
+    pattern_statistics: Dict[str, Dict[str, float]] = {}
+    missing_chunk_ids: Set[int] = set()
+
+    for (chunk_id, object_type), duplicate_paths in duplicate_files.items():
+        duplicate_list = ", ".join(str(path) for path in duplicate_paths)
+        _record_chunk_failure(
+            failed_chunks,
+            failure_reasons,
+            chunk_id,
+            f"Duplicate {object_type} files detected: {duplicate_list}",
+        )
+
+    for pattern_config in pattern_configs:
+        pattern = pattern_config["pattern"]
+        object_type = pattern_config["object_type"]
+        check_type = pattern_config.get("check_type", "size")
+        min_size_mb = pattern_config.get("min_size_mb", 0)
+        median_threshold_pct = pattern_config.get("median_threshold_pct", 0.8)
+        required = pattern_config.get("required", True)
+
+        logger.info(f"\nChecking pattern: {pattern}")
+
+        sizes: List[int] = []
+        chunk_sizes: Dict[int, int] = {}
+
+        for chunk_id in expected_chunk_ids:
+            file_path = file_index.get((chunk_id, object_type))
+            if file_path is None:
+                if required:
+                    _record_chunk_failure(
+                        failed_chunks,
+                        failure_reasons,
+                        chunk_id,
+                        f"Missing required {object_type} file matching {pattern}",
+                    )
+                    missing_chunk_ids.add(chunk_id)
+                continue
+
+            files_found, size, issue = check_file_pattern(
+                file_path,
+                pattern,
+                check_type,
+                is_file=True,
+            )
+            if not files_found:
+                if required:
+                    _record_chunk_failure(
+                        failed_chunks,
+                        failure_reasons,
+                        chunk_id,
+                        f"{pattern}: {issue}",
+                    )
+                    missing_chunk_ids.add(chunk_id)
+                continue
+
+            if check_type == "size" and size is not None:
+                size_mb = size / (1024**2)
+                if size_mb < min_size_mb:
+                    _record_chunk_failure(
+                        failed_chunks,
+                        failure_reasons,
+                        chunk_id,
+                        f"{pattern}: size {size_mb:.2f} MB < minimum {min_size_mb} MB",
+                    )
+                    continue
+                sizes.append(size)
+                chunk_sizes[chunk_id] = size
+
+        if sizes and check_type == "size":
+            stats = calculate_size_statistics(sizes)
+            pattern_statistics[pattern] = stats
+
+            median_size = statistics.median(sizes)
+            threshold_size = median_size * median_threshold_pct
+            threshold_mb = threshold_size / (1024**2)
+
+            logger.info("  Pattern statistics:")
+            logger.info(f"    Median size: {stats['median_size_mb']:.2f} MB")
+            logger.info(
+                f"    Threshold ({median_threshold_pct*100:.0f}% of median): {threshold_mb:.2f} MB"
+            )
+            logger.info(f"    Range: {stats['min_size_mb']:.2f} - {stats['max_size_mb']:.2f} MB")
+
+            for chunk_id, size in chunk_sizes.items():
+                if size < threshold_size:
+                    size_mb = size / (1024**2)
+                    _record_chunk_failure(
+                        failed_chunks,
+                        failure_reasons,
+                        chunk_id,
+                        f"{pattern}: size {size_mb:.2f} MB < threshold {threshold_mb:.2f} MB",
+                    )
+
+    total_runs = len(expected_chunk_ids)
+    failed_run_ids_sorted = sorted(failed_chunks)
+    failed_runs_count = len(failed_run_ids_sorted)
+    successful_runs_count = total_runs - failed_runs_count
+    failure_rate = failed_runs_count / total_runs if total_runs > 0 else 0.0
+
+    if failed_runs_count == 0:
+        status = "SUCCESS"
+    elif failed_runs_count == total_runs:
+        status = "COMPLETE_FAILURE"
+    else:
+        status = "PARTIAL_FAILURE"
+
+    formatted_failure_reasons = {
+        chunk_id: "; ".join(reasons)
+        for chunk_id, reasons in failure_reasons.items()
+    }
+
+    missing_chunks_info = {
+        "missing_chunk_ids": sorted(missing_chunk_ids),
+        "missing_count": len(missing_chunk_ids),
+        "expected_count": total_runs,
+        "found_count": total_runs - len(missing_chunk_ids),
+    }
+
+    rerun_command = ""
+    if failed_run_ids_sorted:
+        rerun_command = f"--run-list {' '.join(map(str, failed_run_ids_sorted))}"
+
+    result = {
+        "stage": stage,
+        "status": status,
+        "report_timestamp": report_timestamp,
+        "total_runs": total_runs,
+        "successful_runs": successful_runs_count,
+        "failed_runs": failed_runs_count,
+        "failure_rate": failure_rate,
+        "failed_run_ids": failed_run_ids_sorted,
+        "rerun_command": rerun_command,
+        "failure_reasons": formatted_failure_reasons,
+        "statistics": pattern_statistics,
+        "missing_chunks": missing_chunks_info,
+    }
+
+    logger.info(f"\n" + "=" * 80)
+    logger.info(f"VALIDATION SUMMARY - {stage}")
+    logger.info(f"=" * 80)
+    logger.info(f"Status: {status}")
+    logger.info(f"Total runs: {total_runs}")
+    logger.info(f"Successful: {successful_runs_count}")
+    logger.info(f"Failed: {failed_runs_count}")
+    logger.info(f"Failure rate: {failure_rate:.1%}")
+
+    if failed_run_ids_sorted:
+        failed_list = failed_run_ids_sorted[:20]
+        logger.info(f"\nFailed chunks: {', '.join(map(str, failed_list))}")
+        if len(failed_run_ids_sorted) > 20:
+            logger.info(f"  ... and {len(failed_run_ids_sorted) - 20} more")
+        logger.info(f"\nTo re-run failed runs only:")
+        logger.info(f"  {rerun_command}")
+
+    return result
+
+
 def validate_stage(
     runs_dir: Path,
     stage: str,
     validation_rules: dict,
     dry_run: bool = False,
     run_ids: list = None,
-    chunk_size: int = None
+    chunk_size: int = None,
+    config: Optional[dict] = None,
 ) -> dict:
     """
     Validate outputs for a pipeline stage.
@@ -211,6 +582,7 @@ def validate_stage(
         dry_run: If True, log actions but don't modify anything
         run_ids: Optional list of specific run IDs to validate (for standard validation) or chunk IDs (for chunk-based validation)
         chunk_size: Optional chunk size for chunk-based validation (maps chunk IDs to expected filenames)
+        config: Optional runtime config used to derive expected chunk IDs and enabled objects
         
     Returns:
         Dictionary with validation results
@@ -236,6 +608,20 @@ def validate_stage(
     require_any_of = stage_rules.get('require_any_of', [])
     output_location = stage_rules.get('output_location')  # Optional: alternative output directory
     validate_as_chunks = stage_rules.get('validate_as_chunks', False)  # For chunk-based outputs
+
+    if output_location and validate_as_chunks:
+        search_dir = runs_dir.parent / output_location if runs_dir.name == "runs" else runs_dir / output_location
+        logger.info(f"Using custom output location: {search_dir}")
+        chunk_patterns = _get_chunk_pattern_configs(file_patterns, config)
+        return _validate_chunk_stage(
+            search_dir=search_dir,
+            stage=stage,
+            pattern_configs=chunk_patterns,
+            report_timestamp=report_timestamp,
+            run_ids=run_ids,
+            chunk_size=chunk_size,
+            config=config,
+        )
     
     # Initialize failure tracking
     failed_runs = set()

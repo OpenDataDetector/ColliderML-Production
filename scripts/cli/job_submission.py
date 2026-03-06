@@ -170,7 +170,8 @@ class JobSubmitter:
             f"python {validation_script} "
             f"--stage {stage_name} "
             f"--runs-dir {runs_dir} "
-            f"--output {report_path}"
+            f"--output {report_path} "
+            f"--config {self.config_path}"
         )
         
         # Add run filtering arguments if provided

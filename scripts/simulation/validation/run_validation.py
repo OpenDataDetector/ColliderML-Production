@@ -10,6 +10,7 @@ import sys
 import json
 from pathlib import Path
 import logging
+import yaml
 
 # Add validation lib to path
 sys.path.insert(0, str(Path(__file__).parent))
@@ -20,6 +21,20 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
+
+
+def load_runtime_config(config_path: Path) -> dict:
+    """
+    Load the processed runtime config used to submit a stage.
+
+    Args:
+        config_path: Path to a YAML config file.
+
+    Returns:
+        Parsed configuration dictionary.
+    """
+    with open(config_path, 'r') as f:
+        return yaml.safe_load(f)
 
 
 def main():
@@ -66,6 +81,11 @@ def main():
         type=int,
         help='Chunk size for chunk-based validation (e.g., convert_all). Used to map chunk IDs to expected filenames.'
     )
+    parser.add_argument(
+        '--config',
+        type=Path,
+        help='Optional processed config path used for submission. Enables config-aware chunk validation.'
+    )
     
     args = parser.parse_args()
     
@@ -93,6 +113,21 @@ def main():
         logger.info(f"Validating run range: {start} to {end-1} ({len(run_ids_to_validate)} runs)")
     else:
         logger.info("Validating all runs in directory")
+
+    config = None
+    effective_chunk_size = args.chunk_size
+    if args.config:
+        logger.info(f"Loading runtime config from: {args.config}")
+        try:
+            config = load_runtime_config(args.config)
+        except Exception as e:
+            logger.error(f"Failed to load runtime config: {e}")
+            sys.exit(1)
+
+        if effective_chunk_size is None:
+            effective_chunk_size = config.get("chunk_size")
+            if effective_chunk_size is not None:
+                logger.info(f"Using chunk_size from config: {effective_chunk_size}")
     
     # Run validation
     logger.info(f"Validating stage '{args.stage}' in: {args.runs_dir}")
@@ -102,7 +137,8 @@ def main():
             stage=args.stage,
             validation_rules=validation_rules,
             run_ids=run_ids_to_validate,
-            chunk_size=args.chunk_size
+            chunk_size=effective_chunk_size,
+            config=config
         )
     except Exception as e:
         logger.error(f"Validation failed: {e}")
@@ -116,7 +152,7 @@ def main():
     logger.info(f"Successful: {result.get('successful_runs', 0)}")
     logger.info(f"Failed: {result.get('failed_runs', 0)}")
     if result.get('failed_runs', 0) > 0:
-        logger.info(f"Failure rate: {result.get('failure_rate', 0):.1f}%")
+        logger.info(f"Failure rate: {result.get('failure_rate', 0):.1%}")
     
     # Save report if output path provided
     if args.output:
