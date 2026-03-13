@@ -10,8 +10,8 @@ job_config:
   # n_runs: 20
   runs_per_node: 5  # Number of runs per node
   time_limit: "02:00:00"  # Time limit per job
-  # qos: "regular"
-  qos: "debug"
+  qos: "regular"
+  # qos: "debug"
   # execution_mode: "interactive"
   execution_mode: "multi_node_slurm"
 
