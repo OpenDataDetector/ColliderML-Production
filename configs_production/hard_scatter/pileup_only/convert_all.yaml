@@ -24,7 +24,8 @@ objects:
 output_format: "parquet"
 
 # Chunking
-chunk_size: 10000
+# chunk_size: 10000
+chunk_size: 1000
 # chunk_size: 8
 run_size: 10000
 
