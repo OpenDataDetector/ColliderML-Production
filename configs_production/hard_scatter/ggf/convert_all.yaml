@@ -6,11 +6,11 @@ stage: "convert_all"
 
 # Job submission configuration
 job_config:
-  n_runs: 1000  # Number of jobs to submit
+  n_runs: 1280  # Number of jobs to submit
   # n_runs: 1
   runs_per_node: 5  # Number of runs per node
   # runs_per_node: 1
-  time_limit: "01:00:00"  # Time limit per job
+  time_limit: "02:00:00"  # Time limit per job
   qos: "regular"
   # execution_mode: "interactive"
   execution_mode: "multi_node_slurm"
