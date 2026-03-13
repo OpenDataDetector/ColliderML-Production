@@ -122,7 +122,7 @@ def write_parquet_table(
 ) -> None:
     """
     Write a DataFrame to Parquet format.
-    
+
     Args:
         df: DataFrame to write (should already be grouped by event if needed)
         output_file: Path to output Parquet file

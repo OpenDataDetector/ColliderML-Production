@@ -462,13 +462,15 @@ def _process_chunk_for_all(
             logger.warning(f"Particles file not created (possibly filtered to empty): {particles_out}")
         particles_write_time = time.time() - particles_write_start
         logger.debug(f"Particles file writing time: {particles_write_time:.3f}s")
-        
+        del particles_all
+        gc.collect()
+        log_memory("After Particles Write")
+
     if "tracker_hits" in objects and digihits_frames:
         digihits_write_start = time.time()
         log_memory("Before TrackerHits Concat")
         digihits_all = pd.concat(digihits_frames, ignore_index=True)
         log_memory("After TrackerHits Concat")
-        digihits_all = pd.concat(digihits_frames, ignore_index=True)
         trkhits_out = Path(trkhits_out_dir) / (
             f"{dataset_name_dot}.reco.tracker_hits.events{start_event}-{end_event}{file_ext}"
         )
@@ -487,7 +489,10 @@ def _process_chunk_for_all(
             )
         digihits_write_time = time.time() - digihits_write_start
         logger.debug(f"Tracker hits file writing time: {digihits_write_time:.3f}s")
-        
+        del digihits_all
+        gc.collect()
+        log_memory("After TrackerHits Write")
+
     if "tracks" in objects and tracks_frames:
         tracks_write_start = time.time()
         log_memory("Before Tracks Concat")
@@ -509,6 +514,9 @@ def _process_chunk_for_all(
             logger.warning(f"Tracks file not created (possibly filtered to empty): {tracks_out}")
         tracks_write_time = time.time() - tracks_write_start
         logger.debug(f"Tracks file writing time: {tracks_write_time:.3f}s")
+        del tracks_all
+        gc.collect()
+        log_memory("After Tracks Write")
 
     if "calo_hits" in objects and calo_frames:
         calo_write_start = time.time()
@@ -531,6 +539,9 @@ def _process_chunk_for_all(
             logger.warning(f"Calo hits file not created (possibly filtered to empty): {calo_out}")
         calo_write_time = time.time() - calo_write_start
         logger.debug(f"Calo hits file writing time: {calo_write_time:.3f}s")
+        del calo_all
+        gc.collect()
+        log_memory("After CaloHits Write")
 
     writing_time = time.time() - writing_start_time
     chunk_total_time = time.time() - chunk_start_time

@@ -31,7 +31,7 @@ run_size: 1000
 # Parquet row group size (events per row group).
 # Smaller values allow HuggingFace to stream row-group-by-row-group rather than
 # file-by-file. With chunk_size=1000 events/file, 100 gives 10 row groups per file.
-row_group_size: 100
+# row_group_size: 100
 
 # Column selection for parquet outputs
 particles_columns_keep:

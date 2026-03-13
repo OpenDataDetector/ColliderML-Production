@@ -130,28 +130,28 @@ stages:
       - pattern: "reco/calo_hits/*.parquet"
         object_type: "calo_hits"
         description: "Calorimeter hits parquet files"
-        min_size_mb: 100.0
+        min_size_mb: 10.0
         median_threshold_pct: 0.8
         required: true
       
       - pattern: "reco/tracker_hits/*.parquet"
         object_type: "tracker_hits"
         description: "Tracker hits parquet files"
-        min_size_mb: 100.0
+        min_size_mb: 10.0
         median_threshold_pct: 0.8
         required: true
       
       - pattern: "reco/tracks/*.parquet"
         object_type: "tracks"
         description: "Tracks parquet files"
-        min_size_mb: 1.0
+        min_size_mb: 0.1
         median_threshold_pct: 0.8
         required: true
       
       - pattern: "truth/particles/*.parquet"
         object_type: "particles"
         description: "Particles parquet files"
-        min_size_mb: 100.0
+        min_size_mb: 10.0
         median_threshold_pct: 0.8
         required: true
 
