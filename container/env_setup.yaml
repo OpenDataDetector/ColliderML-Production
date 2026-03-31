@@ -1,0 +1,29 @@
+# ColliderML Container env_setup.yaml — TEMPLATE
+# Copy this file, fill in your paths, and set:
+#   export COLLIDERML_ENV_SETUP=/path/to/your/env_setup.yaml
+#
+# The container handles all software setup — you only need output paths.
+
+env_variables:
+  SOFTWARE_BASE_DIR: "/opt/colliderml"
+
+config_defaults:
+  common:
+    use_shifter: false
+    output_base_dir: "/CHANGE_ME/colliderml/simulation"  # <-- SET THIS
+  madgraph:
+    mg_base_path: "/spack/opt/spack/linux-x86_64/madgraph5amc-3.5.9-2n657hx6flmiuuycb33pfqlhhe2dxmcw"
+    generation_scratch_dir: "/tmp/colliderml_mg_scratch"
+
+# No-op setup commands — container env is already configured
+simulation:
+  - 'echo "Container env ready"'
+
+madgraph_generation:
+  - 'echo "Container env ready"'
+
+madgraph_init:
+  - 'echo "Container env ready"'
+
+postprocessing:
+  - 'echo "Container env ready"'

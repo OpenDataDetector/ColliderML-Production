@@ -75,7 +75,10 @@ def generate_madgraph_process(config, scratch_dir, logger):
     temp_proc_script_path = temp_run_dir / "process_script.mg5"
     with open(temp_proc_script_path, 'w') as f_out:
         # Force medium memory model for large processes (fixes relocation truncated to fit)
-        f_out.write("set fortran_compiler gfortran -mcmodel=medium\n")
+        # Skip if running in a container where mg5_configuration.txt is read-only
+        # (baked into container at build time instead)
+        if not getattr(config, 'container_mode', False):
+            f_out.write("set fortran_compiler gfortran -mcmodel=medium\n")
         f_out.write(f"{mg_model_cmd}\n")
         for define_cmd in mg_define_cmds:
             f_out.write(f"{define_cmd}\n")
@@ -221,10 +224,12 @@ def compile_grids_and_envelopes(process_dir: Path, config, logger: logging.Logge
     fix_make_opts_for_large_processes(process_dir, logger)
 
     generate_events_exe = process_dir / "bin" / "generate_events"
-    logger.info(f"Running grid/envelope compilation via {generate_events_exe} (-f --name run_build)")
+    logger.info(f"Running grid/envelope compilation via {generate_events_exe} (run_build -f)")
     # Stream output in real-time for debuggability
+    # Note: MadGraph syntax is: generate_events [run_name] [options]
+    # The run_name is a positional argument, not --name flag
     try:
-        run_command([str(generate_events_exe), "-f", "--name", "run_build"], cwd=str(process_dir), stream=True, capture=False, merge_streams=True, logger=logger)
+        run_command([str(generate_events_exe), "run_build", "-f"], cwd=str(process_dir), stream=True, capture=False, merge_streams=True, logger=logger)
     except Exception as e:
         logger.error(f"Error running generate_events for grid build: {e}")
         raise
@@ -342,6 +347,41 @@ def main():
         # Step 3: Store the process directory
         logger.info("=== Step 3: Store Process Directory ===")
         final_process_dir = store_process_directory(process_dir, config, logger)
+
+        # Step 3b: Ensure shower_card.dat exists (MG5 only creates _default for NLO)
+        cards_dir = final_process_dir / "Cards"
+        shower_default = cards_dir / "shower_card_default.dat"
+        shower_card = cards_dir / "shower_card.dat"
+        if shower_default.exists() and not shower_card.exists():
+            shutil.copy2(shower_default, shower_card)
+            logger.info("Copied shower_card_default.dat -> shower_card.dat")
+
+        # Step 3c: Fix amcatnlo_configuration.txt PY8 interface path
+        # MG5 comments out mg5amc_py8_interface_path in process configs even when
+        # it's set in the global config, because it validates a relative path that
+        # doesn't exist in the process dir. Propagate from global config if available.
+        amcatnlo_cfg = final_process_dir / "Cards" / "amcatnlo_configuration.txt"
+        if amcatnlo_cfg.exists():
+            mg_base = Path(config.mg_base_path)
+            global_cfg = mg_base / "input" / "mg5_configuration.txt"
+            if global_cfg.exists():
+                import re
+                with open(global_cfg) as f:
+                    for line in f:
+                        m = re.match(r'^mg5amc_py8_interface_path\s*=\s*(.+?)(?:\s*#.*)?$', line.strip())
+                        if m:
+                            py8_iface_path = m.group(1).strip()
+                            with open(amcatnlo_cfg, 'r') as af:
+                                content = af.read()
+                            content = re.sub(
+                                r'#\s*mg5amc_py8_interface_path\s*=.*',
+                                f'mg5amc_py8_interface_path = {py8_iface_path}',
+                                content
+                            )
+                            with open(amcatnlo_cfg, 'w') as af:
+                                af.write(content)
+                            logger.info(f"Fixed amcatnlo_configuration.txt: mg5amc_py8_interface_path = {py8_iface_path}")
+                            break
 
         # Step 4: Create tarball artifact from stored directory
         logger.info("=== Step 4: Create Tarball Artifact ===")

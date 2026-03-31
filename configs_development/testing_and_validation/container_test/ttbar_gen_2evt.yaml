@@ -1,0 +1,39 @@
+#========================================================================
+# Container E2E test: NLO ttbar generation (2 events)
+# Uses existing init tarball from lxplus_test/ttbar/v1
+#========================================================================
+campaign: "container_test"
+dataset: "ttbar"
+version: "v1"
+stage: "madgraph_generation"
+
+mg_base_path: "/spack/opt/spack/linux-x86_64/madgraph5amc-3.5.9-2n657hx6flmiuuycb33pfqlhhe2dxmcw"
+generation_scratch_dir: "/tmp/colliderml_mg_scratch"
+job_config:
+  n_runs: 1
+  runs_per_node: 1
+  execution_mode: "interactive"
+
+events: 2
+seed: 42
+
+
+# Reuse existing NLO init tarball
+init_tarball: "/share/rcifdata/jbarr/colliderml/simulation/lxplus_test/ttbar/v1/madgraph_process.tgz"
+
+card_customizations:
+  run_card:
+    "ptj": 20.0
+  shower_card:
+    "Qcut": 40.0
+    "time_shower_me_corrections": "F"
+  pythia8_card: {}
+
+splitting_config:
+  enable: false
+
+log_level: "INFO"
+
+common:
+  output_base_dir: "/share/rcifdata/jbarr/colliderml/simulation"
+  use_shifter: false

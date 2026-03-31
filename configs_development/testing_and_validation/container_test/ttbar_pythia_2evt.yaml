@@ -1,0 +1,32 @@
+#========================================================================
+# Container E2E test: Pythia vertex smearing (2 events, no pileup)
+# Reads MadGraph LHE, applies vertex smearing, outputs HepMC3
+#========================================================================
+campaign: "container_test"
+dataset: "ttbar"
+version: "v1"
+stage: "pythia_generation"
+
+job_config:
+  n_runs: 1
+  runs_per_node: 1
+  execution_mode: "interactive"
+
+events: 2
+pileup: 0
+
+vertex_sigma_xy: 0.0125
+vertex_sigma_z: 55.5
+vertex_sigma_t: 5.0
+
+# Read hard scatter from MadGraph output
+hard_process:
+  input_file: "events.lhe"
+
+merge: true
+
+log_level: "INFO"
+
+common:
+  output_base_dir: "/share/rcifdata/jbarr/colliderml/simulation"
+  use_shifter: false

@@ -1,0 +1,37 @@
+#========================================================================
+# Container E2E test: NLO ttbar process initialization (single process)
+# Single NLO process only — no extra jets for fast init
+#========================================================================
+campaign: "container_test"
+dataset: "ttbar"
+version: "v1"
+stage: "madgraph_init"
+
+mg_base_path: "/spack/opt/spack/linux-x86_64/madgraph5amc-3.5.9-2n657hx6flmiuuycb33pfqlhhe2dxmcw"
+generation_scratch_dir: "/tmp/colliderml_mg_scratch"
+job_config:
+  n_runs: 1
+  runs_per_node: 1
+  execution_mode: "interactive"
+
+mg_model: "sm-no_b_mass"
+mg_definitions: []
+mg_generate_command: |
+  generate p p > t t~ [QCD]
+
+
+card_customizations:
+  run_card:
+    "parton_shower": "PYTHIA8"
+    "ebeam1": 7000.0
+    "ebeam2": 7000.0
+  shower_card:
+    "Qcut": 40.0
+    "time_shower_me_corrections": "F"
+  pythia8_card: {}
+
+log_level: "INFO"
+
+common:
+  output_base_dir: "/share/rcifdata/jbarr/colliderml/simulation"
+  use_shifter: false

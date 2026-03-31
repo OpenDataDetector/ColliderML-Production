@@ -1,0 +1,255 @@
+Bootstrap: docker
+From: ghcr.io/opendatadetector/sw:0.2.2_linux-ubuntu24.04_gcc-13.3.0
+
+%labels
+    Maintainer ColliderML
+    Description Full ColliderML simulation pipeline: MadGraph -> Pythia8 -> DDSim -> ACTS -> Parquet
+
+%environment
+    export SPACK=/spack/opt/spack/linux-x86_64
+    # Source all resolved paths — critical for subprocesses (MCatNLO shower)
+    . /opt/colliderml/spack_paths.sh
+    # Pipeline env_setup — baked-in default, user can override
+    export COLLIDERML_ENV_SETUP=${COLLIDERML_ENV_SETUP:-/opt/colliderml/env_setup.yaml}
+
+%files
+    /tmp/ODD_v4.0.4.tar.gz /opt/ODD_v4.0.4.tar.gz
+
+%post
+    SPACK=/spack/opt/spack/linux-x86_64
+
+    # ---- Discover spack package paths ----
+    find_pkg() { find $SPACK -maxdepth 1 -name "$1" -type d | head -1; }
+
+    ACTS_DIR=$(find_pkg "acts-main-*")
+    PYTHIA8_DIR=$(find_pkg "pythia8-8.313-*")
+    HEPMC3_DIR=$(find_pkg "hepmc3-3.3.0-*")
+    ROOT_DIR=$(find_pkg "root-*")
+    DD4HEP_DIR=$(find_pkg "dd4hep-*")
+    PYTHON_DIR=$(find_pkg "python-3.13*")
+    MG5_DIR=$(find_pkg "madgraph5amc-*")
+    GEANT4_DIR=$(find_pkg "geant4-*")
+
+    echo "Discovered spack paths:"
+    echo "  ACTS=$ACTS_DIR"
+    echo "  PYTHIA8=$PYTHIA8_DIR"
+    echo "  HEPMC3=$HEPMC3_DIR"
+    echo "  ROOT=$ROOT_DIR"
+    echo "  DD4HEP=$DD4HEP_DIR"
+    echo "  PYTHON=$PYTHON_DIR"
+    echo "  MG5=$MG5_DIR"
+    echo "  GEANT4=$GEANT4_DIR"
+
+    # ---- Write resolved paths file ----
+    mkdir -p /opt/colliderml
+    cat > /opt/colliderml/spack_paths.sh << EOF
+export SPACK=$SPACK
+export ACTS_DIR=$ACTS_DIR
+export PYTHIA8_DIR=$PYTHIA8_DIR
+export HEPMC3_DIR=$HEPMC3_DIR
+export ROOT_DIR=$ROOT_DIR
+export DD4HEP_DIR=$DD4HEP_DIR
+export PYTHON_DIR=$PYTHON_DIR
+export MG5_DIR=$MG5_DIR
+export GEANT4_DIR=$GEANT4_DIR
+EOF
+
+    # ---- Fix ACTS Python import (symlink python/ -> acts/) ----
+    mkdir -p /opt/colliderml/python
+    ln -sf $ACTS_DIR/python /opt/colliderml/python/acts
+
+    # ---- ROOT/HepMC3 dictionary fix: collect all spack include dirs ----
+    INCLUDE_DIRS=""
+    for d in $SPACK/*/include; do
+        [ -d "$d" ] && INCLUDE_DIRS="$d:$INCLUDE_DIRS"
+    done
+    echo "export ROOT_INCLUDE_PATH=$INCLUDE_DIRS\$ROOT_INCLUDE_PATH" >> /opt/colliderml/spack_paths.sh
+
+    # ---- LHAPDF data paths (needed by MCatNLO shower subprocess) ----
+    LHAPDF_DIR=$(find $SPACK -maxdepth 1 -name "lhapdf-6*" -type d | head -1)
+    LHAPDFSETS_DIR=$(find $SPACK -maxdepth 1 -name "lhapdfsets-*" -type d | head -1)
+    echo "export LHAPDF_DATA_PATH=$LHAPDFSETS_DIR/share/lhapdfsets:$LHAPDF_DIR/share/LHAPDF" >> /opt/colliderml/spack_paths.sh
+
+    # ---- Fix MG5 shower template: use real PYTHIA8DATA path (symlink ../pdfdata breaks) ----
+    SHOWER_TPL=$MG5_DIR/Template/NLO/MCatNLO/shower_template.sh
+    sed -i "s|export PYTHIA8DATA=\`pwd\`/xmldoc|export PYTHIA8DATA=$PYTHIA8_DIR/share/Pythia8/xmldoc|" $SHOWER_TPL
+    echo "Patched shower_template.sh PYTHIA8DATA"
+
+    # Verify the critical header exists
+    ls $HEPMC3_DIR/include/HepMC3/Data/GenRunInfoData.h
+
+    # ---- Install system utilities needed by MG5 (bc for shower) ----
+    apt-get update -qq && apt-get install -y -qq bc > /dev/null 2>&1
+
+    # ---- Extract ODD geometry v4.0.4 (pre-downloaded tarball from GitLab CERN) ----
+    # Tarball bind-mounted from /eos during build. Source: gitlab.cern.ch/acts/OpenDataDetector v4.0.4
+    mkdir -p /opt/colliderml/ODD
+    tar xzf /opt/ODD_v4.0.4.tar.gz --strip-components=1 -C /opt/colliderml/ODD
+    rm /opt/ODD_v4.0.4.tar.gz
+    ls /opt/colliderml/ODD/CMakeLists.txt || exit 1
+    echo "export ODD_PATH=/opt/colliderml/ODD" >> /opt/colliderml/spack_paths.sh
+
+    # ---- Compile ODD DD4hep factory plugins ----
+    # v4.0.4 factories use dd4hep::rec::VariantParameters, no ACTS dependency
+    export PATH=$PYTHON_DIR/bin:$PATH
+    for d in $SPACK/*/bin; do export PATH=$d:$PATH; done
+    for d in $SPACK/*/lib; do export LD_LIBRARY_PATH=$d:${LD_LIBRARY_PATH:-}; done
+    # Build CMAKE_PREFIX_PATH from all spack packages
+    PREFIX_PATH=""
+    for d in $SPACK/*/; do PREFIX_PATH="${d%/};$PREFIX_PATH"; done
+    mkdir -p /opt/colliderml/odd_build && cd /opt/colliderml/odd_build
+    cmake /opt/colliderml/ODD \
+        -DCMAKE_PREFIX_PATH="$PREFIX_PATH" \
+        -DCMAKE_INSTALL_PREFIX=/opt/colliderml/ODD_install \
+        -DCMAKE_CXX_STANDARD=20 \
+        -Wno-dev 2>&1
+    make -j$(nproc) 2>&1
+    make install 2>&1
+    ls /opt/colliderml/ODD_install/lib/libOpenDataDetector.so || exit 1
+    # Add to spack_paths so LD_LIBRARY_PATH picks up the factory lib
+    echo "export ODD_INSTALL=/opt/colliderml/ODD_install" >> /opt/colliderml/spack_paths.sh
+    # Update ODD_PATH to point to installed location (has xml/ and data/)
+    sed -i 's|export ODD_PATH=/opt/colliderml/ODD|export ODD_PATH=/opt/colliderml/ODD_install/share/OpenDataDetector|' /opt/colliderml/spack_paths.sh
+    cd / && rm -rf /opt/colliderml/odd_build
+
+    # ---- Install pip packages ----
+    export PATH=$PYTHON_DIR/bin:$PATH
+    $PYTHON_DIR/bin/python3 -m ensurepip 2>/dev/null || true
+    $PYTHON_DIR/bin/python3 -m pip install --no-cache-dir \
+        pyedm4hep pyhepmc uproot awkward pyarrow pandas \
+        pyyaml simple-slurm six tqdm h5py 2>&1
+
+    # ---- Configure MadGraph settings (read-only at runtime) ----
+    sed -i "s|# fortran_compiler.*|fortran_compiler = gfortran -mcmodel=medium|" $MG5_DIR/input/mg5_configuration.txt
+    sed -i "s|# pythia8_path.*|pythia8_path = $PYTHIA8_DIR|" $MG5_DIR/input/mg5_configuration.txt
+    LHAPDF_DIR=$(find $SPACK -maxdepth 1 -name "lhapdf-*" -type d | head -1)
+    if [ -n "$LHAPDF_DIR" ]; then
+        sed -i "s|# lhapdf_py3.*|lhapdf_py3 = $LHAPDF_DIR/bin/lhapdf|" $MG5_DIR/input/mg5_configuration.txt
+    fi
+
+    # ---- Install MG5 Pythia8 shower interface (manual, MG5 stdin fails under fakeroot) ----
+    export PATH=$PYTHON_DIR/bin:$PATH
+    for d in $SPACK/*/bin; do export PATH=$d:$PATH; done
+    for d in $SPACK/*/lib; do export LD_LIBRARY_PATH=$d:${LD_LIBRARY_PATH:-}; done
+    mkdir -p $MG5_DIR/HEPTools/MG5aMC_PY8_interface && cd $MG5_DIR/HEPTools/MG5aMC_PY8_interface
+    curl -sSL https://madgraph.mi.infn.it/Downloads/MG5aMC_PY8_interface/MG5aMC_PY8_interface_V1.3.tar.gz | tar xz
+    # HepMC2 headers/libs needed for compilation
+    HEPMC2_DIR=$(find $SPACK -maxdepth 1 -name "hepmc-2*" -type d | head -1)
+    # Compile manually: Pythia8's Makefile doesn't know about HepMC2's spack location
+    cp $PYTHIA8_DIR/share/Pythia8/examples/Makefile.inc .
+    # Patch Makefile.inc to add HepMC2 flags
+    echo "" >> Makefile.inc
+    echo "HEPMC2_INCLUDE=-I$HEPMC2_DIR/include" >> Makefile.inc
+    echo "HEPMC2_LIB=-L$HEPMC2_DIR/lib -Wl,-rpath,$HEPMC2_DIR/lib -lHepMC" >> Makefile.inc
+    # Compile the interface directly with HepMC2 linked
+    g++ MG5aMC_PY8_interface.cc -o MG5aMC_PY8_interface \
+        -O2 -std=c++20 -fPIC -pthread \
+        -I$PYTHIA8_DIR/include -I$HEPMC2_DIR/include \
+        -L$PYTHIA8_DIR/lib -Wl,-rpath,$PYTHIA8_DIR/lib -lpythia8 \
+        -L$HEPMC2_DIR/lib -Wl,-rpath,$HEPMC2_DIR/lib -lHepMC \
+        -ldl 2>&1
+    ls -l MG5aMC_PY8_interface && echo "PY8 interface compiled successfully" || exit 1
+    # Create version metadata files (MG5 checks these for consistency)
+    echo "3.5.9" > MG5AMC_VERSION_ON_INSTALL
+    echo "8.313" > PYTHIA8_VERSION_ON_INSTALL
+    # Configure MG5 to use the interface
+    sed -i "s|# mg5amc_py8_interface_path.*|mg5amc_py8_interface_path = $MG5_DIR/HEPTools/MG5aMC_PY8_interface|" $MG5_DIR/input/mg5_configuration.txt
+    cd /
+
+    # ---- Install heft model (needed for ggf, dihiggs LO processes) ----
+    cd $MG5_DIR/models
+    curl -sSL http://madgraph.phys.ucl.ac.be/Downloads/models/heft.tgz -o heft.tgz
+    tar xzf heft.tgz && rm heft.tgz
+    ls heft/particles.py && echo "heft model installed" || echo "heft install FAILED"
+    cd /
+
+    # ---- Generate the setup_env.sh ----
+    cat > /opt/colliderml/setup_env.sh << 'SETUP_EOF'
+#!/bin/bash
+source /opt/colliderml/spack_paths.sh
+
+# Python 3.13 first
+export PATH=$PYTHON_DIR/bin:$PATH
+
+# All spack bin/lib
+for d in $SPACK/*/bin; do [ -d "$d" ] && export PATH=$d:$PATH; done
+for d in $SPACK/*/lib; do [ -d "$d" ] && export LD_LIBRARY_PATH=$d:${LD_LIBRARY_PATH:-}; done
+for d in $SPACK/*/lib64; do [ -d "$d" ] && export LD_LIBRARY_PATH=$d:${LD_LIBRARY_PATH:-}; done
+
+# ACTS Python
+export PYTHONPATH=/opt/colliderml/python:${PYTHONPATH:-}
+
+# ROOT Python (spack puts bindings in lib/root/)
+for d in $SPACK/root-*/lib/root; do [ -d "$d" ] && export PYTHONPATH=$d:$PYTHONPATH; done
+
+# Base Python site-packages (pip installs here, spack venv has separate site)
+for d in $SPACK/python-3.*/lib/python*/site-packages; do [ -d "$d" ] && export PYTHONPATH=$d:$PYTHONPATH; done
+
+# DD4hep Python
+for d in $SPACK/dd4hep-*/lib/python*/site-packages; do [ -d "$d" ] && export PYTHONPATH=$d:$PYTHONPATH; done
+
+# ODD factory plugins
+if [ -d "${ODD_INSTALL:-}/lib" ]; then
+    export LD_LIBRARY_PATH=$ODD_INSTALL/lib:$LD_LIBRARY_PATH
+fi
+
+# Pythia8 data
+export PYTHIA8DATA=$PYTHIA8_DIR/share/Pythia8/xmldoc
+
+# LHAPDF data (PDF sets for shower)
+for d in $SPACK/lhapdf-*/share/LHAPDF; do [ -d "$d" ] && export LHAPDF_DATA_PATH=$d:${LHAPDF_DATA_PATH:-}; done
+for d in $SPACK/lhapdfsets-*/share/lhapdfsets; do [ -d "$d" ] && export LHAPDF_DATA_PATH=$d:${LHAPDF_DATA_PATH:-}; done
+
+# Geant4 data from CVMFS (bind-mount /cvmfs when running on CERN infra)
+G4DATA=/cvmfs/geant4.cern.ch/share/data
+if [ -d "$G4DATA" ]; then
+    export G4NEUTRONHPDATA=$G4DATA/G4NDL4.7.1
+    export G4LEDATA=$G4DATA/G4EMLOW8.6.1
+    export G4LEVELGAMMADATA=$G4DATA/PhotonEvaporation6.1
+    export G4RADIOACTIVEDATA=$G4DATA/RadioactiveDecay6.1.2
+    export G4PARTICLEXSDATA=$G4DATA/G4PARTICLEXS4.1
+    export G4PIIDATA=$G4DATA/G4PII1.3
+    export G4REALSURFACEDATA=$G4DATA/RealSurface2.2
+    export G4SAIDXSDATA=$G4DATA/G4SAIDDATA2.0
+    export G4ABLADATA=$G4DATA/G4ABLA3.3
+    export G4INCLDATA=$G4DATA/G4INCL1.2
+    export G4ENSDFSTATEDATA=$G4DATA/G4ENSDFSTATE3.0
+fi
+
+# Pipeline env_setup — use baked-in default unless user overrides
+export COLLIDERML_ENV_SETUP=${COLLIDERML_ENV_SETUP:-/opt/colliderml/env_setup.yaml}
+
+echo "ColliderML container environment ready"
+echo "  Python:  $(python3 --version 2>&1)"
+echo "  ACTS:    $(python3 -c 'import acts; print(acts.__version__)' 2>/dev/null || echo 'import failed')"
+echo "  ROOT:    $(python3 -c 'import ROOT; print(ROOT.gROOT.GetVersion())' 2>/dev/null || echo 'import failed')"
+echo "  MG5:     $MG5_DIR"
+echo "  ODD:     $ODD_PATH"
+SETUP_EOF
+    chmod +x /opt/colliderml/setup_env.sh
+
+    # ---- Baked-in env_setup.yaml — container-internal paths only ----
+    # Output paths belong in the user's stage config (common.output_base_dir)
+    cat > /opt/colliderml/env_setup.yaml << ENVEOF
+env_variables:
+  SOFTWARE_BASE_DIR: "/opt/colliderml"
+
+config_defaults:
+  common:
+    use_shifter: false
+  mg_base_path: "$MG5_DIR"
+  generation_scratch_dir: "/tmp/colliderml_mg_scratch"
+
+simulation:
+  - 'echo "Container env ready"'
+madgraph_generation:
+  - 'echo "Container env ready"'
+madgraph_init:
+  - 'echo "Container env ready"'
+postprocessing:
+  - 'echo "Container env ready"'
+ENVEOF
+
+%runscript
+    source /opt/colliderml/setup_env.sh
+    exec "$@"

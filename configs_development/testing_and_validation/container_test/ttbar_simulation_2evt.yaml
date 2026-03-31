@@ -1,0 +1,25 @@
+#========================================================================
+# Container E2E test: DDSim simulation (2 events)
+# Reads showered HepMC from MadGraph NLO+PS output
+#========================================================================
+campaign: "container_test"
+dataset: "ttbar"
+version: "v1"
+stage: "simulation"
+
+job_config:
+  n_runs: 1
+  runs_per_node: 1
+  execution_mode: "interactive"
+
+events: 2
+threads: 1
+seed: 42
+
+input_filename: "events.hepmc.gz"
+
+log_level: "INFO"
+
+common:
+  output_base_dir: "/share/rcifdata/jbarr/colliderml/simulation"
+  use_shifter: false
