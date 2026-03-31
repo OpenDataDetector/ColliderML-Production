@@ -163,10 +163,35 @@ EOF
     ls heft/particles.py && echo "heft model installed" || echo "heft install FAILED"
     cd /
 
+    # ---- Optionally bake Geant4 data into the container ----
+    # Without this, users need CVMFS bind-mount for DDSim.
+    # Set BAKE_G4DATA=1 env var before building to include (~2GB extra).
+    if [ "${BAKE_G4DATA:-0}" = "1" ]; then
+        echo "Downloading Geant4 data into container..."
+        G4DIR=/opt/colliderml/geant4-data
+        mkdir -p $G4DIR
+        G4BASE=https://cern.ch/geant4-data/datasets
+        for ds in G4NDL.4.7.1 G4EMLOW.8.6.1 G4PhotonEvaporation.6.1 \
+                  G4RadioactiveDecay.6.1.2 G4PARTICLEXS.4.1 G4PII.1.3 \
+                  G4RealSurface.2.2 G4SAIDDATA.2.0 G4ABLA.3.3 \
+                  G4INCL.1.2 G4ENSDFSTATE.3.0; do
+            echo "  Fetching $ds..."
+            curl -sSL $G4BASE/$ds.tar.gz | tar xz -C $G4DIR
+        done
+        echo "Geant4 data installed ($(du -sh $G4DIR | cut -f1))"
+    else
+        echo "Skipping Geant4 data (set BAKE_G4DATA=1 to include, or bind-mount /cvmfs at runtime)"
+    fi
+
     # ---- Generate the setup_env.sh ----
     cat > /opt/colliderml/setup_env.sh << 'SETUP_EOF'
 #!/bin/bash
 source /opt/colliderml/spack_paths.sh
+
+# Reset PATH/LD_LIBRARY_PATH to container-only paths (prevents host compiler leakage)
+export PATH=/usr/local/bin:/usr/bin:/bin
+export LD_LIBRARY_PATH=""
+export PYTHONPATH=""
 
 # Python 3.13 first
 export PATH=$PYTHON_DIR/bin:$PATH
@@ -200,9 +225,17 @@ export PYTHIA8DATA=$PYTHIA8_DIR/share/Pythia8/xmldoc
 for d in $SPACK/lhapdf-*/share/LHAPDF; do [ -d "$d" ] && export LHAPDF_DATA_PATH=$d:${LHAPDF_DATA_PATH:-}; done
 for d in $SPACK/lhapdfsets-*/share/lhapdfsets; do [ -d "$d" ] && export LHAPDF_DATA_PATH=$d:${LHAPDF_DATA_PATH:-}; done
 
-# Geant4 data from CVMFS (bind-mount /cvmfs when running on CERN infra)
-G4DATA=/cvmfs/geant4.cern.ch/share/data
-if [ -d "$G4DATA" ]; then
+# Geant4 data: prefer baked-in copy, fall back to CVMFS
+if [ -d "/opt/colliderml/geant4-data" ]; then
+    G4DATA=/opt/colliderml/geant4-data
+elif [ -d "/cvmfs/geant4.cern.ch/share/data" ]; then
+    G4DATA=/cvmfs/geant4.cern.ch/share/data
+else
+    echo "WARNING: No Geant4 data found. DDSim will not work."
+    echo "  Bind-mount /cvmfs or rebuild with --build-arg BAKE_G4DATA=1"
+    G4DATA=""
+fi
+if [ -n "$G4DATA" ]; then
     export G4NEUTRONHPDATA=$G4DATA/G4NDL4.7.1
     export G4LEDATA=$G4DATA/G4EMLOW8.6.1
     export G4LEVELGAMMADATA=$G4DATA/PhotonEvaporation6.1
