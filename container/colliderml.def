@@ -1,3 +1,7 @@
+# Build: apptainer build --fakeroot colliderml.sif colliderml.def
+#   Requires: fakeroot support (apt-get runs in %post)
+#   Optional: BAKE_G4DATA=1 apptainer build ... (bakes ~2GB Geant4 data, no CVMFS needed at runtime)
+#   Time: ~10 min on lxplus
 Bootstrap: docker
 From: ghcr.io/opendatadetector/sw:0.2.2_linux-ubuntu24.04_gcc-13.3.0
 
@@ -11,9 +15,6 @@ From: ghcr.io/opendatadetector/sw:0.2.2_linux-ubuntu24.04_gcc-13.3.0
     . /opt/colliderml/spack_paths.sh
     # Pipeline env_setup — baked-in default, user can override
     export COLLIDERML_ENV_SETUP=${COLLIDERML_ENV_SETUP:-/opt/colliderml/env_setup.yaml}
-
-%files
-    /tmp/ODD_v4.0.4.tar.gz /opt/ODD_v4.0.4.tar.gz
 
 %post
     SPACK=/spack/opt/spack/linux-x86_64
@@ -78,14 +79,13 @@ EOF
     # Verify the critical header exists
     ls $HEPMC3_DIR/include/HepMC3/Data/GenRunInfoData.h
 
-    # ---- Install system utilities needed by MG5 (bc for shower) ----
-    apt-get update -qq && apt-get install -y -qq bc > /dev/null 2>&1
+    # ---- Install system utilities needed by MG5 (bc for shower) and build (curl) ----
+    apt-get update -qq && apt-get install -y -qq bc curl > /dev/null 2>&1
 
-    # ---- Extract ODD geometry v4.0.4 (pre-downloaded tarball from GitLab CERN) ----
-    # Tarball bind-mounted from /eos during build. Source: gitlab.cern.ch/acts/OpenDataDetector v4.0.4
+    # ---- Download and extract ODD geometry v4.0.4 ----
     mkdir -p /opt/colliderml/ODD
-    tar xzf /opt/ODD_v4.0.4.tar.gz --strip-components=1 -C /opt/colliderml/ODD
-    rm /opt/ODD_v4.0.4.tar.gz
+    curl -sSL "https://gitlab.cern.ch/acts/OpenDataDetector/-/archive/v4.0.4/OpenDataDetector-v4.0.4.tar.gz" \
+        | tar xz --strip-components=1 -C /opt/colliderml/ODD
     ls /opt/colliderml/ODD/CMakeLists.txt || exit 1
     echo "export ODD_PATH=/opt/colliderml/ODD" >> /opt/colliderml/spack_paths.sh
 
