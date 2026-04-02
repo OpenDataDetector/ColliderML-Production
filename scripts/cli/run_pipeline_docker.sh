@@ -161,6 +161,14 @@ case "$CHANNEL" in
             "simulation/madgraph_gen.py" \
             "$CONFIG_BASE/madgraph_generation_config.yaml"
 
+        # Move MadGraph HepMC output to the run directory where Pythia expects it.
+        # MadGraph gen stages files to runs/all/0/ (multi-node convention) but
+        # Pythia looks in runs/0/ for the hard scatter events.
+        if [ -f "$OUTPUT_DIR/runs/all/0/events.hepmc.gz" ] && [ ! -f "$OUTPUT_DIR/runs/0/events.hepmc.gz" ]; then
+            cp "$OUTPUT_DIR/runs/all/0/events.hepmc.gz" "$OUTPUT_DIR/runs/0/events.hepmc.gz"
+            echo "  Copied MadGraph HepMC output to runs/0/ for Pythia merge."
+        fi
+
         run_stage "Pythia Generation" \
             "simulation/pythia_gen.py" \
             "$CONFIG_BASE/pythia_config.yaml"
