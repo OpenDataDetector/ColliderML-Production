@@ -35,9 +35,9 @@ fi
 # --- 0. Install system packages needed by MadGraph ---
 # bc: Required by MadGraph to run the shower step. Without it, MG falls back to
 #     "noshower" mode and only produces LHE files.
-# NOTE: mg5amc_py8_interface is also needed for MG+Pythia8 showering, but is
-#       incompatible with Pythia 8.3+ (container ships 8.313). See CLAUDE.md.
-#       This must be fixed in the container image itself.
+# NOTE: mg5amc_py8_interface is also needed for MG+Pythia8 showering. The MG5
+#       installer was updated (Aug 2024) to handle Pythia 8.3. Run
+#       `install mg5amc_py8_interface` inside MG5 to install it. See CLAUDE.md.
 if ! command -v bc &>/dev/null; then
     apt-get update -qq && apt-get install -y -qq bc &>/dev/null \
         && echo "Installed bc (required by MadGraph shower)." \

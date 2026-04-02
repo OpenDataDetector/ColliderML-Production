@@ -116,29 +116,32 @@ back to `noshower` mode and only produces LHE files (no HepMC output).
 RUN apt-get update && apt-get install -y bc
 ```
 
-### 2. mg5amc_py8_interface incompatible with Pythia 8.3+ (blocks ttbar NLO+PS)
+### 2. mg5amc_py8_interface not pre-installed (blocks ttbar NLO+PS)
 
-The container ships Pythia 8.313, but the `mg5amc_py8_interface` (C++ driver MadGraph
-uses to steer Pythia8 showering) only works with Pythia 8.2.x. This is a
-[known upstream issue](https://gitlab.com/Pythia8/releases/-/issues/24).
+The container has MadGraph 3.5.9 and Pythia 8.313 but the `mg5amc_py8_interface`
+(C++ driver MadGraph uses to steer Pythia8 showering) is not installed. Without it,
+MadGraph falls back to `noshower` mode and only produces LHE files (no HepMC output).
 
-**Impact:** ttbar NLO events cannot be showered inside MadGraph. Only LHE output is
-produced, which the downstream Pythia merge stage cannot read (expects HepMC).
+The interface historically had compatibility issues with Pythia 8.3+
+([GitLab #24](https://gitlab.com/Pythia8/releases/-/issues/24)), but as of Aug 2024
+the MG5 installer was [updated to handle Pythia 8.3](https://answers.launchpad.net/mg5amcnlo/+question/816173).
+MG5 3.5.9 includes this fix, so `install mg5amc_py8_interface` should work.
 
-**Fix options (choose one):**
-1. **Pre-install the interface with `--pythia8_makefile` flag** — compiles the interface
-   to use dynamic HepMC2 linking instead of static. Requires HepMC2 (`libHepMC.so`)
-   at runtime. The container already has HepMC2 with both static and dynamic libs.
-   ```bash
-   cd /path/to/MG5aMC_PY8_interface
-   python compile.py /pythia8/prefix --pythia8_makefile
-   ```
-2. **Add Pythia 8.2.x alongside 8.313** — Install a second Pythia (e.g., 8.245) via
-   spack for MadGraph use. Set `pythia8_path` in `mg5_configuration.txt` to point to it.
-3. **Port the interface to Pythia 8.3 API** — The Pythia team has low priority on this,
-   but it's the cleanest long-term fix.
+**Fix:** Add to Dockerfile or `setup_container_env.sh`:
+```bash
+# Inside MG5 interactive shell:
+MG5_aMC> install mg5amc_py8_interface
 
-**Workaround references:**
+# Or via compile.py directly (if HepMC2 static lib issues arise):
+cd /path/to/MG5aMC_PY8_interface
+python compile.py /pythia8/prefix --pythia8_makefile
+```
+
+**Note:** The `--pythia8_makefile` flag uses dynamic HepMC2 linking instead of static.
+The container already has both `libHepMC.a` and `libHepMC.so` (HepMC2).
+
+**References:**
+- [MG5 Launchpad: installer upgraded for 8.3](https://answers.launchpad.net/mg5amcnlo/+question/816173)
 - [MG5 Launchpad: HepMC2 static linking](https://answers.launchpad.net/mg5amcnlo/+question/693533)
 - [Pythia GitLab: MG5-PY8 interface issue](https://gitlab.com/Pythia8/releases/-/issues/24)
 - [MG5 Launchpad: Pythia8 path config](https://answers.launchpad.net/mg5amcnlo/+question/709602)
