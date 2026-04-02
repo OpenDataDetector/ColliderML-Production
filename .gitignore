@@ -45,3 +45,6 @@ __pycache__/
 
 # Test directories
 **/*_tests/.cache/
+
+# Local cache (Geant4 datasets, ODD geometry, pip packages)
+/.cache/
