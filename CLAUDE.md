@@ -99,3 +99,64 @@ The ACTS build in this container uses the main branch (version 999.999.999). Key
 - **"libOpenDataDetector.so not found":** Rebuild: `cd .cache && cmake odd-v4 -DCMAKE_INSTALL_PREFIX=odd-v4-install && make install`
 - **"No module named 'acts'":** The setup script symlinks ACTS Python bindings. Check `/tmp/acts` exists.
 - **Geant4 data missing:** Run `download_geant4_datasets.sh` inside the container, or populate `.cache/g4data/`.
+- **"No module named 'pyedm4hep'":** Add `pyedm4hep` to the pip install list in `setup_container_env.sh`.
+
+## Container Image Fix Checklist
+
+The current container (`ghcr.io/opendatadetector/sw:0.2.2`) has issues that need to be fixed
+in the next image build. These are documented here for reference.
+
+### 1. Missing `bc` command (blocks MadGraph shower)
+
+MadGraph checks for `bc` to calculate shower parameters. Without it, MadGraph falls
+back to `noshower` mode and only produces LHE files (no HepMC output).
+
+**Fix:** Add to Dockerfile or spack environment:
+```dockerfile
+RUN apt-get update && apt-get install -y bc
+```
+
+### 2. mg5amc_py8_interface incompatible with Pythia 8.3+ (blocks ttbar NLO+PS)
+
+The container ships Pythia 8.313, but the `mg5amc_py8_interface` (C++ driver MadGraph
+uses to steer Pythia8 showering) only works with Pythia 8.2.x. This is a
+[known upstream issue](https://gitlab.com/Pythia8/releases/-/issues/24).
+
+**Impact:** ttbar NLO events cannot be showered inside MadGraph. Only LHE output is
+produced, which the downstream Pythia merge stage cannot read (expects HepMC).
+
+**Fix options (choose one):**
+1. **Pre-install the interface with `--pythia8_makefile` flag** — compiles the interface
+   to use dynamic HepMC2 linking instead of static. Requires HepMC2 (`libHepMC.so`)
+   at runtime. The container already has HepMC2 with both static and dynamic libs.
+   ```bash
+   cd /path/to/MG5aMC_PY8_interface
+   python compile.py /pythia8/prefix --pythia8_makefile
+   ```
+2. **Add Pythia 8.2.x alongside 8.313** — Install a second Pythia (e.g., 8.245) via
+   spack for MadGraph use. Set `pythia8_path` in `mg5_configuration.txt` to point to it.
+3. **Port the interface to Pythia 8.3 API** — The Pythia team has low priority on this,
+   but it's the cleanest long-term fix.
+
+**Workaround references:**
+- [MG5 Launchpad: HepMC2 static linking](https://answers.launchpad.net/mg5amcnlo/+question/693533)
+- [Pythia GitLab: MG5-PY8 interface issue](https://gitlab.com/Pythia8/releases/-/issues/24)
+- [MG5 Launchpad: Pythia8 path config](https://answers.launchpad.net/mg5amcnlo/+question/709602)
+
+### 3. Missing `pyedm4hep` pip package (blocks parquet conversion)
+
+The `convert_all.py` postprocessing script requires `pyedm4hep` which is a pip package.
+
+**Fix:** Add to the pip install in the container or in `setup_container_env.sh`:
+```bash
+pip install pyedm4hep
+```
+Already added to `setup_container_env.sh` pip install list.
+
+### 4. ACTS Python bindings path issue
+
+ACTS installs Python files in `<prefix>/python/` but they must be importable as
+`import acts`. The setup script works around this by symlinking `python/` → `/tmp/acts`.
+
+**Fix:** The ACTS spack package should install to `<prefix>/lib/pythonX.Y/site-packages/acts/`
+instead of `<prefix>/python/`. Or add a `acts.pth` file.

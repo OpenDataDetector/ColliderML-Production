@@ -32,7 +32,12 @@ if [ ! -d "$SPACK_BASE" ]; then
     return 1 2>/dev/null || exit 1
 fi
 
-# --- 0. Install system packages needed by MadGraph (bc for shower step) ---
+# --- 0. Install system packages needed by MadGraph ---
+# bc: Required by MadGraph to run the shower step. Without it, MG falls back to
+#     "noshower" mode and only produces LHE files.
+# NOTE: mg5amc_py8_interface is also needed for MG+Pythia8 showering, but is
+#       incompatible with Pythia 8.3+ (container ships 8.313). See CLAUDE.md.
+#       This must be fixed in the container image itself.
 if ! command -v bc &>/dev/null; then
     apt-get update -qq && apt-get install -y -qq bc &>/dev/null \
         && echo "Installed bc (required by MadGraph shower)." \
@@ -204,7 +209,7 @@ if [ -d "$CACHE_DIR" ]; then
         timeout 120 python3 -m pip install --quiet --timeout 15 \
             --trusted-host pypi.org --trusted-host files.pythonhosted.org \
             --target="$_pip_target" \
-            pyarrow uproot pandas awkward h5py tqdm pyhepmc psutil 2>/dev/null \
+            pyarrow uproot pandas awkward h5py tqdm pyhepmc psutil pyedm4hep 2>/dev/null \
             && echo "Python packages installed." \
             || echo "WARNING: pip install failed. Postprocessing stages may fail."
         # Update PYTHONPATH if target was just created
