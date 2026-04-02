@@ -77,8 +77,11 @@ if [ -n "$_mg_dir" ] && [ ! -f "$_mg_dir/HEPTools/MG5aMC_PY8_interface/MG5aMC_PY
                 ${_zlib_dir:+-L"$_zlib_dir/lib" -Wl,-rpath,"$_zlib_dir/lib"} -lz -ldl 2>/dev/null \
                 && echo "MG5aMC_PY8_interface compiled successfully." \
                 || echo "WARNING: MG5aMC_PY8_interface compilation failed."
-            # Cache the compiled binary
-            [ -f MG5aMC_PY8_interface ] && cp MG5aMC_PY8_interface "$CACHE_DIR/MG5aMC_PY8_interface/"
+            # Create version marker files MG5 expects
+            echo "3.5.9" > MG5AMC_VERSION_ON_INSTALL
+            echo "8.313" > PYTHIA8_VERSION_ON_INSTALL
+            # Cache the compiled binary + markers
+            [ -f MG5aMC_PY8_interface ] && cp MG5aMC_PY8_interface MG5AMC_VERSION_ON_INSTALL PYTHIA8_VERSION_ON_INSTALL "$CACHE_DIR/MG5aMC_PY8_interface/"
             cd - >/dev/null
         else
             echo "WARNING: MG5aMC_PY8_interface source not found in cache. MadGraph shower disabled."
