@@ -18,6 +18,9 @@ log/
 scripts/cli/env_setup.yaml
 
 
+# Generated output
+output/
+
 # Data files
 **/*.root
 **/*.csv
