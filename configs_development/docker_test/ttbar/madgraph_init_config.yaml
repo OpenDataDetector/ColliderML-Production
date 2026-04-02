@@ -1,0 +1,41 @@
+# Docker test: ttbar MadGraph process initialization
+# Compiles the matrix elements for p p > t t~ [QCD] (no extra jets)
+campaign: "docker_test"
+dataset: "ttbar"
+version: "v1"
+stage: "madgraph_init"
+
+job_config:
+  n_runs: 1
+  runs_per_node: 1
+  time_limit: "04:00:00"
+  qos: "debug"
+  execution_mode: "interactive"
+
+common:
+  output_base_dir: "/output"
+
+# MadGraph process: ttbar at NLO, NO extra jets
+mg_model: "sm-no_b_mass"
+mg_definitions: []
+mg_generate_command: |
+  generate p p > t t~ [QCD]
+
+# MadGraph paths (inside the container)
+mg_base_path: "/spack/opt/spack/linux-x86_64/madgraph5amc-3.5.9-2n657hx6flmiuuycb33pfqlhhe2dxmcw"
+generation_scratch_dir: "/tmp/mg_scratch"
+
+card_customizations:
+  run_card:
+    "parton_shower": "PYTHIA8"
+    "ebeam1": 7000.0
+    "ebeam2": 7000.0
+    "ptj": 20.0
+
+  shower_card:
+    "Qcut": 40.0
+    "time_shower_me_corrections": "F"
+
+  pythia8_card: {}
+
+log_level: "INFO"

@@ -1,0 +1,39 @@
+# Docker test: ttbar MadGraph event generation
+# Uses the pre-compiled process from madgraph_init
+campaign: "docker_test"
+dataset: "ttbar"
+version: "v1"
+stage: "madgraph_generation"
+
+job_config:
+  n_runs: 1
+  runs_per_node: 1
+  time_limit: "01:00:00"
+  qos: "debug"
+  execution_mode: "interactive"
+
+common:
+  output_base_dir: "/output"
+
+events: 100
+seed: 42
+
+mg_base_path: "/spack/opt/spack/linux-x86_64/madgraph5amc-3.5.9-2n657hx6flmiuuycb33pfqlhhe2dxmcw"
+generation_scratch_dir: "/tmp/mg_scratch"
+
+card_customizations:
+  run_card:
+    "ptj": 20.0
+    "event_norm": "sum"
+
+  shower_card:
+    "Qcut": 40.0
+    "time_shower_me_corrections": "F"
+
+  pythia8_card: {}
+
+# No splitting — keep all events in one file
+splitting_config:
+  enable: false
+
+log_level: "INFO"

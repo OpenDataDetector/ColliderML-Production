@@ -1,0 +1,29 @@
+# Docker test: ttbar Pythia generation with low pileup
+# Merges MadGraph hard scatter events with pileup
+campaign: "docker_test"
+dataset: "ttbar"
+version: "v1"
+stage: "pythia_generation"
+
+job_config:
+  n_runs: 1
+  runs_per_node: 1
+  time_limit: "00:10:00"
+  qos: "debug"
+  execution_mode: "interactive"
+
+common:
+  output_base_dir: "/output"
+
+events: 10
+pileup: 10
+merge: true
+poisson_sample: true
+poisson_buffer_sigma: 5.0
+
+# No hard_process — reads MG events from events.hepmc3 or events.hepmc
+# hard_process is left empty so only pileup is generated and merged with existing signal
+
+vertex_sigma_xy: 0.0125
+vertex_sigma_z: 55.5
+vertex_sigma_t: 0.185

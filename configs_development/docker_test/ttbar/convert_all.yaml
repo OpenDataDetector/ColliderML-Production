@@ -1,0 +1,71 @@
+# Docker test: ttbar parquet conversion
+campaign: "docker_test"
+dataset: "ttbar"
+version: "v1"
+stage: "convert_all"
+
+job_config:
+  n_runs: 1
+  runs_per_node: 1
+  time_limit: "00:10:00"
+  qos: "debug"
+  execution_mode: "interactive"
+
+common:
+  output_base_dir: "/output"
+
+objects:
+  - tracker_hits
+  - tracks
+  - particles
+  - calo_hits
+output_format: "parquet"
+
+chunk_size: 100
+run_size: 10
+row_group_size: 10
+
+particles_columns_keep:
+  - "particle_id"
+  - "pdg_id"
+  - "mass"
+  - "energy"
+  - "charge"
+  - "vx"
+  - "vy"
+  - "vz"
+  - "px"
+  - "py"
+  - "pz"
+  - "primary"
+
+digihits_columns_keep:
+  - "x"
+  - "y"
+  - "z"
+  - "particle_id"
+  - "detector"
+  - "volume_id"
+  - "layer_id"
+
+tracks_columns_keep:
+  - "d0"
+  - "z0"
+  - "phi"
+  - "theta"
+  - "qop"
+  - "majority_particle_id"
+
+calo_columns_keep:
+  - "event_id"
+  - "detector"
+  - "cell_id"
+  - "total_energy"
+  - "x"
+  - "y"
+  - "z"
+
+max_chunks: 1
+min_tracker_hits: 0
+min_calo_hits: 0
+log_level: "DEBUG"

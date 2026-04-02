@@ -12,9 +12,19 @@
 # This script configures PATH, LD_LIBRARY_PATH, PYTHONPATH, and other
 # environment variables needed to use the full HEP software stack
 # (ACTS, Pythia8, ROOT, DD4hep, Geant4, HepMC3, etc.) installed via Spack.
+#
+# For stages beyond Pythia generation (simulation, digitization, conversion),
+# it also handles:
+#   - DD4hep environment (ddsim binary, DD4hep library paths)
+#   - Geant4 environment (physics dataset paths)
+#   - ROOT_INCLUDE_PATH (for podio/edm4hep Python bindings)
+#   - ODD detector geometry (cloned from GitHub if not present)
+#   - Geant4 physics datasets (downloaded if not present)
+#   - Python packages for postprocessing (pip install if missing)
 # =============================================================================
 
 SPACK_BASE="/spack/opt/spack/linux-x86_64"
+CACHE_DIR="${COLLIDERML_CACHE:-/cache}"
 
 if [ ! -d "$SPACK_BASE" ]; then
     echo "ERROR: Spack installation not found at $SPACK_BASE"
@@ -71,14 +81,110 @@ if [ -n "$_pythia8_data" ]; then
     export PYTHIA8DATA="$_pythia8_data"
 fi
 
-# --- 5. Geant4 datasets (if downloaded) ---
-if [ -d "/g4data" ]; then
-    export GEANT4_DATA_DIR="/g4data"
+# --- 5. DD4hep environment (ddsim binary, DD4hep paths) ---
+_dd4hep_dir=$(find "$SPACK_BASE"/dd4hep-*/bin/thisdd4hep.sh -maxdepth 0 2>/dev/null | head -1)
+if [ -n "$_dd4hep_dir" ]; then
+    # shellcheck disable=SC1090
+    source "$_dd4hep_dir" 2>/dev/null || true
 fi
 
-# --- 6. Clean up temporary variables ---
-unset _ld_paths _py_paths _acts_python_dir _pythia8_data
+# --- 6. Geant4 environment (physics dataset paths) ---
+_g4_setup=$(find "$SPACK_BASE"/geant4-*/bin/geant4.sh -maxdepth 0 2>/dev/null | head -1)
+if [ -n "$_g4_setup" ]; then
+    # shellcheck disable=SC1090
+    source "$_g4_setup" 2>/dev/null || true
+fi
+
+# --- 7. ROOT_INCLUDE_PATH for podio/edm4hep/dd4hep headers ---
+# Required for podio Python bindings (loads Frame.h via cppyy) and edm4hep
+_include_paths=""
+for dir in "$SPACK_BASE"/podio-*/include "$SPACK_BASE"/edm4hep-*/include "$SPACK_BASE"/dd4hep-*/include; do
+    [ -d "$dir" ] && _include_paths="${dir}${_include_paths:+:$_include_paths}"
+done
+if [ -n "$_include_paths" ]; then
+    export ROOT_INCLUDE_PATH="${_include_paths}${ROOT_INCLUDE_PATH:+:$ROOT_INCLUDE_PATH}"
+fi
+
+# --- 8. OpenDataDetector (ODD) geometry ---
+# The ODD detector geometry is required for simulation and digitization stages.
+# It must be cloned from GitHub and pointed to via ODD_PATH.
+export ODD_PATH="${ODD_PATH:-$CACHE_DIR/odd}"
+if [ ! -f "$ODD_PATH/xml/OpenDataDetector.xml" ]; then
+    echo "ODD geometry not found at $ODD_PATH. Cloning from GitHub..."
+    mkdir -p "$(dirname "$ODD_PATH")"
+    if git clone --depth 1 https://github.com/acts-project/OpenDataDetector.git "$ODD_PATH" 2>/dev/null; then
+        echo "ODD cloned successfully to $ODD_PATH"
+    else
+        echo "WARNING: Failed to clone ODD. Simulation/digitization stages will fail."
+        echo "  Manual fix: git clone https://github.com/acts-project/OpenDataDetector.git $ODD_PATH"
+    fi
+fi
+
+# --- 9. Geant4 physics datasets ---
+# Required for detector simulation. ~2 GB download, cached in CACHE_DIR.
+_g4_data_dir=$(find "$SPACK_BASE"/geant4-*/share/Geant4/data -maxdepth 0 -type d 2>/dev/null | head -1)
+if [ -n "$_g4_data_dir" ] && [ -z "$(ls -A "$_g4_data_dir" 2>/dev/null)" ]; then
+    # Data directory exists but is empty — need to download
+    if [ -d "$CACHE_DIR/g4data" ] && [ -n "$(ls -A "$CACHE_DIR/g4data" 2>/dev/null)" ]; then
+        # Cached data exists — symlink each dataset
+        echo "Linking cached Geant4 datasets from $CACHE_DIR/g4data..."
+        for dataset in "$CACHE_DIR/g4data"/*/; do
+            [ -d "$dataset" ] || continue
+            _name=$(basename "$dataset")
+            [ -e "$_g4_data_dir/$_name" ] || ln -sf "$dataset" "$_g4_data_dir/$_name" 2>/dev/null
+        done
+    else
+        echo "Geant4 datasets not found. Downloading (~2 GB)..."
+        echo "  (Set SKIP_G4_DOWNLOAD=1 to skip if running without network access)"
+        mkdir -p "$CACHE_DIR/g4data"
+        if [ "${SKIP_G4_DOWNLOAD:-}" != "1" ] && timeout 600 download_geant4_datasets.sh 2>/dev/null; then
+            # Move downloaded data to cache and symlink
+            for dataset in "$_g4_data_dir"/*/; do
+                _name=$(basename "$dataset")
+                if [ -d "$dataset" ] && [ "$_name" != "." ]; then
+                    mv "$dataset" "$CACHE_DIR/g4data/$_name" 2>/dev/null
+                    ln -sf "$CACHE_DIR/g4data/$_name" "$_g4_data_dir/$_name" 2>/dev/null
+                fi
+            done
+            echo "Geant4 datasets downloaded and cached."
+        else
+            echo "WARNING: Failed to download Geant4 datasets. Simulation will fail."
+            echo "  Manual fix: run 'download_geant4_datasets.sh' inside the container"
+        fi
+    fi
+fi
+
+# --- 10. Python packages for postprocessing ---
+# Install packages needed by convert_all.py and other postprocessing scripts.
+_pip_target="$CACHE_DIR/pip"
+if [ -d "$CACHE_DIR" ]; then
+    # Always add pip target to PYTHONPATH first (may already be populated from cache)
+    if [ -d "$_pip_target" ]; then
+        export PYTHONPATH="$_pip_target:$PYTHONPATH"
+    fi
+    # Install if not yet available
+    if ! python3 -c "import pyarrow" 2>/dev/null; then
+        echo "Installing Python packages for postprocessing..."
+        mkdir -p "$_pip_target"
+        timeout 120 python3 -m pip install --quiet --timeout 15 \
+            --trusted-host pypi.org --trusted-host files.pythonhosted.org \
+            --target="$_pip_target" \
+            pyarrow uproot pandas awkward h5py tqdm pyhepmc psutil 2>/dev/null \
+            && echo "Python packages installed." \
+            || echo "WARNING: pip install failed. Postprocessing stages may fail."
+        # Update PYTHONPATH if target was just created
+        if [ -d "$_pip_target" ]; then
+            export PYTHONPATH="$_pip_target:$PYTHONPATH"
+        fi
+    fi
+fi
+
+# --- 11. Clean up temporary variables ---
+unset _ld_paths _py_paths _acts_python_dir _pythia8_data _dd4hep_dir _g4_setup
+unset _include_paths _g4_data_dir _pip_target _name
 
 echo "ColliderML container environment configured successfully."
 echo "  Python:  $(which python3) ($(python3 --version 2>&1 | cut -d' ' -f2))"
 echo "  ACTS:    $(python3 -c 'import acts; print(acts.__version__)' 2>/dev/null || echo 'not available')"
+echo "  ddsim:   $(which ddsim 2>/dev/null || echo 'not available')"
+echo "  ODD:     ${ODD_PATH:-not set}"

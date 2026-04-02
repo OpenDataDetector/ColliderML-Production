@@ -33,8 +33,7 @@ from utils.app_logging import setup_logging, TimingRecorder
 from utils.config import create_base_parser, load_config
 from contextlib import contextmanager
 import math
-from acts.examples.podio import PodioReader
-from acts.examples.edm4hep import EDM4hepSimInputConverter
+from acts.examples.edm4hep import EDM4hepSimInputConverter, PodioReader
 
 u = acts.UnitConstants
 

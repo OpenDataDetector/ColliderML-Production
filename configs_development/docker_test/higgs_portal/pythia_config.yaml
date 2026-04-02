@@ -1,14 +1,4 @@
-# =============================================================================
-# ColliderML Docker Test: Higgs Portal Pythia Generation
-# =============================================================================
-# Minimal test configuration for running Pythia8 event generation inside the
-# ODD software container. Generates 10 hard-scatter Higgs portal events
-# (h → aa → bbbb) with no pileup.
-#
-# Usage:
-#   ./scripts/cli/run_docker.sh configs_development/docker_test/higgs_portal/pythia_config.yaml
-# =============================================================================
-
+# Docker test: Higgs portal Pythia generation with low pileup
 campaign: "docker_test"
 dataset: "higgs_portal"
 version: "v1"
@@ -21,35 +11,29 @@ job_config:
   qos: "debug"
   execution_mode: "interactive"
 
-# Output location (inside the container)
 common:
   output_base_dir: "/output"
 
-# Stage-specific configurations
 events: 10
-pileup: 0
+pileup: 10
+merge: true
+poisson_sample: true
+poisson_buffer_sigma: 5.0
 
-# Higgs portal production of a long-lived scalar: h → aa → b b̄ b b̄
 hard_process: "HiggsBSM:gg2H2"
 
-# Vertex smearing consistent with OpenDataDetector
-vertex_sigma_xy: 0.0125  # mm
-vertex_sigma_z: 55.5     # mm
-vertex_sigma_t: 0.185    # ns
+vertex_sigma_xy: 0.0125
+vertex_sigma_z: 55.5
+vertex_sigma_t: 0.185
 
 pythia_settings:
-  # Enable BSM Higgs sector
   - "Print:quiet = off"
   - "Higgs:useBSM = on"
-
-  # SM-like Higgs (state 35) properties
   - "35:m0 = 125.0"
   - "35:mWidth = 0.00407"
   - "35:doForceWidth = on"
   - "35:onMode = off"
   - "35:onIfMatch = 36 36"
-
-  # Long-lived pseudoscalar a (state 36) decays: a → b b̄
   - "36:oneChannel = 1 1.0 101 5 -5"
   - "36:m0 = 55.0"
   - "36:mMin = 54.5"
@@ -57,7 +41,5 @@ pythia_settings:
   - "36:mWidth = 1.97327e-15"
   - "36:tau0 = 100.0"
   - "36:mayDecay = on"
-
-  # Allow very long lifetimes
   - "ParticleDecays:limitTau0 = off"
   - "ParticleDecays:tau0Max = 100000.0"
