@@ -44,4 +44,4 @@ __pycache__/
 *.pyz
 
 # Test directories
-**/*_tests/
+**/*_tests/.cache/
