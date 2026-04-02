@@ -32,6 +32,13 @@ if [ ! -d "$SPACK_BASE" ]; then
     return 1 2>/dev/null || exit 1
 fi
 
+# --- 0. Install system packages needed by MadGraph (bc for shower step) ---
+if ! command -v bc &>/dev/null; then
+    apt-get update -qq && apt-get install -y -qq bc &>/dev/null \
+        && echo "Installed bc (required by MadGraph shower)." \
+        || echo "WARNING: Failed to install bc. MadGraph shower will not work."
+fi
+
 # --- 1. Source .bashrc for PATH and CMAKE_PREFIX_PATH ---
 # The container's .bashrc sets up PATH and CMAKE_PREFIX_PATH for all spack
 # packages, but guards behind an interactive-shell check. We bypass it.
