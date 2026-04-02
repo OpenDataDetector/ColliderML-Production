@@ -86,10 +86,11 @@ echo "=============================================="
 CACHE_DIR="$REPO_ROOT/.cache"
 mkdir -p "$CACHE_DIR"
 
-# Clone ODD if not present (done on host where network access works)
-if [ ! -f "$CACHE_DIR/odd/xml/OpenDataDetector.xml" ]; then
-    echo "Cloning OpenDataDetector geometry..."
-    git clone --depth 1 https://github.com/acts-project/OpenDataDetector.git "$CACHE_DIR/odd" 2>/dev/null \
+# Clone ODD v4.0.4 if not present (done on host where network access works)
+if [ ! -f "$CACHE_DIR/odd-v4/xml/OpenDataDetector.xml" ]; then
+    echo "Cloning OpenDataDetector v4.0.4 from CERN GitLab..."
+    git clone --depth 1 --branch v4.0.4 \
+        https://gitlab.cern.ch/acts/OpenDataDetector.git "$CACHE_DIR/odd-v4" 2>/dev/null \
         || echo "WARNING: Failed to clone ODD. Simulation stages will fail."
 fi
 

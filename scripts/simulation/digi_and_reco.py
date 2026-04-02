@@ -247,7 +247,7 @@ def setup_acts_reconstruction(input_path, output_dir, config, rnd, logger=None):
             return geoid
 
         measurementCounter = acts.examples.ParticleSelector.MeasurementCounter()
-        # At least 3 hits in the pixels
+        # At least 3 hits in the pixels (min=3, max=unlimited)
         measurementCounter.addCounter(
             [
                 make_geoid(16),
@@ -255,6 +255,7 @@ def setup_acts_reconstruction(input_path, output_dir, config, rnd, logger=None):
                 make_geoid(18),
             ],
             3,
+            2**31 - 1,
         )
         
         # Add digi particle selection (filters particles with sufficient measurements)
@@ -304,7 +305,7 @@ def setup_acts_reconstruction(input_path, output_dir, config, rnd, logger=None):
         # Write spacepoints to ROOT if requested
         if output_spacepoints_root:
             s.addWriter(
-                acts.examples.RootSpacepointWriter(
+                acts.examples.root.RootSpacepointWriter(
                     level=LOG_LEVEL,
                     inputSpacepoints="spacepoints",
                     inputMeasurementParticlesMap="measurement_particles_map",
@@ -494,8 +495,8 @@ def add_root_writers(s, output_dir, field, config=None):
     # Write tracking hits (simhits) if requested
     if output_simhits_root:
         s.addWriter(
-            acts.examples.RootSimHitWriter(
-                config=acts.examples.RootSimHitWriter.Config(
+            acts.examples.root.RootSimHitWriter(
+                config=acts.examples.root.RootSimHitWriter.Config(
                     filePath=str(output_dir / "simhits.root"),
                     inputSimHits="simhits",
                 ),
@@ -506,8 +507,8 @@ def add_root_writers(s, output_dir, field, config=None):
     # Write simulated particles if requested
     if output_particles_root:
         s.addWriter(
-            acts.examples.RootParticleWriter(
-                config=acts.examples.RootParticleWriter.Config(
+            acts.examples.root.RootParticleWriter(
+                config=acts.examples.root.RootParticleWriter.Config(
                     filePath=str(output_dir / "particles.root"),
                     inputParticles="particles",
                     referencePoint=acts.Vector3(0.0, 0.0, 0.0),

@@ -82,14 +82,14 @@ if [ -n "$_pythia8_data" ]; then
 fi
 
 # --- 5. DD4hep environment (ddsim binary, DD4hep paths) ---
-_dd4hep_dir=$(find "$SPACK_BASE"/dd4hep-*/bin/thisdd4hep.sh -maxdepth 0 2>/dev/null | head -1)
+_dd4hep_dir=$(ls "$SPACK_BASE"/dd4hep-*/bin/thisdd4hep.sh 2>/dev/null | head -1)
 if [ -n "$_dd4hep_dir" ]; then
     # shellcheck disable=SC1090
     source "$_dd4hep_dir" 2>/dev/null || true
 fi
 
 # --- 6. Geant4 environment (physics dataset paths) ---
-_g4_setup=$(find "$SPACK_BASE"/geant4-*/bin/geant4.sh -maxdepth 0 2>/dev/null | head -1)
+_g4_setup=$(ls "$SPACK_BASE"/geant4-*/bin/geant4.sh 2>/dev/null | head -1)
 if [ -n "$_g4_setup" ]; then
     # shellcheck disable=SC1090
     source "$_g4_setup" 2>/dev/null || true
@@ -105,24 +105,52 @@ if [ -n "$_include_paths" ]; then
     export ROOT_INCLUDE_PATH="${_include_paths}${ROOT_INCLUDE_PATH:+:$ROOT_INCLUDE_PATH}"
 fi
 
-# --- 8. OpenDataDetector (ODD) geometry ---
+# --- 8. OpenDataDetector (ODD) geometry + factory library ---
 # The ODD detector geometry is required for simulation and digitization stages.
-# It must be cloned from GitHub and pointed to via ODD_PATH.
-export ODD_PATH="${ODD_PATH:-$CACHE_DIR/odd}"
-if [ ! -f "$ODD_PATH/xml/OpenDataDetector.xml" ]; then
-    echo "ODD geometry not found at $ODD_PATH. Cloning from GitHub..."
-    mkdir -p "$(dirname "$ODD_PATH")"
-    if git clone --depth 1 https://github.com/acts-project/OpenDataDetector.git "$ODD_PATH" 2>/dev/null; then
-        echo "ODD cloned successfully to $ODD_PATH"
+# Uses ODD v4.0.4 from CERN GitLab (matches the ACTS version in this container).
+# The factory library (libOpenDataDetector.so) provides DD4hep geometry plugins
+# (ODDCylinder, ODDPixelBarrel, etc.) needed by ddsim to construct the detector.
+_odd_src="${CACHE_DIR}/odd-v4"
+_odd_install="${CACHE_DIR}/odd-v4-install"
+
+# Clone ODD source if not present
+if [ ! -f "$_odd_src/xml/OpenDataDetector.xml" ]; then
+    echo "ODD geometry not found. Cloning ODD v4.0.4 from CERN GitLab..."
+    mkdir -p "$(dirname "$_odd_src")"
+    if git clone --depth 1 --branch v4.0.4 \
+        https://gitlab.cern.ch/acts/OpenDataDetector.git "$_odd_src" 2>/dev/null; then
+        echo "ODD v4.0.4 cloned successfully to $_odd_src"
     else
         echo "WARNING: Failed to clone ODD. Simulation/digitization stages will fail."
-        echo "  Manual fix: git clone https://github.com/acts-project/OpenDataDetector.git $ODD_PATH"
+        echo "  Manual fix: git clone --branch v4.0.4 https://gitlab.cern.ch/acts/OpenDataDetector.git $_odd_src"
     fi
+fi
+
+# Build ODD factory library if not present
+if [ -f "$_odd_src/CMakeLists.txt" ] && [ ! -f "$_odd_install/lib/libOpenDataDetector.so" ]; then
+    echo "Building ODD factory library..."
+    _odd_build="/tmp/odd-build"
+    rm -rf "$_odd_build" && mkdir -p "$_odd_build"
+    if (cd "$_odd_build" && \
+        cmake "$_odd_src" -DCMAKE_INSTALL_PREFIX="$_odd_install" 2>/dev/null && \
+        make -j"$(nproc)" 2>/dev/null && \
+        make install 2>/dev/null); then
+        echo "ODD factory library built successfully."
+    else
+        echo "WARNING: Failed to build ODD factory library. Simulation will fail."
+    fi
+    rm -rf "$_odd_build"
+fi
+
+# Set ODD_PATH and add factory library to LD_LIBRARY_PATH
+export ODD_PATH="${ODD_PATH:-$_odd_src}"
+if [ -d "$_odd_install/lib" ]; then
+    export LD_LIBRARY_PATH="$_odd_install/lib:$LD_LIBRARY_PATH"
 fi
 
 # --- 9. Geant4 physics datasets ---
 # Required for detector simulation. ~2 GB download, cached in CACHE_DIR.
-_g4_data_dir=$(find "$SPACK_BASE"/geant4-*/share/Geant4/data -maxdepth 0 -type d 2>/dev/null | head -1)
+_g4_data_dir=$(ls -d "$SPACK_BASE"/geant4-*/share/Geant4/data 2>/dev/null | head -1)
 if [ -n "$_g4_data_dir" ] && [ -z "$(ls -A "$_g4_data_dir" 2>/dev/null)" ]; then
     # Data directory exists but is empty — need to download
     if [ -d "$CACHE_DIR/g4data" ] && [ -n "$(ls -A "$CACHE_DIR/g4data" 2>/dev/null)" ]; then
