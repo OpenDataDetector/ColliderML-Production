@@ -94,6 +94,21 @@ if [ ! -f "$CACHE_DIR/odd-v4/xml/OpenDataDetector.xml" ]; then
         || echo "WARNING: Failed to clone ODD. Simulation stages will fail."
 fi
 
+# Clone MG5aMC_PY8_interface if not present (needed for MadGraph+Pythia8 shower)
+if [ ! -f "$CACHE_DIR/MG5aMC_PY8_interface/MG5aMC_PY8_interface.cc" ]; then
+    echo "Cloning MG5aMC_PY8_interface from GitHub..."
+    git clone --depth 1 \
+        https://github.com/mg5amcnlo/MG5aMC_PY8_interface.git "$CACHE_DIR/MG5aMC_PY8_interface" 2>/dev/null \
+        || echo "WARNING: Failed to clone MG5aMC_PY8_interface. MadGraph shower will not work."
+fi
+
+# Download bc .deb if not cached (no apt-get inside container without network)
+if [ ! -f "$CACHE_DIR"/bc_*.deb ]; then
+    echo "Downloading bc package..."
+    (cd "$CACHE_DIR" && apt-get download bc 2>/dev/null) \
+        || echo "WARNING: Failed to download bc. MadGraph shower will not work."
+fi
+
 # --- Run ---
 # Mounts .cache from host for persistent storage of:
 #   - ODD detector geometry (cloned from GitHub)
