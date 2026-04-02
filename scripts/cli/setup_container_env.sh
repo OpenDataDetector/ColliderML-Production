@@ -147,6 +147,28 @@ if [ -n "$_pythia8_data" ]; then
     export PYTHIA8DATA="$_pythia8_data"
 fi
 
+# --- 4b. LHAPDF: PDF sets for MadGraph+Pythia8 showering ---
+_lhapdf_config=$(ls "$SPACK_BASE"/lhapdf-*/bin/lhapdf-config 2>/dev/null | head -1)
+_lhapdf_datadir=$(ls -d "$SPACK_BASE"/lhapdf-*/share/LHAPDF 2>/dev/null | head -1)
+_lhapdfsets_dir=$(ls -d "$SPACK_BASE"/lhapdfsets-*/share/lhapdfsets 2>/dev/null | head -1)
+if [ -n "$_lhapdf_config" ]; then
+    export PATH="$(dirname "$_lhapdf_config"):$PATH"
+    # Symlink PDF set data into LHAPDF's expected data directory
+    if [ -n "$_lhapdf_datadir" ] && [ -n "$_lhapdfsets_dir" ]; then
+        for _setdir in "$_lhapdfsets_dir"/*/; do
+            [ -d "$_setdir" ] || continue
+            _setname=$(basename "$_setdir")
+            [ -e "$_lhapdf_datadir/$_setname" ] || ln -sf "$_setdir" "$_lhapdf_datadir/$_setname" 2>/dev/null
+        done
+    fi
+    # Configure MG5 to use LHAPDF
+    _mg_config=$(ls "$SPACK_BASE"/madgraph5amc-*/input/mg5_configuration.txt 2>/dev/null | head -1)
+    if [ -n "$_mg_config" ]; then
+        sed -i "s|# lhapdf = /PATH/TO/lhapdf-config|lhapdf = $_lhapdf_config|" "$_mg_config" 2>/dev/null
+    fi
+fi
+unset _lhapdf_config _lhapdf_datadir _lhapdfsets_dir _setdir _setname _mg_config
+
 # --- 5. DD4hep environment (ddsim binary, DD4hep paths) ---
 _dd4hep_dir=$(ls "$SPACK_BASE"/dd4hep-*/bin/thisdd4hep.sh 2>/dev/null | head -1)
 if [ -n "$_dd4hep_dir" ]; then
