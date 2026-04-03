@@ -8,7 +8,6 @@ Normalizes inputs and outputs for stable training.
 
 import glob
 import math
-from functools import lru_cache
 from pathlib import Path
 
 import numpy as np
@@ -134,7 +133,10 @@ class TrackHitDataset(Dataset):
                 for track_idx in range(n_tracks):
                     self.index.append((file_idx, event_idx, track_idx))
 
-        self._load_file = lru_cache(maxsize=file_cache_size)(self._load_file_uncached)
+        # Simple dict-based file cache (pickle-safe for DataLoader workers)
+        self._file_cache_size = file_cache_size
+        self._file_cache = {}
+        self._file_cache_order = []
 
         # Compute normalization stats
         self._input_mean = None
@@ -142,11 +144,22 @@ class TrackHitDataset(Dataset):
         self._output_scales = None
         self._compute_normalization()
 
-    def _load_file_uncached(self, file_idx):
-        tracks = pq.read_table(self.track_files[file_idx])
-        hits = pq.read_table(self.hit_files[file_idx])
-        particles = pq.read_table(self.particle_files[file_idx])
-        return tracks, hits, particles
+    def _load_file(self, file_idx):
+        """Load file with simple LRU dict cache (pickle-safe)."""
+        if file_idx in self._file_cache:
+            return self._file_cache[file_idx]
+        # Evict oldest if full
+        while len(self._file_cache) >= self._file_cache_size:
+            oldest = self._file_cache_order.pop(0)
+            self._file_cache.pop(oldest, None)
+        result = (
+            pq.read_table(self.track_files[file_idx]),
+            pq.read_table(self.hit_files[file_idx]),
+            pq.read_table(self.particle_files[file_idx]),
+        )
+        self._file_cache[file_idx] = result
+        self._file_cache_order.append(file_idx)
+        return result
 
     def _get_event_arrays(self, file_idx, event_idx):
         """Cached per-event numpy arrays."""

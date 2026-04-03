@@ -17,7 +17,7 @@ import numpy as np
 import torch
 import pytorch_lightning as pl
 from pytorch_lightning.loggers import WandbLogger, CSVLogger
-from pytorch_lightning.callbacks import ModelCheckpoint, LearningRateMonitor
+from pytorch_lightning.callbacks import ModelCheckpoint, LearningRateMonitor, EarlyStopping
 from torch.utils.data import DataLoader, Subset
 
 import sys
@@ -232,6 +232,8 @@ def parse_args():
     p.add_argument("--val-split", type=float, default=0.1)
     p.add_argument("--seed", type=int, default=42)
     p.add_argument("--overfit-batches", type=int, default=0)
+    p.add_argument("--patience", type=int, default=10,
+                   help="Early stopping patience (epochs without val improvement)")
     return p.parse_args()
 
 
@@ -285,6 +287,9 @@ def main():
         filename="best-{epoch:03d}-{val/loss:.4f}",
         monitor="val/loss", mode="min", save_top_k=1, save_last=True,
     )
+    early_stop_cb = EarlyStopping(
+        monitor="val/loss", patience=args.patience, mode="min", verbose=True,
+    )
 
     # Trainer
     trainer = pl.Trainer(
@@ -292,7 +297,7 @@ def main():
         accelerator="auto",
         devices=1,
         logger=loggers,
-        callbacks=[checkpoint_cb, LearningRateMonitor(logging_interval="epoch")],
+        callbacks=[checkpoint_cb, early_stop_cb, LearningRateMonitor(logging_interval="epoch")],
         gradient_clip_val=args.grad_clip,
         deterministic=True,
         default_root_dir=str(output_dir),
