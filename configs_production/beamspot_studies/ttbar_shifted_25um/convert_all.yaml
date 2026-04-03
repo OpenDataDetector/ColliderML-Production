@@ -7,7 +7,7 @@ stage: "convert_all"
 
 job_config:
   n_runs: 50
-  runs_per_node: 5
+  runs_per_node: 16
   time_limit: "00:30:00"
   qos: "debug"
   execution_mode: "multi_node_slurm"
