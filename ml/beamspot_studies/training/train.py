@@ -1,11 +1,11 @@
 """
 Training script for track parameter regression transformer.
 
-Uses PyTorch Lightning for training and Weights & Biases for logging.
+Uses PyTorch Lightning + Weights & Biases. Supports cylindrical coordinates,
+sin/cos phi parameterization, normalized I/O, and Huber loss.
 
 Usage:
-    python train.py --parquet-base /path/to/parquet --epochs 50
-    python train.py --parquet-base /path/to/parquet --overfit-batches 1  # sanity check
+    python train.py --parquet-base /path/to/parquet --max-files 16 --epochs 50
 """
 
 import argparse
@@ -23,18 +23,28 @@ from torch.utils.data import DataLoader, Subset
 import sys
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from data.datasets import TrackHitDataset
+from data.datasets import TrackHitDataset, model_to_raw_params, PARAM_NAMES_RAW, N_OUTPUT
 from models.track_transformer import TrackTransformer
-from training.losses import NormalizedMSELoss
+from training.losses import TrackHuberLoss, NormalizedMSELoss
 
 
-PARAM_NAMES = ["d0", "z0", "phi", "theta", "qop"]
+def setup_file_logging(output_dir):
+    log = logging.getLogger("beamspot_train")
+    log.setLevel(logging.INFO)
+    log.handlers.clear()
+    fmt = logging.Formatter("%(asctime)s | %(message)s", datefmt="%Y-%m-%d %H:%M:%S")
+    fh = logging.FileHandler(output_dir / "train.log")
+    fh.setFormatter(fmt)
+    log.addHandler(fh)
+    sh = logging.StreamHandler()
+    sh.setFormatter(fmt)
+    log.addHandler(sh)
+    return log
 
 
 class TrackRegressionModule(pl.LightningModule):
-    """PyTorch Lightning module for track parameter regression."""
 
-    def __init__(self, hparams_dict, norm_stats=None):
+    def __init__(self, hparams_dict, output_scales=None):
         super().__init__()
         self.save_hyperparameters(hparams_dict)
 
@@ -47,25 +57,26 @@ class TrackRegressionModule(pl.LightningModule):
             dropout=self.hparams.dropout,
         )
 
-        # Loss normalized by truth parameter variance
-        if norm_stats is not None:
-            self.criterion = NormalizedMSELoss(norm_stats["truth_std"])
+        if self.hparams.loss == "huber":
+            self.criterion = TrackHuberLoss(delta=1.0)
         else:
-            self.criterion = NormalizedMSELoss(np.ones(5))
+            self.criterion = NormalizedMSELoss(np.ones(N_OUTPUT))
 
-        # Store stats for checkpoint
-        self.norm_stats = norm_stats
+        # For denormalizing predictions in metrics
+        if output_scales is not None:
+            self.register_buffer("output_scales", torch.tensor(output_scales, dtype=torch.float32))
+        else:
+            self.register_buffer("output_scales", torch.ones(N_OUTPUT))
 
-        # Collect validation outputs for epoch-end metrics
         self._val_preds = []
-        self._val_truths = []
+        self._val_truths_norm = []
         self._val_recos = []
 
-    def forward(self, hit_positions, hit_features, padding_mask):
-        return self.model(hit_positions, hit_features, padding_mask)
+    def forward(self, hit_features, padding_mask):
+        return self.model(hit_features, padding_mask)
 
     def _shared_step(self, batch):
-        pred = self(batch["hit_positions"], batch["hit_features"], batch["padding_mask"])
+        pred = self(batch["hit_features"], batch["padding_mask"])
         loss = self.criterion(pred, batch["truth_params"])
         return pred, loss
 
@@ -79,104 +90,100 @@ class TrackRegressionModule(pl.LightningModule):
         log = logging.getLogger("beamspot_train")
         train_loss = getattr(self, "_last_train_loss", float("nan"))
         log.info(f"Epoch {self.current_epoch:4d} | train_loss={train_loss:.6f}")
-        for handler in log.handlers:
-            handler.flush()
+        for h in log.handlers:
+            h.flush()
 
     def validation_step(self, batch, batch_idx):
         pred, loss = self._shared_step(batch)
         self.log("val/loss", loss, prog_bar=True, sync_dist=True)
-
         self._val_preds.append(pred.detach().cpu())
-        self._val_truths.append(batch["truth_params"].detach().cpu())
+        self._val_truths_norm.append(batch["truth_params"].detach().cpu())
         self._val_recos.append(batch["reco_params"].detach().cpu())
 
     def on_validation_epoch_end(self):
         if not self._val_preds:
             return
 
-        all_pred = torch.cat(self._val_preds).numpy()
-        all_truth = torch.cat(self._val_truths).numpy()
-        all_reco = torch.cat(self._val_recos).numpy()
+        pred_norm = torch.cat(self._val_preds).numpy()
+        truth_norm = torch.cat(self._val_truths_norm).numpy()
+        reco_model = torch.cat(self._val_recos).numpy()  # NOT normalized
 
-        for i, name in enumerate(PARAM_NAMES):
-            res_ml = np.std(all_pred[:, i] - all_truth[:, i])
-            res_kf = np.std(all_reco[:, i] - all_truth[:, i])
-            bias_ml = np.mean(all_pred[:, i] - all_truth[:, i])
-            self.log(f"val/{name}_resolution_ml", res_ml)
-            self.log(f"val/{name}_resolution_kf", res_kf)
-            self.log(f"val/{name}_bias_ml", bias_ml)
+        scales = self.output_scales.cpu().numpy()
 
-        # Log to file logger
+        # Denormalize predictions and truth
+        pred_denorm = pred_norm * scales
+        truth_denorm = truth_norm * scales
+
+        # Reconstruct raw params (phi from sin/cos)
+        pred_raw = np.array([model_to_raw_params(p) for p in pred_denorm])
+        truth_raw = np.array([model_to_raw_params(t) for t in truth_denorm])
+        reco_raw = np.array([model_to_raw_params(r) for r in reco_model])
+
+        log = logging.getLogger("beamspot_train")
         train_loss = getattr(self, "_last_train_loss", float("nan"))
         val_loss = self.trainer.callback_metrics.get("val/loss", float("nan"))
-        log = logging.getLogger("beamspot_train")
-        log.info(
-            f"Epoch {self.current_epoch:4d} | "
-            f"train_loss={train_loss:.6f} val_loss={val_loss:.6f} | "
-            + " | ".join(
-                f"{name}_res_ml={np.std(all_pred[:, i] - all_truth[:, i]):.4g} "
-                f"res_kf={np.std(all_reco[:, i] - all_truth[:, i]):.4g}"
-                for i, name in enumerate(PARAM_NAMES)
-            )
-        )
 
-        for handler in log.handlers:
-            handler.flush()
+        parts = [f"Epoch {self.current_epoch:4d} | train_loss={train_loss:.6f} val_loss={val_loss:.6f}"]
+        for i, name in enumerate(PARAM_NAMES_RAW):
+            res_ml = np.std(pred_raw[:, i] - truth_raw[:, i])
+            res_kf = np.std(reco_raw[:, i] - truth_raw[:, i])
+            self.log(f"val/{name}_resolution_ml", res_ml)
+            self.log(f"val/{name}_resolution_kf", res_kf)
+            self.log(f"val/{name}_bias_ml", np.mean(pred_raw[:, i] - truth_raw[:, i]))
+            parts.append(f"{name}_res_ml={res_ml:.4g} res_kf={res_kf:.4g}")
+
+        log.info(" | ".join(parts))
+        for h in log.handlers:
+            h.flush()
 
         self._val_preds.clear()
-        self._val_truths.clear()
+        self._val_truths_norm.clear()
         self._val_recos.clear()
 
     def configure_optimizers(self):
         optimizer = torch.optim.AdamW(
-            self.parameters(),
-            lr=self.hparams.lr,
-            weight_decay=self.hparams.weight_decay,
+            self.parameters(), lr=self.hparams.lr, weight_decay=self.hparams.weight_decay,
         )
         scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(
-            optimizer, T_0=self.hparams.epochs, T_mult=1
+            optimizer, T_0=self.hparams.epochs, T_mult=1,
         )
         return {"optimizer": optimizer, "lr_scheduler": {"scheduler": scheduler, "interval": "epoch"}}
 
 
 class TrackDataModule(pl.LightningDataModule):
-    """Data module for loading ColliderML parquet track data."""
 
     def __init__(self, parquet_base, max_hits=20, batch_size=256,
                  val_split=0.1, num_workers=4, seed=42, overfit_batches=0,
-                 max_files=None):
+                 max_files=None, max_train_samples=None):
         super().__init__()
-        self.parquet_base = parquet_base
-        self.max_hits = max_hits
-        self.batch_size = batch_size
-        self.val_split = val_split
-        self.num_workers = num_workers
-        self.seed = seed
-        self.overfit_batches = overfit_batches
-        self.max_files = max_files
-        self.norm_stats = None
+        self.save_hyperparameters()
 
     def setup(self, stage=None):
         if hasattr(self, "dataset"):
-            return  # Already set up — avoid re-indexing on second PL call
+            return
         t0 = time.time()
         self.dataset = TrackHitDataset(
-            self.parquet_base, max_hits=self.max_hits, max_files=self.max_files,
+            self.hparams.parquet_base,
+            max_hits=self.hparams.max_hits,
+            max_files=self.hparams.max_files,
         )
         print(f"Indexed {len(self.dataset)} tracks in {time.time() - t0:.1f}s")
 
-        self.norm_stats = self.dataset.get_normalization_stats()
-
         n = len(self.dataset)
-        n_val = int(n * self.val_split)
+        n_val = int(n * self.hparams.val_split)
 
-        generator = torch.Generator().manual_seed(self.seed)
+        generator = torch.Generator().manual_seed(self.hparams.seed)
         indices = torch.randperm(n, generator=generator).tolist()
 
-        if self.overfit_batches > 0:
-            n_overfit = min(self.overfit_batches * self.batch_size, n)
+        if self.hparams.overfit_batches > 0:
+            n_overfit = min(self.hparams.overfit_batches * self.hparams.batch_size, n)
             self.train_dataset = Subset(self.dataset, indices[:n_overfit])
             self.val_dataset = self.train_dataset
+        elif self.hparams.max_train_samples is not None:
+            n_train = min(self.hparams.max_train_samples, n - n_val)
+            n_val_cap = min(n_val, n_train * 10)
+            self.train_dataset = Subset(self.dataset, indices[:n_train])
+            self.val_dataset = Subset(self.dataset, indices[n - n_val:n - n_val + n_val_cap])
         else:
             self.train_dataset = Subset(self.dataset, indices[:n - n_val])
             self.val_dataset = Subset(self.dataset, indices[n - n_val:])
@@ -185,63 +192,47 @@ class TrackDataModule(pl.LightningDataModule):
 
     def train_dataloader(self):
         return DataLoader(
-            self.train_dataset, batch_size=self.batch_size, shuffle=True,
-            num_workers=self.num_workers, pin_memory=True, drop_last=True,
-            persistent_workers=self.num_workers > 0,
+            self.train_dataset, batch_size=self.hparams.batch_size, shuffle=True,
+            num_workers=self.hparams.num_workers, pin_memory=True, drop_last=True,
+            persistent_workers=self.hparams.num_workers > 0,
         )
 
     def val_dataloader(self):
         return DataLoader(
-            self.val_dataset, batch_size=self.batch_size, shuffle=False,
-            num_workers=self.num_workers, pin_memory=True,
-            persistent_workers=self.num_workers > 0,
+            self.val_dataset, batch_size=self.hparams.batch_size, shuffle=False,
+            num_workers=self.hparams.num_workers, pin_memory=True,
+            persistent_workers=self.hparams.num_workers > 0,
         )
 
 
 def parse_args():
-    parser = argparse.ArgumentParser(description="Train track parameter regression transformer")
-    parser.add_argument("--parquet-base", type=str, required=True)
-    parser.add_argument("--output-dir", type=str, default="./output")
-    parser.add_argument("--wandb-project", type=str, default="colliderml-beamspot")
-    parser.add_argument("--wandb-name", type=str, default=None)
-    parser.add_argument("--epochs", type=int, default=50)
-    parser.add_argument("--batch-size", type=int, default=256)
-    parser.add_argument("--lr", type=float, default=1e-4)
-    parser.add_argument("--weight-decay", type=float, default=1e-5)
-    parser.add_argument("--d-model", type=int, default=64)
-    parser.add_argument("--n-heads", type=int, default=4)
-    parser.add_argument("--n-layers", type=int, default=4)
-    parser.add_argument("--d-ff", type=int, default=256)
-    parser.add_argument("--max-hits", type=int, default=20)
-    parser.add_argument("--dropout", type=float, default=0.1)
-    parser.add_argument("--grad-clip", type=float, default=1.0)
-    parser.add_argument("--num-workers", type=int, default=4)
-    parser.add_argument("--val-split", type=float, default=0.1)
-    parser.add_argument("--seed", type=int, default=42)
-    parser.add_argument("--max-files", type=int, default=None,
-                        help="Limit number of parquet files to load (for quick tests)")
-    parser.add_argument("--overfit-batches", type=int, default=0,
-                        help="If > 0, overfit on this many batches (sanity check)")
-    return parser.parse_args()
-
-
-def setup_file_logging(output_dir):
-    """Configure Python logging to write to both file and stdout."""
-    log = logging.getLogger("beamspot_train")
-    log.setLevel(logging.INFO)
-    log.handlers.clear()
-
-    fmt = logging.Formatter("%(asctime)s | %(message)s", datefmt="%Y-%m-%d %H:%M:%S")
-
-    fh = logging.FileHandler(output_dir / "train.log")
-    fh.setFormatter(fmt)
-    log.addHandler(fh)
-
-    sh = logging.StreamHandler()
-    sh.setFormatter(fmt)
-    log.addHandler(sh)
-
-    return log
+    p = argparse.ArgumentParser(description="Train track parameter regression transformer")
+    p.add_argument("--parquet-base", type=str, required=True)
+    p.add_argument("--output-dir", type=str, default="./output")
+    p.add_argument("--wandb-project", type=str, default="colliderml-beamspot")
+    p.add_argument("--wandb-name", type=str, default=None)
+    # Model
+    p.add_argument("--d-model", type=int, default=128)
+    p.add_argument("--n-heads", type=int, default=8)
+    p.add_argument("--n-layers", type=int, default=6)
+    p.add_argument("--d-ff", type=int, default=512)
+    p.add_argument("--max-hits", type=int, default=20)
+    p.add_argument("--dropout", type=float, default=0.1)
+    # Training
+    p.add_argument("--epochs", type=int, default=50)
+    p.add_argument("--batch-size", type=int, default=256)
+    p.add_argument("--lr", type=float, default=1e-3)
+    p.add_argument("--weight-decay", type=float, default=1e-5)
+    p.add_argument("--grad-clip", type=float, default=1.0)
+    p.add_argument("--loss", choices=["huber", "mse"], default="huber")
+    # Data
+    p.add_argument("--max-files", type=int, default=None)
+    p.add_argument("--max-train-samples", type=int, default=None)
+    p.add_argument("--num-workers", type=int, default=4)
+    p.add_argument("--val-split", type=float, default=0.1)
+    p.add_argument("--seed", type=int, default=42)
+    p.add_argument("--overfit-batches", type=int, default=0)
+    return p.parse_args()
 
 
 def main():
@@ -250,7 +241,6 @@ def main():
 
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
-
     log = setup_file_logging(output_dir)
     log.info(f"Args: {vars(args)}")
 
@@ -264,40 +254,37 @@ def main():
         seed=args.seed,
         overfit_batches=args.overfit_batches,
         max_files=args.max_files,
+        max_train_samples=args.max_train_samples,
     )
     data_module.setup()
+
+    norm_stats = data_module.dataset.get_norm_stats()
+    log.info(f"Input mean: {norm_stats['input_mean']}")
+    log.info(f"Input std:  {norm_stats['input_std']}")
+    log.info(f"Output scales: {norm_stats['output_scales']}")
 
     # Model
     module = TrackRegressionModule(
         hparams_dict=vars(args),
-        norm_stats=data_module.norm_stats,
+        output_scales=norm_stats["output_scales"],
     )
     n_params = sum(p.numel() for p in module.parameters())
     log.info(f"Model parameters: {n_params:,}")
     log.info(f"Train: {len(data_module.train_dataset)}, Val: {len(data_module.val_dataset)}")
 
     # Loggers
-    loggers = [
-        CSVLogger(save_dir=str(output_dir), name="csv_logs"),
-    ]
-    wandb_logger = WandbLogger(
-        project=args.wandb_project,
-        name=args.wandb_name,
-        save_dir=str(output_dir),
-        log_model=False,
-    )
-    loggers.append(wandb_logger)
+    loggers = [CSVLogger(save_dir=str(output_dir), name="csv_logs")]
+    loggers.append(WandbLogger(
+        project=args.wandb_project, name=args.wandb_name,
+        save_dir=str(output_dir), log_model=False,
+    ))
 
     # Callbacks
     checkpoint_cb = ModelCheckpoint(
         dirpath=output_dir / "checkpoints",
         filename="best-{epoch:03d}-{val/loss:.4f}",
-        monitor="val/loss",
-        mode="min",
-        save_top_k=1,
-        save_last=True,
+        monitor="val/loss", mode="min", save_top_k=1, save_last=True,
     )
-    lr_monitor = LearningRateMonitor(logging_interval="epoch")
 
     # Trainer
     trainer = pl.Trainer(
@@ -305,7 +292,7 @@ def main():
         accelerator="auto",
         devices=1,
         logger=loggers,
-        callbacks=[checkpoint_cb, lr_monitor],
+        callbacks=[checkpoint_cb, LearningRateMonitor(logging_interval="epoch")],
         gradient_clip_val=args.grad_clip,
         deterministic=True,
         default_root_dir=str(output_dir),

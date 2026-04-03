@@ -2,41 +2,26 @@
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
 
-class WeightedMSELoss(nn.Module):
-    """MSE loss with per-parameter weighting.
+class TrackHuberLoss(nn.Module):
+    """Huber (smooth L1) loss for normalized track parameters.
 
-    The 5 track parameters (d0, z0, phi, theta, qop) have very different
-    scales. This loss applies configurable weights to balance their
-    contributions.
+    Since inputs and outputs are pre-normalized to ~unit scale, plain Huber
+    with delta=1.0 gives roughly equal weighting across parameters.
     """
 
-    def __init__(self, weights=None):
+    def __init__(self, delta=1.0):
         super().__init__()
-        if weights is None:
-            weights = [1.0, 1.0, 1.0, 1.0, 1.0]
-        self.register_buffer("weights", torch.tensor(weights, dtype=torch.float32))
+        self.delta = delta
 
     def forward(self, pred, target):
-        """
-        Args:
-            pred: (B, 5) predicted parameters
-            target: (B, 5) truth parameters
-        Returns:
-            scalar loss
-        """
-        diff_sq = (pred - target) ** 2  # (B, 5)
-        weighted = diff_sq * self.weights.unsqueeze(0)  # (B, 5)
-        return weighted.mean()
+        return F.smooth_l1_loss(pred, target, beta=self.delta)
 
 
 class NormalizedMSELoss(nn.Module):
-    """MSE loss normalized by per-parameter variance from training data.
-
-    This automatically balances the loss across parameters with different
-    dynamic ranges.
-    """
+    """MSE loss normalized by per-parameter variance (legacy)."""
 
     def __init__(self, target_std):
         super().__init__()
