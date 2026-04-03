@@ -42,3 +42,6 @@ __pycache__/
 
 # Test directories
 **/*_tests/
+
+# Claude Code
+.claude/
