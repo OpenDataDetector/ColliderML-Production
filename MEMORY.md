@@ -1,0 +1,5 @@
+- [Clustering metrics project](memory/project_clustering_metrics.md) — New colliderml.clustering subpackage for calorimeter clustering evaluation
+- [User profile](memory/user_danieltm.md) — Daniel Murnane, HEP physicist at LBNL, ColliderML lead
+- [Data safety](memory/feedback_data_safety.md) — Never overwrite existing simulation datasets; use unique campaign names
+- [Compute discipline](memory/feedback_compute_discipline.md) — Test small first on Perlmutter; don't waste GPU/CPU hours
+- [Architecture preferences](memory/feedback_architecture_prefs.md) — Transformer encoders, hits-only input for fair KF comparison

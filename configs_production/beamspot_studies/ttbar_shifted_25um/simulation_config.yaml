@@ -1,0 +1,30 @@
+# Simulation config for beam spot study: 25 um shift in x
+# Based on hard_scatter/ttbar/simulation_slurm_hardscatter_config.yaml
+campaign: "beamspot_studies"
+dataset: "ttbar_shifted_25um"
+version: "v1"
+stage: "simulation"
+job_config:
+  n_runs: 50
+  runs_per_node: 16
+  time_limit: "00:30:00"
+  qos: "debug"
+  execution_mode: "multi_node_slurm"
+  depends_on:
+
+validation_config:
+
+# Stage-specific configurations
+events: 200
+input_filename: events.hepmc
+threads: 8
+minimalKineticEnergy: 0.1
+truthParticleHandler: "Geant4FullTruthParticleHandler"
+
+# Vertex smearing configuration: 25 um shift in x, standard smearing otherwise
+vertexOffset: [0.025, 0.0, 0.0, 0.0]  # x, y, z, t in mm
+vertexSigma: [0.0125, 0.0125, 55.5, 0.185]  # x, y, z, t in mm
+
+# DDSim verbosity control
+ddsim_printLevel: 6
+filter_g4_warnings: true

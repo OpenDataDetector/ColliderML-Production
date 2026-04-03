@@ -1,0 +1,73 @@
+# Convert_all config for beam spot study: 300 um shift in x
+# Based on hard_scatter/ttbar/convert_all.yaml
+campaign: "beamspot_studies"
+dataset: "ttbar_shifted_300um"
+version: "v1"
+stage: "convert_all"
+
+job_config:
+  n_runs: 50
+  runs_per_node: 5
+  time_limit: "00:30:00"
+  qos: "debug"
+  execution_mode: "multi_node_slurm"
+
+# Objects to convert
+objects:
+  - tracker_hits
+  - tracks
+  - particles
+output_format: "parquet"
+
+# Chunking
+chunk_size: 200
+run_size: 200
+
+# Column selection for parquet outputs
+particles_columns_keep:
+  - "particle_id"
+  - "pdg_id"
+  - "mass"
+  - "energy"
+  - "charge"
+  - "vx"
+  - "vy"
+  - "vz"
+  - "time"
+  - "px"
+  - "py"
+  - "pz"
+  - "perigee_d0"
+  - "perigee_z0"
+  - "vertex_primary"
+  - "parent_id"
+  - "primary"
+
+digihits_columns_keep:
+  - "x"
+  - "y"
+  - "z"
+  - "true_x"
+  - "true_y"
+  - "true_z"
+  - "time"
+  - "particle_id"
+  - "detector"
+  - "volume_id"
+  - "layer_id"
+  - "surface_id"
+
+tracks_columns_keep:
+  - "d0"
+  - "z0"
+  - "phi"
+  - "theta"
+  - "qop"
+  - "majority_particle_id"
+
+# Processing parameters
+max_chunks: 1
+min_tracker_hits: 0
+min_calo_hits: 0
+
+log_level: "DEBUG"

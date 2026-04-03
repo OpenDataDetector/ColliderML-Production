@@ -1,0 +1,33 @@
+# Digitization config for beam spot study: 300 um shift in x
+# Based on hard_scatter/ttbar/digitization_config.yaml
+campaign: "beamspot_studies"
+dataset: "ttbar_shifted_300um"
+version: "v1"
+stage: "digitization"
+job_config:
+  n_runs: 50
+  runs_per_node: 16
+  time_limit: "00:30:00"
+  qos: "debug"
+  execution_mode: "multi_node_slurm"
+  depends_on:
+
+validation_config:
+
+# Stage-specific configurations
+events: 200
+threads: 8
+digi: True
+reco: True
+num_seeds_per_spm: 40
+
+# Writing configuration
+output_particles_root: True
+output_measurements_root: True
+ambi_root_output: True
+ambi_finding_performance: True
+ambi_fitting_performance: True
+write_helix_parameters: True
+
+# Digitization config
+digi_config: /global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml_dev/scripts/simulation/odd-full-geo-digi-config.json
