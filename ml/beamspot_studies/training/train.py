@@ -46,7 +46,7 @@ class TrackRegressionModule(pl.LightningModule):
 
     def __init__(self, hparams_dict, output_scales=None):
         super().__init__()
-        self.save_hyperparameters(hparams_dict)
+        self.save_hyperparameters(hparams_dict, ignore=["output_scales"])
 
         self.model = TrackTransformer(
             d_model=self.hparams.d_model,
