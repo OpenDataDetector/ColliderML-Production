@@ -85,6 +85,26 @@ output/runs/0/
   tracksummary_ambi.root     # Reconstructed tracks
 ```
 
+## Tested Pipeline Results
+
+### Higgs Portal (10 events, pileup mu=10)
+| Stage | Status | Output | Time |
+|-------|--------|--------|------|
+| Pythia + pileup | **PASS** | `merged_events.hepmc3` (11 MB) | 8s |
+| DDSim (Geant4) | **PASS** | `edm4hep.root` (220 MB) | ~10 min |
+| Digi + Reco | **PASS** | `measurements.root`, `particles.root`, `tracksummary_ambi.root` | 11s |
+| Parquet conversion | **BLOCKED** | needs `pyedm4hep` pip package (added to install list) | — |
+
+### ttbar NLO (5 events, pileup mu=10)
+| Stage | Status | Output | Time |
+|-------|--------|--------|------|
+| MadGraph init (NLO) | **PASS** | `madgraph_process.tgz` (54 MB), σ=794 pb | ~8 min |
+| MadGraph gen + shower | **PASS** | `events.hepmc.gz` (3.6 MB) | ~3 min |
+| Pythia merge + pileup | **PASS** | `merged_events.hepmc3` (8.6 MB) | 6s |
+| DDSim (Geant4) | **PASS** | `edm4hep.root` (106 MB) | ~7 min |
+| Digi + Reco | **PASS** | `measurements.root`, `particles.root`, `tracksummary_ambi.root` | 6s |
+| Parquet conversion | **BLOCKED** | needs `pyedm4hep` pip package (added to install list) | — |
+
 ## ACTS API Notes (container version)
 
 The ACTS build in this container uses the main branch (version 999.999.999). Key differences from released versions:
