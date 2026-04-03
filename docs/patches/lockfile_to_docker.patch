@@ -1,0 +1,71 @@
+--- a/lockfile_to_docker.py
++++ b/lockfile_to_docker.py
+@@ -281,7 +281,8 @@ def main(
+     if [ "$ID" = "ubuntu" ]; then
+     apt-get update
+     apt-get install -y \\
+-      ninja-build \\
+-      ccache
++      ninja-build \\
++      ccache \\
++      bc
+     fi
+ fi"""
+--- a/lockfile_to_docker.py (DOCKERFILE_TEMPLATE section)
++++ b/lockfile_to_docker.py (DOCKERFILE_TEMPLATE section)
+
+ Insert the following block between line 115 (EOF) and line 119 (RUN cat <<EOF >> /etc/motd):
+
++# Install pyedm4hep for parquet conversion
++RUN uv pip install --system pyedm4hep
++
++# Build ODD v4.0.4 and set up ColliderML environment
++# (ACTS +odd variant conflicts with @main, so ODD is built separately)
++RUN <<EOT bash
++set -eux
++base_dir=\$(dirname \$(find /spack -type d -name "root-*"))
++
++# Source DD4hep for cmake find_package
++dd4hep_dir=\$(find \$base_dir -maxdepth 1 -name "dd4hep-*" -type d | head -1)
++source \$dd4hep_dir/bin/thisdd4hep.sh
++
++# Add all spack lib dirs to LD_LIBRARY_PATH (needed for cmake linking)
++for dir in \$base_dir/*/lib; do
++    [ -d "\$dir" ] && LD_LIBRARY_PATH="\$dir:\${LD_LIBRARY_PATH:-}"
++done
++export LD_LIBRARY_PATH
++
++# Clone and build ODD factory library
++git clone --depth 1 --branch v4.0.4 \\
++    https://gitlab.cern.ch/acts/OpenDataDetector.git /opt/odd
++mkdir /tmp/odd-build && cd /tmp/odd-build
++cmake /opt/odd -DCMAKE_INSTALL_PREFIX=/opt/odd-install
++make -j\$(nproc) && make install
++rm -rf /tmp/odd-build
++
++# Set up ACTS Python bindings symlink (acts installs to python/ not acts/)
++acts_python=\$(find \$base_dir -maxdepth 2 -path "*/acts-main-*/python" -type d | head -1)
++if [ -n "\$acts_python" ]; then
++    mkdir -p /opt/acts_python
++    ln -sf "\$acts_python" /opt/acts_python/acts
++fi
++
++# Symlink LHAPDF sets into LHAPDF data directory
++lhapdf_datadir=\$(find \$base_dir -path "*/lhapdf-*/share/LHAPDF" -type d | head -1)
++lhapdfsets_dir=\$(find \$base_dir -path "*/lhapdfsets-*/share/lhapdfsets" -type d | head -1)
++if [ -n "\$lhapdf_datadir" ] && [ -n "\$lhapdfsets_dir" ]; then
++    for setdir in \$lhapdfsets_dir/*/; do
++        [ -d "\$setdir" ] || continue
++        setname=\$(basename "\$setdir")
++        [ -e "\$lhapdf_datadir/\$setname" ] || ln -sf "\$setdir" "\$lhapdf_datadir/\$setname"
++    done
++fi
++
++# Add environment variables to bashrc
++echo 'export ODD_PATH=/opt/odd' >> ~/.bashrc
++echo 'export LD_LIBRARY_PATH=/opt/odd-install/lib:\${LD_LIBRARY_PATH}' >> ~/.bashrc
++echo 'export PYTHONPATH=/opt/acts_python:\${PYTHONPATH}' >> ~/.bashrc
++
++EOT
++
+ RUN cat <<EOF >> /etc/motd
