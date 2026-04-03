@@ -9,13 +9,14 @@ Usage:
 """
 
 import argparse
+import logging
 import time
 from pathlib import Path
 
 import numpy as np
 import torch
 import pytorch_lightning as pl
-from pytorch_lightning.loggers import WandbLogger
+from pytorch_lightning.loggers import WandbLogger, CSVLogger
 from pytorch_lightning.callbacks import ModelCheckpoint, LearningRateMonitor
 from torch.utils.data import DataLoader, Subset
 
@@ -71,7 +72,15 @@ class TrackRegressionModule(pl.LightningModule):
     def training_step(self, batch, batch_idx):
         _, loss = self._shared_step(batch)
         self.log("train/loss", loss, prog_bar=True)
+        self._last_train_loss = loss.item()
         return loss
+
+    def on_train_epoch_end(self):
+        log = logging.getLogger("beamspot_train")
+        train_loss = getattr(self, "_last_train_loss", float("nan"))
+        log.info(f"Epoch {self.current_epoch:4d} | train_loss={train_loss:.6f}")
+        for handler in log.handlers:
+            handler.flush()
 
     def validation_step(self, batch, batch_idx):
         pred, loss = self._shared_step(batch)
@@ -97,6 +106,23 @@ class TrackRegressionModule(pl.LightningModule):
             self.log(f"val/{name}_resolution_kf", res_kf)
             self.log(f"val/{name}_bias_ml", bias_ml)
 
+        # Log to file logger
+        train_loss = getattr(self, "_last_train_loss", float("nan"))
+        val_loss = self.trainer.callback_metrics.get("val/loss", float("nan"))
+        log = logging.getLogger("beamspot_train")
+        log.info(
+            f"Epoch {self.current_epoch:4d} | "
+            f"train_loss={train_loss:.6f} val_loss={val_loss:.6f} | "
+            + " | ".join(
+                f"{name}_res_ml={np.std(all_pred[:, i] - all_truth[:, i]):.4g} "
+                f"res_kf={np.std(all_reco[:, i] - all_truth[:, i]):.4g}"
+                for i, name in enumerate(PARAM_NAMES)
+            )
+        )
+
+        for handler in log.handlers:
+            handler.flush()
+
         self._val_preds.clear()
         self._val_truths.clear()
         self._val_recos.clear()
@@ -117,7 +143,8 @@ class TrackDataModule(pl.LightningDataModule):
     """Data module for loading ColliderML parquet track data."""
 
     def __init__(self, parquet_base, max_hits=20, batch_size=256,
-                 val_split=0.1, num_workers=4, seed=42, overfit_batches=0):
+                 val_split=0.1, num_workers=4, seed=42, overfit_batches=0,
+                 max_files=None):
         super().__init__()
         self.parquet_base = parquet_base
         self.max_hits = max_hits
@@ -126,13 +153,17 @@ class TrackDataModule(pl.LightningDataModule):
         self.num_workers = num_workers
         self.seed = seed
         self.overfit_batches = overfit_batches
+        self.max_files = max_files
         self.norm_stats = None
 
     def setup(self, stage=None):
-        print(f"Loading data from {self.parquet_base}...")
+        if hasattr(self, "dataset"):
+            return  # Already set up — avoid re-indexing on second PL call
         t0 = time.time()
-        self.dataset = TrackHitDataset(self.parquet_base, max_hits=self.max_hits)
-        print(f"Loaded {len(self.dataset)} tracks in {time.time() - t0:.1f}s")
+        self.dataset = TrackHitDataset(
+            self.parquet_base, max_hits=self.max_hits, max_files=self.max_files,
+        )
+        print(f"Indexed {len(self.dataset)} tracks in {time.time() - t0:.1f}s")
 
         self.norm_stats = self.dataset.get_normalization_stats()
 
@@ -187,9 +218,30 @@ def parse_args():
     parser.add_argument("--num-workers", type=int, default=4)
     parser.add_argument("--val-split", type=float, default=0.1)
     parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--max-files", type=int, default=None,
+                        help="Limit number of parquet files to load (for quick tests)")
     parser.add_argument("--overfit-batches", type=int, default=0,
                         help="If > 0, overfit on this many batches (sanity check)")
     return parser.parse_args()
+
+
+def setup_file_logging(output_dir):
+    """Configure Python logging to write to both file and stdout."""
+    log = logging.getLogger("beamspot_train")
+    log.setLevel(logging.INFO)
+    log.handlers.clear()
+
+    fmt = logging.Formatter("%(asctime)s | %(message)s", datefmt="%Y-%m-%d %H:%M:%S")
+
+    fh = logging.FileHandler(output_dir / "train.log")
+    fh.setFormatter(fmt)
+    log.addHandler(fh)
+
+    sh = logging.StreamHandler()
+    sh.setFormatter(fmt)
+    log.addHandler(sh)
+
+    return log
 
 
 def main():
@@ -198,6 +250,9 @@ def main():
 
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
+
+    log = setup_file_logging(output_dir)
+    log.info(f"Args: {vars(args)}")
 
     # Data
     data_module = TrackDataModule(
@@ -208,6 +263,7 @@ def main():
         num_workers=args.num_workers,
         seed=args.seed,
         overfit_batches=args.overfit_batches,
+        max_files=args.max_files,
     )
     data_module.setup()
 
@@ -217,15 +273,20 @@ def main():
         norm_stats=data_module.norm_stats,
     )
     n_params = sum(p.numel() for p in module.parameters())
-    print(f"Model parameters: {n_params:,}")
+    log.info(f"Model parameters: {n_params:,}")
+    log.info(f"Train: {len(data_module.train_dataset)}, Val: {len(data_module.val_dataset)}")
 
-    # Logger
+    # Loggers
+    loggers = [
+        CSVLogger(save_dir=str(output_dir), name="csv_logs"),
+    ]
     wandb_logger = WandbLogger(
         project=args.wandb_project,
         name=args.wandb_name,
         save_dir=str(output_dir),
         log_model=False,
     )
+    loggers.append(wandb_logger)
 
     # Callbacks
     checkpoint_cb = ModelCheckpoint(
@@ -243,7 +304,7 @@ def main():
         max_epochs=args.epochs,
         accelerator="auto",
         devices=1,
-        logger=wandb_logger,
+        logger=loggers,
         callbacks=[checkpoint_cb, lr_monitor],
         gradient_clip_val=args.grad_clip,
         deterministic=True,
@@ -252,7 +313,7 @@ def main():
     )
 
     trainer.fit(module, data_module)
-    print(f"\nTraining complete. Best model: {checkpoint_cb.best_model_path}")
+    log.info(f"Training complete. Best model: {checkpoint_cb.best_model_path}")
 
 
 if __name__ == "__main__":

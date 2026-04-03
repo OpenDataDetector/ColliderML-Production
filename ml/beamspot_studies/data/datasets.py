@@ -1,12 +1,13 @@
 """
 PyTorch datasets for the beam spot study.
 
-Loads ColliderML parquet files (event-grouped list columns) and produces
-per-track samples suitable for transformer-based track parameter regression.
+Loads ColliderML parquet files lazily — only the requested file is read per
+batch, with an LRU cache to avoid reloading the same file repeatedly.
 """
 
 import glob
 import math
+from functools import lru_cache
 from pathlib import Path
 
 import numpy as np
@@ -25,203 +26,226 @@ def compute_truth_params(px, py, pz, charge, perigee_d0, perigee_z0):
     phi = math.atan2(py, px)
     theta = math.atan2(pt, pz)
     qop = charge / p if p > 0 else 0.0
-    d0 = perigee_d0
-    z0 = perigee_z0
-    return np.array([d0, z0, phi, theta, qop], dtype=np.float32)
-
-
-def load_parquet_dir(directory, pattern="*.parquet"):
-    """Load and concatenate all parquet files in a directory."""
-    files = sorted(glob.glob(str(Path(directory) / pattern)))
-    if not files:
-        raise FileNotFoundError(f"No parquet files found in {directory}")
-    tables = [pq.read_table(f) for f in files]
-    return pq.concat_tables(tables)
+    return np.array([perigee_d0, perigee_z0, phi, theta, qop], dtype=np.float32)
 
 
 class TrackHitDataset(Dataset):
-    """Dataset yielding per-track samples with hit positions and truth parameters.
+    """Lazy-loading dataset yielding per-track samples.
+
+    Only builds a lightweight index at init (reads just the track_id column
+    from each file). Actual data is loaded on demand per file, with an LRU
+    cache so consecutive accesses to the same file are free.
 
     Each sample contains:
-        hit_positions: (max_hits, 3) float32 — x, y, z of digitized hits
-        hit_features:  (max_hits, 3) float32 — volume_id, layer_id, detector (normalized)
-        truth_params:  (5,) float32 — d0, z0, phi, theta, qop from truth
-        reco_params:   (5,) float32 — d0, z0, phi, theta, qop from ACTS KF
-        padding_mask:  (max_hits,) bool — True for real hits, False for padding
-        n_hits:        int — number of real hits
-
-    Args:
-        parquet_base: Path to parquet directory (e.g., .../v1/parquet/)
-        max_hits: Maximum number of hits per track (padded/truncated)
-        file_indices: Optional list of file indices to load (for train/val/test splits)
+        hit_positions: (max_hits, 3) float32
+        hit_features:  (max_hits, 3) float32
+        truth_params:  (5,) float32
+        reco_params:   (5,) float32
+        padding_mask:  (max_hits,) bool
+        n_hits:        int
     """
 
-    def __init__(self, parquet_base, max_hits=20, file_indices=None):
+    def __init__(self, parquet_base, max_hits=20, max_files=None, file_cache_size=4):
         self.max_hits = max_hits
-        self.samples = []
-        self._load_data(parquet_base, file_indices)
-
-    def _load_data(self, parquet_base, file_indices):
         parquet_base = Path(parquet_base)
 
-        # Get file lists
-        track_files = sorted(glob.glob(str(parquet_base / "reco/tracks/*.parquet")))
-        hit_files = sorted(glob.glob(str(parquet_base / "reco/tracker_hits/*.parquet")))
-        particle_files = sorted(glob.glob(str(parquet_base / "truth/particles/*.parquet")))
+        self.track_files = sorted(glob.glob(str(parquet_base / "reco/tracks/*.parquet")))
+        self.hit_files = sorted(glob.glob(str(parquet_base / "reco/tracker_hits/*.parquet")))
+        self.particle_files = sorted(glob.glob(str(parquet_base / "truth/particles/*.parquet")))
 
-        if not track_files:
+        if not self.track_files:
             raise FileNotFoundError(f"No track files in {parquet_base / 'reco/tracks/'}")
-        if not hit_files:
-            raise FileNotFoundError(f"No hit files in {parquet_base / 'reco/tracker_hits/'}")
-        if not particle_files:
-            raise FileNotFoundError(f"No particle files in {parquet_base / 'truth/particles/'}")
 
-        # Filter by file index if specified
-        if file_indices is not None:
-            track_files = [track_files[i] for i in file_indices if i < len(track_files)]
-            hit_files = [hit_files[i] for i in file_indices if i < len(hit_files)]
-            particle_files = [particle_files[i] for i in file_indices if i < len(particle_files)]
+        if max_files is not None:
+            self.track_files = self.track_files[:max_files]
+            self.hit_files = self.hit_files[:max_files]
+            self.particle_files = self.particle_files[:max_files]
 
-        # Load all files
-        for tf, hf, pf in zip(track_files, hit_files, particle_files):
-            self._process_file(tf, hf, pf)
+        # Build index: (file_idx, event_idx, track_idx_in_event)
+        # Only reads the track_id column — very fast.
+        self.index = []
+        for file_idx, tf in enumerate(self.track_files):
+            tbl = pq.read_table(tf, columns=["track_id"])
+            for event_idx in range(len(tbl)):
+                n_tracks = len(tbl["track_id"][event_idx].as_py())
+                for track_idx in range(n_tracks):
+                    self.index.append((file_idx, event_idx, track_idx))
 
-    def _process_file(self, track_file, hit_file, particle_file):
-        """Process a single set of parquet files (tracks, hits, particles)."""
-        tracks_tbl = pq.read_table(track_file)
-        hits_tbl = pq.read_table(hit_file)
-        particles_tbl = pq.read_table(particle_file)
+        # Set up LRU cache with requested size
+        self._load_file = lru_cache(maxsize=file_cache_size)(self._load_file_uncached)
 
-        n_events = len(tracks_tbl)
+    def _load_file_uncached(self, file_idx):
+        """Load the three parquet tables for a given file index."""
+        tracks = pq.read_table(self.track_files[file_idx])
+        hits = pq.read_table(self.hit_files[file_idx])
+        particles = pq.read_table(self.particle_files[file_idx])
+        return tracks, hits, particles
 
-        for evt_idx in range(n_events):
-            self._process_event(tracks_tbl, hits_tbl, particles_tbl, evt_idx)
+    @staticmethod
+    def _arrow_list_to_numpy(col, event_idx, dtype=np.float32):
+        """Convert an Arrow list-column element to numpy without going through Python."""
+        arr = col[event_idx]
+        return np.array(arr.as_py(), dtype=dtype)
 
-    def _process_event(self, tracks_tbl, hits_tbl, particles_tbl, evt_idx):
-        """Extract per-track samples from a single event."""
-        # Get hit arrays for this event
-        hit_x = np.array(hits_tbl["x"][evt_idx].as_py(), dtype=np.float32)
-        hit_y = np.array(hits_tbl["y"][evt_idx].as_py(), dtype=np.float32)
-        hit_z = np.array(hits_tbl["z"][evt_idx].as_py(), dtype=np.float32)
-        hit_vol = np.array(hits_tbl["volume_id"][evt_idx].as_py(), dtype=np.float32)
-        hit_lay = np.array(hits_tbl["layer_id"][evt_idx].as_py(), dtype=np.float32)
-        hit_det = np.array(hits_tbl["detector"][evt_idx].as_py(), dtype=np.float32)
-        n_total_hits = len(hit_x)
+    def _get_event_arrays(self, file_idx, event_idx):
+        """Get pre-parsed numpy arrays for an event, with caching."""
+        key = (file_idx, event_idx)
+        if getattr(self, "_event_cache_key", None) == key:
+            return self._event_cache_val
 
-        # Build particle lookup: particle_id -> index
-        part_ids = np.array(particles_tbl["particle_id"][evt_idx].as_py())
-        part_px = np.array(particles_tbl["px"][evt_idx].as_py(), dtype=np.float32)
-        part_py = np.array(particles_tbl["py"][evt_idx].as_py(), dtype=np.float32)
-        part_pz = np.array(particles_tbl["pz"][evt_idx].as_py(), dtype=np.float32)
-        part_charge = np.array(particles_tbl["charge"][evt_idx].as_py(), dtype=np.float32)
-        part_d0 = np.array(particles_tbl["perigee_d0"][evt_idx].as_py(), dtype=np.float32)
-        part_z0 = np.array(particles_tbl["perigee_z0"][evt_idx].as_py(), dtype=np.float32)
-        pid_to_idx = {int(pid): i for i, pid in enumerate(part_ids)}
+        tracks_tbl, hits_tbl, particles_tbl = self._load_file(file_idx)
+        to_np = self._arrow_list_to_numpy
 
-        # Get track arrays for this event
-        track_d0 = np.array(tracks_tbl["d0"][evt_idx].as_py(), dtype=np.float32)
-        track_z0 = np.array(tracks_tbl["z0"][evt_idx].as_py(), dtype=np.float32)
-        track_phi = np.array(tracks_tbl["phi"][evt_idx].as_py(), dtype=np.float32)
-        track_theta = np.array(tracks_tbl["theta"][evt_idx].as_py(), dtype=np.float32)
-        track_qop = np.array(tracks_tbl["qop"][evt_idx].as_py(), dtype=np.float32)
-        track_majpid = np.array(tracks_tbl["majority_particle_id"][evt_idx].as_py())
-        track_hit_ids = tracks_tbl["hit_ids"][evt_idx].as_py()
-        n_tracks = len(track_d0)
+        part_ids = to_np(particles_tbl["particle_id"], event_idx, np.int64)
+        val = {
+            "hit_x": to_np(hits_tbl["x"], event_idx),
+            "hit_y": to_np(hits_tbl["y"], event_idx),
+            "hit_z": to_np(hits_tbl["z"], event_idx),
+            "hit_vol": to_np(hits_tbl["volume_id"], event_idx),
+            "hit_lay": to_np(hits_tbl["layer_id"], event_idx),
+            "hit_det": to_np(hits_tbl["detector"], event_idx),
+            "part_px": to_np(particles_tbl["px"], event_idx),
+            "part_py": to_np(particles_tbl["py"], event_idx),
+            "part_pz": to_np(particles_tbl["pz"], event_idx),
+            "part_charge": to_np(particles_tbl["charge"], event_idx),
+            "part_d0": to_np(particles_tbl["perigee_d0"], event_idx),
+            "part_z0": to_np(particles_tbl["perigee_z0"], event_idx),
+            "pid_to_idx": {int(pid): i for i, pid in enumerate(part_ids)},
+            "track_d0": tracks_tbl["d0"][event_idx].as_py(),
+            "track_z0": tracks_tbl["z0"][event_idx].as_py(),
+            "track_phi": tracks_tbl["phi"][event_idx].as_py(),
+            "track_theta": tracks_tbl["theta"][event_idx].as_py(),
+            "track_qop": tracks_tbl["qop"][event_idx].as_py(),
+            "track_majpid": tracks_tbl["majority_particle_id"][event_idx].as_py(),
+            "track_hit_ids": tracks_tbl["hit_ids"][event_idx].as_py(),
+        }
+        self._event_cache_key = key
+        self._event_cache_val = val
+        return val
 
-        for trk_idx in range(n_tracks):
-            # Get hit indices for this track
-            hids = track_hit_ids[trk_idx]
-            if not hids:
-                continue
+    def _extract_track(self, file_idx, event_idx, track_idx):
+        """Extract a single track sample.
 
-            # Filter valid hit indices
-            hids = [h for h in hids if h < n_total_hits]
-            if not hids:
-                continue
+        Returns a dict, or None if the track is invalid (no truth match, etc.).
+        """
+        ev = self._get_event_arrays(file_idx, event_idx)
+        n_total_hits = len(ev["hit_x"])
 
-            # Get truth particle
-            maj_pid = int(track_majpid[trk_idx])
-            if maj_pid not in pid_to_idx:
-                continue
-            p_idx = pid_to_idx[maj_pid]
+        # Extract this track
+        hids = ev["track_hit_ids"][track_idx]
+        if not hids:
+            return None
+        hids = [h for h in hids if h < n_total_hits]
+        if not hids:
+            return None
 
-            # Skip if truth perigee params are NaN
-            if np.isnan(part_d0[p_idx]) or np.isnan(part_z0[p_idx]):
-                continue
-            if part_charge[p_idx] == 0:
-                continue
+        maj_pid = int(ev["track_majpid"][track_idx])
+        if maj_pid not in ev["pid_to_idx"]:
+            return None
+        p_idx = ev["pid_to_idx"][maj_pid]
 
-            # Compute truth parameters
-            truth = compute_truth_params(
-                part_px[p_idx], part_py[p_idx], part_pz[p_idx],
-                part_charge[p_idx], part_d0[p_idx], part_z0[p_idx]
-            )
+        if np.isnan(ev["part_d0"][p_idx]) or np.isnan(ev["part_z0"][p_idx]):
+            return None
+        if ev["part_charge"][p_idx] == 0:
+            return None
 
-            # Reco parameters
-            reco = np.array([
-                track_d0[trk_idx], track_z0[trk_idx],
-                track_phi[trk_idx], track_theta[trk_idx], track_qop[trk_idx]
-            ], dtype=np.float32)
+        truth = compute_truth_params(
+            ev["part_px"][p_idx], ev["part_py"][p_idx], ev["part_pz"][p_idx],
+            ev["part_charge"][p_idx], ev["part_d0"][p_idx], ev["part_z0"][p_idx],
+        )
 
-            # Extract hit positions and features
-            hids_arr = np.array(hids)
-            positions = np.stack([hit_x[hids_arr], hit_y[hids_arr], hit_z[hids_arr]], axis=1)
+        reco = np.array([
+            ev["track_d0"][track_idx], ev["track_z0"][track_idx],
+            ev["track_phi"][track_idx], ev["track_theta"][track_idx],
+            ev["track_qop"][track_idx],
+        ], dtype=np.float32)
 
-            # Sort by radius (innermost first)
-            radii = np.sqrt(positions[:, 0]**2 + positions[:, 1]**2)
-            sort_idx = np.argsort(radii)
-            positions = positions[sort_idx]
+        hids_arr = np.array(hids)
+        positions = np.stack([
+            ev["hit_x"][hids_arr], ev["hit_y"][hids_arr], ev["hit_z"][hids_arr],
+        ], axis=1)
+        radii = np.sqrt(positions[:, 0]**2 + positions[:, 1]**2)
+        sort_idx = np.argsort(radii)
+        positions = positions[sort_idx]
+        features = np.stack([
+            ev["hit_vol"][hids_arr[sort_idx]],
+            ev["hit_lay"][hids_arr[sort_idx]],
+            ev["hit_det"][hids_arr[sort_idx]],
+        ], axis=1)
 
-            features = np.stack([
-                hit_vol[hids_arr[sort_idx]],
-                hit_lay[hids_arr[sort_idx]],
-                hit_det[hids_arr[sort_idx]],
-            ], axis=1)
+        n_hits = min(len(positions), self.max_hits)
+        padded_pos = np.zeros((self.max_hits, 3), dtype=np.float32)
+        padded_feat = np.zeros((self.max_hits, 3), dtype=np.float32)
+        mask = np.zeros(self.max_hits, dtype=bool)
+        padded_pos[:n_hits] = positions[:n_hits]
+        padded_feat[:n_hits] = features[:n_hits]
+        mask[:n_hits] = True
 
-            # Pad or truncate
-            n_hits = min(len(positions), self.max_hits)
-            padded_pos = np.zeros((self.max_hits, 3), dtype=np.float32)
-            padded_feat = np.zeros((self.max_hits, 3), dtype=np.float32)
-            mask = np.zeros(self.max_hits, dtype=bool)
-
-            padded_pos[:n_hits] = positions[:n_hits]
-            padded_feat[:n_hits] = features[:n_hits]
-            mask[:n_hits] = True
-
-            self.samples.append({
-                "hit_positions": padded_pos,
-                "hit_features": padded_feat,
-                "truth_params": truth,
-                "reco_params": reco,
-                "padding_mask": mask,
-                "n_hits": n_hits,
-            })
-
-    def __len__(self):
-        return len(self.samples)
-
-    def __getitem__(self, idx):
-        s = self.samples[idx]
         return {
-            "hit_positions": torch.from_numpy(s["hit_positions"]),
-            "hit_features": torch.from_numpy(s["hit_features"]),
-            "truth_params": torch.from_numpy(s["truth_params"]),
-            "reco_params": torch.from_numpy(s["reco_params"]),
-            "padding_mask": torch.from_numpy(s["padding_mask"]),
-            "n_hits": s["n_hits"],
+            "hit_positions": padded_pos,
+            "hit_features": padded_feat,
+            "truth_params": truth,
+            "reco_params": reco,
+            "padding_mask": mask,
+            "n_hits": n_hits,
         }
 
-    def get_normalization_stats(self):
-        """Compute per-feature mean and std from the dataset."""
-        all_truth = np.stack([s["truth_params"] for s in self.samples])
-        all_reco = np.stack([s["reco_params"] for s in self.samples])
+    def __len__(self):
+        return len(self.index)
 
-        # Hit position stats (only non-padded)
-        all_pos = []
-        for s in self.samples:
-            n = s["n_hits"]
-            all_pos.append(s["hit_positions"][:n])
-        all_pos = np.concatenate(all_pos, axis=0)
+    def __getitem__(self, idx):
+        file_idx, event_idx, track_idx = self.index[idx]
+        sample = self._extract_track(file_idx, event_idx, track_idx)
+
+        # If this track is invalid, try neighbours until we find a valid one
+        if sample is None:
+            for offset in range(1, 100):
+                alt_idx = (idx + offset) % len(self.index)
+                fi, ei, ti = self.index[alt_idx]
+                sample = self._extract_track(fi, ei, ti)
+                if sample is not None:
+                    break
+            if sample is None:
+                # Last resort: return zeros (should essentially never happen)
+                sample = {
+                    "hit_positions": np.zeros((self.max_hits, 3), dtype=np.float32),
+                    "hit_features": np.zeros((self.max_hits, 3), dtype=np.float32),
+                    "truth_params": np.zeros(5, dtype=np.float32),
+                    "reco_params": np.zeros(5, dtype=np.float32),
+                    "padding_mask": np.zeros(self.max_hits, dtype=bool),
+                    "n_hits": 0,
+                }
+
+        return {
+            "hit_positions": torch.from_numpy(sample["hit_positions"]),
+            "hit_features": torch.from_numpy(sample["hit_features"]),
+            "truth_params": torch.from_numpy(sample["truth_params"]),
+            "reco_params": torch.from_numpy(sample["reco_params"]),
+            "padding_mask": torch.from_numpy(sample["padding_mask"]),
+            "n_hits": sample["n_hits"],
+        }
+
+    def get_normalization_stats(self, n_samples=2000):
+        """Estimate normalization stats from a subset of tracks.
+
+        Samples sequentially from the start of the index for cache-friendliness.
+        """
+        n = min(n_samples, len(self))
+        # Sequential sampling is much faster due to event cache locality
+        indices = range(n)
+
+        truths, recos, positions = [], [], []
+        for idx in indices:
+            s = self[idx]
+            truths.append(s["truth_params"].numpy())
+            recos.append(s["reco_params"].numpy())
+            nh = s["n_hits"]
+            if nh > 0:
+                positions.append(s["hit_positions"][:nh].numpy())
+
+        all_truth = np.stack(truths)
+        all_reco = np.stack(recos)
+        all_pos = np.concatenate(positions, axis=0)
 
         return {
             "truth_mean": all_truth.mean(axis=0),
