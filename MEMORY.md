@@ -4,3 +4,4 @@
 - [Compute discipline](memory/feedback_compute_discipline.md) — Test small first on Perlmutter; don't waste GPU/CPU hours
 - [Architecture preferences](memory/feedback_architecture_prefs.md) — Transformer encoders, hits-only input for fair KF comparison
 - [ML frameworks](memory/feedback_ml_frameworks.md) — Use PyTorch Lightning + Weights & Biases for training
+- [shared_interactive speed](memory/feedback_shared_interactive_speed.md) — GPU speed unreliable on shared_interactive QoS
