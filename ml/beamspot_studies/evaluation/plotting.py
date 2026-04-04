@@ -43,6 +43,18 @@ def _fit_gaussian_core(residuals, n_sigma=2.0):
     return np.mean(core), np.std(core)
 
 
+def _auto_ratio_ylim(ax, ratio_values, pad=0.2):
+    """Set ratio panel y-limits to capture most points with some padding."""
+    valid = ratio_values[np.isfinite(ratio_values)]
+    if len(valid) == 0:
+        ax.set_ylim(0, 3)
+        return
+    lo = max(0, np.percentile(valid, 2) * (1 - pad))
+    hi = np.percentile(valid, 98) * (1 + pad)
+    hi = max(hi, 1.5)  # always show at least up to 1.5
+    ax.set_ylim(lo, hi)
+
+
 def _bin_resolution(values, residuals, bin_edges):
     """Compute resolution (std of residual) in bins of a variable."""
     centers = 0.5 * (bin_edges[:-1] + bin_edges[1:])
@@ -152,8 +164,9 @@ def plot_resolution_vs_eta(ml_residuals, kf_residuals, truth_theta,
 
     ax_main.set_ylabel(f"{label} resolution ($\\sigma$) [{unit}]")
     ax_main.set_title(f"{label} resolution vs $\\eta$")
+    ax_main.set_yscale("log")
     ax_main.legend()
-    ax_main.grid(True, alpha=0.3)
+    ax_main.grid(True, alpha=0.3, which="both")
     ax_main.tick_params(labelbottom=False)
 
     with np.errstate(divide="ignore", invalid="ignore"):
@@ -162,7 +175,7 @@ def plot_resolution_vs_eta(ml_residuals, kf_residuals, truth_theta,
     ax_ratio.axhline(1.0, color="gray", linestyle="--", linewidth=0.8)
     ax_ratio.set_ylabel("ML / CKF")
     ax_ratio.set_xlabel(r"$\eta$")
-    ax_ratio.set_ylim(0, 3)
+    _auto_ratio_ylim(ax_ratio, ratio[valid])
     ax_ratio.grid(True, alpha=0.3)
 
     plt.tight_layout()
@@ -196,8 +209,9 @@ def plot_resolution_vs_pt(ml_residuals, kf_residuals, truth_qop, truth_theta,
     ax_main.set_ylabel(f"{label} resolution ($\\sigma$) [{unit}]")
     ax_main.set_title(f"{label} resolution vs $p_T$")
     ax_main.set_xscale("log")
+    ax_main.set_yscale("log")
     ax_main.legend()
-    ax_main.grid(True, alpha=0.3)
+    ax_main.grid(True, alpha=0.3, which="both")
     ax_main.tick_params(labelbottom=False)
 
     with np.errstate(divide="ignore", invalid="ignore"):
@@ -206,7 +220,7 @@ def plot_resolution_vs_pt(ml_residuals, kf_residuals, truth_qop, truth_theta,
     ax_ratio.axhline(1.0, color="gray", linestyle="--", linewidth=0.8)
     ax_ratio.set_ylabel("ML / CKF")
     ax_ratio.set_xlabel(r"$p_T$ [GeV]")
-    ax_ratio.set_ylim(0, 3)
+    _auto_ratio_ylim(ax_ratio, ratio[valid])
     ax_ratio.set_xscale("log")
     ax_ratio.grid(True, alpha=0.3)
 

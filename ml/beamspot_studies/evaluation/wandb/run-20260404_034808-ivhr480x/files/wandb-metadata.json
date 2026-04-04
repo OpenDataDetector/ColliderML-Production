@@ -1,0 +1,57 @@
+{
+  "os": "Linux-6.4.0-150600.23.73_15.0.14-cray_shasta_c-x86_64-with-glibc2.38",
+  "python": "3.11.11",
+  "startedAt": "2026-04-04T10:48:09.081297Z",
+  "args": [
+    "--checkpoint",
+    "/global/cfs/cdirs/m4958/data/ColliderML/ml/beamspot_studies/baseline_shifted_300um/checkpoints/best-epoch=049-val/loss=0.0048.ckpt",
+    "--parquet-base",
+    "/global/cfs/cdirs/m4958/data/ColliderML/simulation/beamspot_studies/ttbar_shifted_300um/v1/parquet",
+    "--output-dir",
+    "/global/cfs/cdirs/m4958/data/ColliderML/ml/beamspot_studies/baseline_shifted_300um/eval_plots",
+    "--wandb-run-id",
+    "ivhr480x",
+    "--dataset-name",
+    "shifted_300um",
+    "--max-files",
+    "10"
+  ],
+  "program": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml_dev/ml/beamspot_studies/evaluation/evaluate.py",
+  "codePath": "ml/beamspot_studies/evaluation/evaluate.py",
+  "git": {
+    "remote": "git@github.com:OpenDataDetector/colliderml-production.git",
+    "commit": "efc5465ddcad89432386062e81fc80b9b7ecffe6"
+  },
+  "email": "dtmurnane@lbl.gov",
+  "root": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml_dev/ml/beamspot_studies/evaluation",
+  "host": "login22",
+  "username": "danieltm",
+  "executable": "/pscratch/sd/d/danieltm/conda_envs/envs/collider-env/bin/python",
+  "codePathLocal": "evaluate.py",
+  "cpu_count": 128,
+  "cpu_count_logical": 256,
+  "gpu": "NVIDIA A100-PCIE-40GB",
+  "gpu_count": 1,
+  "disk": {
+    "/": {
+      "total": "270032191488",
+      "used": "2354630656"
+    }
+  },
+  "memory": {
+    "total": "540064387072"
+  },
+  "cpu": {
+    "count": 128,
+    "countLogical": 256
+  },
+  "gpu_nvidia": [
+    {
+      "name": "NVIDIA A100-PCIE-40GB",
+      "memoryTotal": "42949672960",
+      "cudaCores": 6912,
+      "architecture": "Ampere"
+    }
+  ],
+  "cudaVersion": "13.0"
+}
