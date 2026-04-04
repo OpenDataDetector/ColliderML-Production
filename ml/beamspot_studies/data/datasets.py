@@ -141,9 +141,12 @@ class TrackHitDataset(Dataset):
         except Exception as e:
             print(f"Warning: could not save cache: {e}")
 
+    # Bump this when normalization or feature computation changes
+    CACHE_VERSION = 2  # v2: scale-only norm, clipped deltas
+
     def _get_cache_path(self, track_files, max_hits, cache_dir):
-        """Deterministic cache path based on file list and max_hits."""
-        key = f"{[str(f) for f in track_files]}_{max_hits}"
+        """Deterministic cache path based on file list, max_hits, and code version."""
+        key = f"v{self.CACHE_VERSION}_{[str(f) for f in track_files]}_{max_hits}"
         h = hashlib.md5(key.encode()).hexdigest()[:12]
         return Path(cache_dir) / f".track_cache_{h}.pt"
 
