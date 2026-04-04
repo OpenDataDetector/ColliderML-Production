@@ -132,8 +132,11 @@ Confirmed: 300um dataset → mean=298.8um, 25um → 25.8um, nominal → -0.3um.
 
 ### Output parameterization
 - [DONE] sin(φ)/cos(φ) instead of raw φ — avoids ±π discontinuity
-- [TODO] Regress Cartesian momentum (px, py, pz) + vz instead of angles — avoids nonlinear angle mapping entirely. Reconstruct φ=atan2(py,px), θ=atan2(pt,pz), qop=q/p at inference. (Source: arXiv:2411.07149 MaskFormer tracking)
+- [TODO] **Predict cot(θ) instead of θ** — cot(θ) = dz/dr is the natural z-slope measured by hits. BDT showed 5x z0 improvement when using z-intercept + dz/dr features. Transformer should benefit too. (Source: arXiv:2505.02937)
+- [TODO] **Predict pT instead of q/p** — separate charge sign (classification) from momentum magnitude (regression). (Source: arXiv:2505.02937)
+- [TODO] Regress Cartesian momentum (px, py, pz) + vz instead of angles — avoids nonlinear angle mapping entirely. (Source: arXiv:2411.07149)
 - [IDEA] Add total momentum magnitude to loss as consistency constraint
+- [IDEA] Committee of experts: separate model per parameter (worked in arXiv:2505.02937)
 
 ### Normalization
 - [DONE] Scale-only normalization (divide by std, no mean subtraction)
@@ -192,3 +195,4 @@ Confirmed: 300um dataset → mean=298.8um, 25um → 25.8um, nominal → -0.3um.
 - TrackFormers Part 2: arXiv:2509.26411 — d_model=192, 12 layers, FlexAttention, joint reg+cls
 - MaskFormer tracking: arXiv:2411.07149 — SmoothL1 loss, Cartesian momentum regression, cyclic PE
 - MEG II transformer: arXiv:2512.19482 — conformal mapping, two-stage training, d_model=320
+- Fast track fitting: arXiv:2505.02937 — MLP committee, cot(θ)/pT parameterization, batch=4096, 1000 epochs, beats LS on all params

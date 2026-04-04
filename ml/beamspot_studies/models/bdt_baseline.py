@@ -28,6 +28,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from data.datasets import TrackHitDataset, model_to_raw_params, PARAM_NAMES_RAW
 
+# BDT uses a different parameterization than the transformer
+BDT_PARAM_NAMES = ["d0", "z0", "phi", "cot_theta", "qop"]
+
 def extract_bdt_features(dataset):
     """Extract rich feature vectors from a TrackHitDataset (vectorized).
 
@@ -147,6 +150,27 @@ def extract_bdt_features(dataset):
     feats["n_pixel_hits"] = pixel_mask.sum(axis=1).astype(np.float32)
     feats["n_strip_hits"] = strip_mask.sum(axis=1).astype(np.float32)
 
+    # z-extrapolation features (critical for z0 and theta)
+    # Linear extrapolation of z(r) to r=0: z_intercept ≈ z0
+    # slope = (z_last - z_first) / (r_last - r_first) ≈ cot(theta)
+    dz_dr_slope = feats["delta_z"] / (feats["delta_r"] + 1e-10)
+    feats["dz_dr_slope"] = dz_dr_slope
+    feats["z_intercept"] = feats["z0"] - dz_dr_slope * feats["r0"]  # extrapolate to r=0
+
+    # z-sagitta: deviation of middle z from linear z(r) interpolation
+    z_mid = z_all[arange_N, mid_idx]
+    z_mid_expected = feats["z0"] + dz_dr_slope * (r_all[arange_N, mid_idx] - feats["r0"])
+    feats["z_sagitta_mid"] = np.where(n_hits >= 3, z_mid - z_mid_expected, 0.0)
+
+    # Better slope from innermost 2 hits (less affected by material)
+    dr_01 = feats["r1"] - feats["r0"]
+    feats["dz_dr_inner"] = (feats["z1"] - feats["z0"]) / (dr_01 + 1e-10)
+    feats["z_intercept_inner"] = feats["z0"] - feats["dz_dr_inner"] * feats["r0"]
+
+    # cot(theta) proxy from outer hits (less affected by d0)
+    dr_12 = feats["r2"] - feats["r1"]
+    feats["dz_dr_outer"] = np.where(n_hits >= 3, (feats["z2"] - feats["z1"]) / (dr_12 + 1e-10), 0.0)
+
     # Stack into array
     feature_names = list(feats.keys())
     features = np.stack([feats[k] for k in feature_names], axis=1).astype(np.float32)
@@ -154,14 +178,18 @@ def extract_bdt_features(dataset):
     # Replace any NaN/inf with 0
     features = np.nan_to_num(features, nan=0.0, posinf=0.0, neginf=0.0)
 
-    # Truth and reco
+    # Truth and reco — use BDT-friendly parameterization:
+    # [d0, z0, phi, cot_theta, qop]
+    # cot(theta) = cos(theta)/sin(theta) — the natural z/r slope
     truth_m = dataset.truth_params.numpy() * output_scales
     truth_phi = np.arctan2(truth_m[:, 2], truth_m[:, 3])
-    truth_raw = np.stack([truth_m[:, 0], truth_m[:, 1], truth_phi, truth_m[:, 4], truth_m[:, 5]], axis=1)
+    truth_cot_theta = np.cos(truth_m[:, 4]) / (np.sin(truth_m[:, 4]) + 1e-10)
+    truth_raw = np.stack([truth_m[:, 0], truth_m[:, 1], truth_phi, truth_cot_theta, truth_m[:, 5]], axis=1)
 
     reco_m = dataset.reco_params.numpy()
     reco_phi = np.arctan2(reco_m[:, 2], reco_m[:, 3])
-    reco_raw = np.stack([reco_m[:, 0], reco_m[:, 1], reco_phi, reco_m[:, 4], reco_m[:, 5]], axis=1)
+    reco_cot_theta = np.cos(reco_m[:, 4]) / (np.sin(reco_m[:, 4]) + 1e-10)
+    reco_raw = np.stack([reco_m[:, 0], reco_m[:, 1], reco_phi, reco_cot_theta, reco_m[:, 5]], axis=1)
 
     return features, feature_names, truth_raw, reco_raw
 
@@ -178,7 +206,7 @@ def train_bdt(features, truth_raw, val_split=0.1, seed=42):
     X_train, X_val = features[train_idx], features[val_idx]
 
     models = {}
-    for i, name in enumerate(PARAM_NAMES_RAW):
+    for i, name in enumerate(BDT_PARAM_NAMES):
         y_train = truth_raw[train_idx, i]
         y_val = truth_raw[val_idx, i]
 
@@ -208,7 +236,7 @@ def train_bdt(features, truth_raw, val_split=0.1, seed=42):
 def predict_bdt(models, features):
     """Run prediction with all BDT models. Returns (N, 5) predictions."""
     pred = np.zeros((len(features), 5), dtype=np.float32)
-    for i, name in enumerate(PARAM_NAMES_RAW):
+    for i, name in enumerate(BDT_PARAM_NAMES):
         pred[:, i] = models[name].predict(features)
     return pred
 
@@ -257,7 +285,7 @@ def main():
 
     from scipy.stats import iqr
     metrics = {}
-    for i, name in enumerate(PARAM_NAMES_RAW):
+    for i, name in enumerate(BDT_PARAM_NAMES):
         bdt_res = val_pred[:, i] - val_truth[:, i]
         kf_res = val_reco[:, i] - val_truth[:, i]
         bdt_sigma = iqr(bdt_res) / 1.349
