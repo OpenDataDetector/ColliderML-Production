@@ -284,10 +284,23 @@ def main():
     val_reco = reco_raw[val_idx]
 
     from scipy.stats import iqr
+
+    def cot_to_theta(arr):
+        """Convert [d0,z0,phi,cot_theta,qop] -> [d0,z0,phi,theta,qop]."""
+        out = arr.copy()
+        out[:, 3] = np.arctan2(1.0, arr[:, 3])
+        return out
+
+    val_pred_std = cot_to_theta(val_pred)
+    val_truth_std = cot_to_theta(val_truth)
+    val_reco_std = cot_to_theta(val_reco)
+    STD_PARAM_NAMES = ["d0", "z0", "phi", "theta", "qop"]
+
     metrics = {}
-    for i, name in enumerate(BDT_PARAM_NAMES):
-        bdt_res = val_pred[:, i] - val_truth[:, i]
-        kf_res = val_reco[:, i] - val_truth[:, i]
+    print("  (standard parameterization [d0, z0, phi, theta, qop]):")
+    for i, name in enumerate(STD_PARAM_NAMES):
+        bdt_res = val_pred_std[:, i] - val_truth_std[:, i]
+        kf_res = val_reco_std[:, i] - val_truth_std[:, i]
         bdt_sigma = iqr(bdt_res) / 1.349
         kf_sigma = iqr(kf_res) / 1.349
         ratio = kf_sigma / bdt_sigma if bdt_sigma > 0 else float("inf")
@@ -301,12 +314,17 @@ def main():
     with open(output_dir / "metrics.json", "w") as f:
         json.dump(metrics, f, indent=2)
 
-    # Generate plots
+    # Generate plots — convert from BDT parameterization [d0,z0,phi,cot_theta,qop]
+    # back to standard [d0,z0,phi,theta,qop] for plotting
     print("\nGenerating plots...")
     from evaluation.plotting import make_all_residual_plots
     import matplotlib
     matplotlib.use("Agg")
-    figs = make_all_residual_plots(val_pred, val_reco, val_truth, output_dir=str(output_dir))
+
+    figs = make_all_residual_plots(
+        cot_to_theta(val_pred), cot_to_theta(val_reco), cot_to_theta(val_truth),
+        output_dir=str(output_dir),
+    )
 
     # Log to W&B
     import wandb
