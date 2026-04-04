@@ -74,29 +74,47 @@ def run_inference(module, dataset, batch_size=512, device="cpu"):
     return np.concatenate(all_pred_raw), np.concatenate(all_truth_raw), np.concatenate(all_reco_raw)
 
 
-def compute_metrics(pred_raw, truth_raw, reco_raw):
-    """Compute per-parameter resolution and bias."""
+def compute_metrics(pred_raw, truth_raw, reco_raw, param_names=None,
+                    pred_label="ml", ref_label="kf"):
+    """Compute per-parameter metrics: std, IQR/1.349, MAE, bias.
+
+    Works for any technique — just change pred_label.
+    """
     from scipy.stats import iqr
+    if param_names is None:
+        param_names = PARAM_NAMES_RAW
     metrics = {}
-    for i, name in enumerate(PARAM_NAMES_RAW):
-        ml_res = pred_raw[:, i] - truth_raw[:, i]
-        kf_res = reco_raw[:, i] - truth_raw[:, i]
-        ml_sigma = iqr(ml_res) / 1.349
-        kf_sigma = iqr(kf_res) / 1.349
+    for i, name in enumerate(param_names):
+        pred_res = pred_raw[:, i] - truth_raw[:, i]
+        ref_res = reco_raw[:, i] - truth_raw[:, i]
 
         metrics[name] = {
-            "ml_resolution": float(np.std(ml_res)),
-            "ml_resolution_robust": float(ml_sigma),
-            "ml_bias": float(np.mean(ml_res)),
-            "kf_resolution": float(np.std(kf_res)),
-            "kf_resolution_robust": float(kf_sigma),
-            "kf_bias": float(np.mean(kf_res)),
-            "improvement": float(kf_sigma / ml_sigma) if ml_sigma > 0 else float("inf"),
+            f"{pred_label}_std": float(np.std(pred_res)),
+            f"{pred_label}_iqr": float(iqr(pred_res) / 1.349),
+            f"{pred_label}_mae": float(np.mean(np.abs(pred_res))),
+            f"{pred_label}_bias": float(np.mean(pred_res)),
+            f"{ref_label}_std": float(np.std(ref_res)),
+            f"{ref_label}_iqr": float(iqr(ref_res) / 1.349),
+            f"{ref_label}_mae": float(np.mean(np.abs(ref_res))),
+            f"{ref_label}_bias": float(np.mean(ref_res)),
         }
     return metrics
 
 
-def log_to_wandb(figs, metrics, args):
+def print_metrics(metrics, pred_label="ml", ref_label="kf"):
+    """Print a clean table of all metrics."""
+    params = list(metrics.keys())
+    print(f"{'Param':>8s} {'STD':>10s} {'IQR':>10s} {'MAE':>10s} {'Bias':>10s} | {'STD':>10s} {'IQR':>10s} {'MAE':>10s}")
+    print(f"{'':>8s} {'--- '+pred_label+' ---':>41s} | {'--- '+ref_label+' ---':>31s}")
+    print("-" * 85)
+    for name in params:
+        m = metrics[name]
+        print(f"{name:>8s} {m[f'{pred_label}_std']:10.4g} {m[f'{pred_label}_iqr']:10.4g} "
+              f"{m[f'{pred_label}_mae']:10.4g} {m[f'{pred_label}_bias']:+10.4g} | "
+              f"{m[f'{ref_label}_std']:10.4g} {m[f'{ref_label}_iqr']:10.4g} {m[f'{ref_label}_mae']:10.4g}")
+
+
+def log_to_wandb(figs, metrics, args, pred_label="ml", ref_label="kf"):
     """Resume an existing W&B run and log evaluation plots + metrics."""
     import wandb
 
@@ -106,30 +124,20 @@ def log_to_wandb(figs, metrics, args):
         resume="must",
     )
 
-    # Log each figure as an image
     for name, fig in figs.items():
         wandb.log({f"eval/{name}": wandb.Image(fig)})
 
-    # Log metrics as a summary table
-    columns = ["param", "ml_res", "kf_res", "improvement", "ml_bias"]
+    columns = ["param", f"{pred_label}_std", f"{pred_label}_iqr", f"{pred_label}_mae",
+               f"{pred_label}_bias", f"{ref_label}_std", f"{ref_label}_iqr", f"{ref_label}_mae"]
     rows = []
     for pname, m in metrics.items():
-        rows.append([
-            pname,
-            m["ml_resolution_robust"],
-            m["kf_resolution_robust"],
-            m["improvement"],
-            m["ml_bias"],
-        ])
+        rows.append([pname] + [m[c] for c in columns[1:]])
     wandb.log({"eval/metrics_table": wandb.Table(columns=columns, data=rows)})
 
-    # Also log scalar metrics for easy comparison
     for pname, m in metrics.items():
-        wandb.log({
-            f"eval/{pname}_resolution_ml": m["ml_resolution_robust"],
-            f"eval/{pname}_resolution_kf": m["kf_resolution_robust"],
-            f"eval/{pname}_improvement": m["improvement"],
-        })
+        for metric in ["std", "iqr", "mae"]:
+            wandb.log({f"eval/{pname}_{metric}_{pred_label}": m[f"{pred_label}_{metric}"]})
+            wandb.log({f"eval/{pname}_{metric}_{ref_label}": m[f"{ref_label}_{metric}"]})
 
     wandb.finish()
     print(f"Logged evaluation to W&B run {args.wandb_run_id}")
@@ -168,10 +176,7 @@ def main():
 
     metrics = compute_metrics(pred_raw, truth_raw, reco_raw)
     print("\n=== Resolution Summary ===")
-    for name, m in metrics.items():
-        print(f"  {name:8s}: ML={m['ml_resolution_robust']:.4g}  "
-              f"CKF={m['kf_resolution_robust']:.4g}  "
-              f"ratio={m['improvement']:.2f}x")
+    print_metrics(metrics)
 
     with open(output_dir / "metrics.json", "w") as f:
         json.dump({"dataset": args.dataset_name, "n_tracks": len(dataset),

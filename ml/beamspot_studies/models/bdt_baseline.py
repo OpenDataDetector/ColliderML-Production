@@ -283,7 +283,7 @@ def main():
     val_truth = truth_raw[val_idx]
     val_reco = reco_raw[val_idx]
 
-    from scipy.stats import iqr
+    from evaluation.evaluate import compute_metrics, print_metrics
 
     def cot_to_theta(arr):
         """Convert [d0,z0,phi,cot_theta,qop] -> [d0,z0,phi,theta,qop]."""
@@ -294,22 +294,11 @@ def main():
     val_pred_std = cot_to_theta(val_pred)
     val_truth_std = cot_to_theta(val_truth)
     val_reco_std = cot_to_theta(val_reco)
-    STD_PARAM_NAMES = ["d0", "z0", "phi", "theta", "qop"]
 
-    metrics = {}
-    print("  (standard parameterization [d0, z0, phi, theta, qop]):")
-    for i, name in enumerate(STD_PARAM_NAMES):
-        bdt_res = val_pred_std[:, i] - val_truth_std[:, i]
-        kf_res = val_reco_std[:, i] - val_truth_std[:, i]
-        bdt_sigma = iqr(bdt_res) / 1.349
-        kf_sigma = iqr(kf_res) / 1.349
-        ratio = kf_sigma / bdt_sigma if bdt_sigma > 0 else float("inf")
-        print(f"  {name:8s}: BDT={bdt_sigma:.4g}  CKF={kf_sigma:.4g}  ratio={ratio:.2f}x")
-        metrics[name] = {
-            "bdt_resolution_robust": float(bdt_sigma),
-            "kf_resolution_robust": float(kf_sigma),
-            "improvement": float(ratio),
-        }
+    metrics = compute_metrics(val_pred_std, val_truth_std, val_reco_std,
+                              param_names=["d0", "z0", "phi", "theta", "qop"],
+                              pred_label="bdt", ref_label="kf")
+    print_metrics(metrics, pred_label="bdt", ref_label="kf")
 
     with open(output_dir / "metrics.json", "w") as f:
         json.dump(metrics, f, indent=2)
