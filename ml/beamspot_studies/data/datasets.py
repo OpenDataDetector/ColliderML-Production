@@ -77,7 +77,6 @@ class TrackHitDataset(Dataset):
             self.reco_params = cached["reco_params"]
             self.padding_mask = cached["padding_mask"]
             self.n_hits = cached["n_hits"]
-            self._input_mean = cached["input_mean"]
             self._input_std = cached["input_std"]
             self._output_scales = cached["output_scales"]
             print(f"Loaded {len(self)} tracks in {time.time()-t0:.1f}s")
@@ -113,16 +112,16 @@ class TrackHitDataset(Dataset):
         self.padding_mask = torch.from_numpy(np.stack(all_mask))    # (N, max_hits)
         self.n_hits = torch.tensor(all_nhits, dtype=torch.long)     # (N,)
 
-        # Compute normalization
+        # Compute normalization (scale only, no mean shift)
         self._compute_normalization()
 
-        # Apply normalization to stored tensors
+        # Apply input normalization: divide by std only (no mean subtraction)
         mask_expanded = self.padding_mask.unsqueeze(-1).expand_as(self.hit_features)
-        input_mean = torch.from_numpy(self._input_mean).unsqueeze(0).unsqueeze(0)
-        input_std = torch.from_numpy(self._input_std).unsqueeze(0).unsqueeze(0)
-        normalized = (self.hit_features - input_mean) / input_std
+        input_scale = torch.from_numpy(self._input_std).unsqueeze(0).unsqueeze(0)
+        normalized = self.hit_features / input_scale
         self.hit_features = torch.where(mask_expanded, normalized, torch.zeros_like(normalized))
 
+        # Apply output normalization: divide by scale
         output_scales = torch.from_numpy(self._output_scales).unsqueeze(0)
         self.truth_params = self.truth_params / output_scales
 
@@ -135,7 +134,6 @@ class TrackHitDataset(Dataset):
                 "reco_params": self.reco_params,
                 "padding_mask": self.padding_mask,
                 "n_hits": self.n_hits,
-                "input_mean": self._input_mean,
                 "input_std": self._input_std,
                 "output_scales": self._output_scales,
             }, cache_path)
@@ -250,15 +248,18 @@ class TrackHitDataset(Dataset):
             out_nhits.append(n_hits)
 
     def _compute_normalization(self):
-        """Compute input/output normalization from the full dataset."""
-        # Input stats from non-padded hits
+        """Compute input/output normalization scales from the full dataset.
+
+        Scale-only normalization (no mean subtraction) to avoid injecting
+        bias from finite-sample mean estimates.
+        """
+        # Input scales from non-padded hits
         all_feats = []
         for i in range(len(self)):
             nh = self.n_hits[i].item()
             if nh > 0:
                 all_feats.append(self.hit_features[i, :nh].numpy())
         feat = np.concatenate(all_feats, axis=0)
-        self._input_mean = feat.mean(axis=0).astype(np.float32)
         self._input_std = feat.std(axis=0).astype(np.float32)
         self._input_std[self._input_std < 1e-6] = 1.0
 
@@ -273,7 +274,6 @@ class TrackHitDataset(Dataset):
 
     def get_norm_stats(self):
         return {
-            "input_mean": self._input_mean,
             "input_std": self._input_std,
             "output_scales": self._output_scales,
         }

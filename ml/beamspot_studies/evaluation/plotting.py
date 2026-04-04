@@ -56,9 +56,14 @@ def _auto_ratio_ylim(ax, ratio_values, pad=0.2):
 
 
 def _bin_resolution(values, residuals, bin_edges):
-    """Compute resolution (std of residual) in bins of a variable."""
+    """Compute resolution (std of residual) in bins, with uncertainties.
+
+    Error on std estimate: sigma / sqrt(2*(N-1)) for Gaussian data.
+    """
     centers = 0.5 * (bin_edges[:-1] + bin_edges[1:])
+    half_widths = 0.5 * np.diff(bin_edges)
     resolutions = np.full(len(centers), np.nan)
+    res_errors = np.full(len(centers), np.nan)
     counts = np.zeros(len(centers), dtype=int)
     for i in range(len(centers)):
         mask = (values >= bin_edges[i]) & (values < bin_edges[i + 1])
@@ -67,7 +72,8 @@ def _bin_resolution(values, residuals, bin_edges):
         if n > 20:
             _, sigma = _fit_gaussian_core(residuals[mask])
             resolutions[i] = sigma
-    return centers, resolutions, counts
+            res_errors[i] = sigma / np.sqrt(2 * (n - 1))
+    return centers, half_widths, resolutions, res_errors, counts
 
 
 def plot_residual_histogram(ml_residuals, kf_residuals, param_name,
@@ -142,14 +148,14 @@ def plot_residual_histogram(ml_residuals, kf_residuals, param_name,
 def plot_resolution_vs_eta(ml_residuals, kf_residuals, truth_theta,
                            param_name, n_bins=25, eta_range=(-4, 4),
                            figsize=(8, 7)):
-    """Resolution vs pseudorapidity with ratio panel."""
+    """Resolution vs pseudorapidity with error bars and ratio panel."""
     label, unit = PARAM_LABELS[param_name]
 
     eta = -np.log(np.tan(truth_theta / 2 + 1e-10))
     eta_edges = np.linspace(eta_range[0], eta_range[1], n_bins + 1)
 
-    kf_centers, kf_res, kf_counts = _bin_resolution(eta, kf_residuals, eta_edges)
-    ml_centers, ml_res, _ = _bin_resolution(eta, ml_residuals, eta_edges)
+    kf_c, kf_hw, kf_res, kf_err, kf_counts = _bin_resolution(eta, kf_residuals, eta_edges)
+    ml_c, ml_hw, ml_res, ml_err, _ = _bin_resolution(eta, ml_residuals, eta_edges)
 
     fig = plt.figure(figsize=figsize)
     gs = GridSpec(2, 1, height_ratios=[3, 1], hspace=0.05)
@@ -157,10 +163,10 @@ def plot_resolution_vs_eta(ml_residuals, kf_residuals, truth_theta,
     ax_ratio = fig.add_subplot(gs[1], sharex=ax_main)
 
     valid = ~np.isnan(kf_res) & ~np.isnan(ml_res)
-    ax_main.plot(kf_centers[valid], kf_res[valid], "o-", color=COLORS["kf"],
-                 markersize=4, linewidth=1.5, label="CKF")
-    ax_main.plot(ml_centers[valid], ml_res[valid], "s-", color=COLORS["ml"],
-                 markersize=4, linewidth=1.5, label="ML")
+    ax_main.errorbar(kf_c[valid], kf_res[valid], xerr=kf_hw[valid], yerr=kf_err[valid],
+                     fmt="o", color=COLORS["kf"], markersize=4, linewidth=1, capsize=2, label="CKF")
+    ax_main.errorbar(ml_c[valid], ml_res[valid], xerr=ml_hw[valid], yerr=ml_err[valid],
+                     fmt="s", color=COLORS["ml"], markersize=4, linewidth=1, capsize=2, label="ML")
 
     ax_main.set_ylabel(f"{label} resolution ($\\sigma$) [{unit}]")
     ax_main.set_title(f"{label} resolution vs $\\eta$")
@@ -169,9 +175,16 @@ def plot_resolution_vs_eta(ml_residuals, kf_residuals, truth_theta,
     ax_main.grid(True, alpha=0.3, which="both")
     ax_main.tick_params(labelbottom=False)
 
+    # Ratio with error propagation: ratio = ml/kf, err = ratio * sqrt((ml_err/ml)^2 + (kf_err/kf)^2)
     with np.errstate(divide="ignore", invalid="ignore"):
         ratio = np.where(kf_res > 0, ml_res / kf_res, np.nan)
-    ax_ratio.plot(kf_centers[valid], ratio[valid], "ko-", markersize=4, linewidth=1)
+        ratio_err = np.where(
+            (kf_res > 0) & (ml_res > 0),
+            ratio * np.sqrt((ml_err / ml_res)**2 + (kf_err / kf_res)**2),
+            np.nan,
+        )
+    ax_ratio.errorbar(kf_c[valid], ratio[valid], xerr=kf_hw[valid], yerr=ratio_err[valid],
+                      fmt="ko", markersize=4, linewidth=1, capsize=2)
     ax_ratio.axhline(1.0, color="gray", linestyle="--", linewidth=0.8)
     ax_ratio.set_ylabel("ML / CKF")
     ax_ratio.set_xlabel(r"$\eta$")
@@ -185,15 +198,15 @@ def plot_resolution_vs_eta(ml_residuals, kf_residuals, truth_theta,
 def plot_resolution_vs_pt(ml_residuals, kf_residuals, truth_qop, truth_theta,
                           param_name, n_bins=20, pt_range=(0.5, 200),
                           figsize=(8, 7)):
-    """Resolution vs transverse momentum with ratio panel."""
+    """Resolution vs pT with error bars and ratio panel."""
     label, unit = PARAM_LABELS[param_name]
 
     p = np.abs(1.0 / (truth_qop + 1e-10))
     pt = p * np.sin(truth_theta)
     pt_edges = np.logspace(np.log10(pt_range[0]), np.log10(pt_range[1]), n_bins + 1)
 
-    kf_centers, kf_res, _ = _bin_resolution(pt, kf_residuals, pt_edges)
-    ml_centers, ml_res, _ = _bin_resolution(pt, ml_residuals, pt_edges)
+    kf_c, kf_hw, kf_res, kf_err, _ = _bin_resolution(pt, kf_residuals, pt_edges)
+    ml_c, ml_hw, ml_res, ml_err, _ = _bin_resolution(pt, ml_residuals, pt_edges)
 
     fig = plt.figure(figsize=figsize)
     gs = GridSpec(2, 1, height_ratios=[3, 1], hspace=0.05)
@@ -201,10 +214,10 @@ def plot_resolution_vs_pt(ml_residuals, kf_residuals, truth_qop, truth_theta,
     ax_ratio = fig.add_subplot(gs[1], sharex=ax_main)
 
     valid = ~np.isnan(kf_res) & ~np.isnan(ml_res)
-    ax_main.plot(kf_centers[valid], kf_res[valid], "o-", color=COLORS["kf"],
-                 markersize=4, linewidth=1.5, label="CKF")
-    ax_main.plot(ml_centers[valid], ml_res[valid], "s-", color=COLORS["ml"],
-                 markersize=4, linewidth=1.5, label="ML")
+    ax_main.errorbar(kf_c[valid], kf_res[valid], xerr=kf_hw[valid], yerr=kf_err[valid],
+                     fmt="o", color=COLORS["kf"], markersize=4, linewidth=1, capsize=2, label="CKF")
+    ax_main.errorbar(ml_c[valid], ml_res[valid], xerr=ml_hw[valid], yerr=ml_err[valid],
+                     fmt="s", color=COLORS["ml"], markersize=4, linewidth=1, capsize=2, label="ML")
 
     ax_main.set_ylabel(f"{label} resolution ($\\sigma$) [{unit}]")
     ax_main.set_title(f"{label} resolution vs $p_T$")
@@ -216,7 +229,13 @@ def plot_resolution_vs_pt(ml_residuals, kf_residuals, truth_qop, truth_theta,
 
     with np.errstate(divide="ignore", invalid="ignore"):
         ratio = np.where(kf_res > 0, ml_res / kf_res, np.nan)
-    ax_ratio.plot(kf_centers[valid], ratio[valid], "ko-", markersize=4, linewidth=1)
+        ratio_err = np.where(
+            (kf_res > 0) & (ml_res > 0),
+            ratio * np.sqrt((ml_err / ml_res)**2 + (kf_err / kf_res)**2),
+            np.nan,
+        )
+    ax_ratio.errorbar(kf_c[valid], ratio[valid], xerr=kf_hw[valid], yerr=ratio_err[valid],
+                      fmt="ko", markersize=4, linewidth=1, capsize=2)
     ax_ratio.axhline(1.0, color="gray", linestyle="--", linewidth=0.8)
     ax_ratio.set_ylabel("ML / CKF")
     ax_ratio.set_xlabel(r"$p_T$ [GeV]")

@@ -261,8 +261,7 @@ def main():
     data_module.setup()
 
     norm_stats = data_module.dataset.get_norm_stats()
-    log.info(f"Input mean: {norm_stats['input_mean']}")
-    log.info(f"Input std:  {norm_stats['input_std']}")
+    log.info(f"Input std (scale-only norm): {norm_stats['input_std']}")
     log.info(f"Output scales: {norm_stats['output_scales']}")
 
     # Model
