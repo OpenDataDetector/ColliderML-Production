@@ -28,86 +28,142 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from data.datasets import TrackHitDataset, model_to_raw_params, PARAM_NAMES_RAW
 
-FEATURE_NAMES = [
-    "r0", "phi0", "z0_hit",
-    "r1", "phi1", "z1_hit",
-    "r2", "phi2", "z2_hit",
-    "r_last", "phi_last", "z_last",
-    "n_hits",
-    "delta_r", "delta_phi", "delta_z",
-    "sagitta",
-]
-
-
 def extract_bdt_features(dataset):
-    """Extract fixed-size feature vectors from a TrackHitDataset (vectorized).
+    """Extract rich feature vectors from a TrackHitDataset (vectorized).
 
-    Returns (features, truth_raw, reco_raw) where:
-        features: (N, 17) numpy array
-        truth_raw: (N, 5) [d0, z0, phi, theta, qop]
-        reco_raw: (N, 5)
+    Features per track:
+      - First 3 hits (r, phi, z): 9
+      - Last hit (r, phi, z): 3
+      - Hit count: 1
+      - First-to-last deltas (dr, dphi, dz): 3
+      - Sagitta (phi deviation at 3 points): 3
+      - Aggregate stats (mean/std of r, phi, z): 6
+      - Conformal coords of first 2 hits: 4
+      - Circle fit curvature from first 3 hits: 1
+      - dz/dr slope (linear fit proxy): 1
+      - Hits per detector type (pixel vs strip): 2
+      Total: ~33 features
+
+    Returns (features, feature_names, truth_raw, reco_raw)
     """
     N = len(dataset)
     input_std = dataset._input_std
     output_scales = dataset._output_scales
 
     # Denormalize all hit features at once: (N, max_hits, 10)
-    raw_hits = dataset.hit_features.numpy() * input_std  # broadcast
-    n_hits = dataset.n_hits.numpy()  # (N,)
-    mask = dataset.padding_mask.numpy()  # (N, max_hits)
+    raw_hits = dataset.hit_features.numpy() * input_std
+    n_hits = dataset.n_hits.numpy()
+    mask = dataset.padding_mask.numpy()
 
     # columns: [r, phi, z, vol, lay, det, dr, dphi, dr_dphi, dz_dr]
-    r_all = raw_hits[:, :, 0]    # (N, max_hits)
+    r_all = raw_hits[:, :, 0]
     phi_all = raw_hits[:, :, 1]
     z_all = raw_hits[:, :, 2]
+    vol_all = raw_hits[:, :, 3]
+    det_all = raw_hits[:, :, 5]
 
-    features = np.zeros((N, len(FEATURE_NAMES)), dtype=np.float32)
+    arange_N = np.arange(N)
+    last_idx = (n_hits - 1).clip(0)
+    mid_idx = (n_hits // 2).clip(0)
+    q1_idx = (n_hits // 4).clip(0)
+    q3_idx = (3 * n_hits // 4).clip(0, last_idx)
 
-    # First 3 hits: use index 0,1,2 but clamp to n_hits-1
+    feats = {}
+
+    # First 3 hits
     for j in range(3):
         idx = np.minimum(j, n_hits - 1).clip(0)
-        features[:, j*3]     = r_all[np.arange(N), idx]
-        features[:, j*3 + 1] = phi_all[np.arange(N), idx]
-        features[:, j*3 + 2] = z_all[np.arange(N), idx]
+        feats[f"r{j}"] = r_all[arange_N, idx]
+        feats[f"phi{j}"] = phi_all[arange_N, idx]
+        feats[f"z{j}"] = z_all[arange_N, idx]
 
     # Last hit
-    last_idx = (n_hits - 1).clip(0)
-    features[:, 9]  = r_all[np.arange(N), last_idx]
-    features[:, 10] = phi_all[np.arange(N), last_idx]
-    features[:, 11] = z_all[np.arange(N), last_idx]
+    feats["r_last"] = r_all[arange_N, last_idx]
+    feats["phi_last"] = phi_all[arange_N, last_idx]
+    feats["z_last"] = z_all[arange_N, last_idx]
 
     # Hit count
-    features[:, 12] = n_hits
+    feats["n_hits"] = n_hits.astype(np.float32)
 
-    # Deltas first-to-last
-    features[:, 13] = features[:, 9] - features[:, 0]   # delta_r
-    dphi = features[:, 10] - features[:, 1]
-    features[:, 14] = (dphi + np.pi) % (2 * np.pi) - np.pi  # delta_phi
-    features[:, 15] = features[:, 11] - features[:, 2]  # delta_z
+    # First-to-last deltas
+    feats["delta_r"] = feats["r_last"] - feats["r0"]
+    dphi_total = feats["phi_last"] - feats["phi0"]
+    feats["delta_phi"] = (dphi_total + np.pi) % (2 * np.pi) - np.pi
+    feats["delta_z"] = feats["z_last"] - feats["z0"]
 
-    # Sagitta: middle hit deviation from linear interpolation in phi
-    mid_idx = (n_hits // 2).clip(0)
-    r_mid = r_all[np.arange(N), mid_idx]
-    phi_mid = phi_all[np.arange(N), mid_idx]
-    r_first = features[:, 0]
-    r_last = features[:, 9]
-    frac = (r_mid - r_first) / (r_last - r_first + 1e-10)
-    phi_expected = features[:, 1] + frac * features[:, 14]
-    sagitta = phi_mid - phi_expected
-    features[:, 16] = (sagitta + np.pi) % (2 * np.pi) - np.pi
-    features[n_hits < 3, 16] = 0  # no sagitta for < 3 hits
+    # Sagitta at 3 points (quarter, mid, three-quarter)
+    for name, sidx in [("sagitta_mid", mid_idx), ("sagitta_q1", q1_idx), ("sagitta_q3", q3_idx)]:
+        r_s = r_all[arange_N, sidx]
+        phi_s = phi_all[arange_N, sidx]
+        frac = (r_s - feats["r0"]) / (feats["delta_r"] + 1e-10)
+        phi_exp = feats["phi0"] + frac * feats["delta_phi"]
+        sag = phi_s - phi_exp
+        feats[name] = (sag + np.pi) % (2 * np.pi) - np.pi
+        feats[name] = np.where(n_hits >= 3, feats[name], 0.0)
 
-    # Truth: denormalize and convert to raw 5-param [d0, z0, phi, theta, qop]
-    truth_m = dataset.truth_params.numpy() * output_scales  # (N, 6)
+    # Aggregate stats (mean/std of r, phi, z over real hits)
+    # Use masked arrays
+    r_masked = np.where(mask, r_all, np.nan)
+    phi_masked = np.where(mask, phi_all, np.nan)
+    z_masked = np.where(mask, z_all, np.nan)
+    feats["r_mean"] = np.nanmean(r_masked, axis=1)
+    feats["r_std"] = np.nanstd(r_masked, axis=1)
+    feats["z_mean"] = np.nanmean(z_masked, axis=1)
+    feats["z_std"] = np.nanstd(z_masked, axis=1)
+    feats["phi_mean"] = np.nanmean(phi_masked, axis=1)
+    feats["phi_std"] = np.nanstd(phi_masked, axis=1)
+
+    # Conformal coordinates of first 2 hits: u = x/(x²+y²), v = y/(x²+y²)
+    for j in range(2):
+        r_j = feats[f"r{j}"]
+        phi_j = feats[f"phi{j}"]
+        x_j = r_j * np.cos(phi_j)
+        y_j = r_j * np.sin(phi_j)
+        r2 = x_j**2 + y_j**2 + 1e-10
+        feats[f"u{j}"] = x_j / r2
+        feats[f"v{j}"] = y_j / r2
+
+    # Circle fit curvature from first 3 hits (Menger curvature)
+    # K = 4*area(triangle) / (|p0-p1| * |p1-p2| * |p2-p0|)
+    x0 = feats["r0"] * np.cos(feats["phi0"])
+    y0 = feats["r0"] * np.sin(feats["phi0"])
+    x1 = feats["r1"] * np.cos(feats["phi1"])
+    y1 = feats["r1"] * np.sin(feats["phi1"])
+    x2 = feats["r2"] * np.cos(feats["phi2"])
+    y2 = feats["r2"] * np.sin(feats["phi2"])
+    area2 = np.abs((x1 - x0) * (y2 - y0) - (x2 - x0) * (y1 - y0))
+    d01 = np.sqrt((x1-x0)**2 + (y1-y0)**2) + 1e-10
+    d12 = np.sqrt((x2-x1)**2 + (y2-y1)**2) + 1e-10
+    d02 = np.sqrt((x2-x0)**2 + (y2-y0)**2) + 1e-10
+    feats["curvature"] = np.clip(4 * area2 / (d01 * d12 * d02 + 1e-10), -1, 1)
+    feats["curvature"] = np.where(n_hits >= 3, feats["curvature"], 0.0)
+
+    # dz/dr slope (first to last)
+    feats["dz_dr_total"] = feats["delta_z"] / (feats["delta_r"] + 1e-10)
+
+    # Hits per detector type: pixel (det < 3) vs strip (det >= 3)
+    pixel_mask = mask & (det_all < 3)
+    strip_mask = mask & (det_all >= 3)
+    feats["n_pixel_hits"] = pixel_mask.sum(axis=1).astype(np.float32)
+    feats["n_strip_hits"] = strip_mask.sum(axis=1).astype(np.float32)
+
+    # Stack into array
+    feature_names = list(feats.keys())
+    features = np.stack([feats[k] for k in feature_names], axis=1).astype(np.float32)
+
+    # Replace any NaN/inf with 0
+    features = np.nan_to_num(features, nan=0.0, posinf=0.0, neginf=0.0)
+
+    # Truth and reco
+    truth_m = dataset.truth_params.numpy() * output_scales
     truth_phi = np.arctan2(truth_m[:, 2], truth_m[:, 3])
     truth_raw = np.stack([truth_m[:, 0], truth_m[:, 1], truth_phi, truth_m[:, 4], truth_m[:, 5]], axis=1)
 
-    # Reco: already raw model format
-    reco_m = dataset.reco_params.numpy()  # (N, 6)
+    reco_m = dataset.reco_params.numpy()
     reco_phi = np.arctan2(reco_m[:, 2], reco_m[:, 3])
     reco_raw = np.stack([reco_m[:, 0], reco_m[:, 1], reco_phi, reco_m[:, 4], reco_m[:, 5]], axis=1)
 
-    return features, truth_raw, reco_raw
+    return features, feature_names, truth_raw, reco_raw
 
 
 def train_bdt(features, truth_raw, val_split=0.1, seed=42):
@@ -127,15 +183,15 @@ def train_bdt(features, truth_raw, val_split=0.1, seed=42):
         y_val = truth_raw[val_idx, i]
 
         model = xgb.XGBRegressor(
-            n_estimators=200,
-            max_depth=6,
-            learning_rate=0.1,
+            n_estimators=500,
+            max_depth=8,
+            learning_rate=0.05,
             subsample=0.8,
             colsample_bytree=0.8,
             tree_method="hist",
-            early_stopping_rounds=10,
+            early_stopping_rounds=20,
             random_state=seed,
-            n_jobs=-1,
+            n_jobs=4,
         )
         model.fit(
             X_train, y_train,
@@ -180,8 +236,9 @@ def main():
 
     print("Extracting BDT features...")
     t0 = time.time()
-    features, truth_raw, reco_raw = extract_bdt_features(train_ds)
-    print(f"  Features shape: {features.shape} in {time.time()-t0:.1f}s")
+    features, feature_names, truth_raw, reco_raw = extract_bdt_features(train_ds)
+    print(f"  Features shape: {features.shape} ({len(feature_names)} features) in {time.time()-t0:.1f}s")
+    print(f"  Features: {feature_names}")
 
     # Train
     print("\nTraining BDT models...")
