@@ -1,13 +1,15 @@
 """
 PyTorch datasets for the beam spot study.
 
-Loads ColliderML parquet files lazily with LRU file cache.
-Converts hits to cylindrical coordinates with inter-hit delta features.
-Normalizes inputs and outputs for stable training.
+Pre-processes all tracks into flat tensors at init time, so __getitem__
+is a single tensor index with zero overhead during training.
 """
 
 import glob
+import hashlib
 import math
+import os
+import time
 from pathlib import Path
 
 import numpy as np
@@ -15,8 +17,6 @@ import pyarrow.parquet as pq
 import torch
 from torch.utils.data import Dataset
 
-# Output parameter indices (after sin/cos phi parameterization)
-# [d0, z0, sin_phi, cos_phi, theta, qop]
 PARAM_NAMES_RAW = ["d0", "z0", "phi", "theta", "qop"]
 PARAM_NAMES_MODEL = ["d0", "z0", "sin_phi", "cos_phi", "theta", "qop"]
 N_OUTPUT = 6
@@ -24,280 +24,254 @@ N_HIT_FEATURES = 10  # r, phi, z, vol, lay, det, dr, dphi, dr_dphi, dz_dr
 
 
 def wrap_to_pi(x):
-    """Wrap angle to [-pi, pi]."""
     return (x + np.pi) % (2 * np.pi) - np.pi
 
 
-def compute_truth_params_raw(px, py, pz, charge, perigee_d0, perigee_z0):
-    """Compute truth track parameters in raw format [d0, z0, phi, theta, qop]."""
-    pt = math.sqrt(px**2 + py**2)
-    p = math.sqrt(px**2 + py**2 + pz**2)
-    phi = math.atan2(py, px)
-    theta = math.atan2(pt, pz)
-    qop = charge / p if p > 0 else 0.0
-    return np.array([perigee_d0, perigee_z0, phi, theta, qop], dtype=np.float32)
-
-
 def raw_to_model_params(params_raw):
-    """Convert [d0, z0, phi, theta, qop] -> [d0, z0, sin(phi), cos(phi), theta, qop]."""
+    """[d0, z0, phi, theta, qop] -> [d0, z0, sin(phi), cos(phi), theta, qop]."""
     d0, z0, phi, theta, qop = params_raw
     return np.array([d0, z0, np.sin(phi), np.cos(phi), theta, qop], dtype=np.float32)
 
 
 def model_to_raw_params(params_model):
-    """Convert [d0, z0, sin_phi, cos_phi, theta, qop] -> [d0, z0, phi, theta, qop]."""
+    """[d0, z0, sin_phi, cos_phi, theta, qop] -> [d0, z0, phi, theta, qop]."""
     d0, z0, sin_phi, cos_phi, theta, qop = params_model
     phi = np.arctan2(sin_phi, cos_phi)
     return np.array([d0, z0, phi, theta, qop], dtype=np.float32)
 
 
-def compute_hit_features(hit_x, hit_y, hit_z, hit_vol, hit_lay, hit_det, hit_indices):
-    """Convert Cartesian hits to cylindrical + compute inter-hit deltas.
-
-    Returns (positions, features) both of shape (n_hits, ...) sorted by radius.
-    Full feature vector per hit: [r, phi, z, vol, lay, det, dr, dphi, dr_dphi, dz_dr]
-    """
-    x = hit_x[hit_indices]
-    y = hit_y[hit_indices]
-    z = hit_z[hit_indices]
-    vol = hit_vol[hit_indices]
-    lay = hit_lay[hit_indices]
-    det = hit_det[hit_indices]
-
-    r = np.sqrt(x**2 + y**2)
-    phi = np.arctan2(y, x)
-
-    # Sort by radius
-    sort_idx = np.argsort(r)
-    r = r[sort_idx]
-    phi = phi[sort_idx]
-    z = z[sort_idx]
-    vol = vol[sort_idx]
-    lay = lay[sort_idx]
-    det = det[sort_idx]
-
-    n = len(r)
-
-    # Inter-hit deltas (first hit gets zeros)
-    dr = np.zeros(n, dtype=np.float32)
-    dphi = np.zeros(n, dtype=np.float32)
-    dr_dphi = np.zeros(n, dtype=np.float32)
-    dz_dr = np.zeros(n, dtype=np.float32)
-
-    if n > 1:
-        dr[1:] = r[1:] - r[:-1]
-        dphi[1:] = wrap_to_pi(phi[1:] - phi[:-1])
-
-        eps = 1e-6
-        dr_dphi[1:] = dr[1:] / (dphi[1:] + np.sign(dphi[1:] + eps) * eps)
-        dz_dr[1:] = (z[1:] - z[:-1]) / (dr[1:] + eps)
-
-    # Stack all 10 features
-    features = np.stack([r, phi, z, vol, lay, det, dr, dphi, dr_dphi, dz_dr], axis=1)
-    return features  # (n_hits, 10)
-
-
 class TrackHitDataset(Dataset):
-    """Lazy-loading dataset with cylindrical coordinates, deltas, and normalization.
+    """Pre-processed dataset: all tracks loaded into tensors at init.
 
-    Each sample:
-        hit_features:  (max_hits, 10) float32 — normalized [r, phi, z, vol, lay, det, dr, dphi, dr/dphi, dz/dr]
-        truth_params:  (6,) float32 — normalized [d0, z0, sin_phi, cos_phi, theta, qop]
-        reco_params:   (6,) float32 — NOT normalized [d0, z0, sin_phi, cos_phi, theta, qop]
-        padding_mask:  (max_hits,) bool — True for real hits
-        n_hits:        int
+    __getitem__ is a simple tensor index — zero overhead during training.
+
+    Caches the pre-processed tensors to disk as .pt files so subsequent
+    runs with the same data skip the processing step.
     """
 
-    def __init__(self, parquet_base, max_hits=20, max_files=None, file_cache_size=4):
+    def __init__(self, parquet_base, max_hits=20, max_files=None,
+                 cache_dir=None):
         self.max_hits = max_hits
         parquet_base = Path(parquet_base)
 
-        self.track_files = sorted(glob.glob(str(parquet_base / "reco/tracks/*.parquet")))
-        self.hit_files = sorted(glob.glob(str(parquet_base / "reco/tracker_hits/*.parquet")))
-        self.particle_files = sorted(glob.glob(str(parquet_base / "truth/particles/*.parquet")))
+        track_files = sorted(glob.glob(str(parquet_base / "reco/tracks/*.parquet")))
+        hit_files = sorted(glob.glob(str(parquet_base / "reco/tracker_hits/*.parquet")))
+        particle_files = sorted(glob.glob(str(parquet_base / "truth/particles/*.parquet")))
 
-        if not self.track_files:
+        if not track_files:
             raise FileNotFoundError(f"No track files in {parquet_base / 'reco/tracks/'}")
 
         if max_files is not None:
-            self.track_files = self.track_files[:max_files]
-            self.hit_files = self.hit_files[:max_files]
-            self.particle_files = self.particle_files[:max_files]
+            track_files = track_files[:max_files]
+            hit_files = hit_files[:max_files]
+            particle_files = particle_files[:max_files]
 
-        # Build lightweight index: (file_idx, event_idx, track_idx)
-        self.index = []
-        for file_idx, tf in enumerate(self.track_files):
-            tbl = pq.read_table(tf, columns=["track_id"])
-            for event_idx in range(len(tbl)):
-                n_tracks = len(tbl["track_id"][event_idx].as_py())
-                for track_idx in range(n_tracks):
-                    self.index.append((file_idx, event_idx, track_idx))
+        # Check for cached tensors
+        cache_path = self._get_cache_path(track_files, max_hits, cache_dir or parquet_base)
+        if cache_path.exists():
+            print(f"Loading cached tensors from {cache_path}")
+            t0 = time.time()
+            cached = torch.load(cache_path, weights_only=False)
+            self.hit_features = cached["hit_features"]
+            self.truth_params = cached["truth_params"]
+            self.reco_params = cached["reco_params"]
+            self.padding_mask = cached["padding_mask"]
+            self.n_hits = cached["n_hits"]
+            self._input_mean = cached["input_mean"]
+            self._input_std = cached["input_std"]
+            self._output_scales = cached["output_scales"]
+            print(f"Loaded {len(self)} tracks in {time.time()-t0:.1f}s")
+            return
 
-        # Simple dict-based file cache (pickle-safe for DataLoader workers)
-        self._file_cache_size = file_cache_size
-        self._file_cache = {}
-        self._file_cache_order = []
+        # Pre-process all files
+        print(f"Pre-processing {len(track_files)} files...")
+        t0 = time.time()
 
-        # Compute normalization stats
-        self._input_mean = None
-        self._input_std = None
-        self._output_scales = None
+        all_feats, all_truth, all_reco, all_mask, all_nhits = [], [], [], [], []
+
+        for fi in range(len(track_files)):
+            tracks_tbl = pq.read_table(track_files[fi])
+            hits_tbl = pq.read_table(hit_files[fi])
+            particles_tbl = pq.read_table(particle_files[fi])
+
+            for ei in range(len(tracks_tbl)):
+                self._process_event(
+                    tracks_tbl, hits_tbl, particles_tbl, ei,
+                    all_feats, all_truth, all_reco, all_mask, all_nhits,
+                )
+
+            if (fi + 1) % 5 == 0 or fi == len(track_files) - 1:
+                print(f"  File {fi+1}/{len(track_files)}: {len(all_feats)} tracks so far")
+
+        n = len(all_feats)
+        print(f"Processed {n} valid tracks in {time.time()-t0:.1f}s")
+
+        # Stack into tensors
+        self.hit_features = torch.from_numpy(np.stack(all_feats))   # (N, max_hits, 10)
+        self.truth_params = torch.from_numpy(np.stack(all_truth))   # (N, 6)
+        self.reco_params = torch.from_numpy(np.stack(all_reco))     # (N, 6)
+        self.padding_mask = torch.from_numpy(np.stack(all_mask))    # (N, max_hits)
+        self.n_hits = torch.tensor(all_nhits, dtype=torch.long)     # (N,)
+
+        # Compute normalization
         self._compute_normalization()
 
-    def _load_file(self, file_idx):
-        """Load file with simple LRU dict cache (pickle-safe)."""
-        if file_idx in self._file_cache:
-            return self._file_cache[file_idx]
-        # Evict oldest if full
-        while len(self._file_cache) >= self._file_cache_size:
-            oldest = self._file_cache_order.pop(0)
-            self._file_cache.pop(oldest, None)
-        result = (
-            pq.read_table(self.track_files[file_idx]),
-            pq.read_table(self.hit_files[file_idx]),
-            pq.read_table(self.particle_files[file_idx]),
-        )
-        self._file_cache[file_idx] = result
-        self._file_cache_order.append(file_idx)
-        return result
+        # Apply normalization to stored tensors
+        mask_expanded = self.padding_mask.unsqueeze(-1).expand_as(self.hit_features)
+        input_mean = torch.from_numpy(self._input_mean).unsqueeze(0).unsqueeze(0)
+        input_std = torch.from_numpy(self._input_std).unsqueeze(0).unsqueeze(0)
+        normalized = (self.hit_features - input_mean) / input_std
+        self.hit_features = torch.where(mask_expanded, normalized, torch.zeros_like(normalized))
 
-    def _get_event_arrays(self, file_idx, event_idx):
-        """Cached per-event numpy arrays."""
-        key = (file_idx, event_idx)
-        if getattr(self, "_event_cache_key", None) == key:
-            return self._event_cache_val
+        output_scales = torch.from_numpy(self._output_scales).unsqueeze(0)
+        self.truth_params = self.truth_params / output_scales
 
-        tracks_tbl, hits_tbl, particles_tbl = self._load_file(file_idx)
+        # Cache to disk
+        try:
+            cache_path.parent.mkdir(parents=True, exist_ok=True)
+            torch.save({
+                "hit_features": self.hit_features,
+                "truth_params": self.truth_params,
+                "reco_params": self.reco_params,
+                "padding_mask": self.padding_mask,
+                "n_hits": self.n_hits,
+                "input_mean": self._input_mean,
+                "input_std": self._input_std,
+                "output_scales": self._output_scales,
+            }, cache_path)
+            print(f"Cached to {cache_path}")
+        except Exception as e:
+            print(f"Warning: could not save cache: {e}")
 
+    def _get_cache_path(self, track_files, max_hits, cache_dir):
+        """Deterministic cache path based on file list and max_hits."""
+        key = f"{[str(f) for f in track_files]}_{max_hits}"
+        h = hashlib.md5(key.encode()).hexdigest()[:12]
+        return Path(cache_dir) / f".track_cache_{h}.pt"
+
+    def _process_event(self, tracks_tbl, hits_tbl, particles_tbl, ei,
+                       out_feats, out_truth, out_reco, out_mask, out_nhits):
+        """Extract all valid tracks from one event, appending to output lists."""
         def to_np(col, idx, dtype=np.float32):
             return np.array(col[idx].as_py(), dtype=dtype)
 
-        part_ids = to_np(particles_tbl["particle_id"], event_idx, np.int64)
-        val = {
-            "hit_x": to_np(hits_tbl["x"], event_idx),
-            "hit_y": to_np(hits_tbl["y"], event_idx),
-            "hit_z": to_np(hits_tbl["z"], event_idx),
-            "hit_vol": to_np(hits_tbl["volume_id"], event_idx),
-            "hit_lay": to_np(hits_tbl["layer_id"], event_idx),
-            "hit_det": to_np(hits_tbl["detector"], event_idx),
-            "part_px": to_np(particles_tbl["px"], event_idx),
-            "part_py": to_np(particles_tbl["py"], event_idx),
-            "part_pz": to_np(particles_tbl["pz"], event_idx),
-            "part_charge": to_np(particles_tbl["charge"], event_idx),
-            "part_d0": to_np(particles_tbl["perigee_d0"], event_idx),
-            "part_z0": to_np(particles_tbl["perigee_z0"], event_idx),
-            "pid_to_idx": {int(pid): i for i, pid in enumerate(part_ids)},
-            "track_d0": tracks_tbl["d0"][event_idx].as_py(),
-            "track_z0": tracks_tbl["z0"][event_idx].as_py(),
-            "track_phi": tracks_tbl["phi"][event_idx].as_py(),
-            "track_theta": tracks_tbl["theta"][event_idx].as_py(),
-            "track_qop": tracks_tbl["qop"][event_idx].as_py(),
-            "track_majpid": tracks_tbl["majority_particle_id"][event_idx].as_py(),
-            "track_hit_ids": tracks_tbl["hit_ids"][event_idx].as_py(),
-        }
-        self._event_cache_key = key
-        self._event_cache_val = val
-        return val
+        hit_x = to_np(hits_tbl["x"], ei)
+        hit_y = to_np(hits_tbl["y"], ei)
+        hit_z = to_np(hits_tbl["z"], ei)
+        hit_vol = to_np(hits_tbl["volume_id"], ei)
+        hit_lay = to_np(hits_tbl["layer_id"], ei)
+        hit_det = to_np(hits_tbl["detector"], ei)
+        n_total_hits = len(hit_x)
 
-    def _extract_track(self, file_idx, event_idx, track_idx):
-        """Extract a single track. Returns dict or None if invalid."""
-        ev = self._get_event_arrays(file_idx, event_idx)
-        n_total_hits = len(ev["hit_x"])
+        part_ids = to_np(particles_tbl["particle_id"], ei, np.int64)
+        part_px = to_np(particles_tbl["px"], ei)
+        part_py = to_np(particles_tbl["py"], ei)
+        part_pz = to_np(particles_tbl["pz"], ei)
+        part_charge = to_np(particles_tbl["charge"], ei)
+        part_d0 = to_np(particles_tbl["perigee_d0"], ei)
+        part_z0 = to_np(particles_tbl["perigee_z0"], ei)
+        pid_to_idx = {int(pid): i for i, pid in enumerate(part_ids)}
 
-        hids = ev["track_hit_ids"][track_idx]
-        if not hids:
-            return None
-        hids = [h for h in hids if h < n_total_hits]
-        if not hids:
-            return None
+        track_d0 = tracks_tbl["d0"][ei].as_py()
+        track_z0 = tracks_tbl["z0"][ei].as_py()
+        track_phi = tracks_tbl["phi"][ei].as_py()
+        track_theta = tracks_tbl["theta"][ei].as_py()
+        track_qop = tracks_tbl["qop"][ei].as_py()
+        track_majpid = tracks_tbl["majority_particle_id"][ei].as_py()
+        track_hit_ids = tracks_tbl["hit_ids"][ei].as_py()
 
-        maj_pid = int(ev["track_majpid"][track_idx])
-        if maj_pid not in ev["pid_to_idx"]:
-            return None
-        p_idx = ev["pid_to_idx"][maj_pid]
-
-        if np.isnan(ev["part_d0"][p_idx]) or np.isnan(ev["part_z0"][p_idx]):
-            return None
-        if ev["part_charge"][p_idx] == 0:
-            return None
-
-        # Truth params (raw then model format)
-        truth_raw = compute_truth_params_raw(
-            ev["part_px"][p_idx], ev["part_py"][p_idx], ev["part_pz"][p_idx],
-            ev["part_charge"][p_idx], ev["part_d0"][p_idx], ev["part_z0"][p_idx],
-        )
-        truth_model = raw_to_model_params(truth_raw)
-
-        # Reco params (model format, NOT normalized — for comparison)
-        reco_raw = np.array([
-            ev["track_d0"][track_idx], ev["track_z0"][track_idx],
-            ev["track_phi"][track_idx], ev["track_theta"][track_idx],
-            ev["track_qop"][track_idx],
-        ], dtype=np.float32)
-        reco_model = raw_to_model_params(reco_raw)
-
-        # Hit features: cylindrical + deltas (10 features)
-        hids_arr = np.array(hids)
-        features = compute_hit_features(
-            ev["hit_x"], ev["hit_y"], ev["hit_z"],
-            ev["hit_vol"], ev["hit_lay"], ev["hit_det"],
-            hids_arr,
-        )
-
-        # Pad or truncate
-        n_hits = min(len(features), self.max_hits)
-        padded = np.zeros((self.max_hits, N_HIT_FEATURES), dtype=np.float32)
-        mask = np.zeros(self.max_hits, dtype=bool)
-        padded[:n_hits] = features[:n_hits]
-        mask[:n_hits] = True
-
-        return {
-            "hit_features": padded,
-            "truth_params": truth_model,
-            "reco_params": reco_model,
-            "padding_mask": mask,
-            "n_hits": n_hits,
-        }
-
-    def _compute_normalization(self, n_samples=2000):
-        """Compute input/output normalization from first n_samples tracks."""
-        n = min(n_samples, len(self))
-        all_features, all_truth = [], []
-
-        for idx in range(n):
-            fi, ei, ti = self.index[idx]
-            sample = self._extract_track(fi, ei, ti)
-            if sample is None:
+        for ti in range(len(track_d0)):
+            hids = track_hit_ids[ti]
+            if not hids:
                 continue
-            nh = sample["n_hits"]
+            hids = [h for h in hids if h < n_total_hits]
+            if not hids:
+                continue
+
+            maj_pid = int(track_majpid[ti])
+            if maj_pid not in pid_to_idx:
+                continue
+            pi = pid_to_idx[maj_pid]
+
+            if np.isnan(part_d0[pi]) or np.isnan(part_z0[pi]) or part_charge[pi] == 0:
+                continue
+
+            # Truth
+            p_tot = math.sqrt(float(part_px[pi])**2 + float(part_py[pi])**2 + float(part_pz[pi])**2)
+            pt = math.sqrt(float(part_px[pi])**2 + float(part_py[pi])**2)
+            phi = math.atan2(float(part_py[pi]), float(part_px[pi]))
+            theta = math.atan2(pt, float(part_pz[pi]))
+            qop = float(part_charge[pi]) / p_tot if p_tot > 0 else 0.0
+            truth = np.array([float(part_d0[pi]), float(part_z0[pi]),
+                              math.sin(phi), math.cos(phi), theta, qop], dtype=np.float32)
+
+            # Reco
+            reco_phi = float(track_phi[ti])
+            reco = np.array([float(track_d0[ti]), float(track_z0[ti]),
+                             math.sin(reco_phi), math.cos(reco_phi),
+                             float(track_theta[ti]), float(track_qop[ti])], dtype=np.float32)
+
+            # Hit features
+            hids_arr = np.array(hids)
+            x = hit_x[hids_arr]; y = hit_y[hids_arr]; z = hit_z[hids_arr]
+            r = np.sqrt(x**2 + y**2)
+            phi_hit = np.arctan2(y, x)
+
+            sort_idx = np.argsort(r)
+            r = r[sort_idx]; phi_hit = phi_hit[sort_idx]; z = z[sort_idx]
+            vol = hit_vol[hids_arr[sort_idx]]
+            lay = hit_lay[hids_arr[sort_idx]]
+            det = hit_det[hids_arr[sort_idx]]
+
+            nh = len(r)
+            dr = np.zeros(nh, dtype=np.float32)
+            dphi = np.zeros(nh, dtype=np.float32)
+            dr_dphi = np.zeros(nh, dtype=np.float32)
+            dz_dr = np.zeros(nh, dtype=np.float32)
+            if nh > 1:
+                eps = 1e-6
+                dr[1:] = r[1:] - r[:-1]
+                dphi[1:] = wrap_to_pi(phi_hit[1:] - phi_hit[:-1])
+                dr_dphi[1:] = dr[1:] / (dphi[1:] + np.sign(dphi[1:] + eps) * eps)
+                dz_dr[1:] = (z[1:] - z[:-1]) / (dr[1:] + eps)
+
+            features = np.stack([r, phi_hit, z, vol, lay, det, dr, dphi, dr_dphi, dz_dr], axis=1)
+
+            n_hits = min(nh, self.max_hits)
+            padded = np.zeros((self.max_hits, N_HIT_FEATURES), dtype=np.float32)
+            mask = np.zeros(self.max_hits, dtype=bool)
+            padded[:n_hits] = features[:n_hits]
+            mask[:n_hits] = True
+
+            out_feats.append(padded)
+            out_truth.append(truth)
+            out_reco.append(reco)
+            out_mask.append(mask)
+            out_nhits.append(n_hits)
+
+    def _compute_normalization(self):
+        """Compute input/output normalization from the full dataset."""
+        # Input stats from non-padded hits
+        all_feats = []
+        for i in range(len(self)):
+            nh = self.n_hits[i].item()
             if nh > 0:
-                all_features.append(sample["hit_features"][:nh])
-            all_truth.append(sample["truth_params"])
-
-        if not all_features:
-            self._input_mean = np.zeros(N_HIT_FEATURES, dtype=np.float32)
-            self._input_std = np.ones(N_HIT_FEATURES, dtype=np.float32)
-            self._output_scales = np.ones(N_OUTPUT, dtype=np.float32)
-            return
-
-        feat = np.concatenate(all_features, axis=0)
+                all_feats.append(self.hit_features[i, :nh].numpy())
+        feat = np.concatenate(all_feats, axis=0)
         self._input_mean = feat.mean(axis=0).astype(np.float32)
         self._input_std = feat.std(axis=0).astype(np.float32)
-        self._input_std[self._input_std < 1e-6] = 1.0  # prevent div by zero
+        self._input_std[self._input_std < 1e-6] = 1.0
 
-        truth = np.stack(all_truth)
-        # Output scales: [d0_std, z0_std, 1(sin), 1(cos), pi(theta), qop_std]
+        truth = self.truth_params.numpy()
         self._output_scales = np.array([
-            max(np.std(truth[:, 0]), 1e-6),  # d0
-            max(np.std(truth[:, 1]), 1e-6),  # z0
-            1.0,                              # sin_phi (already [-1,1])
-            1.0,                              # cos_phi (already [-1,1])
-            np.pi,                            # theta
-            max(np.std(truth[:, 5]), 1e-6),  # qop
+            max(np.std(truth[:, 0]), 1e-6),
+            max(np.std(truth[:, 1]), 1e-6),
+            1.0, 1.0,
+            np.pi,
+            max(np.std(truth[:, 5]), 1e-6),
         ], dtype=np.float32)
 
     def get_norm_stats(self):
-        """Return normalization stats for saving with checkpoint."""
         return {
             "input_mean": self._input_mean,
             "input_std": self._input_std,
@@ -305,40 +279,13 @@ class TrackHitDataset(Dataset):
         }
 
     def __len__(self):
-        return len(self.index)
+        return len(self.hit_features)
 
     def __getitem__(self, idx):
-        file_idx, event_idx, track_idx = self.index[idx]
-        sample = self._extract_track(file_idx, event_idx, track_idx)
-
-        if sample is None:
-            for offset in range(1, 100):
-                alt_idx = (idx + offset) % len(self.index)
-                fi, ei, ti = self.index[alt_idx]
-                sample = self._extract_track(fi, ei, ti)
-                if sample is not None:
-                    break
-            if sample is None:
-                sample = {
-                    "hit_features": np.zeros((self.max_hits, N_HIT_FEATURES), dtype=np.float32),
-                    "truth_params": np.zeros(N_OUTPUT, dtype=np.float32),
-                    "reco_params": np.zeros(N_OUTPUT, dtype=np.float32),
-                    "padding_mask": np.zeros(self.max_hits, dtype=bool),
-                    "n_hits": 0,
-                }
-
-        # Normalize inputs
-        feats = sample["hit_features"].copy()
-        mask = sample["padding_mask"]
-        feats[mask] = (feats[mask] - self._input_mean) / self._input_std
-
-        # Normalize truth outputs
-        truth_norm = sample["truth_params"] / self._output_scales
-
         return {
-            "hit_features": torch.from_numpy(feats),
-            "truth_params": torch.from_numpy(truth_norm),
-            "reco_params": torch.from_numpy(sample["reco_params"]),  # NOT normalized
-            "padding_mask": torch.from_numpy(mask),
-            "n_hits": sample["n_hits"],
+            "hit_features": self.hit_features[idx],
+            "truth_params": self.truth_params[idx],
+            "reco_params": self.reco_params[idx],
+            "padding_mask": self.padding_mask[idx],
+            "n_hits": self.n_hits[idx].item(),
         }
