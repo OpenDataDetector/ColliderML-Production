@@ -230,8 +230,8 @@ class TrackHitDataset(Dataset):
                 eps = 1e-6
                 dr[1:] = r[1:] - r[:-1]
                 dphi[1:] = wrap_to_pi(phi_hit[1:] - phi_hit[:-1])
-                dr_dphi[1:] = dr[1:] / (dphi[1:] + np.sign(dphi[1:] + eps) * eps)
-                dz_dr[1:] = (z[1:] - z[:-1]) / (dr[1:] + eps)
+                dr_dphi[1:] = np.clip(dr[1:] / (dphi[1:] + np.sign(dphi[1:] + eps) * eps), -1000, 1000)
+                dz_dr[1:] = np.clip((z[1:] - z[:-1]) / (dr[1:] + eps), -100, 100)
 
             features = np.stack([r, phi_hit, z, vol, lay, det, dr, dphi, dr_dphi, dz_dr], axis=1)
 
