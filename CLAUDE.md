@@ -113,3 +113,76 @@ Confirmed: 300um dataset → mean=298.8um, 25um → 25.8um, nominal → -0.3um.
 - `evaluate.py`: inference + metrics + HEP-style plots + W&B media logging
 - `cross_evaluate.py`: 3×3 model-dataset cross-evaluation matrix
 - `plotting.py`: residual histograms, resolution vs eta/pT, ratio panels, error bars
+
+### BDT baseline (`models/bdt_baseline.py`)
+- XGBoost regressor, one model per output parameter
+- 17 hand-crafted features: first 3 hits (r,φ,z), last hit, hit count, deltas, sagitta
+
+## Performance Improvement Ideas
+
+### Status key: [DONE] [COMMITTED] [TODO] [IDEA]
+
+### Input features
+- [DONE] Cylindrical coordinates (r, φ, z) instead of Cartesian
+- [DONE] Inter-hit deltas: Δr, Δφ
+- [COMMITTED] Clipped delta ratios: Δr/Δφ (±1000), Δz/Δr (±100)
+- [TODO] Conformal coordinates: u = x/(x²+y²), v = y/(x²+y²) — linearizes helical trajectories, directly encodes curvature. Should help phi and qop. (Source: MEG II transformer, arXiv:2512.19482)
+- [IDEA] Hit pair features: dr, dφ, dz between all pairs, not just consecutive
+- [IDEA] Cyclic positional encoding for φ_hit (sinusoidal instead of learned)
+
+### Output parameterization
+- [DONE] sin(φ)/cos(φ) instead of raw φ — avoids ±π discontinuity
+- [TODO] Regress Cartesian momentum (px, py, pz) + vz instead of angles — avoids nonlinear angle mapping entirely. Reconstruct φ=atan2(py,px), θ=atan2(pt,pz), qop=q/p at inference. (Source: arXiv:2411.07149 MaskFormer tracking)
+- [IDEA] Add total momentum magnitude to loss as consistency constraint
+
+### Normalization
+- [DONE] Scale-only normalization (divide by std, no mean subtraction)
+- [DONE] Output normalization to ~unit scale via characteristic scales
+- [COMMITTED] Cache versioning to prevent stale normalization
+
+### Loss function
+- [DONE] Huber loss (delta=1.0) instead of MSE — robust to outliers
+- [TODO] Learnable per-parameter weights (homoscedastic uncertainty) — if specific params remain stubborn
+- [IDEA] Heteroscedastic loss: predict both value and uncertainty per parameter, use NLL
+
+### Architecture
+- [DONE] d_model=128, 8 heads, 6 layers (~1.26M params)
+- [IDEA] Deeper model: d_model=192, 12 layers (TrackFormers Part 2 used this)
+- [IDEA] Pre-LN vs Post-LN comparison
+- [IDEA] FlexAttention / sparse attention for longer sequences
+
+### Training
+- [DONE] AdamW + cosine annealing, lr=1e-3
+- [DONE] Early stopping (patience=10)
+- [TODO] More data: 50 files (~3M tracks) instead of 16 (~1M)
+- [TODO] Longer training: 100 epochs with patience=20
+- [TODO] LR warmup for first 5 epochs
+- [IDEA] Larger batch size (1024 or 2048) — plenty of GPU memory
+- [IDEA] Two-stage training: train on clean data first, then noisy (MEG II approach)
+- [IDEA] Curriculum learning: start with high-pT tracks (easier), add low-pT gradually
+
+### Baselines
+- [IN PROGRESS] XGBoost BDT on 17 hand-crafted features — quick comparison
+- [IDEA] Simple MLP on flattened hit features — intermediate complexity baseline
+- [IDEA] Linear regression on sagitta/delta features — analytical baseline
+
+### Data
+- [DONE] 16 files nominal (~1M tracks), 50 files shifted (~600K each)
+- [TODO] Train on all 1000 files (~60M tracks) — test data scaling
+- [IDEA] Data augmentation: random φ rotation (should be invariant)
+- [IDEA] Data augmentation: mirror in z (should be symmetric)
+
+### Current performance (v5 run, epoch 0-1)
+| Param | ML | KF | Status |
+|-------|:---:|:---:|:---:|
+| d0 | 0.155 | 0.163 | **Beating KF** |
+| z0 | 5.36 | 0.99 | 5x worse, improving |
+| phi | 0.310 | 0.124 | 2.5x worse |
+| theta | 0.048 | 0.003 | 15x worse |
+| qop | 0.021 | 0.008 | 2.6x worse |
+
+### References
+- TrackFormers Part 1: arXiv:2407.07179 — EncReg architecture, 6 layers, ~900K params
+- TrackFormers Part 2: arXiv:2509.26411 — d_model=192, 12 layers, FlexAttention, joint reg+cls
+- MaskFormer tracking: arXiv:2411.07149 — SmoothL1 loss, Cartesian momentum regression, cyclic PE
+- MEG II transformer: arXiv:2512.19482 — conformal mapping, two-stage training, d_model=320
