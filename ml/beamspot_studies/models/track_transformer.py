@@ -30,7 +30,7 @@ class TrackTransformer(nn.Module):
         n_layers=6,
         d_ff=512,
         max_hits=20,
-        input_dim=10,
+        input_dim=12,
         output_dim=6,
         dropout=0.1,
     ):

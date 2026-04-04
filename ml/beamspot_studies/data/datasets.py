@@ -18,9 +18,9 @@ import torch
 from torch.utils.data import Dataset
 
 PARAM_NAMES_RAW = ["d0", "z0", "phi", "theta", "qop"]
-PARAM_NAMES_MODEL = ["d0", "z0", "sin_phi", "cos_phi", "theta", "qop"]
+PARAM_NAMES_MODEL = ["d0", "z0", "sin_phi", "cos_phi", "cot_theta", "qop"]
 N_OUTPUT = 6
-N_HIT_FEATURES = 10  # r, phi, z, vol, lay, det, dr, dphi, dr_dphi, dz_dr
+N_HIT_FEATURES = 12  # r, phi, z, vol, lay, det, dr, dphi, dr_dphi, dz_dr, u_conf, v_conf
 
 
 def wrap_to_pi(x):
@@ -34,9 +34,10 @@ def raw_to_model_params(params_raw):
 
 
 def model_to_raw_params(params_model):
-    """[d0, z0, sin_phi, cos_phi, theta, qop] -> [d0, z0, phi, theta, qop]."""
-    d0, z0, sin_phi, cos_phi, theta, qop = params_model
+    """[d0, z0, sin_phi, cos_phi, cot_theta, qop] -> [d0, z0, phi, theta, qop]."""
+    d0, z0, sin_phi, cos_phi, cot_theta, qop = params_model
     phi = np.arctan2(sin_phi, cos_phi)
+    theta = np.arctan2(1.0, cot_theta)
     return np.array([d0, z0, phi, theta, qop], dtype=np.float32)
 
 
@@ -142,7 +143,7 @@ class TrackHitDataset(Dataset):
             print(f"Warning: could not save cache: {e}")
 
     # Bump this when normalization or feature computation changes
-    CACHE_VERSION = 2  # v2: scale-only norm, clipped deltas
+    CACHE_VERSION = 3  # v3: conformal coords, cot_theta output
 
     def _get_cache_path(self, track_files, max_hits, cache_dir):
         """Deterministic cache path based on file list, max_hits, and code version."""
@@ -197,20 +198,22 @@ class TrackHitDataset(Dataset):
             if np.isnan(part_d0[pi]) or np.isnan(part_z0[pi]) or part_charge[pi] == 0:
                 continue
 
-            # Truth
+            # Truth — use cot(theta) = pz/pt as the angular parameter
             p_tot = math.sqrt(float(part_px[pi])**2 + float(part_py[pi])**2 + float(part_pz[pi])**2)
             pt = math.sqrt(float(part_px[pi])**2 + float(part_py[pi])**2)
             phi = math.atan2(float(part_py[pi]), float(part_px[pi]))
-            theta = math.atan2(pt, float(part_pz[pi]))
+            cot_theta = float(part_pz[pi]) / (pt + 1e-10)
             qop = float(part_charge[pi]) / p_tot if p_tot > 0 else 0.0
             truth = np.array([float(part_d0[pi]), float(part_z0[pi]),
-                              math.sin(phi), math.cos(phi), theta, qop], dtype=np.float32)
+                              math.sin(phi), math.cos(phi), cot_theta, qop], dtype=np.float32)
 
-            # Reco
+            # Reco — convert theta to cot(theta)
             reco_phi = float(track_phi[ti])
+            reco_theta = float(track_theta[ti])
+            reco_cot_theta = math.cos(reco_theta) / (math.sin(reco_theta) + 1e-10)
             reco = np.array([float(track_d0[ti]), float(track_z0[ti]),
                              math.sin(reco_phi), math.cos(reco_phi),
-                             float(track_theta[ti]), float(track_qop[ti])], dtype=np.float32)
+                             reco_cot_theta, float(track_qop[ti])], dtype=np.float32)
 
             # Hit features
             hids_arr = np.array(hids)
@@ -236,7 +239,15 @@ class TrackHitDataset(Dataset):
                 dr_dphi[1:] = np.clip(dr[1:] / (dphi[1:] + np.sign(dphi[1:] + eps) * eps), -1000, 1000)
                 dz_dr[1:] = np.clip((z[1:] - z[:-1]) / (dr[1:] + eps), -100, 100)
 
-            features = np.stack([r, phi_hit, z, vol, lay, det, dr, dphi, dr_dphi, dz_dr], axis=1)
+            # Conformal coordinates: linearize helical trajectories
+            x_sorted = r * np.cos(phi_hit)
+            y_sorted = r * np.sin(phi_hit)
+            r2 = x_sorted**2 + y_sorted**2 + 1e-10
+            u_conf = x_sorted / r2
+            v_conf = y_sorted / r2
+
+            features = np.stack([r, phi_hit, z, vol, lay, det, dr, dphi, dr_dphi, dz_dr,
+                                 u_conf, v_conf], axis=1)
 
             n_hits = min(nh, self.max_hits)
             padded = np.zeros((self.max_hits, N_HIT_FEATURES), dtype=np.float32)
@@ -263,11 +274,12 @@ class TrackHitDataset(Dataset):
 
         truth = self.truth_params.numpy()
         self._output_scales = np.array([
-            max(np.std(truth[:, 0]), 1e-6),
-            max(np.std(truth[:, 1]), 1e-6),
-            1.0, 1.0,
-            np.pi,
-            max(np.std(truth[:, 5]), 1e-6),
+            max(np.std(truth[:, 0]), 1e-6),  # d0
+            max(np.std(truth[:, 1]), 1e-6),  # z0
+            1.0,                              # sin_phi
+            1.0,                              # cos_phi
+            max(np.std(truth[:, 4]), 1e-6),  # cot_theta (was pi for theta)
+            max(np.std(truth[:, 5]), 1e-6),  # qop
         ], dtype=np.float32)
 
     def get_norm_stats(self):

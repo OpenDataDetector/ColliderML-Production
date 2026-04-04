@@ -65,7 +65,8 @@ def run_inference(module, dataset, batch_size=512, device="cpu"):
         # Vectorized sin/cos → phi conversion
         def batch_to_raw(m):
             phi = np.arctan2(m[:, 2], m[:, 3])
-            return np.stack([m[:, 0], m[:, 1], phi, m[:, 4], m[:, 5]], axis=1)
+            theta = np.arctan2(1.0, m[:, 4])  # theta = atan2(1, cot_theta)
+            return np.stack([m[:, 0], m[:, 1], phi, theta, m[:, 5]], axis=1)
 
         all_pred_raw.append(batch_to_raw(pred_denorm))
         all_truth_raw.append(batch_to_raw(truth_denorm))

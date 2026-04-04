@@ -31,7 +31,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from data.datasets import TrackHitDataset, model_to_raw_params, PARAM_NAMES_RAW, N_OUTPUT
 from models.track_transformer import TrackTransformer
-from training.losses import TrackHuberLoss, NormalizedMSELoss
+from training.losses import TrackHuberLoss, TruncatedHuberLoss, NormalizedMSELoss
 
 
 def setup_file_logging(output_dir):
@@ -65,6 +65,8 @@ class TrackRegressionModule(pl.LightningModule):
 
         if self.hparams.loss == "huber":
             self.criterion = TrackHuberLoss(delta=1.0)
+        elif self.hparams.loss == "truncated_huber":
+            self.criterion = TruncatedHuberLoss(delta=1.0, clip=3.0)
         else:
             self.criterion = NormalizedMSELoss(np.ones(N_OUTPUT))
 
@@ -120,10 +122,11 @@ class TrackRegressionModule(pl.LightningModule):
         pred_denorm = pred_norm * scales
         truth_denorm = truth_norm * scales
 
-        # Vectorized sin/cos → phi conversion
+        # Vectorized conversion: [d0,z0,sin_phi,cos_phi,cot_theta,qop] → [d0,z0,phi,theta,qop]
         def batch_to_raw(m):
             phi = np.arctan2(m[:, 2], m[:, 3])
-            return np.stack([m[:, 0], m[:, 1], phi, m[:, 4], m[:, 5]], axis=1)
+            theta = np.arctan2(1.0, m[:, 4])  # theta = atan2(1, cot_theta)
+            return np.stack([m[:, 0], m[:, 1], phi, theta, m[:, 5]], axis=1)
 
         pred_raw = batch_to_raw(pred_denorm)
         truth_raw = batch_to_raw(truth_denorm)
@@ -234,7 +237,7 @@ def parse_args():
     p.add_argument("--lr", type=float, default=1e-3)
     p.add_argument("--weight-decay", type=float, default=1e-5)
     p.add_argument("--grad-clip", type=float, default=1.0)
-    p.add_argument("--loss", choices=["huber", "mse"], default="huber")
+    p.add_argument("--loss", choices=["huber", "truncated_huber", "mse"], default="huber")
     # Data
     p.add_argument("--max-files", type=int, default=None)
     p.add_argument("--max-train-samples", type=int, default=None)

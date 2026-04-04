@@ -20,6 +20,32 @@ class TrackHuberLoss(nn.Module):
         return F.smooth_l1_loss(pred, target, beta=self.delta)
 
 
+class TruncatedHuberLoss(nn.Module):
+    """Huber loss that ignores outlier tracks beyond a clip threshold.
+
+    Tracks with any parameter residual > clip (in normalized space) are
+    zeroed out. This focuses training on the core distribution and prevents
+    catastrophic outliers from dominating the loss.
+
+    With normalized outputs (~unit scale), clip=3.0 means tracks with
+    >3 sigma residuals are ignored.
+    """
+
+    def __init__(self, delta=1.0, clip=3.0):
+        super().__init__()
+        self.delta = delta
+        self.clip = clip
+
+    def forward(self, pred, target):
+        residual = (pred - target).abs()
+        # Mask: keep tracks where ALL parameters are within clip
+        track_ok = (residual < self.clip).all(dim=-1)  # (B,)
+        if track_ok.sum() == 0:
+            return F.smooth_l1_loss(pred, target, beta=self.delta)
+        loss = F.smooth_l1_loss(pred[track_ok], target[track_ok], beta=self.delta)
+        return loss
+
+
 class NormalizedMSELoss(nn.Module):
     """MSE loss normalized by per-parameter variance (legacy)."""
 

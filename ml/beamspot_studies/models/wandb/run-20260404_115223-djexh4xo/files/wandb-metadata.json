@@ -1,0 +1,74 @@
+{
+  "os": "Linux-6.4.0-150600.23.73_15.0.14-cray_shasta_c-x86_64-with-glibc2.38",
+  "python": "3.11.11",
+  "startedAt": "2026-04-04T18:52:23.515001Z",
+  "args": [
+    "--parquet-base",
+    "/global/cfs/cdirs/m4958/data/ColliderML/simulation/hard_scatter/ttbar/v1/parquet",
+    "--output-dir",
+    "/global/cfs/cdirs/m4958/data/ColliderML/ml/beamspot_studies/bdt_baseline_v3",
+    "--max-files",
+    "16",
+    "--wandb-name",
+    "bdt-v3-16files"
+  ],
+  "program": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml_dev/ml/beamspot_studies/models/bdt_baseline.py",
+  "codePath": "ml/beamspot_studies/models/bdt_baseline.py",
+  "git": {
+    "remote": "git@github.com:OpenDataDetector/colliderml-production.git",
+    "commit": "84be53ad52390b746586530847816d5c828f11f7"
+  },
+  "email": "dtmurnane@lbl.gov",
+  "root": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml_dev/ml/beamspot_studies/models",
+  "host": "login22",
+  "username": "danieltm",
+  "executable": "/pscratch/sd/d/danieltm/conda_envs/envs/collider-env/bin/python",
+  "codePathLocal": "bdt_baseline.py",
+  "cpu_count": 128,
+  "cpu_count_logical": 256,
+  "gpu": "NVIDIA A100-PCIE-40GB",
+  "gpu_count": 1,
+  "disk": {
+    "/": {
+      "total": "270032191488",
+      "used": "2370695168"
+    }
+  },
+  "memory": {
+    "total": "540064387072"
+  },
+  "cpu": {
+    "count": 128,
+    "countLogical": 256
+  },
+  "gpu_nvidia": [
+    {
+      "name": "NVIDIA A100-PCIE-40GB",
+      "memoryTotal": "42949672960",
+      "cudaCores": 6912,
+      "architecture": "Ampere"
+    }
+  ],
+  "slurm": {
+    "cluster_name": "perlmutter",
+    "conf": "/run/slurm/conf/slurm.conf",
+    "cpus_per_task": "32",
+    "job_account": "m4958",
+    "job_cpus_per_node": "32",
+    "job_id": "50997179",
+    "job_name": "interactive",
+    "job_nodelist": "nid004201",
+    "job_num_nodes": "1",
+    "job_partition": "shared_urgent_milan_ss11",
+    "job_qos": "shared_interactive",
+    "jobid": "50997179",
+    "nnodes": "1",
+    "nodelist": "nid004201",
+    "stepmgr": "nid004201",
+    "submit_dir": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml_dev",
+    "submit_host": "login22",
+    "tasks_per_node": "1",
+    "tres_per_task": "cpu=32"
+  },
+  "cudaVersion": "13.0"
+}
