@@ -81,6 +81,8 @@ def main():
     parser.add_argument("--max-files", type=int, default=5,
                         help="Max files per dataset for evaluation")
     parser.add_argument("--batch-size", type=int, default=512)
+    parser.add_argument("--wandb-project", type=str, default="colliderml-beamspot")
+    parser.add_argument("--wandb-name", type=str, default="cross-evaluation")
     args = parser.parse_args()
 
     output_dir = Path(args.output_dir)
@@ -127,6 +129,9 @@ def main():
         json.dump(all_results, f, indent=2)
 
     # Plot cross-evaluation matrices
+    import wandb
+    run = wandb.init(project=args.wandb_project, name=args.wandb_name)
+
     for param in PARAM_NAMES_RAW:
         matrix = np.zeros((len(model_names), len(dataset_names)))
         for mi, mn in enumerate(model_names):
@@ -136,9 +141,22 @@ def main():
 
         fig = plot_cross_matrix(matrix, param, model_names, dataset_names)
         fig.savefig(output_dir / f"{param}_cross_matrix.pdf", bbox_inches="tight")
+        wandb.log({f"cross_eval/{param}_matrix": wandb.Image(fig)})
         plt.close(fig)
 
-    print(f"\nAll results saved to {output_dir}")
+    # Log full results table
+    columns = ["train", "eval", "param", "ml_res", "kf_res", "improvement"]
+    rows = []
+    for key, metrics in all_results.items():
+        train_name, _, eval_name = key.partition("_on_")
+        for pname, m in metrics.items():
+            rows.append([train_name, eval_name, pname,
+                         m["ml_resolution_robust"], m["kf_resolution_robust"],
+                         m["improvement"]])
+    wandb.log({"cross_eval/full_table": wandb.Table(columns=columns, data=rows)})
+
+    wandb.finish()
+    print(f"\nAll results saved to {output_dir} and logged to W&B")
 
 
 if __name__ == "__main__":
