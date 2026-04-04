@@ -128,13 +128,21 @@ for dir in "$SPACK_BASE"/root-*/lib/root; do
 done
 
 # 3c. ACTS Python bindings
-# ACTS installs its Python package under <prefix>/python/ with __init__.py
-# directly in that directory, but it must be importable as "acts". We create
-# a symlink so Python can find it as a package named "acts".
+# ACTS installs its Python package under <prefix>/python/. Older builds put
+# __init__.py directly in python/, newer builds nest it under python/acts/.
+# Handle both layouts.
 _acts_python_dir=$(find "$SPACK_BASE"/acts-main-*/python -maxdepth 0 -type d 2>/dev/null | head -1)
 if [ -n "$_acts_python_dir" ]; then
-    ln -sf "$_acts_python_dir" /tmp/acts
-    _py_paths="/tmp:$_py_paths"
+    if [ -f "$_acts_python_dir/__init__.py" ]; then
+        # Old layout: python/__init__.py — symlink python/ as acts package
+        ln -sf "$_acts_python_dir" /tmp/acts
+        _py_paths="/tmp:$_py_paths"
+    elif [ -d "$_acts_python_dir/acts" ]; then
+        # New layout: python/acts/__init__.py — add python/ to PYTHONPATH
+        _py_paths="$_acts_python_dir:$_py_paths"
+    else
+        echo "WARNING: ACTS Python bindings found but layout not recognized"
+    fi
 else
     echo "WARNING: ACTS Python bindings not found"
 fi
