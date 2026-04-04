@@ -21,6 +21,9 @@ TRAIN_SCRIPT=${REPO}/ml/beamspot_studies/training/train.py
 SIM_BASE=/global/cfs/cdirs/m4958/data/ColliderML/simulation
 OUT_BASE=/global/cfs/cdirs/m4958/data/ColliderML/ml/beamspot_studies
 
+export OMP_NUM_THREADS=4
+export MKL_NUM_THREADS=4
+
 mkdir -p ${OUT_BASE}/logs
 
 eval "$(conda shell.bash hook 2>/dev/null)"

@@ -17,6 +17,9 @@ REPO=/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml_dev
 SIM_BASE=/global/cfs/cdirs/m4958/data/ColliderML/simulation
 OUT_BASE=/global/cfs/cdirs/m4958/data/ColliderML/ml/beamspot_studies
 
+export OMP_NUM_THREADS=4
+export MKL_NUM_THREADS=4
+
 eval "$(conda shell.bash hook 2>/dev/null)"
 conda activate collider-env
 

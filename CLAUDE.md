@@ -172,6 +172,12 @@ Confirmed: 300um dataset → mean=298.8um, 25um → 25.8um, nominal → -0.3um.
 - [IDEA] Data augmentation: random φ rotation (should be invariant)
 - [IDEA] Data augmentation: mirror in z (should be symmetric)
 
+### 11. OMP/MKL thread contention causes 16x slowdown
+**Symptom**: Training speed drops from 32 it/s to 2 it/s when any other process runs concurrently (BDT, wandb, even a second Python process).
+**Cause**: PyTorch defaults to `OMP_NUM_THREADS` = all cores. Two processes with unlimited threads thrash the L3 cache. Measured: single=1059ms/step, two concurrent=16x slower. With 4 threads: single=401ms/step (2.6x faster!), two concurrent=no degradation.
+**Fix**: Set `OMP_NUM_THREADS=4` and `MKL_NUM_THREADS=4` at the top of every script. Also call `torch.set_num_threads(4)`.
+**Prevention**: ALWAYS set thread limits in every Python ML script and every SLURM submission script.
+
 ### Current performance (v5 run, epoch 0-1)
 | Param | ML | KF | Status |
 |-------|:---:|:---:|:---:|

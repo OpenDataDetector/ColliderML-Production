@@ -10,8 +10,14 @@ Usage:
 
 import argparse
 import logging
+import os
 import time
 from pathlib import Path
+
+# Limit CPU threads to prevent contention when multiple processes run.
+# PyTorch defaults to all cores, causing 16x slowdown with any concurrent process.
+os.environ.setdefault("OMP_NUM_THREADS", "4")
+os.environ.setdefault("MKL_NUM_THREADS", "4")
 
 import numpy as np
 import torch
@@ -243,6 +249,7 @@ def parse_args():
 
 def main():
     args = parse_args()
+    torch.set_num_threads(4)
     pl.seed_everything(args.seed)
 
     output_dir = Path(args.output_dir)
