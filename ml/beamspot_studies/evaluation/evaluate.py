@@ -62,12 +62,16 @@ def run_inference(module, dataset, batch_size=512, device="cpu"):
         pred_denorm = pred_norm * scales
         truth_denorm = truth_norm * scales
 
-        for i in range(len(pred_denorm)):
-            all_pred_raw.append(model_to_raw_params(pred_denorm[i]))
-            all_truth_raw.append(model_to_raw_params(truth_denorm[i]))
-            all_reco_raw.append(model_to_raw_params(reco_model[i]))
+        # Vectorized sin/cos → phi conversion
+        def batch_to_raw(m):
+            phi = np.arctan2(m[:, 2], m[:, 3])
+            return np.stack([m[:, 0], m[:, 1], phi, m[:, 4], m[:, 5]], axis=1)
 
-    return np.stack(all_pred_raw), np.stack(all_truth_raw), np.stack(all_reco_raw)
+        all_pred_raw.append(batch_to_raw(pred_denorm))
+        all_truth_raw.append(batch_to_raw(truth_denorm))
+        all_reco_raw.append(batch_to_raw(reco_model))
+
+    return np.concatenate(all_pred_raw), np.concatenate(all_truth_raw), np.concatenate(all_reco_raw)
 
 
 def compute_metrics(pred_raw, truth_raw, reco_raw):

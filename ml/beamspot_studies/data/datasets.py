@@ -253,17 +253,12 @@ class TrackHitDataset(Dataset):
     def _compute_normalization(self):
         """Compute input/output normalization scales from the full dataset.
 
-        Scale-only normalization (no mean subtraction) to avoid injecting
-        bias from finite-sample mean estimates.
+        Scale-only normalization (no mean subtraction). Fully vectorized.
         """
-        # Input scales from non-padded hits
-        all_feats = []
-        for i in range(len(self)):
-            nh = self.n_hits[i].item()
-            if nh > 0:
-                all_feats.append(self.hit_features[i, :nh].numpy())
-        feat = np.concatenate(all_feats, axis=0)
-        self._input_std = feat.std(axis=0).astype(np.float32)
+        # Extract all real (non-padded) hits using mask indexing
+        mask_3d = self.padding_mask.unsqueeze(-1).expand_as(self.hit_features)
+        real_hits = self.hit_features[mask_3d].reshape(-1, N_HIT_FEATURES)
+        self._input_std = real_hits.std(dim=0).numpy().astype(np.float32)
         self._input_std[self._input_std < 1e-6] = 1.0
 
         truth = self.truth_params.numpy()

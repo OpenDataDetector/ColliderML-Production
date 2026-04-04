@@ -114,10 +114,14 @@ class TrackRegressionModule(pl.LightningModule):
         pred_denorm = pred_norm * scales
         truth_denorm = truth_norm * scales
 
-        # Reconstruct raw params (phi from sin/cos)
-        pred_raw = np.array([model_to_raw_params(p) for p in pred_denorm])
-        truth_raw = np.array([model_to_raw_params(t) for t in truth_denorm])
-        reco_raw = np.array([model_to_raw_params(r) for r in reco_model])
+        # Vectorized sin/cos → phi conversion
+        def batch_to_raw(m):
+            phi = np.arctan2(m[:, 2], m[:, 3])
+            return np.stack([m[:, 0], m[:, 1], phi, m[:, 4], m[:, 5]], axis=1)
+
+        pred_raw = batch_to_raw(pred_denorm)
+        truth_raw = batch_to_raw(truth_denorm)
+        reco_raw = batch_to_raw(reco_model)
 
         log = logging.getLogger("beamspot_train")
         train_loss = getattr(self, "_last_train_loss", float("nan"))

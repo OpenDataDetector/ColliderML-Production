@@ -124,14 +124,15 @@ def train_bdt(features, truth_raw, val_split=0.1, seed=42):
         y_val = truth_raw[val_idx, i]
 
         model = xgb.XGBRegressor(
-            n_estimators=500,
-            max_depth=8,
-            learning_rate=0.05,
+            n_estimators=200,
+            max_depth=6,
+            learning_rate=0.1,
             subsample=0.8,
             colsample_bytree=0.8,
             tree_method="hist",
-            early_stopping_rounds=20,
+            early_stopping_rounds=10,
             random_state=seed,
+            n_jobs=-1,
         )
         model.fit(
             X_train, y_train,
