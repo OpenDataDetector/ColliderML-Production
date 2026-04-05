@@ -1,0 +1,50 @@
+# ColliderML Simulation Presets
+# Used by: colliderml simulate --preset <name>
+# Each preset maps to a channel + default parameters.
+
+presets:
+  # --- Quick test presets (minutes) ---
+  ttbar-quick:
+    channel: ttbar
+    events: 10
+    pileup: 0
+    description: "ttbar, 10 events, no pileup (~15 min with full sim)"
+
+  higgs-portal-quick:
+    channel: higgs_portal
+    events: 10
+    pileup: 10
+    description: "Higgs portal (H→SS→bbbb), 10 events, low pileup (~15 min)"
+
+  # --- Development presets (hours) ---
+  ttbar-dev:
+    channel: ttbar
+    events: 100
+    pileup: 40
+    description: "ttbar, 100 events, moderate pileup (~2 hrs)"
+
+  higgs-portal-dev:
+    channel: higgs_portal
+    events: 100
+    pileup: 40
+    description: "Higgs portal, 100 events, moderate pileup (~2 hrs)"
+
+  # --- Benchmark presets (submit to NERSC) ---
+  ttbar-benchmark:
+    channel: ttbar
+    events: 1000
+    pileup: 200
+    description: "ttbar, 1000 events, full pileup (benchmark-scale)"
+
+  higgs-portal-benchmark:
+    channel: higgs_portal
+    events: 1000
+    pileup: 200
+    description: "Higgs portal, 1000 events, full pileup (benchmark-scale)"
+
+  # --- Single particle presets (fast, for debugging) ---
+  single-muon:
+    channel: single_muon
+    events: 100
+    pileup: 0
+    description: "Single muon gun, 100 events, no pileup (~5 min)"

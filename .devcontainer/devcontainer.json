@@ -1,0 +1,31 @@
+{
+  "name": "ColliderML Production",
+  "image": "ghcr.io/opendatadetector/sw:0.2.2_linux-ubuntu24.04_gcc-13.3.0",
+
+  "postCreateCommand": "bash /workspaces/ColliderML-Production/scripts/cli/setup_container_env.sh",
+
+  "containerEnv": {
+    "COLLIDERML_CACHE": "/workspaces/ColliderML-Production/.cache"
+  },
+
+  "features": {
+    "ghcr.io/devcontainers/features/docker-in-docker:2": {}
+  },
+
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-python.python",
+        "ms-toolsai.jupyter",
+        "ms-python.debugpy"
+      ],
+      "settings": {
+        "python.defaultInterpreterPath": "/usr/bin/python3"
+      }
+    }
+  },
+
+  "forwardPorts": [8888],
+
+  "remoteUser": "root"
+}
