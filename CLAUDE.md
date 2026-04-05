@@ -112,6 +112,62 @@ The ACTS build in this container uses the main branch (version 999.999.999). Key
 - `RootParticleWriter` / `RootMeasurementWriter` → `acts.examples.root` module
 - `PodioReader` → `acts.examples.edm4hep` module  
 - `addCounter(geoIds, min, max)` instead of `addCounter(geoIds, count)`
+- `SeedingAlgorithm.Default` → `SeedingAlgorithm.GridTriplet` (removed in [acts#5051](https://github.com/acts-project/acts/pull/5051))
+
+## KNOWN ISSUE: Digihit Measurement–SimHit Merge Produces NaN (Needs Investigation)
+
+**Status**: WORKAROUND APPLIED — root cause NOT yet understood.
+
+**File**: `scripts/postprocessing/convert_digihits.py`, function `_merge_measurements_with_tracker()`
+
+**Problem**: The LEFT merge of digitized measurements with sim tracker hits (matched on
+`true_x, true_y, true_z` coordinates) produces NaN values in `particle_id` and other
+columns. This means some measurements cannot be matched to their originating sim hit,
+losing truth association. The affected measurements get `particle_id=0` as a fill value.
+
+**When it appeared**: First observed with the new container built from `OpenDataDetector/sw`
+PR #2 (ACTS @main, April 2025). The previous container (sw:0.2.2) did NOT exhibit this
+issue — all measurements matched their sim hits.
+
+**Impact**: Measurements with `particle_id=0` have lost their truth particle association.
+This could silently degrade:
+- Track-finding efficiency studies (unmatched hits attributed to particle 0)
+- Purity calculations
+- Any analysis that relies on truth-matching digitized hits
+
+**Possible root causes** (not yet investigated):
+1. **Float32 precision change**: The merge matches on float32 coordinates. If ACTS changed
+   how coordinates are stored or rounded, previously-exact matches may now differ by ULP.
+2. **New noise/extra hits**: The new ACTS digitization may produce measurements without
+   corresponding sim hits (noise hits, or different hit merging behavior).
+3. **Duplicate handling**: The merge uses `cumcount()` within coordinate groups to handle
+   duplicates. If the new ACTS produces different duplicate patterns, the 1:1 pairing breaks.
+4. **Different sim hit collection**: The sim hits may be stored differently in the new
+   EDM4hep output, causing the join keys to not align.
+
+**To investigate**:
+```bash
+# Run the pipeline and check the WARNING log lines:
+# "DIGIHIT MERGE: X/Y rows (Z%) have NaN in 'particle_id'"
+# This tells you how many measurements are unmatched.
+
+# Then compare the coordinate distributions:
+python3 -c "
+from pyedm4hep import EDM4hepEventBatch
+batch = EDM4hepEventBatch('output/runs/0/edm4hep.root', events=(0,1))
+tracker = batch.get_tracker_hits_df()
+print('Sim hits:', len(tracker))
+print('Coordinate dtypes:', tracker[['x','y','z']].dtypes)
+
+import uproot
+f = uproot.open('output/runs/0/measurements.root')
+# Check if true_x/y/z precision matches the sim hits
+"
+```
+
+**Workaround**: `convert_digihits.py` fills NaN with 0 and logs a warning with the
+count of affected rows. This allows the pipeline to complete but the data quality
+concern remains.
 
 ## Troubleshooting
 

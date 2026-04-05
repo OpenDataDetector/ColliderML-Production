@@ -167,11 +167,45 @@ def _merge_measurements_with_tracker(meas_df: pd.DataFrame, tracker_df: pd.DataF
     # Convert detector strings to integers
     merged = _convert_detector_to_int(merged)
 
-    # Fill NaN in integer-typed columns introduced by the LEFT merge
-    # (unmatched measurements have no corresponding tracker hit)
+    # WORKAROUND: Fill NaN in integer columns introduced by the LEFT merge.
+    #
+    # WARNING — THIS IS A KNOWN DATA QUALITY ISSUE THAT NEEDS INVESTIGATION.
+    #
+    # The LEFT merge on (true_x, true_y, true_z) coordinates produces NaN
+    # values when a measurement has no matching sim tracker hit. This started
+    # occurring with the ACTS @main build in container sw:pr-2 (April 2025)
+    # but was NOT seen with the previous sw:0.2.2 container.
+    #
+    # Possible causes (not yet investigated):
+    #   1. Float32 precision: coordinate rounding during the merge may have
+    #      changed between ACTS versions, causing fewer exact matches.
+    #   2. Missing sim hits: the new ACTS may produce measurements without
+    #      corresponding sim hits (e.g. noise hits, or a change in how
+    #      digitization maps to truth).
+    #   3. Duplicate handling: the cumcount-based dedup may behave differently
+    #      if the new ACTS produces different duplicate patterns.
+    #
+    # Impact: unmatched measurements get particle_id=0, which means they
+    # lose their truth association. This could silently degrade track-finding
+    # and efficiency studies downstream.
+    #
+    # TODO: Investigate root cause. Check:
+    #   - How many measurements are unmatched (log the count below)
+    #   - Whether the coordinate mismatch is a precision issue (try rounding)
+    #   - Whether the new ACTS digitization produces noise/extra hits
+    #
+    # See also: CLAUDE.md "Container Image Fix Checklist"
     int_fill_cols = ["particle_id", "volume_id", "layer_id", "surface_id", "detector"]
     for col in int_fill_cols:
         if col in merged.columns and merged[col].isna().any():
+            nan_count = merged[col].isna().sum()
+            total_count = len(merged)
+            logging.warning(
+                "DIGIHIT MERGE: %d/%d rows (%.1f%%) have NaN in '%s' after "
+                "coordinate merge — filling with 0. This indicates unmatched "
+                "measurements that lost truth association.",
+                nan_count, total_count, 100.0 * nan_count / total_count, col
+            )
             merged[col] = merged[col].fillna(0)
 
     # Restore original order and drop position tracker
