@@ -21,6 +21,7 @@ PARAM_NAMES_RAW = ["d0", "z0", "phi", "theta", "qop"]
 PARAM_NAMES_MODEL = ["d0", "z0", "sin_phi", "cos_phi", "cot_theta", "qop"]
 N_OUTPUT = 6
 N_HIT_FEATURES = 12  # r, phi, z, vol, lay, det, dr, dphi, dr_dphi, dz_dr, u_conf, v_conf
+N_CLS_FEATURES = 8   # z_intercept, dz_dr_slope, curvature, sagitta, delta_r, delta_phi, delta_z, n_hits
 
 
 def wrap_to_pi(x):
@@ -78,7 +79,9 @@ class TrackHitDataset(Dataset):
             self.reco_params = cached["reco_params"]
             self.padding_mask = cached["padding_mask"]
             self.n_hits = cached["n_hits"]
+            self.cls_features = cached["cls_features"]
             self._input_std = cached["input_std"]
+            self._cls_std = cached["cls_std"]
             self._output_scales = cached["output_scales"]
             print(f"Loaded {len(self)} tracks in {time.time()-t0:.1f}s")
             return
@@ -87,7 +90,7 @@ class TrackHitDataset(Dataset):
         print(f"Pre-processing {len(track_files)} files...")
         t0 = time.time()
 
-        all_feats, all_truth, all_reco, all_mask, all_nhits = [], [], [], [], []
+        all_feats, all_truth, all_reco, all_mask, all_nhits, all_cls = [], [], [], [], [], []
 
         for fi in range(len(track_files)):
             tracks_tbl = pq.read_table(track_files[fi])
@@ -97,7 +100,7 @@ class TrackHitDataset(Dataset):
             for ei in range(len(tracks_tbl)):
                 self._process_event(
                     tracks_tbl, hits_tbl, particles_tbl, ei,
-                    all_feats, all_truth, all_reco, all_mask, all_nhits,
+                    all_feats, all_truth, all_reco, all_mask, all_nhits, all_cls,
                 )
 
             if (fi + 1) % 5 == 0 or fi == len(track_files) - 1:
@@ -107,11 +110,12 @@ class TrackHitDataset(Dataset):
         print(f"Processed {n} valid tracks in {time.time()-t0:.1f}s")
 
         # Stack into tensors
-        self.hit_features = torch.from_numpy(np.stack(all_feats))   # (N, max_hits, 10)
+        self.hit_features = torch.from_numpy(np.stack(all_feats))   # (N, max_hits, 12)
         self.truth_params = torch.from_numpy(np.stack(all_truth))   # (N, 6)
         self.reco_params = torch.from_numpy(np.stack(all_reco))     # (N, 6)
         self.padding_mask = torch.from_numpy(np.stack(all_mask))    # (N, max_hits)
         self.n_hits = torch.tensor(all_nhits, dtype=torch.long)     # (N,)
+        self.cls_features = torch.from_numpy(np.stack(all_cls))     # (N, N_CLS_FEATURES)
 
         # Compute normalization (scale only, no mean shift)
         self._compute_normalization()
@@ -121,6 +125,12 @@ class TrackHitDataset(Dataset):
         input_scale = torch.from_numpy(self._input_std).unsqueeze(0).unsqueeze(0)
         normalized = self.hit_features / input_scale
         self.hit_features = torch.where(mask_expanded, normalized, torch.zeros_like(normalized))
+
+        # Normalize CLS features by their std
+        cls_std = self.cls_features.std(dim=0).numpy().astype(np.float32)
+        cls_std[cls_std < 1e-6] = 1.0
+        self._cls_std = cls_std
+        self.cls_features = self.cls_features / torch.from_numpy(cls_std).unsqueeze(0)
 
         # Apply output normalization: divide by scale
         output_scales = torch.from_numpy(self._output_scales).unsqueeze(0)
@@ -135,7 +145,9 @@ class TrackHitDataset(Dataset):
                 "reco_params": self.reco_params,
                 "padding_mask": self.padding_mask,
                 "n_hits": self.n_hits,
+                "cls_features": self.cls_features,
                 "input_std": self._input_std,
+                "cls_std": self._cls_std,
                 "output_scales": self._output_scales,
             }, cache_path)
             print(f"Cached to {cache_path}")
@@ -143,7 +155,7 @@ class TrackHitDataset(Dataset):
             print(f"Warning: could not save cache: {e}")
 
     # Bump this when normalization or feature computation changes
-    CACHE_VERSION = 3  # v3: conformal coords, cot_theta output
+    CACHE_VERSION = 4  # v4: CLS features (z_intercept, curvature, etc.)
 
     def _get_cache_path(self, track_files, max_hits, cache_dir):
         """Deterministic cache path based on file list, max_hits, and code version."""
@@ -152,7 +164,7 @@ class TrackHitDataset(Dataset):
         return Path(cache_dir) / f".track_cache_{h}.pt"
 
     def _process_event(self, tracks_tbl, hits_tbl, particles_tbl, ei,
-                       out_feats, out_truth, out_reco, out_mask, out_nhits):
+                       out_feats, out_truth, out_reco, out_mask, out_nhits, out_cls):
         """Extract all valid tracks from one event, appending to output lists."""
         def to_np(col, idx, dtype=np.float32):
             return np.array(col[idx].as_py(), dtype=dtype)
@@ -255,11 +267,47 @@ class TrackHitDataset(Dataset):
             padded[:n_hits] = features[:n_hits]
             mask[:n_hits] = True
 
+            # Track-level summary features for CLS token
+            eps = 1e-10
+            delta_r_total = r[-1] - r[0]
+            delta_phi_total = wrap_to_pi(phi_hit[-1] - phi_hit[0])
+            delta_z_total = z[-1] - z[0]
+            dz_dr_slope = delta_z_total / (delta_r_total + eps)
+            z_intercept = z[0] - dz_dr_slope * r[0]
+
+            # Sagitta from middle hit
+            if nh >= 3:
+                mid = nh // 2
+                frac = (r[mid] - r[0]) / (delta_r_total + eps)
+                phi_exp = phi_hit[0] + frac * delta_phi_total
+                sagitta = wrap_to_pi(phi_hit[mid] - phi_exp)
+            else:
+                sagitta = 0.0
+
+            # Menger curvature from first 3 hits
+            if nh >= 3:
+                x0, y0 = r[0]*np.cos(phi_hit[0]), r[0]*np.sin(phi_hit[0])
+                x1, y1 = r[1]*np.cos(phi_hit[1]), r[1]*np.sin(phi_hit[1])
+                x2, y2 = r[2]*np.cos(phi_hit[2]), r[2]*np.sin(phi_hit[2])
+                area2 = abs((x1-x0)*(y2-y0) - (x2-x0)*(y1-y0))
+                d01 = np.sqrt((x1-x0)**2 + (y1-y0)**2) + eps
+                d12 = np.sqrt((x2-x1)**2 + (y2-y1)**2) + eps
+                d02 = np.sqrt((x2-x0)**2 + (y2-y0)**2) + eps
+                curvature = np.clip(4*area2 / (d01*d12*d02 + eps), -1, 1)
+            else:
+                curvature = 0.0
+
+            cls_feats = np.array([
+                z_intercept, dz_dr_slope, curvature, sagitta,
+                delta_r_total, delta_phi_total, delta_z_total, float(nh),
+            ], dtype=np.float32)
+
             out_feats.append(padded)
             out_truth.append(truth)
             out_reco.append(reco)
             out_mask.append(mask)
             out_nhits.append(n_hits)
+            out_cls.append(cls_feats)
 
     def _compute_normalization(self):
         """Compute input/output normalization scales from the full dataset.
@@ -285,6 +333,7 @@ class TrackHitDataset(Dataset):
     def get_norm_stats(self):
         return {
             "input_std": self._input_std,
+            "cls_std": self._cls_std,
             "output_scales": self._output_scales,
         }
 
@@ -294,6 +343,7 @@ class TrackHitDataset(Dataset):
     def __getitem__(self, idx):
         return {
             "hit_features": self.hit_features[idx],
+            "cls_features": self.cls_features[idx],
             "truth_params": self.truth_params[idx],
             "reco_params": self.reco_params[idx],
             "padding_mask": self.padding_mask[idx],

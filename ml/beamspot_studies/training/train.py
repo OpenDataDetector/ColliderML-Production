@@ -60,6 +60,7 @@ class TrackRegressionModule(pl.LightningModule):
             n_layers=self.hparams.n_layers,
             d_ff=self.hparams.d_ff,
             max_hits=self.hparams.max_hits,
+            cls_input_dim=getattr(self.hparams, "cls_input_dim", 0),
             dropout=self.hparams.dropout,
         )
 
@@ -80,11 +81,12 @@ class TrackRegressionModule(pl.LightningModule):
         self._val_truths_norm = []
         self._val_recos = []
 
-    def forward(self, hit_features, padding_mask):
-        return self.model(hit_features, padding_mask)
+    def forward(self, hit_features, padding_mask, cls_features=None):
+        return self.model(hit_features, padding_mask, cls_features)
 
     def _shared_step(self, batch):
-        pred = self(batch["hit_features"], batch["padding_mask"])
+        cls_feats = batch.get("cls_features", None)
+        pred = self(batch["hit_features"], batch["padding_mask"], cls_feats)
         loss = self.criterion(pred, batch["truth_params"])
         return pred, loss
 
@@ -230,6 +232,8 @@ def parse_args():
     p.add_argument("--n-layers", type=int, default=6)
     p.add_argument("--d-ff", type=int, default=512)
     p.add_argument("--max-hits", type=int, default=20)
+    p.add_argument("--cls-input-dim", type=int, default=8,
+                   help="Track-level summary features for CLS token (0=learnable)")
     p.add_argument("--dropout", type=float, default=0.1)
     # Training
     p.add_argument("--epochs", type=int, default=50)

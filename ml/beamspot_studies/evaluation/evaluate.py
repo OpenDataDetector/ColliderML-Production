@@ -51,9 +51,13 @@ def run_inference(module, dataset, batch_size=512, device="cpu"):
     all_pred_raw, all_truth_raw, all_reco_raw = [], [], []
 
     for batch in loader:
+        cls_feats = batch.get("cls_features", None)
+        if cls_feats is not None:
+            cls_feats = cls_feats.to(device)
         pred_norm = module(
             batch["hit_features"].to(device),
             batch["padding_mask"].to(device),
+            cls_feats,
         ).cpu().numpy()
 
         truth_norm = batch["truth_params"].numpy()
