@@ -253,7 +253,10 @@ def process_run_for_tracks(
             # Fallback to track_utils helper if needed
             from utils.track_utils import load_root_file as _load
             meas_df_all = _load(measurements_path)
-        from pyedm4hep import EDM4hepEventBatch
+        try:
+            from pyedm4hep import EDM4hepEventBatch
+        except ImportError:
+            from pyedm4hep import EDM4hepEvent as EDM4hepEventBatch
         batch = EDM4hepEventBatch(str(edm4hep_path), events=local_range)
         hits_all = batch.get_tracker_hits_df()
         evs_for_run: List[pd.DataFrame] = []

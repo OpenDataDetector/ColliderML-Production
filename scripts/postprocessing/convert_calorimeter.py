@@ -30,7 +30,11 @@ from utils.parquet_schemas import CALOHITS_PARQUET_TYPES
 from utils.detector_enums import encode_calo_detector
 
 sys.path.append("/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/OtherLibraries/pyedm4hep")
-from pyedm4hep import EDM4hepEvent, EDM4hepEventBatch
+from pyedm4hep import EDM4hepEvent
+try:
+    from pyedm4hep import EDM4hepEventBatch
+except ImportError:
+    EDM4hepEventBatch = EDM4hepEvent
 
 logger = logging.getLogger(__name__)
 
