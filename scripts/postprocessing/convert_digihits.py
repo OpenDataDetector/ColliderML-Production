@@ -167,6 +167,13 @@ def _merge_measurements_with_tracker(meas_df: pd.DataFrame, tracker_df: pd.DataF
     # Convert detector strings to integers
     merged = _convert_detector_to_int(merged)
 
+    # Fill NaN in integer-typed columns introduced by the LEFT merge
+    # (unmatched measurements have no corresponding tracker hit)
+    int_fill_cols = ["particle_id", "volume_id", "layer_id", "surface_id", "detector"]
+    for col in int_fill_cols:
+        if col in merged.columns and merged[col].isna().any():
+            merged[col] = merged[col].fillna(0)
+
     # Restore original order and drop position tracker
     merged = merged.sort_values("_orig_pos", kind="stable").drop(columns=["_orig_pos"], errors='ignore')
 
