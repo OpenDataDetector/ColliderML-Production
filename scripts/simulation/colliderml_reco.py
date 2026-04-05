@@ -142,7 +142,7 @@ addSeeding(
     s,
     trackingGeometry,
     field,
-    seedingAlgorithm=SeedingAlgorithm.Default,
+    seedingAlgorithm=SeedingAlgorithm.GridTriplet,
     particleHypothesis=acts.ParticleHypothesis.pion,
     seedFinderConfigArg=SeedFinderConfigArg(
         r=(33 * u.mm, 200 * u.mm),
