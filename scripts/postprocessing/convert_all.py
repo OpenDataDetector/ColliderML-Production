@@ -12,10 +12,7 @@ import logging
 import logging.config
 from tqdm import tqdm
 import pandas as pd
-try:
-    from pyedm4hep import EDM4hepEventBatch
-except ImportError:
-    from pyedm4hep import EDM4hepEvent as EDM4hepEventBatch
+from pyedm4hep import EDM4hepEventBatch
 import awkward as ak
 import psutil
 import os
