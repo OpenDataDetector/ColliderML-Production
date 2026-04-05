@@ -25,6 +25,7 @@ PARAM_LABELS = {
 COLORS = {
     "ml": "#2196F3",
     "kf": "#F44336",
+    "zero": "#9E9E9E",
 }
 
 
@@ -77,12 +78,14 @@ def _bin_resolution(values, residuals, bin_edges):
 
 
 def plot_residual_histogram(ml_residuals, kf_residuals, param_name,
+                            zero_residuals=None,
                             nbins=100, range_sigma=5.0, figsize=(7, 8)):
     """Residual histogram with Gaussian core fit and ratio panel.
 
     Args:
         ml_residuals: (N,) array of (pred - truth) for ML
         kf_residuals: (N,) array of (reco - truth) for KF
+        zero_residuals: optional (N,) array for zero-prediction baseline
         param_name: one of d0, z0, phi, theta, qop
     """
     label, unit = PARAM_LABELS[param_name]
@@ -114,6 +117,15 @@ def plot_residual_histogram(ml_residuals, kf_residuals, param_name,
     ax_main.step(bin_centers, ml_norm, where="mid", color=COLORS["ml"], linewidth=1.5,
                  label=f"ML ($\\sigma$={ml_sigma:.4g} {unit})")
 
+    # Zero baseline
+    if zero_residuals is not None:
+        _, zero_sigma = _fit_gaussian_core(zero_residuals)
+        zero_counts, _ = np.histogram(zero_residuals, bins=bin_edges)
+        zero_norm = zero_counts / (zero_counts.sum() * np.diff(bin_edges)[0])
+        ax_main.step(bin_centers, zero_norm, where="mid", color=COLORS["zero"],
+                     linewidth=1.5, linestyle="--",
+                     label=f"Beam spot ($\\sigma$={zero_sigma:.4g} {unit})")
+
     # Gaussian fits
     try:
         x_fine = np.linspace(xrange[0], xrange[1], 300)
@@ -132,12 +144,17 @@ def plot_residual_histogram(ml_residuals, kf_residuals, param_name,
     ax_main.set_xlim(xrange)
     ax_main.tick_params(labelbottom=False)
 
-    # Ratio panel: ML / KF
+    # Ratio panel: ML / CKF
     with np.errstate(divide="ignore", invalid="ignore"):
         ratio = np.where(kf_norm > 0, ml_norm / kf_norm, np.nan)
-    ax_ratio.step(bin_centers, ratio, where="mid", color="black", linewidth=1)
+    ax_ratio.step(bin_centers, ratio, where="mid", color=COLORS["ml"], linewidth=1)
+    if zero_residuals is not None:
+        with np.errstate(divide="ignore", invalid="ignore"):
+            zero_ratio = np.where(kf_norm > 0, zero_norm / kf_norm, np.nan)
+        ax_ratio.step(bin_centers, zero_ratio, where="mid", color=COLORS["zero"],
+                      linewidth=1, linestyle="--")
     ax_ratio.axhline(1.0, color="gray", linestyle="--", linewidth=0.8)
-    ax_ratio.set_ylabel("ML / CKF")
+    ax_ratio.set_ylabel("X / CKF")
     ax_ratio.set_xlabel(f"{label} residual [{unit}]")
     ax_ratio.set_ylim(0, 3)
 
@@ -146,7 +163,8 @@ def plot_residual_histogram(ml_residuals, kf_residuals, param_name,
 
 
 def plot_resolution_vs_eta(ml_residuals, kf_residuals, truth_theta,
-                           param_name, n_bins=25, eta_range=(-4, 4),
+                           param_name, zero_residuals=None,
+                           n_bins=25, eta_range=(-4, 4),
                            figsize=(8, 7)):
     """Resolution vs pseudorapidity with error bars and ratio panel."""
     label, unit = PARAM_LABELS[param_name]
@@ -168,6 +186,14 @@ def plot_resolution_vs_eta(ml_residuals, kf_residuals, truth_theta,
     ax_main.errorbar(ml_c[valid], ml_res[valid], xerr=ml_hw[valid], yerr=ml_err[valid],
                      fmt="s", color=COLORS["ml"], markersize=4, linewidth=1, capsize=2, label="ML")
 
+    # Zero baseline
+    if zero_residuals is not None:
+        zr_c, zr_hw, zr_res, zr_err, _ = _bin_resolution(eta, zero_residuals, eta_edges)
+        zr_valid = valid & ~np.isnan(zr_res)
+        ax_main.errorbar(zr_c[zr_valid], zr_res[zr_valid], xerr=zr_hw[zr_valid],
+                         yerr=zr_err[zr_valid], fmt="^", color=COLORS["zero"],
+                         markersize=4, linewidth=1, capsize=2, label="Beam spot")
+
     ax_main.set_ylabel(f"{label} resolution ($\\sigma$) [{unit}]")
     ax_main.set_title(f"{label} resolution vs $\\eta$")
     ax_main.set_yscale("log")
@@ -175,7 +201,7 @@ def plot_resolution_vs_eta(ml_residuals, kf_residuals, truth_theta,
     ax_main.grid(True, alpha=0.3, which="both")
     ax_main.tick_params(labelbottom=False)
 
-    # Ratio with error propagation: ratio = ml/kf, err = ratio * sqrt((ml_err/ml)^2 + (kf_err/kf)^2)
+    # Ratio with error propagation
     with np.errstate(divide="ignore", invalid="ignore"):
         ratio = np.where(kf_res > 0, ml_res / kf_res, np.nan)
         ratio_err = np.where(
@@ -184,9 +210,23 @@ def plot_resolution_vs_eta(ml_residuals, kf_residuals, truth_theta,
             np.nan,
         )
     ax_ratio.errorbar(kf_c[valid], ratio[valid], xerr=kf_hw[valid], yerr=ratio_err[valid],
-                      fmt="ko", markersize=4, linewidth=1, capsize=2)
+                      fmt="o", color=COLORS["ml"], markersize=4, linewidth=1, capsize=2,
+                      label="ML / CKF")
+    if zero_residuals is not None:
+        with np.errstate(divide="ignore", invalid="ignore"):
+            zr_ratio = np.where(kf_res > 0, zr_res / kf_res, np.nan)
+            zr_ratio_err = np.where(
+                (kf_res > 0) & (zr_res > 0),
+                zr_ratio * np.sqrt((zr_err / zr_res)**2 + (kf_err / kf_res)**2),
+                np.nan,
+            )
+        zr_valid2 = valid & ~np.isnan(zr_ratio)
+        ax_ratio.errorbar(kf_c[zr_valid2], zr_ratio[zr_valid2], xerr=kf_hw[zr_valid2],
+                          yerr=zr_ratio_err[zr_valid2], fmt="^", color=COLORS["zero"],
+                          markersize=4, linewidth=1, capsize=2, label="BS / CKF")
+        ax_ratio.legend(fontsize=8)
     ax_ratio.axhline(1.0, color="gray", linestyle="--", linewidth=0.8)
-    ax_ratio.set_ylabel("ML / CKF")
+    ax_ratio.set_ylabel("X / CKF")
     ax_ratio.set_xlabel(r"$\eta$")
     _auto_ratio_ylim(ax_ratio, ratio[valid])
     ax_ratio.grid(True, alpha=0.3)
@@ -196,7 +236,8 @@ def plot_resolution_vs_eta(ml_residuals, kf_residuals, truth_theta,
 
 
 def plot_resolution_vs_pt(ml_residuals, kf_residuals, truth_qop, truth_theta,
-                          param_name, n_bins=20, pt_range=(0.5, 200),
+                          param_name, zero_residuals=None,
+                          n_bins=20, pt_range=(0.5, 200),
                           figsize=(8, 7)):
     """Resolution vs pT with error bars and ratio panel."""
     label, unit = PARAM_LABELS[param_name]
@@ -219,6 +260,14 @@ def plot_resolution_vs_pt(ml_residuals, kf_residuals, truth_qop, truth_theta,
     ax_main.errorbar(ml_c[valid], ml_res[valid], xerr=ml_hw[valid], yerr=ml_err[valid],
                      fmt="s", color=COLORS["ml"], markersize=4, linewidth=1, capsize=2, label="ML")
 
+    # Zero baseline
+    if zero_residuals is not None:
+        zr_c, zr_hw, zr_res, zr_err, _ = _bin_resolution(pt, zero_residuals, pt_edges)
+        zr_valid = valid & ~np.isnan(zr_res)
+        ax_main.errorbar(zr_c[zr_valid], zr_res[zr_valid], xerr=zr_hw[zr_valid],
+                         yerr=zr_err[zr_valid], fmt="^", color=COLORS["zero"],
+                         markersize=4, linewidth=1, capsize=2, label="Beam spot")
+
     ax_main.set_ylabel(f"{label} resolution ($\\sigma$) [{unit}]")
     ax_main.set_title(f"{label} resolution vs $p_T$")
     ax_main.set_xscale("log")
@@ -235,9 +284,23 @@ def plot_resolution_vs_pt(ml_residuals, kf_residuals, truth_qop, truth_theta,
             np.nan,
         )
     ax_ratio.errorbar(kf_c[valid], ratio[valid], xerr=kf_hw[valid], yerr=ratio_err[valid],
-                      fmt="ko", markersize=4, linewidth=1, capsize=2)
+                      fmt="o", color=COLORS["ml"], markersize=4, linewidth=1, capsize=2,
+                      label="ML / CKF")
+    if zero_residuals is not None:
+        with np.errstate(divide="ignore", invalid="ignore"):
+            zr_ratio = np.where(kf_res > 0, zr_res / kf_res, np.nan)
+            zr_ratio_err = np.where(
+                (kf_res > 0) & (zr_res > 0),
+                zr_ratio * np.sqrt((zr_err / zr_res)**2 + (kf_err / kf_res)**2),
+                np.nan,
+            )
+        zr_valid2 = valid & ~np.isnan(zr_ratio)
+        ax_ratio.errorbar(kf_c[zr_valid2], zr_ratio[zr_valid2], xerr=kf_hw[zr_valid2],
+                          yerr=zr_ratio_err[zr_valid2], fmt="^", color=COLORS["zero"],
+                          markersize=4, linewidth=1, capsize=2, label="BS / CKF")
+        ax_ratio.legend(fontsize=8)
     ax_ratio.axhline(1.0, color="gray", linestyle="--", linewidth=0.8)
-    ax_ratio.set_ylabel("ML / CKF")
+    ax_ratio.set_ylabel("X / CKF")
     ax_ratio.set_xlabel(r"$p_T$ [GeV]")
     _auto_ratio_ylim(ax_ratio, ratio[valid])
     ax_ratio.set_xscale("log")
@@ -305,13 +368,15 @@ def plot_summary_table(results_dict, param_names=None, figsize=(10, 4)):
     return fig
 
 
-def make_all_residual_plots(ml_pred_raw, kf_reco_raw, truth_raw, output_dir=None):
+def make_all_residual_plots(ml_pred_raw, kf_reco_raw, truth_raw,
+                            zero_pred=None, output_dir=None):
     """Generate all standard residual histogram plots.
 
     Args:
         ml_pred_raw: (N, 5) [d0, z0, phi, theta, qop] — ML predictions in physical units
         kf_reco_raw: (N, 5) — CKF reconstructed in physical units
         truth_raw: (N, 5) — truth in physical units
+        zero_pred: optional (N, 5) — zero-prediction baseline in physical units
         output_dir: if set, saves figures as PDF
 
     Returns:
@@ -323,21 +388,24 @@ def make_all_residual_plots(ml_pred_raw, kf_reco_raw, truth_raw, output_dir=None
     for i, name in enumerate(param_names):
         ml_res = ml_pred_raw[:, i] - truth_raw[:, i]
         kf_res = kf_reco_raw[:, i] - truth_raw[:, i]
+        zero_res = (zero_pred[:, i] - truth_raw[:, i]) if zero_pred is not None else None
 
         # Residual histogram
-        fig = plot_residual_histogram(ml_res, kf_res, name)
+        fig = plot_residual_histogram(ml_res, kf_res, name, zero_residuals=zero_res)
         figs[f"{name}_residual"] = fig
         if output_dir:
             fig.savefig(f"{output_dir}/{name}_residual.pdf", bbox_inches="tight")
 
         # Resolution vs eta
-        fig = plot_resolution_vs_eta(ml_res, kf_res, truth_raw[:, 3], name)
+        fig = plot_resolution_vs_eta(ml_res, kf_res, truth_raw[:, 3], name,
+                                     zero_residuals=zero_res)
         figs[f"{name}_vs_eta"] = fig
         if output_dir:
             fig.savefig(f"{output_dir}/{name}_resolution_vs_eta.pdf", bbox_inches="tight")
 
         # Resolution vs pT
-        fig = plot_resolution_vs_pt(ml_res, kf_res, truth_raw[:, 4], truth_raw[:, 3], name)
+        fig = plot_resolution_vs_pt(ml_res, kf_res, truth_raw[:, 4], truth_raw[:, 3],
+                                    name, zero_residuals=zero_res)
         figs[f"{name}_vs_pt"] = fig
         if output_dir:
             fig.savefig(f"{output_dir}/{name}_resolution_vs_pt.pdf", bbox_inches="tight")

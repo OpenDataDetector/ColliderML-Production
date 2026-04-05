@@ -79,6 +79,21 @@ def run_inference(module, dataset, batch_size=512, device="cpu"):
     return np.concatenate(all_pred_raw), np.concatenate(all_truth_raw), np.concatenate(all_reco_raw)
 
 
+def make_zero_baseline(truth_raw):
+    """Create 'predict zero' baseline: d0=0, z0=0, phi/theta/qop = truth mean.
+
+    This measures how well you'd do by just knowing the beam spot position
+    but nothing about individual track parameters.
+    """
+    zero_pred = np.zeros_like(truth_raw)
+    zero_pred[:, 0] = 0.0  # d0 = 0 (beam spot)
+    zero_pred[:, 1] = 0.0  # z0 = 0 (beam spot)
+    zero_pred[:, 2] = np.mean(truth_raw[:, 2])  # phi = mean (best constant)
+    zero_pred[:, 3] = np.mean(truth_raw[:, 3])  # theta = mean
+    zero_pred[:, 4] = 0.0  # qop = 0 (symmetric charge)
+    return zero_pred
+
+
 def compute_metrics(pred_raw, truth_raw, reco_raw, param_names=None,
                     pred_label="ml", ref_label="kf"):
     """Compute per-parameter metrics: std, IQR/1.349, MAE, bias.
@@ -106,17 +121,31 @@ def compute_metrics(pred_raw, truth_raw, reco_raw, param_names=None,
     return metrics
 
 
-def print_metrics(metrics, pred_label="ml", ref_label="kf"):
-    """Print a clean table of all metrics."""
+def print_metrics(metrics, labels=None):
+    """Print a clean table of all metrics for multiple techniques.
+
+    Args:
+        metrics: dict of {param: {label_std, label_iqr, ...}} from compute_metrics
+        labels: list of technique labels to show (default: ["ml", "kf"])
+    """
+    if labels is None:
+        labels = ["ml", "kf"]
     params = list(metrics.keys())
-    print(f"{'Param':>8s} {'STD':>10s} {'IQR':>10s} {'MAE':>10s} {'Bias':>10s} | {'STD':>10s} {'IQR':>10s} {'MAE':>10s}")
-    print(f"{'':>8s} {'--- '+pred_label+' ---':>41s} | {'--- '+ref_label+' ---':>31s}")
-    print("-" * 85)
+    # Header
+    header = f"{'Param':>8s}"
+    subheader = f"{'':>8s}"
+    for lbl in labels:
+        header += f" {'STD':>10s} {'IQR':>10s} {'MAE':>10s}"
+        subheader += f" {'--- '+lbl+' ---':>31s}"
+    print(header)
+    print(subheader)
+    print("-" * (8 + 31 * len(labels)))
     for name in params:
         m = metrics[name]
-        print(f"{name:>8s} {m[f'{pred_label}_std']:10.4g} {m[f'{pred_label}_iqr']:10.4g} "
-              f"{m[f'{pred_label}_mae']:10.4g} {m[f'{pred_label}_bias']:+10.4g} | "
-              f"{m[f'{ref_label}_std']:10.4g} {m[f'{ref_label}_iqr']:10.4g} {m[f'{ref_label}_mae']:10.4g}")
+        row = f"{name:>8s}"
+        for lbl in labels:
+            row += f" {m.get(f'{lbl}_std', float('nan')):10.4g} {m.get(f'{lbl}_iqr', float('nan')):10.4g} {m.get(f'{lbl}_mae', float('nan')):10.4g}"
+        print(row)
 
 
 def log_to_wandb(figs, metrics, args, pred_label="ml", ref_label="kf"):
@@ -179,16 +208,29 @@ def main():
         module, dataset, batch_size=args.batch_size, device=device,
     )
 
+    # Zero baseline: predict d0=0, z0=0 (beam spot only, no track fitting)
+    zero_pred = make_zero_baseline(truth_raw)
+    zero_metrics = compute_metrics(zero_pred, truth_raw, reco_raw,
+                                   pred_label="zero", ref_label="kf")
+
+    # Merge zero baseline metrics into main metrics
     metrics = compute_metrics(pred_raw, truth_raw, reco_raw)
+    for name in metrics:
+        for key in zero_metrics[name]:
+            if key.startswith("zero_"):
+                metrics[name][key] = zero_metrics[name][key]
+
     print("\n=== Resolution Summary ===")
-    print_metrics(metrics)
+    print_metrics(metrics, labels=["ml", "kf", "zero"])
 
     with open(output_dir / "metrics.json", "w") as f:
         json.dump({"dataset": args.dataset_name, "n_tracks": len(dataset),
                     "params": metrics}, f, indent=2)
 
     print("\nGenerating plots...")
-    figs = make_all_residual_plots(pred_raw, reco_raw, truth_raw, output_dir=str(output_dir))
+    figs = make_all_residual_plots(pred_raw, reco_raw, truth_raw,
+                                   zero_pred=zero_pred,
+                                   output_dir=str(output_dir))
     plt.close("all")
 
     if args.wandb_run_id:
