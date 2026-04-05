@@ -252,13 +252,39 @@ At high $|\eta|$, the transformer degrades relative to CKF (ratio $> 2$), likely
 \subsection{Cross-Evaluation Across Beam Spot Positions}
 \label{sec:crosseval}
 
-Table~\ref{tab:crosseval} presents the cross-evaluation matrix for $d_0$.
-We evaluate the nominal-trained v9 model on all three datasets.
+Table~\ref{tab:crosseval} presents the full $3\times3$ cross-evaluation matrix for $d_0$: three transformer models (identical architecture, each trained on a different beam spot dataset) evaluated on all three datasets.
 
 \begin{table}[h]
 \centering
-\caption{$d_0$ resolution (IQR$/1.349$, mm) of the nominal-trained transformer (v9) evaluated on different beam spot datasets. The zero baseline predicts $d_0 = 0$ regardless of dataset.}
+\caption{$d_0$ resolution (IQR$/1.349$, mm) cross-evaluation matrix. Each row is a model trained on that beam spot; each column is the evaluation dataset. Bold indicates on-diagonal (matched) entries. CKF uses no beam spot information and serves as the invariant baseline.}
 \label{tab:crosseval}
+\begin{tabular}{l S[table-format=1.4] S[table-format=1.4] S[table-format=1.4]}
+\toprule
+{Train $\backslash$ Eval} & {Nominal} & {Shifted \SI{25}{\micro\metre}} & {Shifted \SI{300}{\micro\metre}} \\
+\midrule
+Nominal & \textbf{0.0152} & 0.0244 & 0.0593 \\
+Shifted \SI{25}{\micro\metre} & 0.0251 & \textbf{0.0159} & 0.0510 \\
+Shifted \SI{300}{\micro\metre} & 0.0644 & 0.0638 & \textbf{0.0170} \\
+\midrule
+CKF & 0.0316 & 0.0320 & 0.0605 \\
+Zero baseline & 0.0160 & 0.0307 & 0.2785 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The matrix reveals a clear pattern:
+\begin{enumerate}
+    \item \textbf{On-diagonal} (matched beam spot): ML achieves ${\sim}0.016$~mm, roughly $2\times$ better than CKF (${\sim}0.032$~mm). This improvement is indistinguishable from the zero baseline (\SI{0.016}{\milli\metre}), confirming it derives from beam spot knowledge.
+    \item \textbf{Off-diagonal} (mismatched beam spot): ML degrades to $0.024$--$0.064$~mm, at or worse than CKF level. The \SI{300}{\micro\metre}-trained model evaluated on nominal data (\SI{0.064}{\milli\metre}) is $2\times$ \emph{worse} than CKF.
+    \item \textbf{CKF is invariant}: resolution is ${\sim}0.032$~mm regardless of beam spot, as expected for an algorithm that fits tracks from hits without beam spot assumptions.
+\end{enumerate}
+
+Table~\ref{tab:crosseval_v9} shows the same analysis for the larger v9 model with the zero baseline, confirming the pattern persists with increased model capacity.
+
+\begin{table}[h]
+\centering
+\caption{$d_0$ resolution (IQR$/1.349$, mm) of the nominal-trained v9 transformer evaluated on shifted datasets, compared to the zero baseline.}
+\label{tab:crosseval_v9}
 \begin{tabular}{l S[table-format=1.4] S[table-format=1.4] S[table-format=1.4]}
 \toprule
 {Eval dataset} & {ML (v9)} & {Zero baseline} & {CKF} \\
@@ -270,11 +296,11 @@ Shifted \SI{300}{\micro\metre} & 0.0569 & 0.2785 & 0.0592 \\
 \end{tabular}
 \end{table}
 
-Three regimes emerge:
+Three regimes emerge from the v9 evaluation:
 \begin{enumerate}
     \item \textbf{Nominal}: ML $\approx$ zero baseline $\ll$ CKF. The beam spot prior dominates.
-    \item \textbf{\SI{25}{\micro\metre} shift}: ML (\SI{0.023}{\milli\metre}) is better than zero (\SI{0.031}{\milli\metre}), suggesting some genuine track fitting emerges when the beam spot prior is partially wrong. CKF is invariant (\SI{0.032}{\milli\metre}).
-    \item \textbf{\SI{300}{\micro\metre} shift}: ML (\SI{0.057}{\milli\metre}) $\approx$ CKF (\SI{0.059}{\milli\metre}). The beam spot prior is now wrong by $24\sigma_{xy}$; ML falls back to CKF-level performance from actual track fitting. The zero baseline (\SI{0.279}{\milli\metre}) is catastrophic.
+    \item \textbf{\SI{25}{\micro\metre} shift}: ML (\SI{0.023}{\milli\metre}) is better than zero (\SI{0.031}{\milli\metre}), suggesting some genuine track fitting emerges when the beam spot prior becomes partially wrong. CKF remains invariant (\SI{0.032}{\milli\metre}).
+    \item \textbf{\SI{300}{\micro\metre} shift}: ML (\SI{0.057}{\milli\metre}) $\approx$ CKF (\SI{0.059}{\milli\metre}). The beam spot prior is now wrong by $24\sigma_{xy}$; the model falls back to its underlying track fitting ability---at roughly CKF level. The zero baseline (\SI{0.279}{\milli\metre}) is catastrophic.
 \end{enumerate}
 
 This progression reveals that the ML model has learned \emph{both} the beam spot prior and some genuine track fitting, but the prior dominates on the training distribution.
