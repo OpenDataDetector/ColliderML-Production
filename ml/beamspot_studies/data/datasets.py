@@ -23,6 +23,17 @@ N_OUTPUT = 6
 N_HIT_FEATURES = 12  # r, phi, z, vol, lay, det, dr, dphi, dr_dphi, dz_dr, u_conf, v_conf
 N_CLS_FEATURES = 8   # z_intercept, dz_dr_slope, curvature, sagitta, delta_r, delta_phi, delta_z, n_hits
 
+# Fixed output normalization scales — beam-spot-independent constants.
+# These are characteristic scales for each output parameter, chosen so that
+# normalized values are O(1). MUST be identical across all datasets.
+#   d0:        ~0.33 mm (std of truth d0 including secondaries)
+#   z0:        ~55 mm   (beam z-spread sigma_z)
+#   sin_phi:   1.0      (bounded [-1, 1])
+#   cos_phi:   1.0      (bounded [-1, 1])
+#   cot_theta: ~3.0     (typical range for |eta| < 3)
+#   qop:       ~0.43    (typical 1/p range for ttbar)
+OUTPUT_SCALES = np.array([0.33, 55.5, 1.0, 1.0, 3.0, 0.43], dtype=np.float32)
+
 
 def wrap_to_pi(x):
     return (x + np.pi) % (2 * np.pi) - np.pi
@@ -51,17 +62,42 @@ class TrackHitDataset(Dataset):
     runs with the same data skip the processing step.
     """
 
+    @staticmethod
+    def _event_range(path):
+        """Extract (start, end) event indices from filename."""
+        import re
+        m = re.search(r'events(\d+)-(\d+)', Path(path).name)
+        return (int(m.group(1)), int(m.group(2))) if m else (0, 0)
+
+    @staticmethod
+    def _sort_numeric(file_list):
+        """Sort files by numeric event start index (not lexicographic)."""
+        return sorted(file_list, key=lambda p: TrackHitDataset._event_range(p)[0])
+
     def __init__(self, parquet_base, max_hits=20, max_files=None,
-                 cache_dir=None):
+                 skip_event_range=None, numeric_sort=False, cache_dir=None):
         self.max_hits = max_hits
         parquet_base = Path(parquet_base)
 
-        track_files = sorted(glob.glob(str(parquet_base / "reco/tracks/*.parquet")))
-        hit_files = sorted(glob.glob(str(parquet_base / "reco/tracker_hits/*.parquet")))
-        particle_files = sorted(glob.glob(str(parquet_base / "truth/particles/*.parquet")))
+        sort_fn = self._sort_numeric if numeric_sort else sorted
+        track_files = sort_fn(glob.glob(str(parquet_base / "reco/tracks/*.parquet")))
+        hit_files = sort_fn(glob.glob(str(parquet_base / "reco/tracker_hits/*.parquet")))
+        particle_files = sort_fn(glob.glob(str(parquet_base / "truth/particles/*.parquet")))
 
         if not track_files:
             raise FileNotFoundError(f"No track files in {parquet_base / 'reco/tracks/'}")
+
+        if skip_event_range is not None:
+            skip_start, skip_end = skip_event_range
+            keep = []
+            for i, tf in enumerate(track_files):
+                es, ee = self._event_range(tf)
+                if ee < skip_start or es > skip_end:
+                    keep.append(i)
+            track_files = [track_files[i] for i in keep]
+            hit_files = [hit_files[i] for i in keep]
+            particle_files = [particle_files[i] for i in keep]
+            print(f"Skipped events {skip_start}-{skip_end}: {len(keep)} files remain")
 
         if max_files is not None:
             track_files = track_files[:max_files]
@@ -155,7 +191,7 @@ class TrackHitDataset(Dataset):
             print(f"Warning: could not save cache: {e}")
 
     # Bump this when normalization or feature computation changes
-    CACHE_VERSION = 4  # v4: CLS features (z_intercept, curvature, etc.)
+    CACHE_VERSION = 5  # v5: Fixed output scales (no dataset-dependent normalization)
 
     def _get_cache_path(self, track_files, max_hits, cache_dir):
         """Deterministic cache path based on file list, max_hits, and code version."""
@@ -320,15 +356,9 @@ class TrackHitDataset(Dataset):
         self._input_std = real_hits.std(dim=0).numpy().astype(np.float32)
         self._input_std[self._input_std < 1e-6] = 1.0
 
-        truth = self.truth_params.numpy()
-        self._output_scales = np.array([
-            max(np.std(truth[:, 0]), 1e-6),  # d0
-            max(np.std(truth[:, 1]), 1e-6),  # z0
-            1.0,                              # sin_phi
-            1.0,                              # cos_phi
-            max(np.std(truth[:, 4]), 1e-6),  # cot_theta (was pi for theta)
-            max(np.std(truth[:, 5]), 1e-6),  # qop
-        ], dtype=np.float32)
+        # Use fixed output scales — no dataset-dependent normalization.
+        # This ensures cross-dataset evaluation is clean.
+        self._output_scales = OUTPUT_SCALES.copy()
 
     def get_norm_stats(self):
         return {

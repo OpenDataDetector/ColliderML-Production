@@ -44,7 +44,11 @@ def load_model(checkpoint_path, device="cpu"):
 
 @torch.no_grad()
 def run_inference(module, dataset, batch_size=512, device="cpu"):
-    """Run inference, return denormalized (pred, truth, reco) in raw 5-param format."""
+    """Run inference, return denormalized (pred, truth, reco) in raw 5-param format.
+
+    Output scales are fixed constants (OUTPUT_SCALES in datasets.py),
+    identical across all datasets.
+    """
     loader = DataLoader(dataset, batch_size=batch_size, shuffle=False, num_workers=0)
     scales = module.output_scales.cpu().numpy()
 
@@ -183,6 +187,11 @@ def main():
     parser.add_argument("--parquet-base", type=str, required=True)
     parser.add_argument("--output-dir", type=str, required=True)
     parser.add_argument("--max-files", type=int, default=None)
+    parser.add_argument("--skip-event-range", type=int, nargs=2, default=None,
+                        metavar=("START", "END"),
+                        help="Skip files overlapping this event range (avoid train/eval overlap)")
+    parser.add_argument("--numeric-sort", action="store_true",
+                        help="Sort files by numeric event index (not lexicographic)")
     parser.add_argument("--batch-size", type=int, default=512)
     parser.add_argument("--dataset-name", type=str, default="eval")
     parser.add_argument("--wandb-run-id", type=str, default=None,
@@ -200,7 +209,10 @@ def main():
     module = load_model(args.checkpoint, device)
 
     print(f"Loading data from {args.parquet_base}")
-    dataset = TrackHitDataset(args.parquet_base, max_files=args.max_files)
+    skip_range = tuple(args.skip_event_range) if args.skip_event_range else None
+    dataset = TrackHitDataset(args.parquet_base, max_files=args.max_files,
+                              skip_event_range=skip_range,
+                              numeric_sort=args.numeric_sort)
     print(f"Dataset: {len(dataset)} tracks")
 
     print("Running inference...")

@@ -169,7 +169,7 @@ class TrackDataModule(pl.LightningDataModule):
 
     def __init__(self, parquet_base, max_hits=20, batch_size=256,
                  val_split=0.1, num_workers=4, seed=42, overfit_batches=0,
-                 max_files=None, max_train_samples=None):
+                 max_files=None, max_train_samples=None, numeric_sort=False):
         super().__init__()
         self.save_hyperparameters()
 
@@ -181,6 +181,7 @@ class TrackDataModule(pl.LightningDataModule):
             self.hparams.parquet_base,
             max_hits=self.hparams.max_hits,
             max_files=self.hparams.max_files,
+            numeric_sort=self.hparams.get("numeric_sort", False),
         )
         print(f"Indexed {len(self.dataset)} tracks in {time.time() - t0:.1f}s")
 
@@ -245,6 +246,8 @@ def parse_args():
     # Data
     p.add_argument("--max-files", type=int, default=None)
     p.add_argument("--max-train-samples", type=int, default=None)
+    p.add_argument("--numeric-sort", action="store_true",
+                   help="Sort files by numeric event index (not lexicographic)")
     p.add_argument("--num-workers", type=int, default=4)
     p.add_argument("--val-split", type=float, default=0.1)
     p.add_argument("--seed", type=int, default=42)
@@ -277,6 +280,7 @@ def main():
         overfit_batches=args.overfit_batches,
         max_files=args.max_files,
         max_train_samples=args.max_train_samples,
+        numeric_sort=args.numeric_sort,
     )
     data_module.setup()
 
