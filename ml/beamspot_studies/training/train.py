@@ -251,6 +251,8 @@ def parse_args():
     p.add_argument("--overfit-batches", type=int, default=0)
     p.add_argument("--patience", type=int, default=10,
                    help="Early stopping patience (epochs without val improvement)")
+    p.add_argument("--resume", action="store_true",
+                   help="Resume from last.ckpt in output-dir if it exists")
     return p.parse_args()
 
 
@@ -321,7 +323,17 @@ def main():
         overfit_batches=args.overfit_batches if args.overfit_batches > 0 else 0.0,
     )
 
-    trainer.fit(module, data_module)
+    # Resume from checkpoint if requested
+    ckpt_path = None
+    if args.resume:
+        last_ckpt = output_dir / "checkpoints" / "last.ckpt"
+        if last_ckpt.exists():
+            ckpt_path = str(last_ckpt)
+            log.info(f"Resuming from {ckpt_path}")
+        else:
+            log.info("No last.ckpt found, starting fresh")
+
+    trainer.fit(module, data_module, ckpt_path=ckpt_path)
     log.info(f"Training complete. Best model: {checkpoint_cb.best_model_path}")
 
 
