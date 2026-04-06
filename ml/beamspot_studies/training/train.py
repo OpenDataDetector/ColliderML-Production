@@ -64,6 +64,14 @@ class TrackRegressionModule(pl.LightningModule):
             dropout=self.hparams.dropout,
         )
 
+        # Optional warm-start: load per-track model weights from a checkpoint.
+        # Used for Phase 6 ablation (same warm-start as cross-track, but no cross
+        # attention) so improvements can be cleanly attributed to the architectural
+        # change rather than extra epochs of training.
+        init_ckpt = hparams_dict.get("init_from_checkpoint", None)
+        if init_ckpt:
+            self._load_track_model_weights(init_ckpt)
+
         if self.hparams.loss == "huber":
             self.criterion = TrackHuberLoss(delta=1.0)
         elif self.hparams.loss == "truncated_huber":
@@ -80,6 +88,33 @@ class TrackRegressionModule(pl.LightningModule):
         self._val_preds = []
         self._val_truths_norm = []
         self._val_recos = []
+
+    def _load_track_model_weights(self, ckpt_path):
+        """Load per-track TrackTransformer weights from a checkpoint.
+
+        Strips the ``model.`` prefix from keys so that the checkpoint's
+        ``model.hit_embed``, ``model.transformer``, ``model.head`` params
+        land in ``self.model.*``. Extra keys from a cross-track checkpoint
+        (e.g. ``model.track_model.*``, ``model.cross_encoder.*``) are ignored
+        via ``strict=False``.
+        """
+        log = logging.getLogger("beamspot_train")
+        log.info(f"Warm-starting per-track model from {ckpt_path}")
+        ckpt = torch.load(ckpt_path, map_location="cpu", weights_only=False)
+        state = ckpt["state_dict"]
+        track_state = {
+            k[len("model."):]: v
+            for k, v in state.items()
+            if k.startswith("model.") and not k.startswith("model.track_model.")
+            and not k.startswith("model.cross_encoder.") and not k.startswith("model.cross_pos_embed.")
+            and not k.startswith("model.evt_token")
+        }
+        missing, unexpected = self.model.load_state_dict(track_state, strict=False)
+        if missing:
+            log.info(f"  Missing keys: {len(missing)}")
+        if unexpected:
+            log.info(f"  Unexpected keys: {len(unexpected)}")
+        log.info(f"  Loaded {len(track_state) - len(unexpected)} parameters.")
 
     def forward(self, hit_features, padding_mask, cls_features=None):
         return self.model(hit_features, padding_mask, cls_features)
@@ -138,14 +173,26 @@ class TrackRegressionModule(pl.LightningModule):
         train_loss = getattr(self, "_last_train_loss", float("nan"))
         val_loss = self.trainer.callback_metrics.get("val/loss", float("nan"))
 
+        from scipy.stats import iqr as iqr_stat
+
         parts = [f"Epoch {self.current_epoch:4d} | train_loss={train_loss:.6f} val_loss={val_loss:.6f}"]
         for i, name in enumerate(PARAM_NAMES_RAW):
-            res_ml = np.std(pred_raw[:, i] - truth_raw[:, i])
-            res_kf = np.std(reco_raw[:, i] - truth_raw[:, i])
-            self.log(f"val/{name}_resolution_ml", res_ml)
-            self.log(f"val/{name}_resolution_kf", res_kf)
-            self.log(f"val/{name}_bias_ml", np.mean(pred_raw[:, i] - truth_raw[:, i]))
-            parts.append(f"{name}_res_ml={res_ml:.4g} res_kf={res_kf:.4g}")
+            ml_res = pred_raw[:, i] - truth_raw[:, i]
+            kf_res = reco_raw[:, i] - truth_raw[:, i]
+
+            # std (legacy, sensitive to outliers)
+            std_ml = float(np.std(ml_res))
+            std_kf = float(np.std(kf_res))
+            # IQR/1.349 (robust core resolution — what truncated Huber actually optimizes)
+            iqr_ml = float(iqr_stat(ml_res) / 1.349)
+            iqr_kf = float(iqr_stat(kf_res) / 1.349)
+
+            self.log(f"val/{name}_resolution_ml", std_ml)  # legacy std-based metric (kept for backward compat)
+            self.log(f"val/{name}_resolution_kf", std_kf)
+            self.log(f"val/{name}_iqr_ml", iqr_ml)  # NEW: core resolution
+            self.log(f"val/{name}_iqr_kf", iqr_kf)
+            self.log(f"val/{name}_bias_ml", float(np.mean(ml_res)))
+            parts.append(f"{name}_res_ml={std_ml:.4g} iqr_ml={iqr_ml:.4g} res_kf={std_kf:.4g}")
 
         log.info(" | ".join(parts))
         for h in log.handlers:
@@ -178,14 +225,10 @@ class EventTrackRegressionModule(TrackRegressionModule):
     """
 
     def __init__(self, hparams_dict, output_scales=None):
-        # Initialize the base class to get TrackTransformer + head set up,
-        # then wrap in EventTrackTransformer.
+        # Initialize the base class: constructs TrackTransformer, warm-starts
+        # its weights from --init-from-checkpoint if set, then we wrap it in
+        # an EventTrackTransformer for cross-track attention.
         super().__init__(hparams_dict, output_scales=output_scales)
-
-        # Optional warm-start for the per-track encoder BEFORE wrapping.
-        init_ckpt = hparams_dict.get("init_from_checkpoint", None)
-        if init_ckpt:
-            self._load_track_model_weights(init_ckpt)
 
         from models.cross_track_transformer import EventTrackTransformer
         self.model = EventTrackTransformer(
@@ -194,26 +237,6 @@ class EventTrackRegressionModule(TrackRegressionModule):
             n_cross_heads=hparams_dict.get("n_heads", 8),
             max_tracks=hparams_dict.get("max_tracks_per_event", 128),
         )
-
-    def _load_track_model_weights(self, ckpt_path):
-        """Load per-track TrackTransformer weights from a checkpoint."""
-        log = logging.getLogger("beamspot_train")
-        log.info(f"Warm-starting per-track model from {ckpt_path}")
-        ckpt = torch.load(ckpt_path, map_location="cpu", weights_only=False)
-        state = ckpt["state_dict"]
-        # The base class stores weights under `self.model.*`, so we need to
-        # strip that prefix and load into the current (still-base) self.model.
-        track_state = {
-            k[len("model."):]: v
-            for k, v in state.items()
-            if k.startswith("model.")
-        }
-        missing, unexpected = self.model.load_state_dict(track_state, strict=False)
-        if missing:
-            log.info(f"  Missing keys (will be randomly initialized): {len(missing)}")
-        if unexpected:
-            log.info(f"  Unexpected keys (ignored): {len(unexpected)}")
-        log.info(f"  Loaded {len(track_state) - len(unexpected)} parameters.")
 
     def forward(self, hit_features, padding_mask, cls_features=None, track_mask=None):
         return self.model(hit_features, padding_mask, cls_features, track_mask)
