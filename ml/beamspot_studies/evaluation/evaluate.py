@@ -31,15 +31,37 @@ from evaluation.plotting import make_all_residual_plots
 
 
 def load_model(checkpoint_path, device="cpu"):
-    """Load trained model from checkpoint."""
+    """Load trained model from checkpoint.
+
+    Auto-detects whether the checkpoint is a per-track or a cross-track model
+    by looking at the `cross_track` hparam. Builds the appropriate Lightning
+    module and loads the state dict.
+    """
     ckpt = torch.load(checkpoint_path, map_location=device, weights_only=False)
     hparams = ckpt.get("hyper_parameters", {})
     state = ckpt.get("state_dict", {})
-    module = TrackRegressionModule(hparams_dict=hparams)
+    is_cross_track = bool(hparams.get("cross_track", False))
+    if is_cross_track:
+        from training.train import EventTrackRegressionModule  # local import to avoid cycles
+        module = EventTrackRegressionModule(hparams_dict=hparams)
+    else:
+        module = TrackRegressionModule(hparams_dict=hparams)
     module.load_state_dict(state, strict=False)
     module.eval()
     module.to(device)
+    module._is_cross_track = is_cross_track  # tag for run_inference
     return module
+
+
+def _batch_to_raw(m):
+    """Vectorized sin/cos → phi and cot_theta → theta conversion.
+
+    Input is an (N, 6) array with columns [d0, z0, sin_phi, cos_phi, cot_theta, qop];
+    returns an (N, 5) array with columns [d0, z0, phi, theta, qop].
+    """
+    phi = np.arctan2(m[:, 2], m[:, 3])
+    theta = np.arctan2(1.0, m[:, 4])
+    return np.stack([m[:, 0], m[:, 1], phi, theta, m[:, 5]], axis=1)
 
 
 @torch.no_grad()
@@ -47,10 +69,39 @@ def run_inference(module, dataset, batch_size=512, device="cpu"):
     """Run inference, return denormalized (pred, truth, reco) in raw 5-param format.
 
     Output scales are fixed constants (OUTPUT_SCALES in datasets.py),
-    identical across all datasets.
+    identical across all datasets. Auto-detects whether the model is a
+    per-track or cross-track model by checking `module._is_cross_track`.
     """
-    loader = DataLoader(dataset, batch_size=batch_size, shuffle=False, num_workers=0)
     scales = module.output_scales.cpu().numpy()
+    is_cross = getattr(module, "_is_cross_track", False)
+
+    if is_cross:
+        # Cross-track: need event_ids on the dataset and event-level batching.
+        underlying = dataset.dataset if hasattr(dataset, "dataset") else dataset
+        if getattr(underlying, "event_ids", None) is None:
+            raise ValueError(
+                "Cross-track model requires dataset with event_ids. Delete "
+                ".track_cache_*.pt to regenerate the cache."
+            )
+        from data.event_collate import make_event_dataloader
+        # If dataset is a Subset, we need event_ids for the subset slice
+        if hasattr(dataset, "indices"):
+            sub_event_ids = underlying.event_ids[torch.tensor(dataset.indices, dtype=torch.long)]
+        else:
+            sub_event_ids = underlying.event_ids
+        hparams = module.hparams
+        loader = make_event_dataloader(
+            dataset,
+            event_ids=sub_event_ids,
+            batch_size_events=int(hparams.get("batch_size_events", 8)),
+            max_tracks_per_event=int(hparams.get("max_tracks_per_event", 128)),
+            shuffle=False,
+            num_workers=0,
+            pin_memory=False,
+            drop_last=False,
+        )
+    else:
+        loader = DataLoader(dataset, batch_size=batch_size, shuffle=False, num_workers=0)
 
     all_pred_raw, all_truth_raw, all_reco_raw = [], [], []
 
@@ -58,27 +109,34 @@ def run_inference(module, dataset, batch_size=512, device="cpu"):
         cls_feats = batch.get("cls_features", None)
         if cls_feats is not None:
             cls_feats = cls_feats.to(device)
-        pred_norm = module(
-            batch["hit_features"].to(device),
-            batch["padding_mask"].to(device),
-            cls_feats,
-        ).cpu().numpy()
 
-        truth_norm = batch["truth_params"].numpy()
-        reco_model = batch["reco_params"].numpy()
+        if is_cross:
+            track_mask = batch["track_mask"].to(device)
+            pred_norm, _ = module.model(
+                batch["hit_features"].to(device),
+                batch["padding_mask"].to(device),
+                cls_feats,
+                track_mask,
+            )
+            valid = track_mask.reshape(-1).cpu().numpy().astype(bool)
+            pred_norm = pred_norm.reshape(-1, pred_norm.shape[-1]).cpu().numpy()[valid]
+            truth_norm = batch["truth_params"].reshape(-1, batch["truth_params"].shape[-1]).numpy()[valid]
+            reco_model = batch["reco_params"].reshape(-1, batch["reco_params"].shape[-1]).numpy()[valid]
+        else:
+            pred_norm = module(
+                batch["hit_features"].to(device),
+                batch["padding_mask"].to(device),
+                cls_feats,
+            ).cpu().numpy()
+            truth_norm = batch["truth_params"].numpy()
+            reco_model = batch["reco_params"].numpy()
 
         pred_denorm = pred_norm * scales
         truth_denorm = truth_norm * scales
 
-        # Vectorized sin/cos → phi conversion
-        def batch_to_raw(m):
-            phi = np.arctan2(m[:, 2], m[:, 3])
-            theta = np.arctan2(1.0, m[:, 4])  # theta = atan2(1, cot_theta)
-            return np.stack([m[:, 0], m[:, 1], phi, theta, m[:, 5]], axis=1)
-
-        all_pred_raw.append(batch_to_raw(pred_denorm))
-        all_truth_raw.append(batch_to_raw(truth_denorm))
-        all_reco_raw.append(batch_to_raw(reco_model))
+        all_pred_raw.append(_batch_to_raw(pred_denorm))
+        all_truth_raw.append(_batch_to_raw(truth_denorm))
+        all_reco_raw.append(_batch_to_raw(reco_model))
 
     return np.concatenate(all_pred_raw), np.concatenate(all_truth_raw), np.concatenate(all_reco_raw)
 

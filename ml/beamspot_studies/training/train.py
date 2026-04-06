@@ -165,11 +165,93 @@ class TrackRegressionModule(pl.LightningModule):
         return {"optimizer": optimizer, "lr_scheduler": {"scheduler": scheduler, "interval": "epoch"}}
 
 
+class EventTrackRegressionModule(TrackRegressionModule):
+    """Cross-track version of the regression module.
+
+    Wraps the per-track TrackTransformer in an EventTrackTransformer that adds
+    a small cross-track attention block on top of per-track embeddings. The
+    per-track encoder is optionally warm-started from an existing checkpoint
+    via `--init-from-checkpoint`.
+
+    Batches are event-level: dict with keys shaped `(B_ev, T, ...)` plus a
+    `track_mask` for padded track slots. Loss is computed only on valid tracks.
+    """
+
+    def __init__(self, hparams_dict, output_scales=None):
+        # Initialize the base class to get TrackTransformer + head set up,
+        # then wrap in EventTrackTransformer.
+        super().__init__(hparams_dict, output_scales=output_scales)
+
+        # Optional warm-start for the per-track encoder BEFORE wrapping.
+        init_ckpt = hparams_dict.get("init_from_checkpoint", None)
+        if init_ckpt:
+            self._load_track_model_weights(init_ckpt)
+
+        from models.cross_track_transformer import EventTrackTransformer
+        self.model = EventTrackTransformer(
+            track_model=self.model,
+            n_cross_layers=hparams_dict.get("n_cross_layers", 2),
+            n_cross_heads=hparams_dict.get("n_heads", 8),
+            max_tracks=hparams_dict.get("max_tracks_per_event", 128),
+        )
+
+    def _load_track_model_weights(self, ckpt_path):
+        """Load per-track TrackTransformer weights from a checkpoint."""
+        log = logging.getLogger("beamspot_train")
+        log.info(f"Warm-starting per-track model from {ckpt_path}")
+        ckpt = torch.load(ckpt_path, map_location="cpu", weights_only=False)
+        state = ckpt["state_dict"]
+        # The base class stores weights under `self.model.*`, so we need to
+        # strip that prefix and load into the current (still-base) self.model.
+        track_state = {
+            k[len("model."):]: v
+            for k, v in state.items()
+            if k.startswith("model.")
+        }
+        missing, unexpected = self.model.load_state_dict(track_state, strict=False)
+        if missing:
+            log.info(f"  Missing keys (will be randomly initialized): {len(missing)}")
+        if unexpected:
+            log.info(f"  Unexpected keys (ignored): {len(unexpected)}")
+        log.info(f"  Loaded {len(track_state) - len(unexpected)} parameters.")
+
+    def forward(self, hit_features, padding_mask, cls_features=None, track_mask=None):
+        return self.model(hit_features, padding_mask, cls_features, track_mask)
+
+    def _shared_step(self, batch):
+        cls_feats = batch.get("cls_features", None)
+        track_mask = batch["track_mask"]  # (B_ev, T)
+        pred, _ = self.model(
+            batch["hit_features"],
+            batch["padding_mask"],
+            cls_feats,
+            track_mask,
+        )  # (B_ev, T, 6)
+        # Flatten only the valid tracks before computing loss
+        valid = track_mask.reshape(-1)  # (B_ev*T,)
+        pred_flat = pred.reshape(-1, pred.shape[-1])[valid]
+        truth_flat = batch["truth_params"].reshape(-1, batch["truth_params"].shape[-1])[valid]
+        loss = self.criterion(pred_flat, truth_flat)
+        return pred_flat, loss
+
+    def validation_step(self, batch, batch_idx):
+        pred_flat, loss = self._shared_step(batch)
+        self.log("val/loss", loss, prog_bar=True, sync_dist=True)
+        # Collect flattened preds and aligned truths/recos for metric computation
+        valid = batch["track_mask"].reshape(-1)
+        truth_flat = batch["truth_params"].reshape(-1, batch["truth_params"].shape[-1])[valid]
+        reco_flat = batch["reco_params"].reshape(-1, batch["reco_params"].shape[-1])[valid]
+        self._val_preds.append(pred_flat.detach().cpu())
+        self._val_truths_norm.append(truth_flat.detach().cpu())
+        self._val_recos.append(reco_flat.detach().cpu())
+
+
 class TrackDataModule(pl.LightningDataModule):
 
     def __init__(self, parquet_base, max_hits=20, batch_size=256,
                  val_split=0.1, num_workers=4, seed=42, overfit_batches=0,
-                 max_files=None, max_train_samples=None, numeric_sort=False):
+                 max_files=None, max_train_samples=None, numeric_sort=False,
+                 cross_track=False, batch_size_events=8, max_tracks_per_event=128):
         super().__init__()
         self.save_hyperparameters()
 
@@ -186,8 +268,52 @@ class TrackDataModule(pl.LightningDataModule):
         print(f"Indexed {len(self.dataset)} tracks in {time.time() - t0:.1f}s")
 
         n = len(self.dataset)
-        n_val = int(n * self.hparams.val_split)
+        cross_track = self.hparams.get("cross_track", False)
 
+        if cross_track:
+            # Cross-track training requires event_ids and an event-level split.
+            if getattr(self.dataset, "event_ids", None) is None:
+                raise ValueError(
+                    "Cached dataset missing event_ids. Delete .track_cache_*.pt "
+                    "files to regenerate with event grouping for cross-track training."
+                )
+
+            event_ids_np = self.dataset.event_ids.numpy()
+            unique_events = np.unique(event_ids_np)
+            n_events = len(unique_events)
+            n_val_events = max(1, int(n_events * self.hparams.val_split))
+
+            generator = torch.Generator().manual_seed(self.hparams.seed)
+            perm = torch.randperm(n_events, generator=generator).tolist()
+            val_event_set = set(int(unique_events[i]) for i in perm[:n_val_events])
+            train_event_set = set(int(unique_events[i]) for i in perm[n_val_events:])
+
+            # Map events -> track indices into the full dataset
+            train_indices = [i for i, eid in enumerate(event_ids_np) if int(eid) in train_event_set]
+            val_indices = [i for i, eid in enumerate(event_ids_np) if int(eid) in val_event_set]
+
+            if self.hparams.overfit_batches > 0:
+                # Use a small slice of events for overfit tests
+                n_overfit_events = max(2, self.hparams.batch_size_events * self.hparams.overfit_batches)
+                overfit_set = set(int(unique_events[i]) for i in perm[:n_overfit_events])
+                train_indices = [i for i, eid in enumerate(event_ids_np) if int(eid) in overfit_set]
+                val_indices = train_indices
+
+            self.train_dataset = Subset(self.dataset, train_indices)
+            self.val_dataset = Subset(self.dataset, val_indices)
+            # Cache the per-subset event_ids tensors for the EventBatchSampler
+            self._train_event_ids = self.dataset.event_ids[torch.tensor(train_indices, dtype=torch.long)]
+            self._val_event_ids = self.dataset.event_ids[torch.tensor(val_indices, dtype=torch.long)]
+            n_train_events = len({int(e) for e in self._train_event_ids.tolist()})
+            n_val_events_actual = len({int(e) for e in self._val_event_ids.tolist()})
+            print(
+                f"Train: {len(self.train_dataset)} tracks in {n_train_events} events, "
+                f"Val: {len(self.val_dataset)} tracks in {n_val_events_actual} events"
+            )
+            return
+
+        # ----- per-track split (original behavior) -----------------------
+        n_val = int(n * self.hparams.val_split)
         generator = torch.Generator().manual_seed(self.hparams.seed)
         indices = torch.randperm(n, generator=generator).tolist()
 
@@ -207,6 +333,19 @@ class TrackDataModule(pl.LightningDataModule):
         print(f"Train: {len(self.train_dataset)}, Val: {len(self.val_dataset)}")
 
     def train_dataloader(self):
+        if self.hparams.get("cross_track", False):
+            from data.event_collate import make_event_dataloader
+            return make_event_dataloader(
+                self.train_dataset,
+                event_ids=self._train_event_ids,
+                batch_size_events=self.hparams.batch_size_events,
+                max_tracks_per_event=self.hparams.max_tracks_per_event,
+                shuffle=True,
+                num_workers=self.hparams.num_workers,
+                pin_memory=True,
+                seed=self.hparams.seed,
+                drop_last=True,
+            )
         return DataLoader(
             self.train_dataset, batch_size=self.hparams.batch_size, shuffle=True,
             num_workers=self.hparams.num_workers, pin_memory=True, drop_last=True,
@@ -214,6 +353,19 @@ class TrackDataModule(pl.LightningDataModule):
         )
 
     def val_dataloader(self):
+        if self.hparams.get("cross_track", False):
+            from data.event_collate import make_event_dataloader
+            return make_event_dataloader(
+                self.val_dataset,
+                event_ids=self._val_event_ids,
+                batch_size_events=self.hparams.batch_size_events,
+                max_tracks_per_event=self.hparams.max_tracks_per_event,
+                shuffle=False,
+                num_workers=self.hparams.num_workers,
+                pin_memory=True,
+                seed=self.hparams.seed,
+                drop_last=False,
+            )
         return DataLoader(
             self.val_dataset, batch_size=self.hparams.batch_size, shuffle=False,
             num_workers=self.hparams.num_workers, pin_memory=True,
@@ -243,6 +395,17 @@ def parse_args():
     p.add_argument("--weight-decay", type=float, default=1e-5)
     p.add_argument("--grad-clip", type=float, default=1.0)
     p.add_argument("--loss", choices=["huber", "truncated_huber", "mse"], default="huber")
+    # Cross-track attention (Phase 6)
+    p.add_argument("--cross-track", action="store_true",
+                   help="Enable event-level cross-track attention (Phase 6)")
+    p.add_argument("--batch-size-events", type=int, default=8,
+                   help="Events per batch when --cross-track is set")
+    p.add_argument("--max-tracks-per-event", type=int, default=128,
+                   help="Max tracks per event for cross-track padding")
+    p.add_argument("--n-cross-layers", type=int, default=2,
+                   help="Number of cross-track transformer encoder layers")
+    p.add_argument("--init-from-checkpoint", type=str, default=None,
+                   help="Load per-track model weights from this checkpoint (warm start)")
     # Data
     p.add_argument("--max-files", type=int, default=None)
     p.add_argument("--max-train-samples", type=int, default=None)
@@ -281,6 +444,9 @@ def main():
         max_files=args.max_files,
         max_train_samples=args.max_train_samples,
         numeric_sort=args.numeric_sort,
+        cross_track=args.cross_track,
+        batch_size_events=args.batch_size_events,
+        max_tracks_per_event=args.max_tracks_per_event,
     )
     data_module.setup()
 
@@ -289,10 +455,16 @@ def main():
     log.info(f"Output scales: {norm_stats['output_scales']}")
 
     # Model
-    module = TrackRegressionModule(
-        hparams_dict=vars(args),
-        output_scales=norm_stats["output_scales"],
-    )
+    if args.cross_track:
+        module = EventTrackRegressionModule(
+            hparams_dict=vars(args),
+            output_scales=norm_stats["output_scales"],
+        )
+    else:
+        module = TrackRegressionModule(
+            hparams_dict=vars(args),
+            output_scales=norm_stats["output_scales"],
+        )
     n_params = sum(p.numel() for p in module.parameters())
     log.info(f"Model parameters: {n_params:,}")
     log.info(f"Train: {len(data_module.train_dataset)}, Val: {len(data_module.val_dataset)}")

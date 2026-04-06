@@ -116,6 +116,8 @@ class TrackHitDataset(Dataset):
             self.padding_mask = cached["padding_mask"]
             self.n_hits = cached["n_hits"]
             self.cls_features = cached["cls_features"]
+            # Optional field (added for cross-track training). Old caches lack this.
+            self.event_ids = cached.get("event_ids", None)
             self._input_std = cached["input_std"]
             self._cls_std = cached["cls_std"]
             self._output_scales = cached["output_scales"]
@@ -127,6 +129,10 @@ class TrackHitDataset(Dataset):
         t0 = time.time()
 
         all_feats, all_truth, all_reco, all_mask, all_nhits, all_cls = [], [], [], [], [], []
+        all_event_ids = []  # one entry per emitted track, for cross-track grouping
+
+        # Use a global event counter so event ids are unique across files
+        global_event_counter = 0
 
         for fi in range(len(track_files)):
             tracks_tbl = pq.read_table(track_files[fi])
@@ -134,10 +140,14 @@ class TrackHitDataset(Dataset):
             particles_tbl = pq.read_table(particle_files[fi])
 
             for ei in range(len(tracks_tbl)):
+                global_eid = global_event_counter + ei
                 self._process_event(
                     tracks_tbl, hits_tbl, particles_tbl, ei,
                     all_feats, all_truth, all_reco, all_mask, all_nhits, all_cls,
+                    out_event_ids=all_event_ids, event_id=global_eid,
                 )
+
+            global_event_counter += len(tracks_tbl)
 
             if (fi + 1) % 5 == 0 or fi == len(track_files) - 1:
                 print(f"  File {fi+1}/{len(track_files)}: {len(all_feats)} tracks so far")
@@ -152,6 +162,7 @@ class TrackHitDataset(Dataset):
         self.padding_mask = torch.from_numpy(np.stack(all_mask))    # (N, max_hits)
         self.n_hits = torch.tensor(all_nhits, dtype=torch.long)     # (N,)
         self.cls_features = torch.from_numpy(np.stack(all_cls))     # (N, N_CLS_FEATURES)
+        self.event_ids = torch.tensor(all_event_ids, dtype=torch.long)  # (N,) — one global event id per track
 
         # Compute normalization (scale only, no mean shift)
         self._compute_normalization()
@@ -182,6 +193,7 @@ class TrackHitDataset(Dataset):
                 "padding_mask": self.padding_mask,
                 "n_hits": self.n_hits,
                 "cls_features": self.cls_features,
+                "event_ids": self.event_ids,
                 "input_std": self._input_std,
                 "cls_std": self._cls_std,
                 "output_scales": self._output_scales,
@@ -200,8 +212,13 @@ class TrackHitDataset(Dataset):
         return Path(cache_dir) / f".track_cache_{h}.pt"
 
     def _process_event(self, tracks_tbl, hits_tbl, particles_tbl, ei,
-                       out_feats, out_truth, out_reco, out_mask, out_nhits, out_cls):
-        """Extract all valid tracks from one event, appending to output lists."""
+                       out_feats, out_truth, out_reco, out_mask, out_nhits, out_cls,
+                       out_event_ids=None, event_id=None):
+        """Extract all valid tracks from one event, appending to output lists.
+
+        If out_event_ids is provided (and event_id is set), also appends the
+        given event_id once per emitted track for cross-track grouping.
+        """
         def to_np(col, idx, dtype=np.float32):
             return np.array(col[idx].as_py(), dtype=dtype)
 
@@ -344,6 +361,8 @@ class TrackHitDataset(Dataset):
             out_mask.append(mask)
             out_nhits.append(n_hits)
             out_cls.append(cls_feats)
+            if out_event_ids is not None and event_id is not None:
+                out_event_ids.append(int(event_id))
 
     def _compute_normalization(self):
         """Compute input/output normalization scales from the full dataset.

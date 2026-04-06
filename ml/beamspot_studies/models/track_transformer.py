@@ -76,15 +76,16 @@ class TrackTransformer(nn.Module):
             nn.Linear(d_ff, output_dim),
         )
 
-    def forward(self, hit_features, padding_mask, cls_features=None):
-        """
+    def encode(self, hit_features, padding_mask, cls_features=None):
+        """Run everything except the output head and return the CLS embedding.
+
         Args:
             hit_features: (B, max_hits, input_dim) — normalized hit features
             padding_mask: (B, max_hits) bool — True for real hits
             cls_features: (B, cls_input_dim) optional — track-level summary features
 
         Returns:
-            (B, output_dim) — predicted normalized track parameters
+            (B, d_model) — per-track CLS embedding from the encoder.
         """
         B = hit_features.shape[0]
 
@@ -106,4 +107,17 @@ class TrackTransformer(nn.Module):
 
         x = self.transformer(x, src_key_padding_mask=key_padding_mask)
 
-        return self.head(x[:, 0])
+        return x[:, 0]  # (B, d_model)
+
+    def forward(self, hit_features, padding_mask, cls_features=None):
+        """
+        Args:
+            hit_features: (B, max_hits, input_dim) — normalized hit features
+            padding_mask: (B, max_hits) bool — True for real hits
+            cls_features: (B, cls_input_dim) optional — track-level summary features
+
+        Returns:
+            (B, output_dim) — predicted normalized track parameters
+        """
+        cls_out = self.encode(hit_features, padding_mask, cls_features)
+        return self.head(cls_out)
