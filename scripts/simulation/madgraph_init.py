@@ -55,6 +55,18 @@ def generate_madgraph_process(config, scratch_dir, logger):
     """
     process_name = f"{config.dataset}_{config.version}"
     mg_base_path = Path(config.mg_base_path)
+    if not (mg_base_path / "bin" / "mg5_aMC").exists():
+        # Fall back to discovery: the container has exactly one madgraph install
+        # under /spack/opt/spack/*/madgraph5amc-*/; the spack hash can change
+        # between image rebuilds, so don't rely on the hardcoded config path.
+        import glob
+        candidates = sorted(glob.glob("/spack/opt/spack/*/madgraph5amc-*/bin/mg5_aMC"))
+        if candidates:
+            mg_base_path = Path(candidates[0]).parent.parent
+            logger.warning(
+                f"Configured mg_base_path {config.mg_base_path} not found; "
+                f"auto-discovered {mg_base_path}"
+            )
     mg5_exe = mg_base_path / "bin" / "mg5_aMC"
 
     mg_model_cmd = f"import model {config.mg_model}"
