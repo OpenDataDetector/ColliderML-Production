@@ -1,0 +1,35 @@
+# Simulation config for beam spot study: randomized xy (sigma=300 um)
+# Reuses same HepMC files as hard_scatter/ttbar/v1, but inflates vertexSigma
+# so each event's primary vertex is drawn from a wide Gaussian centered at origin.
+# Intended to train a beam-spot-invariant model for Phase 4/5 of the beam spot study.
+# Based on hard_scatter/ttbar/simulation_slurm_hardscatter_config.yaml
+campaign: "beamspot_studies"
+dataset: "ttbar_randomized_xy"
+version: "v1"
+stage: "simulation"
+job_config:
+  n_runs: 50
+  runs_per_node: 16
+  time_limit: "00:30:00"
+  qos: "debug"
+  execution_mode: "multi_node_slurm"
+  depends_on:
+
+validation_config:
+
+# Stage-specific configurations
+events: 200
+input_filename: events.hepmc
+threads: 8
+minimalKineticEnergy: 0.1
+truthParticleHandler: "Geant4FullTruthParticleHandler"
+
+# Vertex smearing configuration: no fixed shift, sigma_xy inflated to 300 um (24x nominal).
+# Each event's primary vertex is sampled from N(0, 300 um) in x and y,
+# forcing the model to learn true track fitting rather than memorizing a beam spot.
+vertexOffset: [0.0, 0.0, 0.0, 0.0]  # x, y, z, t in mm
+vertexSigma: [0.3, 0.3, 55.5, 0.185]  # x, y, z, t in mm
+
+# DDSim verbosity control
+ddsim_printLevel: 6
+filter_g4_warnings: true
