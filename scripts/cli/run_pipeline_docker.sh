@@ -51,6 +51,22 @@ if [ ! -d "$REPO_ROOT/$CONFIG_BASE" ]; then
     exit 1
 fi
 
+# Read campaign/dataset/version from the convert_all.yaml so stages 1-3 write
+# output to the same path that the postprocessing stage reads from. The
+# convert_all step builds its input_base_dir as:
+#   <common.output_base_dir>/<campaign>/<dataset>/<version>/runs/<run_id>
+# so we mirror that structure for the simulation output.
+_convert_cfg="$REPO_ROOT/$CONFIG_BASE/convert_all.yaml"
+CAMPAIGN="$(awk -F'"' '/^campaign:/ {print $2; exit}' "$_convert_cfg")"
+DATASET="$(awk -F'"' '/^dataset:/ {print $2; exit}' "$_convert_cfg")"
+VERSION="$(awk -F'"' '/^version:/ {print $2; exit}' "$_convert_cfg")"
+if [ -z "$CAMPAIGN" ] || [ -z "$DATASET" ] || [ -z "$VERSION" ]; then
+    echo "ERROR: Could not read campaign/dataset/version from $_convert_cfg"
+    exit 1
+fi
+RUNS_SUBPATH="$CAMPAIGN/$DATASET/$VERSION/runs"
+RUN_ID="${RUN_ID:-0}"
+
 mkdir -p "$OUTPUT_DIR"
 
 # --- Ensure cache directory exists ---
@@ -106,6 +122,16 @@ run_stage() {
         return 0
     fi
 
+    # Simulation stages take --output/--output-subdir/--seed and write to
+    # /output/<campaign>/<dataset>/<version>/runs/<run_id>/ so the postprocessing
+    # stage (driven entirely by the YAML config) can find them.
+    local stage_args
+    if [[ "$stage_script" == postprocessing/* ]]; then
+        stage_args="--config /workspace/$config_file ${extra_args[*]:-}"
+    else
+        stage_args="--config /workspace/$config_file --output /output/$RUNS_SUBPATH --output-subdir $RUN_ID --seed $SEED ${extra_args[*]:-}"
+    fi
+
     docker run --rm \
         -v "$REPO_ROOT":/workspace \
         -v "$OUTPUT_DIR":/output \
@@ -121,12 +147,7 @@ run_stage() {
             source /workspace/scripts/cli/setup_container_env.sh
 
             cd /workspace/scripts/$(dirname "$stage_script")
-            python3 $(basename "$stage_script") \
-                --config /workspace/$config_file \
-                --output /output/runs \
-                --output-subdir 0 \
-                --seed $SEED \
-                ${extra_args[*]:-}
+            python3 $(basename "$stage_script") $stage_args
         "
 
     echo "  DONE: $stage_name"
@@ -163,10 +184,12 @@ case "$CHANNEL" in
 
         # Move MadGraph HepMC output to the run directory where Pythia expects it.
         # MadGraph gen stages files to runs/all/0/ (multi-node convention) but
-        # Pythia looks in runs/0/ for the hard scatter events.
-        if [ -f "$OUTPUT_DIR/runs/all/0/events.hepmc.gz" ] && [ ! -f "$OUTPUT_DIR/runs/0/events.hepmc.gz" ]; then
-            cp "$OUTPUT_DIR/runs/all/0/events.hepmc.gz" "$OUTPUT_DIR/runs/0/events.hepmc.gz"
-            echo "  Copied MadGraph HepMC output to runs/0/ for Pythia merge."
+        # Pythia looks in runs/<RUN_ID>/ for the hard scatter events.
+        _mg_src="$OUTPUT_DIR/$RUNS_SUBPATH/all/$RUN_ID/events.hepmc.gz"
+        _mg_dst="$OUTPUT_DIR/$RUNS_SUBPATH/$RUN_ID/events.hepmc.gz"
+        if [ -f "$_mg_src" ] && [ ! -f "$_mg_dst" ]; then
+            cp "$_mg_src" "$_mg_dst"
+            echo "  Copied MadGraph HepMC output to runs/$RUN_ID/ for Pythia merge."
         fi
 
         run_stage "Pythia Generation" \
@@ -197,5 +220,10 @@ echo ""
 echo "============================================================"
 echo "Pipeline complete for: $CHANNEL"
 echo "============================================================"
-echo "Output directory:"
-find "$OUTPUT_DIR/runs/0/" -type f -exec ls -lh {} \; 2>/dev/null || echo "(no output)"
+echo "Output directory: $OUTPUT_DIR/$RUNS_SUBPATH/$RUN_ID/"
+find "$OUTPUT_DIR/$RUNS_SUBPATH/$RUN_ID/" -type f -exec ls -lh {} \; 2>/dev/null || echo "(no output)"
+if [ -d "$OUTPUT_DIR/$CAMPAIGN/$DATASET/$VERSION/parquet" ]; then
+    echo ""
+    echo "Parquet output:"
+    find "$OUTPUT_DIR/$CAMPAIGN/$DATASET/$VERSION/parquet" -name "*.parquet" -exec ls -lh {} \;
+fi

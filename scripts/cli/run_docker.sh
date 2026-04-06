@@ -129,12 +129,18 @@ docker run --rm \
         source /workspace/scripts/cli/setup_container_env.sh
 
         cd /workspace/scripts/$(dirname "$STAGE_SCRIPT")
-        python3 $(basename "$STAGE_SCRIPT") \
-            --config /workspace/$CONFIG_PATH \
-            --output /output/runs \
-            --output-subdir $RUN_ID \
-            --seed $SEED \
-            $*
+        # Postprocessing scripts are driven entirely by their YAML config;
+        # simulation scripts take --output/--output-subdir/--seed.
+        if [[ \"$STAGE_SCRIPT\" == postprocessing/* ]]; then
+            python3 $(basename "$STAGE_SCRIPT") --config /workspace/$CONFIG_PATH $*
+        else
+            python3 $(basename "$STAGE_SCRIPT") \
+                --config /workspace/$CONFIG_PATH \
+                --output /output/runs \
+                --output-subdir $RUN_ID \
+                --seed $SEED \
+                $*
+        fi
     "
 
 echo ""
