@@ -254,15 +254,10 @@ def simulate(
 
 
 def _simulate_remote(channel, events, pileup, seed):
-    """Submit simulation to remote NERSC service.
+    """Submit a simulation to the remote ColliderML backend service.
 
-    TODO: Implement in Phase 2. For now, raise a helpful error.
+    Requires a HuggingFace token (via env var or huggingface-cli login).
+    See colliderml._remote for full API.
     """
-    raise NotImplementedError(
-        "Remote simulation (remote=True) is not yet available.\n"
-        "This feature will be added in a future release.\n"
-        "For now, use local Docker simulation:\n"
-        "  colliderml.simulate(channel='{channel}', events={events}, pileup={pileup})\n"
-        "Or load pre-generated data:\n"
-        "  colliderml.load('{{channel}}_pu{{pileup}}')"
-    )
+    from colliderml._remote import submit_remote
+    return submit_remote(channel=channel, events=events, pileup=pileup, seed=seed)

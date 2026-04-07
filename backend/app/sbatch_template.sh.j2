@@ -1,0 +1,68 @@
+#!/bin/bash
+#SBATCH -A {{ project }}
+#SBATCH -C cpu
+#SBATCH -q {{ qos }}
+#SBATCH -t {{ time_limit }}
+#SBATCH -N {{ n_nodes }}
+#SBATCH --image={{ image }}
+#SBATCH --module=cvmfs
+#SBATCH -J colliderml_{{ request_id }}
+#SBATCH -o {{ work_dir }}/slurm.out
+#SBATCH -e {{ work_dir }}/slurm.err
+{%- if user_email %}
+#SBATCH --mail-user={{ user_email }}
+#SBATCH --mail-type=END,FAIL
+{%- endif %}
+
+set -euo pipefail
+
+# Backend-managed sbatch for ColliderML request {{ request_id }}
+# Channel: {{ channel }} | Events: {{ events }} | Pileup: {{ pileup }}
+
+WORK={{ work_dir }}
+mkdir -p "$WORK" && cd "$WORK"
+
+if [ ! -d repo ]; then
+    git clone --depth 1 --branch {{ repo_branch }} \
+        https://github.com/OpenDataDetector/ColliderML-Production.git repo
+fi
+cd repo
+
+export OUTPUT_DIR="$WORK/output"
+mkdir -p "$OUTPUT_DIR"
+export COLLIDERML_CACHE="{{ cache_dir }}"
+mkdir -p "$COLLIDERML_CACHE"
+
+shifter bash -c "
+    set -euo pipefail
+    source /workspace/scripts/cli/setup_container_env.sh
+    export EVENTS={{ events }}
+    export SEED={{ seed }}
+    export PILEUP={{ pileup }}
+    bash /workspace/scripts/cli/run_pipeline_docker.sh --channel {{ channel }}
+" --volume="$PWD:/workspace" --volume="$OUTPUT_DIR:/output" --volume="$COLLIDERML_CACHE:/cache"
+
+{% if upload_to_hf %}
+# Upload to per-request HuggingFace dataset using the service account token.
+export HF_TOKEN="{{ hf_token }}"
+shifter bash -c "
+    source /workspace/scripts/cli/setup_container_env.sh
+    pip install huggingface_hub --quiet
+    python - <<'PY'
+from huggingface_hub import HfApi
+import os
+api = HfApi(token=os.environ['HF_TOKEN'])
+repo_id = '{{ output_hf_repo }}'
+api.create_repo(repo_id, repo_type='dataset', exist_ok=True, private=False)
+api.upload_folder(
+    folder_path='/output/runs/0',
+    repo_id=repo_id,
+    repo_type='dataset',
+    commit_message='request {{ request_id }}',
+)
+print(f'Uploaded to {repo_id}')
+PY
+" --volume="$PWD:/workspace" --volume="$OUTPUT_DIR:/output"
+{% endif %}
+
+echo "Done: request {{ request_id }}"

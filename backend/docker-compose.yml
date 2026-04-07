@@ -1,0 +1,37 @@
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: colliderml
+    ports:
+      - "5432:5432"
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+      - ./migrations/001_initial.sql:/docker-entrypoint-initdb.d/001_initial.sql:ro
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "postgres"]
+      interval: 2s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build: .
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/colliderml
+      ADMIN_TOKEN: ${ADMIN_TOKEN:-dev-admin-token}
+      SFAPI_CLIENT_ID: ${SFAPI_CLIENT_ID:-}
+      SFAPI_CLIENT_SECRET: ${SFAPI_CLIENT_SECRET:-}
+      NERSC_PROJECT: ${NERSC_PROJECT:-}
+      NERSC_USER: ${NERSC_USER:-}
+      HF_TOKEN: ${HF_TOKEN:-}
+      HF_DATASET_ORG: ${HF_DATASET_ORG:-CERN}
+    ports:
+      - "8000:8000"
+
+volumes:
+  pg_data:

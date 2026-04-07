@@ -98,6 +98,19 @@ def main():
         help="List available simulation presets",
     )
 
+    # --- balance ---
+    subparsers.add_parser(
+        "balance",
+        help="Show your credits and recent transactions (requires HF login)",
+    )
+
+    # --- status ---
+    status_parser = subparsers.add_parser(
+        "status",
+        help="Check the status of a remote simulation request",
+    )
+    status_parser.add_argument("request_id", help="Request UUID from an earlier remote submission")
+
     args = parser.parse_args()
 
     if args.version:
@@ -117,6 +130,10 @@ def main():
         _cmd_list_datasets()
     elif args.command == "list-presets":
         _cmd_list_presets()
+    elif args.command == "balance":
+        _cmd_balance()
+    elif args.command == "status":
+        _cmd_status(args)
 
 
 def _cmd_load(args):
@@ -209,6 +226,39 @@ def _cmd_list_presets():
         print()
 
     print("Use with: colliderml simulate --preset <name>")
+
+
+def _cmd_balance():
+    """Show the user's current credit balance and recent transactions."""
+    from colliderml._remote import get_me
+    try:
+        me = get_me()
+    except Exception as e:
+        print(f"Error: {e}", file=sys.stderr)
+        sys.exit(1)
+    print(f"User:    {me['hf_username']}")
+    print(f"Credits: {me['credits']:.2f}")
+    if me.get("email"):
+        print(f"Email:   {me['email']}")
+    print(f"Member since: {me.get('created_at', '?')}")
+
+
+def _cmd_status(args):
+    """Check status of a remote request by ID."""
+    from colliderml._remote import get_status
+    try:
+        data = get_status(args.request_id)
+    except Exception as e:
+        print(f"Error: {e}", file=sys.stderr)
+        sys.exit(1)
+    print(f"Request:  {data['id']}")
+    print(f"State:    {data['state']}")
+    print(f"Channel:  {data['channel']}")
+    print(f"Events:   {data['events']} (pileup={data['pileup']})")
+    if data.get("output_hf_repo"):
+        print(f"Output:   https://huggingface.co/datasets/{data['output_hf_repo']}")
+    if data.get("error_message"):
+        print(f"Error:    {data['error_message']}")
 
 
 if __name__ == "__main__":

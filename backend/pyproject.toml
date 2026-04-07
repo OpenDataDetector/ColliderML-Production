@@ -1,0 +1,36 @@
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "colliderml-backend"
+version = "0.1.0"
+description = "ColliderML simulation service backend (FastAPI + Supabase + SFAPI)"
+requires-python = ">=3.10"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",
+    "pydantic>=2.5",
+    "pydantic-settings>=2.2",
+    "httpx>=0.27",
+    "jinja2>=3.1",
+    "asyncpg>=0.29",                 # direct postgres driver (supabase is postgres)
+    "sfapi-client>=0.1.0",
+    "aiosmtplib>=3.0",
+    "python-multipart>=0.0.9",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+    "httpx>=0.27",
+    "ruff>=0.5",
+]
+
+[tool.setuptools.packages.find]
+include = ["app*"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
