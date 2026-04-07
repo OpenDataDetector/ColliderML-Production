@@ -1,9 +1,9 @@
 """
-Docker container management for ColliderML simulation.
+Container runtime management for ColliderML simulation.
 
-Wraps the Docker SDK (docker-py) to run simulation stages inside the
-ODD software container. Handles image pulling, volume mounts, cache
-directories, and environment setup.
+Wraps `docker` or `podman` (whichever is available) to run simulation
+stages inside the ODD software container. Handles image pulling, volume
+mounts, cache directories, and environment setup.
 """
 
 import os
@@ -16,54 +16,76 @@ from pathlib import Path
 DEFAULT_IMAGE = "ghcr.io/opendatadetector/sw:0.2.2_linux-ubuntu24.04_gcc-13.3.0"
 
 
+def get_container_runtime():
+    """Return 'docker' or 'podman' based on what's available.
+
+    Prefers docker if both are present, since the existing pipeline
+    scripts (run_docker.sh) were tested against docker.
+
+    Raises RuntimeError if neither is installed.
+    """
+    if shutil.which("docker"):
+        return "docker"
+    if shutil.which("podman"):
+        return "podman"
+    raise RuntimeError(
+        "Neither docker nor podman is installed.\n"
+        "Install one:\n"
+        "  Docker: https://docs.docker.com/get-docker/\n"
+        "  Podman: https://podman.io/getting-started/installation\n"
+        "Or use remote simulation: colliderml.simulate(..., remote=True)"
+    )
+
+
 def check_docker_available():
-    """Check if Docker is available on the system."""
-    if shutil.which("docker") is None:
-        raise RuntimeError(
-            "Docker is not installed or not in PATH.\n"
-            "Install Docker: https://docs.docker.com/get-docker/\n"
-            "Or use remote simulation: colliderml.simulate(..., remote=True)"
-        )
+    """Check that a container runtime (docker or podman) is available and running."""
+    runtime = get_container_runtime()
 
     try:
         result = subprocess.run(
-            ["docker", "info"],
+            [runtime, "info"],
             capture_output=True, text=True, timeout=10,
         )
         if result.returncode != 0:
             raise RuntimeError(
-                "Docker daemon is not running.\n"
-                "Start Docker and try again.\n"
+                f"{runtime} daemon is not running.\n"
+                f"Start {runtime} and try again.\n"
                 f"Error: {result.stderr.strip()}"
             )
     except subprocess.TimeoutExpired:
-        raise RuntimeError("Docker daemon is not responding (timed out).")
+        raise RuntimeError(f"{runtime} daemon is not responding (timed out).")
+
+    return runtime
 
 
-def check_image_available(image=DEFAULT_IMAGE):
+def check_image_available(image=DEFAULT_IMAGE, runtime=None):
     """Check if the container image is available locally."""
+    runtime = runtime or get_container_runtime()
     result = subprocess.run(
-        ["docker", "image", "inspect", image],
+        [runtime, "image", "inspect", image],
         capture_output=True, text=True,
     )
     return result.returncode == 0
 
 
-def pull_image(image=DEFAULT_IMAGE, interactive=True):
+def pull_image(image=DEFAULT_IMAGE, interactive=True, runtime=None):
     """Pull the container image, optionally prompting the user first.
 
     Args:
-        image: Docker image to pull.
+        image: Container image to pull.
         interactive: If True, prompt before pulling (image is ~10 GB).
+        runtime: 'docker' or 'podman'. Auto-detected if None.
 
     Returns:
         True if image is now available.
     """
-    if check_image_available(image):
+    runtime = runtime or get_container_runtime()
+
+    if check_image_available(image, runtime=runtime):
         return True
 
     if interactive and sys.stdin.isatty():
-        print(f"\nDocker image {image} not found locally.")
+        print(f"\nContainer image {image} not found locally.")
         print("This is a ~10 GB download.")
         try:
             response = input("Continue? [Y/n]: ").strip().lower()
@@ -74,9 +96,9 @@ def pull_image(image=DEFAULT_IMAGE, interactive=True):
             print("\nAborted.")
             return False
 
-    print(f"Pulling {image}...")
+    print(f"Pulling {image} via {runtime}...")
     result = subprocess.run(
-        ["docker", "pull", image],
+        [runtime, "pull", image],
         timeout=3600,  # 1 hour timeout for large image
     )
     return result.returncode == 0
@@ -129,10 +151,12 @@ def ensure_cache(repo_root):
 
 
 def run_stage(repo_root, output_dir, cache_dir, stage_script, config_path,
-              seed=42, run_id="0", image=DEFAULT_IMAGE, extra_args=None):
-    """Run a single pipeline stage inside the Docker container.
+              seed=42, run_id="0", image=DEFAULT_IMAGE, extra_args=None,
+              runtime=None):
+    """Run a single pipeline stage inside the container.
 
-    This mirrors the logic of scripts/cli/run_docker.sh.
+    This mirrors the logic of scripts/cli/run_docker.sh, but works with
+    either docker or podman (auto-detected).
 
     Args:
         repo_root: Path to the ColliderML-Production repo root.
@@ -142,12 +166,14 @@ def run_stage(repo_root, output_dir, cache_dir, stage_script, config_path,
         config_path: Config file path relative to repo root.
         seed: Random seed.
         run_id: Run subdirectory name.
-        image: Docker image to use.
+        image: Container image to use.
         extra_args: Additional arguments to pass to the stage script.
+        runtime: 'docker' or 'podman'. Auto-detected if None.
 
     Returns:
-        subprocess.CompletedProcess from the docker run command.
+        subprocess.CompletedProcess from the container run command.
     """
+    runtime = runtime or get_container_runtime()
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -157,7 +183,7 @@ def run_stage(repo_root, output_dir, cache_dir, stage_script, config_path,
     extra = " ".join(extra_args) if extra_args else ""
 
     cmd = [
-        "docker", "run", "--rm",
+        runtime, "run", "--rm",
         "-v", f"{repo_root}:/workspace",
         "-v", f"{output_dir}:/output",
         "-v", f"{cache_dir}:/cache",
@@ -180,7 +206,8 @@ def run_stage(repo_root, output_dir, cache_dir, stage_script, config_path,
 
 
 def run_pipeline(repo_root, output_dir, stages, seed=42, run_id="0",
-                 image=DEFAULT_IMAGE, on_stage_start=None, on_stage_end=None):
+                 image=DEFAULT_IMAGE, on_stage_start=None, on_stage_end=None,
+                 runtime=None):
     """Run a full pipeline (multiple stages) inside Docker.
 
     Args:
@@ -196,6 +223,7 @@ def run_pipeline(repo_root, output_dir, stages, seed=42, run_id="0",
     Returns:
         dict with output_dir and per-stage results.
     """
+    runtime = runtime or get_container_runtime()
     cache_dir = ensure_cache(Path(repo_root))
 
     results = []
@@ -212,6 +240,7 @@ def run_pipeline(repo_root, output_dir, stages, seed=42, run_id="0",
             seed=seed,
             run_id=run_id,
             image=image,
+            runtime=runtime,
         )
 
         if on_stage_end:
