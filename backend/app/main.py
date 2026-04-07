@@ -227,14 +227,23 @@ async def admin_freeze(frozen: bool = True) -> dict:
 
 @app.post("/admin/grant", dependencies=[Depends(admin_only)])
 async def admin_grant(grant: AdminGrant) -> dict:
+    # Fail cleanly if the user hasn't signed up yet, rather than hitting a
+    # foreign-key violation inside add_credit_transaction.
+    user = await db.get_user(grant.hf_username)
+    if user is None:
+        raise HTTPException(
+            404,
+            f"User '{grant.hf_username}' has no account yet. They must sign in "
+            f"with their HuggingFace token at least once before you can grant credits.",
+        )
     await db.add_credit_transaction(
         grant.hf_username,
         grant.delta,
         reason=grant.reason,
         metadata=grant.metadata,
     )
-    user = await db.get_user(grant.hf_username)
-    return {"hf_username": grant.hf_username, "new_balance": float(user["credits"]) if user else None}
+    updated = await db.get_user(grant.hf_username)
+    return {"hf_username": grant.hf_username, "new_balance": float(updated["credits"])}
 
 
 @app.post("/admin/ban", dependencies=[Depends(admin_only)])
@@ -273,11 +282,11 @@ async def admin_analytics_daily(days: int = 30) -> list[dict]:
                count(*) as n_requests,
                coalesce(sum(coalesce(actual_node_hours, estimated_node_hours)), 0) as node_hours
         from simulation_requests
-        where created_at > now() - ($1 || ' days')::interval
+        where created_at > now() - make_interval(days => $1)
         group by day
         order by day
         """,
-        str(days),
+        int(days),
     )
     return [dict(r) for r in rows]
 

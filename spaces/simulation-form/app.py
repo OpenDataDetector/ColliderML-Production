@@ -227,7 +227,7 @@ def _tool_call(name: str, arguments: dict, oauth_token) -> dict:
     return {"error": f"unknown tool {name}"}
 
 
-def chat_respond(history, message, oauth_token):
+def chat_respond(history, message, oauth_token: "gr.OAuthToken | None" = None):
     if not os.environ.get("ANTHROPIC_API_KEY"):
         history.append({"role": "user", "content": message})
         history.append({
@@ -357,6 +357,8 @@ with gr.Blocks(
         msg = gr.Textbox(label="Message", placeholder="Ask me to simulate something...")
         clear = gr.Button("Clear")
 
+        # Gradio auto-injects gr.OAuthToken into any annotated default arg
+        # at runtime; do NOT list it in the explicit inputs.
         msg.submit(chat_respond, [chatbot, msg], [chatbot, msg])
         clear.click(lambda: ([], ""), outputs=[chatbot, msg])
 

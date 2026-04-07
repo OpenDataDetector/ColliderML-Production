@@ -28,8 +28,17 @@ def _get_hf_token() -> Optional[str]:
     token = os.environ.get("HF_TOKEN") or os.environ.get("HUGGING_FACE_HUB_TOKEN")
     if token:
         return token
+    # Prefer the modern top-level helper (huggingface_hub >= 0.20).
     try:
-        from huggingface_hub import HfFolder
+        from huggingface_hub import get_token
+        saved = get_token()
+        if saved:
+            return saved
+    except ImportError:
+        pass
+    # Fall back to the legacy HfFolder helper for older huggingface_hub versions.
+    try:
+        from huggingface_hub import HfFolder  # type: ignore
         return HfFolder.get_token()
     except Exception:
         return None

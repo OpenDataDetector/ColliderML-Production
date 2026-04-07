@@ -108,17 +108,19 @@ class Database:
         Must be called inside the same transaction as any simulation_requests
         state change that depends on it, to keep the ledger consistent.
         """
+        import json as _json
+        meta_json = _json.dumps(metadata) if metadata is not None else None
         async with self.pool.acquire() as conn:
             async with conn.transaction():
                 await conn.execute(
                     """
                     insert into credit_transactions (hf_username, delta, reason, metadata)
-                    values ($1, $2, $3, $4)
+                    values ($1, $2, $3, $4::jsonb)
                     """,
                     hf_username,
                     delta,
                     reason,
-                    metadata,
+                    meta_json,
                 )
                 await conn.execute(
                     "update users set credits = credits + $1 where hf_username = $2",
@@ -134,6 +136,8 @@ class Database:
         metadata: Optional[dict] = None,
     ) -> None:
         """Atomically deduct credits. Raises if balance would go negative."""
+        import json as _json
+        meta_json = _json.dumps(metadata) if metadata is not None else None
         async with self.pool.acquire() as conn:
             async with conn.transaction():
                 current = await conn.fetchval(
@@ -154,12 +158,12 @@ class Database:
                 await conn.execute(
                     """
                     insert into credit_transactions (hf_username, delta, reason, metadata)
-                    values ($1, $2, $3, $4)
+                    values ($1, $2, $3, $4::jsonb)
                     """,
                     hf_username,
                     -amount,
                     reason,
-                    metadata,
+                    meta_json,
                 )
 
     async def list_transactions(
@@ -250,12 +254,12 @@ class Database:
             select * from simulation_requests
             where config_hash = $1
               and state in ('submitted', 'running', 'completed')
-              and created_at > now() - ($2 || ' days')::interval
+              and created_at > now() - make_interval(days => $2)
             order by created_at desc
             limit 1
             """,
             config_hash,
-            str(since_days),
+            int(since_days),
         )
         return dict(row) if row else None
 
@@ -266,10 +270,10 @@ class Database:
             """
             select count(*) from simulation_requests
             where hf_username = $1
-              and created_at > now() - ($2 || ' minutes')::interval
+              and created_at > now() - make_interval(mins => $2)
             """,
             hf_username,
-            str(minutes),
+            int(minutes),
         ) or 0
 
     async def monthly_usage_total(self) -> float:

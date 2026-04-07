@@ -1,0 +1,80 @@
+# Render blueprint for the ColliderML backend.
+#
+# This file lets Render auto-deploy the FastAPI backend on every push to the
+# `staging` branch. Apply it with: Render dashboard → New → Blueprint → pick
+# this repo → staging branch. Render then creates the service below and wires
+# up the env vars (set the secret ones in the Render dashboard).
+#
+# The database is NOT provisioned by this blueprint — we use Supabase as an
+# external Postgres, connected via DATABASE_URL.
+#
+# Docs: https://render.com/docs/blueprint-spec
+
+services:
+  - type: web
+    name: colliderml-backend
+    runtime: docker
+    region: oregon
+    plan: starter                    # free tier; upgrade to standard for custom domain
+    branch: staging
+    autoDeploy: true
+    rootDir: backend
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /healthz
+    envVars:
+      # --- Database (Supabase) ---
+      # MUST be set in the Render dashboard. Use the Supabase "Connection
+      # string" → "Session" pooler URI for asyncpg compatibility.
+      - key: DATABASE_URL
+        sync: false
+
+      # --- Admin ---
+      # Generate with: python -c "import secrets; print(secrets.token_urlsafe(32))"
+      - key: ADMIN_TOKEN
+        generateValue: true
+
+      # --- SFAPI (mock mode in staging) ---
+      # Leave these EMPTY in the Render dashboard to run the runner in mock
+      # mode. Jobs will complete in ~2 seconds without ever touching NERSC.
+      - key: SFAPI_CLIENT_ID
+        value: ""
+      - key: SFAPI_CLIENT_SECRET
+        value: ""
+      - key: NERSC_PROJECT
+        value: ""
+      - key: NERSC_USER
+        value: ""
+
+      # --- HuggingFace uploads ---
+      # Optional in mock mode. If set, completed jobs get uploaded to this org.
+      - key: HF_TOKEN
+        sync: false
+      - key: HF_DATASET_ORG
+        value: ""
+
+      # --- Email (optional) ---
+      - key: SMTP_HOST
+        value: ""
+      - key: SMTP_PORT
+        value: "587"
+      - key: SMTP_USER
+        value: ""
+      - key: SMTP_PASSWORD
+        sync: false
+      - key: SMTP_FROM
+        value: "colliderml@noreply.example"
+
+      # --- Container image tracking (for SFAPI runner) ---
+      - key: CONTAINER_IMAGE
+        value: "ghcr.io/opendatadetector/sw:0.2.2_linux-ubuntu24.04_gcc-13.3.0"
+      - key: COLLIDERML_BRANCH
+        value: "staging"
+
+      # --- GitHub webhook for credit automation ---
+      - key: GITHUB_WEBHOOK_SECRET
+        sync: false
+
+      # --- Polling ---
+      - key: POLL_INTERVAL_SECONDS
+        value: "60"
