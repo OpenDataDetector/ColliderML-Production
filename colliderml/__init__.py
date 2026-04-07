@@ -18,6 +18,7 @@ __version__ = "0.4.0"
 
 from colliderml._loader import load
 from colliderml._simulate import simulate
+from colliderml._benchmark import benchmark, list_benchmarks
 
 
 def balance():
@@ -29,4 +30,11 @@ def balance():
     return get_me()
 
 
-__all__ = ["load", "simulate", "balance", "__version__"]
+__all__ = [
+    "load",
+    "simulate",
+    "benchmark",
+    "list_benchmarks",
+    "balance",
+    "__version__",
+]

@@ -78,6 +78,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Leaderboard routes (Phase 3)
+from app.leaderboard import router as leaderboard_router  # noqa: E402
+app.include_router(leaderboard_router)
+
 
 # ===========================================================================
 # Public / user routes
