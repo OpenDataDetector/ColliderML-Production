@@ -158,3 +158,40 @@ class EventTrackTransformer(nn.Module):
         predictions = flat_pred.reshape(B_ev, T, output_dim)
 
         return predictions, track_mask
+
+    @torch.no_grad()
+    def extract_evt_embedding(
+        self,
+        hit_features: torch.Tensor,
+        padding_mask: torch.Tensor,
+        cls_features: torch.Tensor | None,
+        track_mask: torch.Tensor,
+    ) -> torch.Tensor:
+        """Run forward up to the cross encoder and return the [EVT] token output.
+
+        Used for diagnostic probes (e.g., does the [EVT] token linearly predict
+        the true primary vertex?). Returns shape (B_ev, d_model).
+        """
+        B_ev, T, H, F = hit_features.shape
+        flat_hits = hit_features.reshape(B_ev * T, H, F)
+        flat_mask = padding_mask.reshape(B_ev * T, H)
+        flat_cls = cls_features.reshape(B_ev * T, -1) if cls_features is not None else None
+
+        flat_track_valid = track_mask.reshape(B_ev * T)
+        safe_mask = flat_mask.clone()
+        safe_mask[~flat_track_valid, 0] = True
+
+        track_embeddings = self.track_model.encode(flat_hits, safe_mask, flat_cls)
+        track_embeddings = track_embeddings.reshape(B_ev, T, self.d_model)
+        track_embeddings = track_embeddings * track_mask.unsqueeze(-1).float()
+
+        evt = self.evt_token.expand(B_ev, -1, -1)
+        seq = torch.cat([evt, track_embeddings], dim=1)
+        pos_ids = torch.arange(seq.shape[1], device=seq.device)
+        seq = seq + self.cross_pos_embed(pos_ids).unsqueeze(0)
+
+        evt_mask = torch.zeros(B_ev, 1, dtype=torch.bool, device=seq.device)
+        cross_kpm = torch.cat([evt_mask, ~track_mask], dim=1)
+        seq = self.cross_encoder(seq, src_key_padding_mask=cross_kpm)
+
+        return seq[:, 0, :]  # (B_ev, d_model)

@@ -184,6 +184,7 @@ class EventCollator:
             "reco_params": reco_params,
             "padding_mask": padding_mask,
             "track_mask": track_mask,
+            "event_ids": torch.tensor(event_ids_in_batch, dtype=torch.long),  # (B_ev,)
         }
 
 

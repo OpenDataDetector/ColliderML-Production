@@ -54,9 +54,12 @@ case $STAGE in
     COMMON_ARGS="--numeric-sort --max-files 50 --patience 10 --lr 3e-4"
     ;;
   track)
-    # 30 epochs warm-started from $WARM_CKPT, per-track only (ablation control)
+    # 30 epochs warm-started from $WARM_CKPT, per-track only (ablation control).
+    # batch_size=512 chosen so that gradient updates per epoch (~1080) match
+    # the cross-track variant's (~1125 batches/epoch with batch_size_events=8).
+    # This makes the ablation a clean apples-to-apples comparison.
     if [ -z "$WARM_CKPT" ]; then echo "stage=track requires warm_start_ckpt"; exit 1; fi
-    EXTRA="--epochs 30 --batch-size 256 --init-from-checkpoint $WARM_CKPT"
+    EXTRA="--epochs 30 --batch-size 512 --init-from-checkpoint $WARM_CKPT"
     COMMON_ARGS="--numeric-sort --max-files 50 --patience 10 --lr 3e-4"
     ;;
   *)

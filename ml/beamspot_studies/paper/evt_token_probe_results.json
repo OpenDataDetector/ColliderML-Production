@@ -1,0 +1,22 @@
+{
+  "checkpoint": "/global/cfs/cdirs/m4958/data/ColliderML/ml/beamspot_studies/baseline_randomized_xy_v12_th_cross/checkpoints/best-epoch=028-val/loss=0.0028.ckpt",
+  "n_events": 1000,
+  "d_model": 256,
+  "results": {
+    "v_x": {
+      "r2": 0.9458203057555886,
+      "truth_std": 326.77304038652585,
+      "residual_std": 75.76013648438122
+    },
+    "v_y": {
+      "r2": 0.939057596250475,
+      "truth_std": 289.68669750658705,
+      "residual_std": 71.50641207420806
+    },
+    "v_z": {
+      "r2": 0.9977936868475422,
+      "truth_std": 55.26329208042769,
+      "residual_std": 2.5910837757494773
+    }
+  }
+}
