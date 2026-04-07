@@ -11,6 +11,7 @@ services:
       - pg_data:/var/lib/postgresql/data
       - ./migrations/001_initial.sql:/docker-entrypoint-initdb.d/001_initial.sql:ro
       - ./migrations/002_benchmarks.sql:/docker-entrypoint-initdb.d/002_benchmarks.sql:ro
+      - ./migrations/003_webhooks.sql:/docker-entrypoint-initdb.d/003_webhooks.sql:ro
     healthcheck:
       test: ["CMD", "pg_isready", "-U", "postgres"]
       interval: 2s

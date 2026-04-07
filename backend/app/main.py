@@ -82,6 +82,10 @@ app.add_middleware(
 from app.leaderboard import router as leaderboard_router  # noqa: E402
 app.include_router(leaderboard_router)
 
+# GitHub webhook for credit automation (Phase 3.10)
+from app.webhooks import router as webhooks_router  # noqa: E402
+app.include_router(webhooks_router)
+
 
 # ===========================================================================
 # Public / user routes
@@ -243,3 +247,60 @@ async def admin_ban(ban: AdminBan) -> dict:
 async def admin_usage(limit: int = 20) -> list[UsageRow]:
     rows = await db.monthly_usage_by_user(limit=limit)
     return [UsageRow(**r) for r in rows]
+
+
+@app.get("/admin/analytics/channels", dependencies=[Depends(admin_only)])
+async def admin_analytics_channels() -> list[dict]:
+    """Count of requests per channel this month."""
+    rows = await db.pool.fetch(
+        """
+        select channel, count(*) as n, sum(coalesce(actual_node_hours, estimated_node_hours)) as node_hours
+        from simulation_requests
+        where created_at >= date_trunc('month', now())
+        group by channel
+        order by n desc
+        """
+    )
+    return [dict(r) for r in rows]
+
+
+@app.get("/admin/analytics/daily", dependencies=[Depends(admin_only)])
+async def admin_analytics_daily(days: int = 30) -> list[dict]:
+    """Daily node-hours used over the last N days."""
+    rows = await db.pool.fetch(
+        """
+        select date_trunc('day', created_at)::date as day,
+               count(*) as n_requests,
+               coalesce(sum(coalesce(actual_node_hours, estimated_node_hours)), 0) as node_hours
+        from simulation_requests
+        where created_at > now() - ($1 || ' days')::interval
+        group by day
+        order by day
+        """,
+        str(days),
+    )
+    return [dict(r) for r in rows]
+
+
+@app.get("/admin/analytics/failures", dependencies=[Depends(admin_only)])
+async def admin_analytics_failures() -> dict:
+    """Failure rate across all requests this month."""
+    row = await db.pool.fetchrow(
+        """
+        select
+            count(*) filter (where state = 'failed') as failed,
+            count(*) filter (where state = 'completed') as completed,
+            count(*) as total
+        from simulation_requests
+        where created_at >= date_trunc('month', now())
+        """
+    )
+    total = int(row["total"] or 0)
+    failed = int(row["failed"] or 0)
+    completed = int(row["completed"] or 0)
+    return {
+        "total": total,
+        "completed": completed,
+        "failed": failed,
+        "failure_rate": round(failed / total, 4) if total else 0.0,
+    }

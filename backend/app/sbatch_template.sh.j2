@@ -4,6 +4,7 @@
 #SBATCH -q {{ qos }}
 #SBATCH -t {{ time_limit }}
 #SBATCH -N {{ n_nodes }}
+#SBATCH --ntasks-per-node={{ tasks_per_node }}
 #SBATCH --image={{ image }}
 #SBATCH --module=cvmfs
 #SBATCH -J colliderml_{{ request_id }}
@@ -18,6 +19,7 @@ set -euo pipefail
 
 # Backend-managed sbatch for ColliderML request {{ request_id }}
 # Channel: {{ channel }} | Events: {{ events }} | Pileup: {{ pileup }}
+# Nodes: {{ n_nodes }} | Events per task: {{ events_per_task }}
 
 WORK={{ work_dir }}
 mkdir -p "$WORK" && cd "$WORK"
@@ -33,6 +35,8 @@ mkdir -p "$OUTPUT_DIR"
 export COLLIDERML_CACHE="{{ cache_dir }}"
 mkdir -p "$COLLIDERML_CACHE"
 
+{% if n_nodes == 1 and tasks_per_node == 1 %}
+# Single-task submission: run the pipeline directly in one shifter container.
 shifter bash -c "
     set -euo pipefail
     source /workspace/scripts/cli/setup_container_env.sh
@@ -41,9 +45,28 @@ shifter bash -c "
     export PILEUP={{ pileup }}
     bash /workspace/scripts/cli/run_pipeline_docker.sh --channel {{ channel }}
 " --volume="$PWD:/workspace" --volume="$OUTPUT_DIR:/output" --volume="$COLLIDERML_CACHE:/cache"
+{% else %}
+# Multi-task submission: use srun to launch one pipeline per task.
+# Each task owns a per-task output subdirectory keyed by SLURM_PROCID,
+# and runs events_per_task events with a seed derived from the base seed.
+srun --exact --kill-on-bad-exit=0 shifter bash -c '
+    set -euo pipefail
+    source /workspace/scripts/cli/setup_container_env.sh
+    TASK_ID=${SLURM_PROCID:-0}
+    export RUN_ID=$TASK_ID
+    export EVENTS={{ events_per_task }}
+    export SEED=$(( {{ seed }} + TASK_ID ))
+    export PILEUP={{ pileup }}
+    export OUTPUT_DIR=/output
+    bash /workspace/scripts/cli/run_pipeline_docker.sh --channel {{ channel }}
+' --volume="$PWD:/workspace" --volume="$OUTPUT_DIR:/output" --volume="$COLLIDERML_CACHE:/cache"
+
+# After all tasks complete, merge per-task outputs into a single tree for upload.
+# The upload step in the next block walks runs/*/*.parquet.
+{% endif %}
 
 {% if upload_to_hf %}
-# Upload to per-request HuggingFace dataset using the service account token.
+# Upload all per-task outputs to a per-request HuggingFace dataset.
 export HF_TOKEN="{{ hf_token }}"
 shifter bash -c "
     source /workspace/scripts/cli/setup_container_env.sh
@@ -55,7 +78,7 @@ api = HfApi(token=os.environ['HF_TOKEN'])
 repo_id = '{{ output_hf_repo }}'
 api.create_repo(repo_id, repo_type='dataset', exist_ok=True, private=False)
 api.upload_folder(
-    folder_path='/output/runs/0',
+    folder_path='/output/runs',
     repo_id=repo_id,
     repo_type='dataset',
     commit_message='request {{ request_id }}',

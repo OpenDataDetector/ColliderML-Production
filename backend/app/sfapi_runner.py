@@ -84,6 +84,32 @@ class SFAPIRunner:
     # -----------------------------------------------------------------------
     # Submission
     # -----------------------------------------------------------------------
+    def _split_request(self, req: SimulateRequest) -> dict:
+        """Decide how to distribute a request across SLURM nodes/tasks.
+
+        Strategy:
+            - events_per_task: aim for 100 events per task for ttbar, 200 for
+              lighter channels. Keep each task under ~2 hours wall time.
+            - tasks_per_node: 32 on Perlmutter CPU (128 cores; DDSim is
+              single-threaded but memory-bound, 32 is a safe default).
+            - n_nodes: ceil(total_tasks / tasks_per_node), capped at 8 so we
+              never accidentally ask for a huge allocation.
+        """
+        import math
+        target_per_task = 50 if req.channel == "ttbar" else 100
+        events_per_task = max(10, min(target_per_task, req.events))
+        n_tasks = math.ceil(req.events / events_per_task)
+        tasks_per_node = 32
+        n_nodes = max(1, min(8, math.ceil(n_tasks / tasks_per_node)))
+        if n_tasks < tasks_per_node:
+            tasks_per_node = n_tasks
+        return {
+            "n_nodes": n_nodes,
+            "tasks_per_node": tasks_per_node,
+            "events_per_task": events_per_task,
+            "n_tasks": n_tasks,
+        }
+
     def _render_sbatch(
         self,
         request_id: str,
@@ -97,9 +123,20 @@ class SFAPIRunner:
         output_hf_repo = (
             f"{settings.hf_dataset_org}/ColliderML-Service-{request_id}"
         )
-        # Simple queue heuristic
-        qos = "debug" if estimate_node_hours(req.channel, req.events, req.pileup) * 3600 < 25 * 60 else "regular"
-        time_limit = "00:30:00" if qos == "debug" else "04:00:00"
+
+        split = self._split_request(req)
+
+        # Queue + wall-time heuristic
+        est_hours = estimate_node_hours(req.channel, req.events, req.pileup)
+        if est_hours * 3600 < 25 * 60 and split["n_nodes"] == 1:
+            qos = "debug"
+            time_limit = "00:30:00"
+        elif est_hours < 2.0:
+            qos = "regular"
+            time_limit = "02:00:00"
+        else:
+            qos = "regular"
+            time_limit = "04:00:00"
 
         return self._template.render(
             request_id=request_id,
@@ -113,7 +150,9 @@ class SFAPIRunner:
             repo_branch=settings.colliderml_branch,
             qos=qos,
             time_limit=time_limit,
-            n_nodes=1,
+            n_nodes=split["n_nodes"],
+            tasks_per_node=split["tasks_per_node"],
+            events_per_task=split["events_per_task"],
             work_dir=work_dir,
             cache_dir=cache_dir,
             upload_to_hf=bool(settings.hf_token),

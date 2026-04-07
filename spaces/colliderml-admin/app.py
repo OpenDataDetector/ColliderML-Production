@@ -38,6 +38,39 @@ def fetch_usage(token: str) -> pd.DataFrame:
     return pd.DataFrame(r.json())
 
 
+def fetch_channels(token: str) -> pd.DataFrame:
+    r = requests.get(
+        f"{BACKEND_URL}/admin/analytics/channels",
+        headers=_admin_headers(token),
+        timeout=20,
+    )
+    if r.status_code != 200:
+        raise RuntimeError(f"Backend error: {r.status_code} {r.text}")
+    return pd.DataFrame(r.json())
+
+
+def fetch_daily(token: str, days: int = 30) -> pd.DataFrame:
+    r = requests.get(
+        f"{BACKEND_URL}/admin/analytics/daily?days={days}",
+        headers=_admin_headers(token),
+        timeout=20,
+    )
+    if r.status_code != 200:
+        raise RuntimeError(f"Backend error: {r.status_code} {r.text}")
+    return pd.DataFrame(r.json())
+
+
+def fetch_failures(token: str) -> dict:
+    r = requests.get(
+        f"{BACKEND_URL}/admin/analytics/failures",
+        headers=_admin_headers(token),
+        timeout=20,
+    )
+    if r.status_code != 200:
+        raise RuntimeError(f"Backend error: {r.status_code} {r.text}")
+    return r.json()
+
+
 def freeze_toggle(token: str, frozen: bool) -> str:
     r = requests.post(
         f"{BACKEND_URL}/admin/freeze?frozen={'true' if frozen else 'false'}",
@@ -156,6 +189,49 @@ with gr.Blocks(
             on_load_usage,
             inputs=admin_token,
             outputs=[usage_plot, usage_summary],
+        )
+
+    with gr.Tab("Analytics"):
+        load_analytics_btn = gr.Button("Refresh analytics", variant="primary")
+        with gr.Row():
+            channel_plot = gr.Plot(label="Requests per channel")
+            daily_plot = gr.Plot(label="Daily node-hours (30d)")
+        failure_md = gr.Markdown()
+
+        def on_load_analytics(token: str):
+            if not token:
+                return None, None, "Enter admin token."
+            try:
+                channels_df = fetch_channels(token)
+                daily_df = fetch_daily(token)
+                fail = fetch_failures(token)
+            except Exception as e:
+                return None, None, f"Error: {e}"
+
+            ch_fig = None
+            if not channels_df.empty:
+                ch_fig = px.bar(
+                    channels_df, x="channel", y="n",
+                    hover_data=["node_hours"],
+                    title="Requests per channel this month",
+                )
+            daily_fig = None
+            if not daily_df.empty:
+                daily_fig = px.line(
+                    daily_df, x="day", y="node_hours",
+                    markers=True,
+                    title="Daily node-hours (last 30 days)",
+                )
+            md = (
+                f"**Failure rate**: {fail['failure_rate']*100:.1f}% "
+                f"({fail['failed']} failed / {fail['total']} total this month)"
+            )
+            return ch_fig, daily_fig, md
+
+        load_analytics_btn.click(
+            on_load_analytics,
+            inputs=admin_token,
+            outputs=[channel_plot, daily_plot, failure_md],
         )
 
     with gr.Tab("User management"):
