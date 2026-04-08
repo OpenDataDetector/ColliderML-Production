@@ -51,11 +51,8 @@ if [ ! -d "$REPO_ROOT/$CONFIG_BASE" ]; then
     exit 1
 fi
 
-# Read campaign/dataset/version from the convert_all.yaml so stages 1-3 write
-# output to the same path that the postprocessing stage reads from. The
-# convert_all step builds its input_base_dir as:
-#   <common.output_base_dir>/<campaign>/<dataset>/<version>/runs/<run_id>
-# so we mirror that structure for the simulation output.
+# Mirror convert_all.yaml's input_base_dir layout so stages 1-3 write where the
+# postprocessing stage reads: <output_base_dir>/<campaign>/<dataset>/<version>/runs/<run_id>
 _convert_cfg="$REPO_ROOT/$CONFIG_BASE/convert_all.yaml"
 CAMPAIGN="$(awk -F'"' '/^campaign:/ {print $2; exit}' "$_convert_cfg")"
 DATASET="$(awk -F'"' '/^dataset:/ {print $2; exit}' "$_convert_cfg")"
@@ -122,9 +119,7 @@ run_stage() {
         return 0
     fi
 
-    # Simulation stages take --output/--output-subdir/--seed and write to
-    # /output/<campaign>/<dataset>/<version>/runs/<run_id>/ so the postprocessing
-    # stage (driven entirely by the YAML config) can find them.
+    # Postprocessing stages are driven entirely by their YAML config.
     local stage_args
     if [[ "$stage_script" == postprocessing/* ]]; then
         stage_args="--config /workspace/$config_file ${extra_args[*]:-}"
