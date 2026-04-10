@@ -1,4 +1,22 @@
-# ColliderML Production - Docker Pipeline Guide
+# ColliderML Production
+
+## Repo boundary
+
+User-facing code (the `colliderml` pip package, benchmark tasks, HuggingFace Spaces, and documentation) lives in the **public repo**: [`OpenDataDetector/ColliderML`](https://github.com/OpenDataDetector/ColliderML).
+
+**This repo** (`colliderml-production`) is the home for:
+- Pipeline scripts (`simulation/`, `postprocessing/`, `scripts/`)
+- FastAPI backend service (`backend/`)
+- Container image workflow (`Dockerfile`, `.devcontainer/`)
+- SFAPI runner and sbatch templates
+- Admin dashboard (`spaces/colliderml-admin/`)
+- Development and production configs (`configs_development/`, `configs_production/`)
+
+The public library's `colliderml.simulate` module auto-clones this repo at a pinned ref (`pipeline-v0.1.0`) for local Docker/Podman simulations.
+
+---
+
+# Docker Pipeline Guide
 
 ## Quick Start
 

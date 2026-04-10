@@ -37,10 +37,6 @@ jobs:
       fail-fast: false
       matrix:
         space:
-          - event-display
-          - simulation-form
-          - leaderboard
-          - model-zoo
           - colliderml-admin
 
     steps:
