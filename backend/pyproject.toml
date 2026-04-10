@@ -18,6 +18,7 @@ dependencies = [
     "sfapi-client>=0.1.0",
     "aiosmtplib>=3.0",
     "python-multipart>=0.0.9",
+    "colliderml>=0.4.0",             # public library (presets, task registry)
 ]
 
 [project.optional-dependencies]
