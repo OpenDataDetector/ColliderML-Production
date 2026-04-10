@@ -1,3 +1,0 @@
-gradio[oauth]>=4.44
-requests>=2.28
-pandas>=2.0
