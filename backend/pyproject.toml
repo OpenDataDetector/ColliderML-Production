@@ -18,6 +18,8 @@ dependencies = [
     "sfapi-client>=0.1.0",
     "aiosmtplib>=3.0",
     "python-multipart>=0.0.9",
+    "huggingface_hub>=0.20.0",       # push benchmark results + eval_results to HF
+    "pyyaml>=6.0",                   # .eval_results YAML generation
     "colliderml>=0.4.0rc1",          # public library (presets, task registry); rc floor allows pre-releases of 0.4.0
 ]
 

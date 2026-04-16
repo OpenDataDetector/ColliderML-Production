@@ -47,6 +47,12 @@ class Settings(BaseSettings):
         description="HF org to create per-request datasets under (e.g. CERN/ColliderML-Service-...)",
     )
 
+    # --- HF benchmark results dataset ---
+    hf_results_dataset: str = Field(
+        default="CERN/colliderml-benchmark-results",
+        description="HF dataset repo where benchmark result JSONs are pushed after scoring",
+    )
+
     # --- Email (SMTP) ---
     smtp_host: str = Field(default="")
     smtp_port: int = Field(default=587)
