@@ -73,7 +73,3 @@ spacepoint_geometry_selection: /global/cfs/cdirs/m4958/usr/danieltm/ColliderML/s
 # read it without hunting for the auto-generated run id. The edm4hep.root
 # at this path is a read-only symlink to v1/runs/0/edm4hep.root.
 debug_output_dir: /global/cfs/cdirs/m4958/data/ColliderML/simulation/hard_scatter/ttbar/v5/runs/0
-
-# scan override: all_pairs_tight20
-strip_pairing_mode: all_pairs
-strip_pairing_max_distance: 20.0
