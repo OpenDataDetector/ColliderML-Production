@@ -55,6 +55,19 @@ digi_config: /global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml
 # vol 30 layers 2,4,6,8,10,12. NOT the original ACTS-bundled JSON.
 spacepoint_geometry_selection: /global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml_dev/scripts/simulation/odd-strip-spacepoint-selection.json
 
+# Optional strip-pairing knobs. Omit to take ACTS defaults (top_one with
+# legacy cuts).
+#   strip_pairing_mode: one of {top_one, top_k, all_pairs}.
+#   strip_top_k:        only used when strip_pairing_mode == top_k.
+#   strip_pairing_max_distance / _max_angle_theta / _max_angle_phi:
+#                       Acts::StripSpacePointBuilder::ClusterPairingOptions
+#                       (mm and rad respectively).
+# strip_pairing_mode: top_one
+# strip_top_k: 5
+# strip_pairing_max_distance: 100.0
+# strip_pairing_max_angle_theta: 1.0
+# strip_pairing_max_angle_phi: 1.0
+
 # --- Interactive override ---
 # Pin output to the deterministic v5/runs/0 path so the analyser can
 # read it without hunting for the auto-generated run id. The edm4hep.root

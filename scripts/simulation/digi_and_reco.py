@@ -290,18 +290,29 @@ def setup_acts_reconstruction(input_path, output_dir, config, rnd, logger=None):
             logger.error(f"Spacepoint geometry selection file not found: {spGeometrySelection}")
             raise FileNotFoundError(f"Spacepoint geometry selection file not found: {spGeometrySelection}")
         
-        # Add SpacePointMaker algorithm
-        s.addAlgorithm(
-            acts.examples.SpacePointMaker(
-                level=LOG_LEVEL,
-                trackingGeometry=trackingGeometry,
-                inputMeasurements="measurements",
-                outputSpacePoints="spacepoints",
-                stripGeometrySelection=acts.examples.json.readJsonGeometryList(
-                    str(spGeometrySelection)
-                ),
-            )
+        # Add SpacePointMaker algorithm. Optional knobs from the yaml
+        # config drive the strip pairing strategy and geometric cuts;
+        # default to the ACTS C++ defaults when absent.
+        sp_kwargs = dict(
+            level=LOG_LEVEL,
+            trackingGeometry=trackingGeometry,
+            inputMeasurements="measurements",
+            outputSpacePoints="spacepoints",
+            stripGeometrySelection=acts.examples.json.readJsonGeometryList(
+                str(spGeometrySelection)
+            ),
         )
+        for cfg_key, sp_key in (
+            ("strip_pairing_mode", "stripPairingMode"),
+            ("strip_top_k", "stripTopK"),
+            ("strip_pairing_max_distance", "stripPairingMaxDistance"),
+            ("strip_pairing_max_angle_theta", "stripPairingMaxAngleTheta"),
+            ("strip_pairing_max_angle_phi", "stripPairingMaxAnglePhi"),
+        ):
+            value = getattr(config, cfg_key, None)
+            if value is not None:
+                sp_kwargs[sp_key] = value
+        s.addAlgorithm(acts.examples.SpacePointMaker(**sp_kwargs))
         
         # Write spacepoints to ROOT if requested
         if output_spacepoints_root:
