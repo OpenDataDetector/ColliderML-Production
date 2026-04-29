@@ -97,9 +97,12 @@ def compute_within_event_indices(m_ev, n_m):
 
 def report(label, sp, mv, ml, ms, m_ev, m_psets, ev_mid_to_row, n_sp,
            n_m, passes):
-    correct = 0
-    correct_per_layer = defaultdict(int)
+    # SP couples per (event, vol, lay): {(lo, hi)}, plus the set of
+    # passing-filter particles shared between the two faces of each SP.
+    sp_couple_pset = defaultdict(set)  # (event, vol, lay, lo, hi) -> shared&passing particles
     built_per_layer = defaultdict(int)
+    correct_built_per_layer = defaultdict(int)
+    n_correct_built = 0
     for i in range(n_sp):
         e = int(sp["event_id"][i])
         r1 = ev_mid_to_row.get((e, int(sp["measurement_id"][i])))
@@ -110,11 +113,17 @@ def report(label, sp, mv, ml, ms, m_ev, m_psets, ev_mid_to_row, n_sp,
         if (v, l) not in ALLOWED:
             continue
         built_per_layer[(v, l)] += 1
-        shared = m_psets[r1] & m_psets[r2]
-        if any(passes(e, bc) for bc in shared):
-            correct += 1
-            correct_per_layer[(v, l)] += 1
+        s1, s2 = int(ms[r1]), int(ms[r2])
+        lo, hi = min(s1, s2), max(s1, s2)
+        shared_passing = {bc for bc in (m_psets[r1] & m_psets[r2])
+                          if passes(e, bc)}
+        if shared_passing:
+            sp_couple_pset[(e, v, l, lo, hi)] |= shared_passing
+            n_correct_built += 1
+            correct_built_per_layer[(v, l)] += 1
 
+    # Truth pairs: per (event, v, l, particle), find the (s, s+1) couple
+    # the particle hit. One per particle per layer.
     truth_hits = defaultdict(set)
     for i in range(n_m):
         if (int(mv[i]), int(ml[i])) not in ALLOWED:
@@ -125,33 +134,41 @@ def report(label, sp, mv, ml, ms, m_ev, m_psets, ev_mid_to_row, n_sp,
                 truth_hits[(e, int(mv[i]), int(ml[i]), int(bc))].add(
                     int(ms[i]))
 
-    true_total = 0
     true_per_layer = defaultdict(int)
-    for (_, v, l, _), surfs in truth_hits.items():
+    matched_per_layer = defaultdict(int)
+    true_total = 0
+    matched_total = 0
+    for (e, v, l, bc), surfs in truth_hits.items():
         sset = set(surfs)
-        for s in surfs:
-            if s % 2 == 1 and (s + 1) in sset:
-                true_per_layer[(v, l)] += 1
-                true_total += 1
-                break  # one (odd, odd+1) couple per particle/layer is enough
+        couples = [(s, s + 1) for s in surfs
+                   if s % 2 == 1 and (s + 1) in sset]
+        if not couples:
+            continue
+        true_total += 1
+        true_per_layer[(v, l)] += 1
+        if any(bc in sp_couple_pset.get((e, v, l, lo, hi), set())
+               for lo, hi in couples):
+            matched_total += 1
+            matched_per_layer[(v, l)] += 1
 
     n_built = sum(built_per_layer.values())
-    eff = 100 * correct / true_total if true_total else 0.0
-    fake = 100 * (n_built - correct) / n_built if n_built else 0.0
+    eff = 100 * matched_total / true_total if true_total else 0.0
+    fake = 100 * (n_built - n_correct_built) / n_built if n_built else 0.0
     print(f"\n=== Variant: {label} ===")
     print(f"  N built:              {n_built}")
-    print(f"  N correct:            {correct}")
+    print(f"  N correct (any built shares a passing particle): {n_correct_built}")
     print(f"  N true cluster pairs: {true_total}")
-    print(f"  Headline efficiency:  {eff:.2f}%  (correct/true)")
+    print(f"  N truth pairs matched by a built SP at the right couple: {matched_total}")
+    print(f"  Headline efficiency:  {eff:.2f}%  (matched/true)")
     print(f"  Headline fake rate:   {fake:.2f}%  ((built-correct)/built)")
     print(f"\n  Per-(vol, layer):")
     print(f"  {'(v, l)':<10} {'built':>8} {'correct':>8} {'true':>8} {'eff%':>8} {'fake%':>8}")
     for vl in sorted(ALLOWED):
         b = built_per_layer[vl]
-        c = correct_per_layer[vl]
+        c = matched_per_layer[vl]
         t = true_per_layer[vl]
         e_ = 100 * c / t if t else 0.0
-        f_ = 100 * (b - c) / b if b else 0.0
+        f_ = 100 * (b - correct_built_per_layer[vl]) / b if b else 0.0
         print(f"  {str(vl):<10} {b:>8} {c:>8} {t:>8} {e_:>7.1f}% {f_:>7.1f}%")
 
 
