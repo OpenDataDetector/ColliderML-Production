@@ -28,7 +28,7 @@ job_config:
 validation_config:
 
 # --- Stage-specific Configurations ---
-events: 1280
+events: 32
 threads: 8
 digi: True
 reco: False
@@ -73,3 +73,6 @@ spacepoint_geometry_selection: /global/cfs/cdirs/m4958/usr/danieltm/ColliderML/s
 # read it without hunting for the auto-generated run id. The edm4hep.root
 # at this path is a read-only symlink to v1/runs/0/edm4hep.root.
 debug_output_dir: /global/cfs/cdirs/m4958/data/ColliderML/simulation/hard_scatter/ttbar/v5/runs/0
+
+# scan override: top_one_defaults
+strip_pairing_mode: top_one

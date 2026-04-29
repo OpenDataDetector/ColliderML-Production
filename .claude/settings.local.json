@@ -1,0 +1,25 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python scripts/beamspot_studies/setup_hepmc_symlinks.py --source-dir /global/cfs/cdirs/m4958/data/ColliderML/simulation/hard_scatter/ttbar/v1/runs --target-dir /global/cfs/cdirs/m4958/data/ColliderML/simulation/beamspot_studies/ttbar_shifted_25um/v1/runs --n-runs 2)",
+      "Bash(conda info:*)",
+      "Bash(conda run:*)",
+      "Bash(git add:*)",
+      "Bash(git commit -m ':*)",
+      "Bash(git stash:*)",
+      "Bash(git commit:*)",
+      "Bash(squeue -j 50936528)",
+      "Bash(sacct -j 50936528,50936557 --format=JobID,State,ExitCode,Elapsed)",
+      "Bash(sacct -j 50937393,50937394 --format=JobID,State,ExitCode,Elapsed)",
+      "Bash(python /global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml_dev/scripts/beamspot_studies/setup_hepmc_symlinks.py --source-dir /global/cfs/cdirs/m4958/data/ColliderML/simulation/hard_scatter/ttbar/v1/runs --target-dir /global/cfs/cdirs/m4958/data/ColliderML/simulation/beamspot_studies/ttbar_shifted_300um/v1/runs --n-runs 50)",
+      "Bash(sacct -j 50937680,50937682,50937750,50937751 --format=JobID,State,ExitCode,Elapsed)",
+      "Bash(kill -9 1464970)",
+      "Bash(scancel 50990953)",
+      "Bash(module load:*)",
+      "Bash(rm -f main.aux main.bbl main.blg main.out main.toc main.log)",
+      "Bash(pdflatex -interaction=nonstopmode main.tex)",
+      "Bash(bibtex main:*)",
+      "Bash(git push:*)"
+    ]
+  }
+}
