@@ -312,6 +312,7 @@ def setup_acts_reconstruction(input_path, output_dir, config, rnd, logger=None):
             value = getattr(config, cfg_key, None)
             if value is not None:
                 sp_kwargs[sp_key] = value
+        print(f"[DEBUG] SpacePointMaker sp_kwargs: {sp_kwargs}", flush=True)
         s.addAlgorithm(acts.examples.SpacePointMaker(**sp_kwargs))
         
         # Write spacepoints to ROOT if requested
