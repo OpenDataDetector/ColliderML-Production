@@ -74,6 +74,5 @@ spacepoint_geometry_selection: /global/cfs/cdirs/m4958/usr/danieltm/ColliderML/s
 # at this path is a read-only symlink to v1/runs/0/edm4hep.root.
 debug_output_dir: /global/cfs/cdirs/m4958/data/ColliderML/simulation/hard_scatter/ttbar/v5/runs/0
 
-# scan override: top_k_5_defaults
-strip_pairing_mode: top_k
-strip_top_k: 5
+# scan override: all_pairs_defaults
+strip_pairing_mode: all_pairs
