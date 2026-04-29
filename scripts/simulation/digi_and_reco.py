@@ -33,8 +33,7 @@ from utils.app_logging import setup_logging, TimingRecorder
 from utils.config import create_base_parser, load_config
 from contextlib import contextmanager
 import math
-from acts.examples.podio import PodioReader
-from acts.examples.edm4hep import EDM4hepSimInputConverter
+from acts.examples.edm4hep import PodioReader, EDM4hepSimInputConverter
 
 u = acts.UnitConstants
 
@@ -248,7 +247,8 @@ def setup_acts_reconstruction(input_path, output_dir, config, rnd, logger=None):
             return geoid
 
         measurementCounter = acts.examples.ParticleSelector.MeasurementCounter()
-        # At least 3 hits in the pixels
+        # At least 3 hits in the pixels (third arg is perLayerCap; v5 binding
+        # requires it explicitly even though the C++ default is uint32_max).
         measurementCounter.addCounter(
             [
                 make_geoid(16),
@@ -256,6 +256,7 @@ def setup_acts_reconstruction(input_path, output_dir, config, rnd, logger=None):
                 make_geoid(18),
             ],
             3,
+            2**32 - 1,
         )
         
         # Add digi particle selection (filters particles with sufficient measurements)
@@ -296,7 +297,7 @@ def setup_acts_reconstruction(input_path, output_dir, config, rnd, logger=None):
                 trackingGeometry=trackingGeometry,
                 inputMeasurements="measurements",
                 outputSpacePoints="spacepoints",
-                stripGeometrySelection=acts.examples.readJsonGeometryList(
+                stripGeometrySelection=acts.examples.json.readJsonGeometryList(
                     str(spGeometrySelection)
                 ),
             )
@@ -305,9 +306,9 @@ def setup_acts_reconstruction(input_path, output_dir, config, rnd, logger=None):
         # Write spacepoints to ROOT if requested
         if output_spacepoints_root:
             s.addWriter(
-                acts.examples.RootSpacepointWriter(
+                acts.examples.root.RootSpacePointWriter(
                     level=LOG_LEVEL,
-                    inputSpacepoints="spacepoints",
+                    inputSpacePoints="spacepoints",
                     inputMeasurementParticlesMap="measurement_particles_map",
                     filePath=str(output_dir / "spacepoints.root"),
                 )
@@ -495,8 +496,8 @@ def add_root_writers(s, output_dir, field, config=None):
     # Write tracking hits (simhits) if requested
     if output_simhits_root:
         s.addWriter(
-            acts.examples.RootSimHitWriter(
-                config=acts.examples.RootSimHitWriter.Config(
+            acts.examples.root.RootSimHitWriter(
+                config=acts.examples.root.RootSimHitWriter.Config(
                     filePath=str(output_dir / "simhits.root"),
                     inputSimHits="simhits",
                 ),
@@ -507,8 +508,8 @@ def add_root_writers(s, output_dir, field, config=None):
     # Write simulated particles if requested
     if output_particles_root:
         s.addWriter(
-            acts.examples.RootParticleWriter(
-                config=acts.examples.RootParticleWriter.Config(
+            acts.examples.root.RootParticleWriter(
+                config=acts.examples.root.RootParticleWriter.Config(
                     filePath=str(output_dir / "particles.root"),
                     inputParticles="particles",
                     referencePoint=acts.Vector3(0.0, 0.0, 0.0),

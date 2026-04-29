@@ -1,0 +1,62 @@
+#========================================================================
+# ttbar v5 — small-events digi rerun for the patched-ACTS spacepoint test
+#
+# Reads v1's existing edm4hep.root via a read-only symlink and writes
+# only digi-stage outputs (measurements, particles, spacepoints) to
+# ttbar/v5/runs/0. CKF/ambi reco is disabled — we only need the
+# spacepoint-validation signal.
+#
+# Goal: verify the SpacePointMaker patch (acts_v5) on a 16-event slice
+# before scaling to 1280 events.
+#========================================================================
+
+# --- Dataset & Version ---
+campaign: "hard_scatter"
+dataset: "ttbar"
+version: "v5"
+stage: "digitization"
+
+# --- Job Configuration ---
+job_config:
+  n_runs: 1
+  runs_per_node: 1
+  time_limit: "02:00:00"
+  qos: "debug"
+  execution_mode: "interactive"
+  depends_on:
+
+validation_config:
+
+# --- Stage-specific Configurations ---
+events: 1280
+threads: 8
+digi: True
+reco: False
+spacepoints: True
+output_spacepoints_root: True
+num_seeds_per_spm: 40
+
+# --- Writing Configuration ---
+output_particles_root: True
+output_measurements_root: True
+
+# Reco/ambi outputs disabled (reco: False)
+ambi_root_output: False
+ambi_finding_performance: False
+ambi_fitting_performance: False
+
+write_helix_parameters: False
+
+# --- Digitization config ---
+digi_config: /global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml_dev/scripts/simulation/odd-full-geo-digi-config.json
+
+# --- Spacepoint config ---
+# Cleaned 12-entry strip-only selection: vol 28 layers 2,4,6,8,10,12 and
+# vol 30 layers 2,4,6,8,10,12. NOT the original ACTS-bundled JSON.
+spacepoint_geometry_selection: /global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml_dev/scripts/simulation/odd-strip-spacepoint-selection.json
+
+# --- Interactive override ---
+# Pin output to the deterministic v5/runs/0 path so the analyser can
+# read it without hunting for the auto-generated run id. The edm4hep.root
+# at this path is a read-only symlink to v1/runs/0/edm4hep.root.
+debug_output_dir: /global/cfs/cdirs/m4958/data/ColliderML/simulation/hard_scatter/ttbar/v5/runs/0
