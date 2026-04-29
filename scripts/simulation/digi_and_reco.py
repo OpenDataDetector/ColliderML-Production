@@ -308,6 +308,8 @@ def setup_acts_reconstruction(input_path, output_dir, config, rnd, logger=None):
             ("strip_pairing_max_distance", "stripPairingMaxDistance"),
             ("strip_pairing_max_angle_theta", "stripPairingMaxAngleTheta"),
             ("strip_pairing_max_angle_phi", "stripPairingMaxAnglePhi"),
+            ("strip_length_tolerance", "stripLengthTolerance"),
+            ("strip_length_gap_tolerance", "stripLengthGapTolerance"),
         ):
             value = getattr(config, cfg_key, None)
             if value is not None:
