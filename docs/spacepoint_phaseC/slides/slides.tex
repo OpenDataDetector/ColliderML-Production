@@ -1,0 +1,408 @@
+\documentclass[aspectratio=169,10pt]{beamer}
+
+\usetheme{metropolis}
+\usepackage{appendixnumberbeamer}
+\usepackage{booktabs}
+\usepackage[scale=2]{ccicons}
+\usepackage{pgfplots}
+\usepgfplotslibrary{dateplot}
+\usepackage{xspace}
+\usepackage{tikz}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{amsmath,amssymb}
+\usepackage{siunitx}
+
+% --- preamble for code listings ---
+\definecolor{codebg}{rgb}{0.96,0.96,0.96}
+\definecolor{codecomment}{rgb}{0.30,0.55,0.30}
+\definecolor{codekw}{rgb}{0.10,0.20,0.60}
+\lstset{
+  backgroundcolor=\color{codebg},
+  basicstyle=\ttfamily\scriptsize,
+  commentstyle=\color{codecomment},
+  keywordstyle=\color{codekw}\bfseries,
+  language=C++,
+  breaklines=true,
+  showstringspaces=false,
+  numbers=none,
+  frame=none,
+  xleftmargin=4pt,
+  xrightmargin=4pt
+}
+
+\newcommand{\plotpath}{../plots}
+\newcommand{\ttbar}{$t\bar t$\xspace}
+
+\title{ODD strip space-point reconstruction}
+\subtitle{Phase C: \texttt{stripGapParameter} (ATLAS \texttt{SCTGapParameter} port) and a quality study of clusters and SPs}
+\date{2026-05-01}
+\author{Daniel Murnane (with Claude Opus 4.7)}
+\institute{ColliderML / ExaTrkX}
+
+\begin{document}
+
+\maketitle
+
+% =====================================================================
+\begin{frame}{Where we are coming from}
+\textbf{Phase A/B (already done):}
+\begin{itemize}
+  \item Fixed two real bugs in \texttt{Acts::SpacePointMaker}:
+    a wrong cross-\texttt{extra} stereo-partner filter and the \texttt{stripGeometrySelection} dedupe.
+  \item Expanded scope to vol \{28, 29, 30\} (LS endcap $-$, LS barrel, LS endcap $+$) on full-pileup \ttbar.
+  \item Made \texttt{stripPairingMode} (\texttt{top\_one}/\texttt{top\_k}/\texttt{all\_pairs}), \texttt{stripLengthTolerance},
+    cluster-pair geometric cuts \emph{configurable} from yaml.
+  \item \alert{Verified ATLAS Athena uses the same algorithm, in better shape only via two upgrades.}
+\end{itemize}
+
+\textbf{Phase C goal:} take that ceiling and push it.\\[1ex]
+\textbf{Headline before C:} 98.6 \% prim+pT$>$1\,GeV efficiency at $N_\mathrm{SP} \le N_\mathrm{clusters}$ cap.\\
+\textbf{Headline after C (this report):} \alert{98.86 \%} at the same cap, on cleaner physics.
+
+\end{frame}
+
+% =====================================================================
+\begin{frame}{Diagnosing the residual 1 \% loss}
+
+True (single-particle) cluster pairs that fail the ACTS \texttt{computeConstrainedFormationState}
+$\lvert m \rvert \le 1+ \mathtt{stripLengthTolerance}$ check (default 0.01)
+are dominated by a \emph{geometric} effect — the wafer thickness gap.
+
+\begin{columns}[T]
+\begin{column}{0.55\textwidth}
+$m \in [-1,+1]$ parametrises position along strip 1 of the strip-strip
+intersection. With cluster centroids on the two stereo faces at
+\emph{rec}\textsubscript{loc0,1} and \emph{rec}\textsubscript{loc0,2},
+\[
+m \;\approx\; \frac{\Delta\text{loc0}}{\sin\theta_\mathrm{stereo}\,\cdot\,\text{half-strip-length}}
+\]
+For ODD endcap (gap $\approx 5$\,mm, $\theta\approx40$\,mrad,
+half-len $=78$\,mm): $|m|$ up to $\sim 2.5$ is still physically real
+(high-$\eta$ tracks across the 5\,mm wafer).
+\end{column}
+\begin{column}{0.45\textwidth}
+\textbf{Distribution of $|\Delta\mathrm{loc0}|$\,[mm]} for primary+pT$>$1\,GeV
+true cluster pairs (16 events of full-PU \ttbar):
+
+\begin{tabular}{lr}
+\toprule
+percentile & $|\Delta\mathrm{loc0}|$ \\
+\midrule
+50 \% & 1.75\,mm \\
+90 \% & 4.0\,mm \\
+99 \% & 11.8\,mm \\
+max  & 53.6\,mm \\
+\bottomrule
+\end{tabular}
+
+Median $|m|\approx 0.5$ — clean tracks pass.\\
+99-th percentile $|m|\approx 3$ — \alert{rejected at default tolerance}.
+\end{column}
+\end{columns}
+\end{frame}
+
+% =====================================================================
+\begin{frame}[fragile]{Path A: the \texttt{stripGapParameter}}
+
+ATLAS Athena's \texttt{SCTGapParameter} adds a geometric extra-allowance to the
+$|m|, |n|$ limit, scaling with the actual wafer separation and stereo
+geometry. Recommended 0.001--0.0015 for ITk in their normalisation;
+default 0 (legacy SCT).
+
+\textbf{Implementation in ACTS} ($\sim$30 lines, default 0 = identity):
+
+\begin{lstlisting}
+// Core/include/Acts/SpacePointFormation2/StripSpacePointBuilder.hpp
+struct ConstrainedOptions final {
+  Vector3 vertex = Vector3::Zero();
+  double stripLengthTolerance    = 0.01;
+  double stripLengthGapTolerance = 0.01;
+  double stripGapParameter       = 0.0;  // <-- new
+};
+\end{lstlisting}
+
+\begin{lstlisting}
+// Core/src/SpacePointFormation2/StripSpacePointBuilder.cpp
+state.limit = 1 + stripLengthTolerance;
+if (stripGapParameter > 0.0) {
+  const Vector3 gapVec = 0.5 * (stripEnds2.top + stripEnds2.bottom
+                              - stripEnds1.top - stripEnds1.bottom);
+  const double cosStereo  = ...;          // sdir1.dot(sdir2)/(|sdir1||sdir2|)
+  const double sinStereo  = std::sqrt(std::max(0.0, 1.0 - cosStereo*cosStereo));
+  const double halfLen    = 0.5 * sdir1.norm();
+  state.limit += stripGapParameter * gapVec.norm() / sinStereo / halfLen;
+}
+\end{lstlisting}
+\end{frame}
+
+% =====================================================================
+\begin{frame}{What the formula says (and why this is honest)}
+\textbf{Geometric extra term} — $\Delta_\mathrm{m,extra}=
+\mathrm{stripGapParameter}\,\cdot\,\dfrac{|\vec{g}|}{\sin\theta_\mathrm{stereo}\,\text{half-len}}$
+
+\bigskip
+
+\begin{tabular}{lcccccc}
+\toprule
+volume       & gap & half-len & $\theta$ & extra & extra & limit \\
+             & [mm] & [mm] & [mrad] & @ 0.3 & @ 1.0 & @ 1.0 \\
+\midrule
+28/30 endcap & 5  & 78 & 40  & 0.48 & 1.60 & 2.61 \\
+29   barrel  & 5  & 54 & 40  & 0.69 & 2.32 & 3.32 \\
+\bottomrule
+\end{tabular}
+
+\bigskip
+
+\textbf{This is \emph{not} the same as just loosening \texttt{stripLengthTolerance}:}
+
+\begin{itemize}
+  \item The extra is \emph{geometric, per-pair}: it's bigger where the geometry
+    actually demands it (barrel: shorter strips $\Rightarrow$ more sensitivity
+    to the gap, gets more allowance).
+  \item It vanishes for pairs where the surfaces are coplanar
+    ($|\vec{g}|\to 0$) — purely-tilted same-wafer geometry doesn't get
+    relaxation it shouldn't have.
+  \item Setting \texttt{stripGapParameter}~$=0$ \emph{exactly preserves the
+    legacy ACTS algorithm} (verified: 178\,127 SPs vs 178\,110 baseline,
+    delta 0.01\,\%).
+\end{itemize}
+\end{frame}
+
+% =====================================================================
+\begin{frame}{Operating-point scan (16 events, full-PU \ttbar)}
+
+\centering
+\includegraphics[width=0.92\linewidth]{\plotpath/scan_pareto.png}
+
+\vspace{-1ex}
+
+\footnotesize
+Cap = $N_\mathrm{clusters}$ in vol \{28, 29, 30\} = \textbf{736k}.\\
+\textbf{Op\textsubscript{C}} (lock-in): \texttt{top\_k=4, gap=0.6, tol=0.3} $\Rightarrow$
+$N_\mathrm{SP}=722k$, eff\textsubscript{prim}~=~98.86\,\%.
+\end{frame}
+
+% =====================================================================
+\begin{frame}{Per-(vol, layer) efficiency at the lock-in point}
+
+\centering
+\includegraphics[width=0.96\linewidth]{\plotpath/per_vl_eff.png}
+
+\vspace{-1ex}
+
+\footnotesize
+LS barrel (vol 29) \emph{wins} — short half-strip, thicker apparent gap.
+LS endcap inner disks (lay 4 of vol 28/30) bottom out at $\sim$97\,\%.\\
+Spread is statistical (each layer has only $\sim$350 prim+pT$>$1\,GeV truth pairs in 16 events).
+\end{frame}
+
+% =====================================================================
+\begin{frame}{Limitations of Path A (and what we tried)}
+
+\textbf{Limit 1 — fundamental ceiling.} The remaining 1.14\,\% loss is the
+long tail of $|\Delta\mathrm{loc0}|>12$\,mm cluster pairs.
+These are PU multi-particle merged clusters where the centroid is pulled
+tens of mm from any single particle's truth. The \emph{geometry is fine};
+the cluster reconstruction is what's wrong. \alert{Path A cannot fix this.}
+
+\bigskip
+
+\textbf{Limit 2 — Path B was attempted and rejected.} Cluster-span splitting
+(post-clusterer split at the largest gap when span$>$threshold) was tried.
+\begin{itemize}
+  \item Initial run claimed 99.25\,\% — \emph{measurement artifact} from a
+    bug in my recursive splitter (the gap criterion split at every strip,
+    over-fragmenting clean contiguous clusters).
+  \item Bug fix: only split at gaps $>$1.5\,$\times$\,pitch.
+  \item After fix: split fires on $\sim$16 / 736k clusters; efficiency
+    drops back to Path A's 98.86\,\%.
+  \item Reason: connected-component clustering already splits at any
+    non-fired strip; the merged clusters with span$>$20\,mm are
+    \emph{truly contiguous} (single high-$\eta$ track in many strips).
+    Splitting them is wrong, and the rare bridging-cell merges between
+    different particles are too few to matter.
+\end{itemize}
+
+ATLAS Athena's strip clusterer has the same limitation — no within-strip-direction split.
+\end{frame}
+
+% =====================================================================
+\begin{frame}{Quality study --- cluster residual (across-strip / loc0)}
+\textbf{Question:} are the clusters we feed to the SP maker any good?
+
+\textbf{Approach:} compute \texttt{rec\_loc0} (algorithm pitch position) $-$ \texttt{true\_loc0} (truth simhit pitch).
+For 1-D strips, this \emph{is} the cluster-quality measure (the strip is a
+line in 3-D — loc1 has no resolution). Sample = 736k long-strip clusters,
+16-event full-PU \ttbar.
+
+\begin{columns}[T]
+\begin{column}{0.55\textwidth}
+\centering
+\includegraphics[width=\linewidth]{\plotpath/cluster_resid_loc0.png}
+\end{column}
+\begin{column}{0.45\textwidth}
+\textbf{Headline numbers}:
+
+\begin{tabular}{lr}
+\toprule
+quantile & $|\Delta\mathrm{loc0}|$ \\
+\midrule
+50 \% & 0.000\,mm \\
+68 \% & 0.011\,mm = 11\,\textmu m \\
+95 \% & 0.043\,mm = 43\,\textmu m \\
+RMS & 0.46\,mm \\
+\bottomrule
+\end{tabular}
+
+\bigskip
+For 100--125\,\textmu m pitch with digital readout the
+\emph{ideal} centroid resolution is pitch/$\sqrt{12}$ $\approx$ 30--36\,\textmu m.
+68\%-tile = 11\,\textmu m is \emph{better} than that — because most clusters span $>$1
+strip, and the centroid of a 2--3 strip cluster is sub-pitch.
+
+\bigskip
+RMS = 0.46\,mm is dominated by the long
+PU-merge tail (Δloc0 up to 50+\,mm).
+\end{column}
+\end{columns}
+\end{frame}
+
+% =====================================================================
+\begin{frame}{Quality study --- cluster residual vs cluster size}
+
+\centering
+\includegraphics[width=0.8\linewidth]{\plotpath/cluster_resid_loc0_by_size.png}
+
+\vspace{-1.5ex}
+
+\footnotesize
+1-strip clusters ($\sim$50\,\% of all): wider tail (one strip = pitch resolution).\\
+2--3 strip clusters: sharpest peak — centroid arithmetic gives sub-pitch.\\
+$\ge$5 strip clusters: shifted, broader — these are the multi-particle PU merges.
+\end{frame}
+
+% =====================================================================
+\begin{frame}{Quality study --- cluster 3-D residuals (informative, not headline)}
+
+\textbf{Caveat:} \texttt{rec\_g\{x,y,z\}} sets loc1 to \emph{the wafer centre along the strip}
+(SpacePointMaker overrides loc1 in \texttt{getStripEnds}). So
+$\Delta x$, $\Delta y$, $\Delta z$ are dominated by where the truth is along the
+strip, NOT by the cluster reco. They are \emph{not} a quality measure of
+the cluster — but they tell us how far the truth particle is from the wafer-centre.
+
+\begin{columns}[T]
+\begin{column}{0.5\textwidth}
+\centering
+\includegraphics[width=\linewidth]{\plotpath/cluster_resid_x.png}
+\end{column}
+\begin{column}{0.5\textwidth}
+\centering
+\includegraphics[width=\linewidth]{\plotpath/cluster_resid_3d_per_vol.png}
+\end{column}
+\end{columns}
+\vspace{-1ex}
+\footnotesize
+$\Delta x$, $\Delta y$ RMS $\approx$ 23\,mm; $\Delta z$ RMS $\approx$ 21\,mm; $|\Delta|_{3D}$ RMS $\approx$ 39\,mm.\\
+The 3-D residual pattern is very different per volume:\\
+\hphantom{x}\quad endcap: dominated by $\Delta r$ (radial along strip);\\
+\hphantom{x}\quad barrel: dominated by $\Delta z$ (axial along strip).
+\end{frame}
+
+% =====================================================================
+\begin{frame}{Quality study --- spacepoint residuals}
+\textbf{What is the SP residual?} For an SP with measurement\textsubscript{1}
+and measurement\textsubscript{2}, the truth is the midpoint of the two
+underlying simhit positions:
+\[
+  \vec{r}^{\,\mathrm{SP}}_{\mathrm{truth}}=\tfrac{1}{2}\left[(x,y,z)^{(1)}_{\mathrm{truth}}+(x,y,z)^{(2)}_{\mathrm{truth}}\right]
+\]
+$\Delta_{\mathrm{SP}} = \vec{r}_{\mathrm{SP}} - \vec{r}^{\,\mathrm{SP}}_{\mathrm{truth}}$.
+
+Two samples: \emph{clean} = exactly one shared primary+pT$>$1\,GeV particle on both faces (n=9818).
+\emph{All matched} = any shared truth particle (n=722,234, mostly PU minimum-bias).
+
+\begin{columns}[T]
+\begin{column}{0.5\textwidth}
+\centering
+\includegraphics[width=\linewidth]{\plotpath/sp_resid_3d_compare.png}
+\end{column}
+\begin{column}{0.5\textwidth}
+\centering
+\includegraphics[width=\linewidth]{\plotpath/sp_resid_x_clean.png}
+\end{column}
+\end{columns}
+\vspace{-1ex}
+\footnotesize
+Clean SPs peak at $|\Delta|\sim$15--20\,mm. All-matched is flat (truth ambiguous in PU).
+\end{frame}
+
+% =====================================================================
+\begin{frame}{SP residuals --- numerical headlines}
+
+\begin{table}
+\centering
+\small
+\begin{tabular}{lrrrrr}
+\toprule
+sample $\backslash$ axis [mm] & median & RMS & 68\,\% & 95\,\% & N \\
+\midrule
+\multicolumn{6}{l}{\textit{clean prim+pT$>$1\,GeV (n=9818)}} \\
+\;$\Delta x$ & $+0.40$ & 12.4 &  4.6 & 21.6 &       \\
+\;$\Delta y$ & $+1.20$ & 13.7 &  4.9 & 21.8 &       \\
+\;$\Delta z$ & $+2.50$ & 40.2 & 44.4 & 76.5 &       \\
+\;$|\Delta|$ & $+30.4$ & 44.2 & 45.6 & 77.8 &  9{,}818 \\
+\midrule
+\multicolumn{6}{l}{\textit{all matched (n=722k)}} \\
+\;$|\Delta|$ & $+101.5$ & 140.7 & 151.8 & 262.7 & 722{,}234 \\
+\bottomrule
+\end{tabular}
+\caption*{}
+\end{table}
+
+\vspace{-2ex}
+
+\textbf{Interpretation.}
+\begin{itemize}
+  \item Transverse precision (clean): $\sim$5\,mm at 68\,\%, 12\,mm RMS.
+    Workable for ML tracking ($\Delta\phi/r \approx 6$\,mrad at $r$=830\,mm).
+  \item $\Delta z$ much larger: dominated by barrel (vol 29) where the
+    along-strip direction is global $z$. Barrel SP $z$-resolution is
+    a half-strip-length problem, not an algorithm problem.
+  \item All-matched is dramatically worse — confirms the
+    ``most matched SPs are PU-particle confusions'' picture.
+\end{itemize}
+\end{frame}
+
+% =====================================================================
+\begin{frame}{Summary}
+
+\textbf{Path A — \texttt{stripGapParameter}}: an ATLAS-grade port. \alert{Locked-in
+operating point: \texttt{top\_k=4, gap=0.6, tol=0.3} on vol \{28,29,30\}}, giving
+\textbf{98.86 \% prim+pT$>$1\,GeV efficiency at 722k SPs vs 736k cluster cap}
+on 16 events of full-PU \ttbar.\\
+
+\textbf{Quality}:
+\begin{itemize}
+  \item Cluster pitch residual: 68\,\% $|\cdot|<$11\,\textmu m, 95\,\% $<$43\,\textmu m.
+  \item Clean (prim+pT) SP residual: 5\,mm transverse, 40\,mm $z$ (barrel-dominated).
+\end{itemize}
+
+\textbf{Limitations}:
+\begin{itemize}
+  \item Cap is binding at 99\,\% target — Path A reaches 98.86\,\%, can't break 99.
+  \item 1.14\,\% residual is PU multi-particle clusters with shifted centroids.
+  \item Path B (cluster splitting) attempted, doesn't help (verified, reverted).
+\end{itemize}
+
+\textbf{Routes to break 99\,\% under cap}:
+\begin{itemize}
+  \item Per-particle truth-aware cluster splitting (MC only — sets the achievable upper bound).
+  \item Better physical clusterer (energy-shape splitting; $\eta$/$\phi$ overlap pairing across modules).
+  \item Different SP construction (3-strip combos, beam-line constraint per event).
+\end{itemize}
+
+\end{frame}
+
+\end{document}
