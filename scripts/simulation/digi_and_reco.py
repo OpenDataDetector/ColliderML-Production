@@ -236,6 +236,7 @@ def setup_acts_reconstruction(input_path, output_dir, config, rnd, logger=None):
             outputDirCsv=None,
             rnd=rnd,
             logLevel=LOG_LEVEL,
+            doMerge=getattr(config, "do_merge", None),
             maxClusterSpanLoc0=getattr(config, "max_cluster_span_loc0", None),
             maxClusterSpanLoc1=getattr(config, "max_cluster_span_loc1", None),
         )
