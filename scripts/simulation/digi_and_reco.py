@@ -310,6 +310,7 @@ def setup_acts_reconstruction(input_path, output_dir, config, rnd, logger=None):
             ("strip_pairing_max_angle_phi", "stripPairingMaxAnglePhi"),
             ("strip_length_tolerance", "stripLengthTolerance"),
             ("strip_length_gap_tolerance", "stripLengthGapTolerance"),
+            ("strip_gap_parameter", "stripGapParameter"),
             ("strip_partner_count", "stripPartnerCount"),
             ("strip_partner_search_radius_multiplier",
              "stripPartnerSearchRadiusMultiplier"),
