@@ -236,6 +236,8 @@ def setup_acts_reconstruction(input_path, output_dir, config, rnd, logger=None):
             outputDirCsv=None,
             rnd=rnd,
             logLevel=LOG_LEVEL,
+            maxClusterSpanLoc0=getattr(config, "max_cluster_span_loc0", None),
+            maxClusterSpanLoc1=getattr(config, "max_cluster_span_loc1", None),
         )
 
         def make_geoid(vol=None, lay=None):
