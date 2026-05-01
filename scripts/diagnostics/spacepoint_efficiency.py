@@ -11,8 +11,14 @@ import awkward as ak
 import numpy as np
 import uproot
 
-ALLOWED = {(28, 2), (28, 4), (28, 6), (28, 8), (28, 10), (28, 12),
-           (30, 2), (30, 4), (30, 6), (30, 8), (30, 10), (30, 12)}
+ALLOWED = {
+    (23, 2), (23, 4), (23, 6), (23, 8), (23, 10), (23, 12),  # SS endcap-
+    (24, 2), (24, 4), (24, 6), (24, 8),                      # SS barrel
+    (25, 2), (25, 4), (25, 6), (25, 8), (25, 10), (25, 12),  # SS endcap+
+    (28, 2), (28, 4), (28, 6), (28, 8), (28, 10), (28, 12),  # LS endcap-
+    (29, 2), (29, 4),                                        # LS barrel
+    (30, 2), (30, 4), (30, 6), (30, 8), (30, 10), (30, 12),  # LS endcap+
+}
 
 
 def pack_barcode(vp, vs, p, g, sub):
@@ -32,6 +38,7 @@ def load_inputs(run_dir, max_events):
 
     m = uproot.open(f"{run_dir}/measurements.root")["measurements"].arrays(
         ["event_nr", "volume_id", "layer_id", "surface_id",
+         "rec_gx", "rec_gy", "rec_gz",
          "particles_vertex_primary", "particles_vertex_secondary",
          "particles_particle", "particles_generation", "particles_sub_particle"],
         library="ak")
@@ -95,13 +102,23 @@ def compute_within_event_indices(m_ev, n_m):
     return {(int(m_ev[i]), int(mid_per_row[i])): i for i in range(n_m)}
 
 
-def report(label, sp, mv, ml, ms, m_ev, m_psets, ev_mid_to_row, n_sp,
-           n_m, passes):
+def report(label, sp, mv, ml, ms, mr, mz, m_ev, m_psets, ev_mid_to_row, n_sp,
+           n_m, passes, r_edges, z_edges):
+    def r_bin(r):
+        i = int(np.searchsorted(r_edges, r, side="right")) - 1
+        return max(0, min(i, len(r_edges) - 2))
+
+    def z_bin(z):
+        i = int(np.searchsorted(z_edges, z, side="right")) - 1
+        return max(0, min(i, len(z_edges) - 2))
+
     # SP couples per (event, vol, lay): {(lo, hi)}, plus the set of
     # passing-filter particles shared between the two faces of each SP.
     sp_couple_pset = defaultdict(set)  # (event, vol, lay, lo, hi) -> shared&passing particles
     built_per_layer = defaultdict(int)
     correct_built_per_layer = defaultdict(int)
+    built_per_rz = defaultdict(int)
+    correct_per_rz = defaultdict(int)
     n_correct_built = 0
     for i in range(n_sp):
         e = int(sp["event_id"][i])
@@ -113,6 +130,9 @@ def report(label, sp, mv, ml, ms, m_ev, m_psets, ev_mid_to_row, n_sp,
         if (v, l) not in ALLOWED:
             continue
         built_per_layer[(v, l)] += 1
+        rb = r_bin(mr[r1])
+        zb = z_bin(abs(mz[r1]))
+        built_per_rz[(rb, zb)] += 1
         s1, s2 = int(ms[r1]), int(ms[r2])
         lo, hi = min(s1, s2), max(s1, s2)
         shared_passing = {bc for bc in (m_psets[r1] & m_psets[r2])
@@ -121,24 +141,31 @@ def report(label, sp, mv, ml, ms, m_ev, m_psets, ev_mid_to_row, n_sp,
             sp_couple_pset[(e, v, l, lo, hi)] |= shared_passing
             n_correct_built += 1
             correct_built_per_layer[(v, l)] += 1
+            correct_per_rz[(rb, zb)] += 1
 
     # Truth pairs: per (event, v, l, particle), find the (s, s+1) couple
     # the particle hit. One per particle per layer.
-    truth_hits = defaultdict(set)
+    truth_hits = defaultdict(lambda: {"surfs": set(), "rz": None})
     for i in range(n_m):
         if (int(mv[i]), int(ml[i])) not in ALLOWED:
             continue
         e = int(m_ev[i])
         for bc in m_psets[i]:
             if passes(e, bc):
-                truth_hits[(e, int(mv[i]), int(ml[i]), int(bc))].add(
-                    int(ms[i]))
+                key = (e, int(mv[i]), int(ml[i]), int(bc))
+                truth_hits[key]["surfs"].add(int(ms[i]))
+                # Position from the lo-side cluster; close enough at strip-pair scale.
+                if int(ms[i]) % 2 == 1:
+                    truth_hits[key]["rz"] = (mr[i], abs(mz[i]))
 
     true_per_layer = defaultdict(int)
     matched_per_layer = defaultdict(int)
+    true_per_rz = defaultdict(int)
+    matched_per_rz = defaultdict(int)
     true_total = 0
     matched_total = 0
-    for (e, v, l, bc), surfs in truth_hits.items():
+    for (e, v, l, bc), info in truth_hits.items():
+        surfs = info["surfs"]
         sset = set(surfs)
         couples = [(s, s + 1) for s in surfs
                    if s % 2 == 1 and (s + 1) in sset]
@@ -146,10 +173,20 @@ def report(label, sp, mv, ml, ms, m_ev, m_psets, ev_mid_to_row, n_sp,
             continue
         true_total += 1
         true_per_layer[(v, l)] += 1
+        rz = info["rz"]
+        if rz is None:
+            # Fall back: use any measurement on this (e, v, l, bc).
+            rz = (np.nan, np.nan)
+        rb = r_bin(rz[0]) if not np.isnan(rz[0]) else None
+        zb = z_bin(rz[1]) if not np.isnan(rz[1]) else None
+        if rb is not None and zb is not None:
+            true_per_rz[(rb, zb)] += 1
         if any(bc in sp_couple_pset.get((e, v, l, lo, hi), set())
                for lo, hi in couples):
             matched_total += 1
             matched_per_layer[(v, l)] += 1
+            if rb is not None and zb is not None:
+                matched_per_rz[(rb, zb)] += 1
 
     n_built = sum(built_per_layer.values())
     eff = 100 * matched_total / true_total if true_total else 0.0
@@ -170,6 +207,30 @@ def report(label, sp, mv, ml, ms, m_ev, m_psets, ev_mid_to_row, n_sp,
         e_ = 100 * c / t if t else 0.0
         f_ = 100 * (b - correct_built_per_layer[vl]) / b if b else 0.0
         print(f"  {str(vl):<10} {b:>8} {c:>8} {t:>8} {e_:>7.1f}% {f_:>7.1f}%")
+
+    print(f"\n  Per-r bin (mm), pooled over |z|:")
+    print(f"  {'r-bin':<14} {'built':>8} {'correct':>8} {'true':>8} {'matched':>8} {'eff%':>8} {'fake%':>8}")
+    for rb in range(len(r_edges) - 1):
+        b = sum(built_per_rz.get((rb, zb), 0) for zb in range(len(z_edges) - 1))
+        c_built = sum(correct_per_rz.get((rb, zb), 0) for zb in range(len(z_edges) - 1))
+        t = sum(true_per_rz.get((rb, zb), 0) for zb in range(len(z_edges) - 1))
+        c = sum(matched_per_rz.get((rb, zb), 0) for zb in range(len(z_edges) - 1))
+        e_ = 100 * c / t if t else 0.0
+        f_ = 100 * (b - c_built) / b if b else 0.0
+        label_r = f"[{r_edges[rb]:.0f}, {r_edges[rb+1]:.0f}]"
+        print(f"  {label_r:<14} {b:>8} {c_built:>8} {t:>8} {c:>8} {e_:>7.1f}% {f_:>7.1f}%")
+
+    print(f"\n  Per-|z| bin (mm), pooled over r:")
+    print(f"  {'|z|-bin':<16} {'built':>8} {'correct':>8} {'true':>8} {'matched':>8} {'eff%':>8} {'fake%':>8}")
+    for zb in range(len(z_edges) - 1):
+        b = sum(built_per_rz.get((rb, zb), 0) for rb in range(len(r_edges) - 1))
+        c_built = sum(correct_per_rz.get((rb, zb), 0) for rb in range(len(r_edges) - 1))
+        t = sum(true_per_rz.get((rb, zb), 0) for rb in range(len(r_edges) - 1))
+        c = sum(matched_per_rz.get((rb, zb), 0) for rb in range(len(r_edges) - 1))
+        e_ = 100 * c / t if t else 0.0
+        f_ = 100 * (b - c_built) / b if b else 0.0
+        label_z = f"[{z_edges[zb]:.0f}, {z_edges[zb+1]:.0f}]"
+        print(f"  {label_z:<16} {b:>8} {c_built:>8} {t:>8} {c:>8} {e_:>7.1f}% {f_:>7.1f}%")
 
 
 def main():
@@ -196,7 +257,17 @@ def main():
     mv = ak.to_numpy(m["volume_id"]).astype(int)
     ml = ak.to_numpy(m["layer_id"]).astype(int)
     ms = ak.to_numpy(m["surface_id"]).astype(int)
+    mgx = ak.to_numpy(m["rec_gx"]).astype(np.float32)
+    mgy = ak.to_numpy(m["rec_gy"]).astype(np.float32)
+    mgz = ak.to_numpy(m["rec_gz"]).astype(np.float32)
+    mr = np.sqrt(mgx**2 + mgy**2)
     ev_mid_to_row = compute_within_event_indices(m_ev, n_m)
+
+    # Full strip detector: SS r=240..702 mm, LS r=810..1032 mm.
+    # |z| spans 0 (barrel) to ~3025 (LS endcap layer 2).
+    r_edges = np.array([200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100],
+                       dtype=np.float32)
+    z_edges = np.array([0, 500, 1000, 1500, 2000, 2500, 3025], dtype=np.float32)
 
     def all_particles(_e, _bc):
         return True
@@ -209,11 +280,11 @@ def main():
         return is_primary and pt > args.pt_min
 
     report("all particles",
-           sp, mv, ml, ms, m_ev, m_psets, ev_mid_to_row, n_sp, n_m,
-           all_particles)
+           sp, mv, ml, ms, mr, mgz, m_ev, m_psets, ev_mid_to_row, n_sp, n_m,
+           all_particles, r_edges, z_edges)
     report(f"primary + pT > {args.pt_min} GeV",
-           sp, mv, ml, ms, m_ev, m_psets, ev_mid_to_row, n_sp, n_m,
-           primary_high_pt)
+           sp, mv, ml, ms, mr, mgz, m_ev, m_psets, ev_mid_to_row, n_sp, n_m,
+           primary_high_pt, r_edges, z_edges)
 
 
 if __name__ == "__main__":
