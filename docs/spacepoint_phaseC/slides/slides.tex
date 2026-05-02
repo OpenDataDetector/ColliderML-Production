@@ -12,6 +12,7 @@
 \usepackage{xcolor}
 \usepackage{amsmath,amssymb}
 \usepackage{siunitx}
+\usepackage{multirow}
 
 % --- preamble for code listings ---
 \definecolor{codebg}{rgb}{0.96,0.96,0.96}
@@ -376,6 +377,63 @@ sample $\backslash$ axis [mm] & median & RMS & 68\,\% & 95\,\% & N \\
 \end{frame}
 
 % =====================================================================
+\begin{frame}{Quality study --- does the SP \emph{actually} help along-strip?}
+
+\textbf{Sharp question:} a single 1-D strip cluster has \texttt{rec\_z} (or \texttt{rec\_r})
+pinned to the wafer centre — the strip is a \emph{line}, not a point.
+The SP combines two stereo clusters via the strip-strip 3-D intersection
+to determine the along-strip coordinate. \alert{Is the SP's along-strip resolution
+actually better than the trivial wafer-centre baseline?}
+
+\centering
+\includegraphics[width=0.96\linewidth]{\plotpath/sp_vs_cluster_along_strip.png}
+
+\vspace{-1ex}
+\footnotesize
+Apples-to-apples: clean prim+pT$>$1\,GeV SPs at the lock-in operating point.
+Truth = midpoint of the two simhit positions; cluster = average of the two
+paired clusters' \texttt{rec\_g}.
+\end{frame}
+
+% =====================================================================
+\begin{frame}{Along-strip residual --- numerical comparison}
+\begin{table}
+\centering
+\small
+\begin{tabular}{llrrrrr}
+\toprule
+region & estimator & median & RMS & 68\,\% & 95\,\% & N \\
+\midrule
+\multirow{2}{*}{\shortstack[l]{\textbf{Endcap} (vol 28/30)\\\small along-strip = $r$}}
+        & single-cluster (avg of 2) & $+4.3$  & 42.9 & 49.8 & 72.0 & 4{,}339 \\
+        & 2-cluster SP              & $+0.1$  & \alert{27.5} & \alert{19.5} & 37.5 &       \\[1ex]
+\multirow{2}{*}{\shortstack[l]{\textbf{Barrel} (vol 29)\\\small along-strip = $z$}}
+        & single-cluster (avg of 2) & $+0.6$  & 29.6 & 34.5 & 49.4 & 5{,}479 \\
+        & 2-cluster SP              & $+14.4$ & \alert{53.7} & \alert{57.9} & 82.2 &       \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\vspace{-0.5ex}
+\textbf{Result:}
+\begin{itemize}
+  \item \textbf{Endcap}: SP wins decisively. RMS 43\,mm $\to$ 27\,mm; 68\%
+    drops from 50\,mm to 19\,mm. \emph{The two-cluster geometry is
+    1.6$\times$--2.6$\times$ better than picking the wafer centre.}
+  \item \textbf{Barrel}: SP \emph{loses}. RMS 30\,mm $\to$ 54\,mm.
+    The bimodal SP distribution (peaks at $\pm$30\,mm) is intrinsic —
+    seen even at strict \texttt{gap=0/top\_one}. The barrel half-strip
+    is shorter (54\,mm vs endcap 78\,mm), making the
+    $m$-parameter computation more sensitive to small $\Delta\mathrm{loc0}$
+    perturbations and pulling SPs to extreme along-strip positions.
+\end{itemize}
+
+\textbf{Implication:} for ML downstream, a barrel hit's $z$ is
+\emph{better} taken from the cluster's wafer centre than from the SP.
+Worth flagging to the seeding/reco code.
+\end{frame}
+
+% =====================================================================
 \begin{frame}{Summary}
 
 \textbf{Path A — \texttt{stripGapParameter}}: an ATLAS-grade port. \alert{Locked-in
@@ -387,6 +445,8 @@ on 16 events of full-PU \ttbar.\\
 \begin{itemize}
   \item Cluster pitch residual: 68\,\% $|\cdot|<$11\,\textmu m, 95\,\% $<$43\,\textmu m.
   \item Clean (prim+pT) SP residual: 5\,mm transverse, 40\,mm $z$ (barrel-dominated).
+  \item \alert{Along-strip}: \emph{endcap} SP improves $r$-resolution 43$\to$27\,mm RMS (1.6$\times$ better).
+    \emph{Barrel} SP \emph{degrades} $z$-resolution 30$\to$54\,mm RMS — wafer-centre is better.
 \end{itemize}
 
 \textbf{Limitations}:

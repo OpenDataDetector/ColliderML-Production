@@ -311,6 +311,7 @@ def setup_acts_reconstruction(input_path, output_dir, config, rnd, logger=None):
             ("strip_length_tolerance", "stripLengthTolerance"),
             ("strip_length_gap_tolerance", "stripLengthGapTolerance"),
             ("strip_gap_parameter", "stripGapParameter"),
+            ("strip_use_cosmic_position", "useCosmicSpacePointPosition"),
         ):
             value = getattr(config, cfg_key, None)
             if value is not None:
