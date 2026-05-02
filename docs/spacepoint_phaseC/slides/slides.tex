@@ -431,6 +431,222 @@ region & estimator & median & RMS & 68\,\% & 95\,\% & N \\
 \textbf{Implication:} for ML downstream, a barrel hit's $z$ is
 \emph{better} taken from the cluster's wafer centre than from the SP.
 Worth flagging to the seeding/reco code.
+
+\medskip
+\textbf{Why?} The next 4 slides walk through the diagnostic.
+\end{frame}
+
+% =====================================================================
+\begin{frame}{Stereo geometry — what \emph{should} happen}
+
+\begin{columns}[T]
+\begin{column}{0.42\textwidth}
+\centering
+\begin{tikzpicture}[scale=1.9,>=stealth,font=\scriptsize]
+  % wafer outline
+  \draw[gray,thick] (-1.2,-1.2) rectangle (1.2,1.2);
+  \node[gray,above] at (0,1.25) {wafer (top view)};
+
+  % front strip (red, tilted +θ/2 from y-axis, big angle for clarity)
+  \draw[red,very thick] (-0.6,-1.2) -- (0.6,1.2)
+    node[red,right,pos=0.95] {strip F};
+
+  % back strip (blue, tilted -θ/2 from y-axis)
+  \draw[blue,very thick] (0.6,-1.2) -- (-0.6,1.2)
+    node[blue,left,pos=0.95] {strip B};
+
+  % particle hit at intersection
+  \filldraw[black] (0,0) circle (0.06)
+    node[black,above right=2pt] {particle $(x,y)$};
+
+  % stereo angle marker
+  \draw (0.4,0.1) arc (40:140:0.4);
+  \node at (0,0.55) {$\theta$};
+
+  % axes
+  \draw[->,thick] (-1.3,-1.2) -- (-1.3,-0.5) node[left,midway] {$y$};
+  \draw[->,thick] (-1.2,-1.3) -- (-0.5,-1.3) node[below,midway] {$x$};
+
+  % pitch arrows (perpendicular to each strip)
+  \draw[->,red!70] (0.4,-0.4) -- (0.6,-0.2) node[red,above right] {$u_F$};
+  \draw[->,blue!70] (-0.4,-0.4) -- (-0.6,-0.2) node[blue,above left] {$u_B$};
+\end{tikzpicture}
+\end{column}
+\begin{column}{0.58\textwidth}
+\footnotesize
+\textbf{Two stereo strips at angles $\pm\theta/2$.} Cluster pitch positions:
+\begin{align*}
+u_F &= -x\sin(\theta/2) + y\cos(\theta/2) \\
+u_B &= +x\sin(\theta/2) + y\cos(\theta/2)
+\end{align*}
+
+\textbf{Inverting:}
+\begin{align*}
+y &= (u_F+u_B)/(2\cos(\theta/2)) \quad \textcolor{green!50!black}{\text{\scriptsize across, pitch-precise}}\\
+x &= (u_B-u_F)/(2\sin(\theta/2)) \quad \textcolor{red!70!black}{\text{\scriptsize along, from \emph{difference}}}
+\end{align*}
+
+\textbf{Expected along-strip $\sigma$:}
+$\sigma_x \approx \sqrt{2}\,\sigma_\text{pitch}/(2\sin(\theta/2))$.
+
+For ODD ($\sigma_\text{pitch}\!=\!30\,\mu$m, $\theta\!=\!40\,$mrad): \alert{$\sigma_x\!\approx\!1\text{--}5\,$mm}.
+
+\medskip
+\alert{Observed in barrel: $\sigma_z=54\,$mm $\to$ $\sim\!30\times$ worse than ideal. Why?}
+\end{column}
+\end{columns}
+\end{frame}
+
+% =====================================================================
+\begin{frame}{Test the assumptions on barrel data}
+
+\footnotesize
+Per-SP diagnostic, 5479 clean prim+pT$>$1\,GeV barrel SPs.
+Define $m \equiv (z - z_\text{wafer})/\text{half\_strip}$ ($|m|=1$ at strip end).
+
+\begin{columns}[T]
+\begin{column}{0.5\textwidth}
+\centering
+\includegraphics[width=\linewidth]{\plotpath/barrel_m_distribution.png}
+\end{column}
+\begin{column}{0.5\textwidth}
+\textbf{Truth $m$:} uniform in $[-1,+1]$, RMS 0.55 (particles within strip — correct).
+
+\textbf{Algorithm $m$:} broad, RMS 1.13, $\pm 3$. \alert{Algorithm-noise $\gg$ truth-spread.}
+
+\smallskip
+\textbf{Assumptions verified} (data confirmed):
+\begin{itemize}\itemsep0pt
+  \item Cluster reco clean: $\Delta\text{loc0}^\text{rec}\!\approx\!\Delta\text{loc0}^\text{truth}$.
+  \item Independent of vertex $v_z$.
+  \item Independent of particle $\eta$.
+\end{itemize}
+
+So vertex \& clustering are fine. \alert{The algorithm is amplifying noise.}
+\end{column}
+\end{columns}
+\end{frame}
+
+% =====================================================================
+\begin{frame}{The amplification factor: why nearly-parallel strips hurt}
+
+\begin{columns}[T]
+\begin{column}{0.42\textwidth}
+\centering
+\begin{tikzpicture}[scale=1.5,>=stealth,font=\scriptsize]
+  % strip 1 (red, slightly tilted)
+  \draw[red,very thick] (-2.3,-0.35) -- (2.3,0.35) node[right] {strip 1};
+  % strip 2 (blue, slightly tilted other way)
+  \draw[blue,very thick] (-2.3,0.35) -- (2.3,-0.35) node[right] {strip 2};
+  % original intersection at origin
+  \filldraw[black] (0,0) circle (0.06) node[below] {$P_0$};
+  % stereo angle marker
+  \draw[gray] (1.2,0.18) arc (8.6:-8.6:1.2);
+  \node[gray] at (1.05,0) {$\theta$};
+
+  % perturbed strip 1 — shifted up by δu perpendicular
+  \draw[red!60,dashed,very thick] (-2.3,-0.35+0.50) -- (2.3,0.35+0.50);
+  % new intersection: at the point where blue meets shifted red
+  % blue: y = -0.152 x;  shifted red: y = 0.152 x + 0.50
+  % equal: -0.152 x = 0.152 x + 0.50 → x = -1.64
+  \filldraw[red,opacity=0.7] (-1.64,0.25) circle (0.06) node[above] {$P_0'$};
+
+  % δu (perpendicular shift between original and shifted red)
+  \draw[<->,thick,gray] (1.6,0.50) -- (1.6,1.00);
+  \node[gray,right] at (1.6,0.75) {$\delta u$};
+
+  % the along-strip shift (from P0 to P0' along strip 2 direction)
+  \draw[<->,thick,green!50!black] (0,-0.55) -- (-1.64,-0.30);
+  \node[green!50!black,below=2pt] at (-0.85,-0.5) {$\delta x = \delta u/\sin\theta$};
+\end{tikzpicture}
+
+\bigskip
+\footnotesize
+\textbf{$\theta = 40$\,mrad $\Rightarrow 1/\sin\theta \approx 25$}
+\end{column}
+\begin{column}{0.58\textwidth}
+\footnotesize
+A small perpendicular displacement $\delta u$ of one strip shifts the intersection \emph{along the other} by
+\[
+\delta x = \frac{\delta u}{\sin\theta}\,.
+\]
+
+\textbf{This is geometric.} Closest-approach, vertex-constrained, analytic 2-D — all reduce to this 2-D intersection. \alert{No algorithm escapes the $1/\sin\theta$ amplification.}
+
+\smallskip
+\textbf{Sanity check the numbers:}
+\begin{itemize}\itemsep0pt
+  \item 68\% cluster pitch $< 11\,\mu$m\\
+    $\Rightarrow$ 68\% $|\delta_x| < 0.3$\,mm.
+  \item Cluster pitch RMS = 0.46\,mm (PU tail)\\
+    $\Rightarrow$ $|\delta_x|$ RMS $\approx 11$\,mm.
+  \item Worst pitch error 5--10\,mm\\
+    $\Rightarrow$ $|\delta_x| > 100$\,mm.
+\end{itemize}
+
+The observed 54\,mm barrel RMS is the long PU-merge tail of cluster errors, amplified $\times 25$.
+\end{column}
+\end{columns}
+\end{frame}
+
+% =====================================================================
+\begin{frame}{Tried Option 1 — closest-approach SP (skew-line minimum)}
+
+Hypothesis: the vertex-constrained ACTS algorithm has a near-singular determinant when $\vec{s_1}\approx\vec{s_2}$. Replace SP \emph{position} (keep acceptance gate) with the textbook closest-approach formula:
+\[
+\lambda_a = \frac{(q\cdot r)(v\cdot r) - r^2(v\cdot q)}{q^2 r^2 - (q\cdot r)^2},
+\quad P_1 = a + \lambda_a q,\quad P_\mathrm{SP} = \tfrac{1}{2}(P_1+P_2)
+\]
+where $q,r$ = strip directions, $a,c$ = strip endpoints, $v=a-c$.
+
+\medskip
+
+\textbf{Result:} \alert{No improvement.}
+
+\begin{table}
+\centering\small
+\begin{tabular}{lrrr}
+\toprule
+algorithm & barrel $\sigma_z$ [mm] & endcap $\sigma_r$ [mm] & eff\textsubscript{prim} \\
+\midrule
+single cluster (wafer centre)  & \textbf{29.6} & 42.9 & --- \\
+constrained (Path A baseline) & 53.7 & \textbf{27.5} & 98.86\,\% \\
+closest-approach (Option 1)   & 59.8 & 27.6 & 98.86\,\% \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\medskip
+
+Why? \alert{The algorithm choice doesn't matter.} Both vertex-constrained and
+closest-approach reduce to the 2-D intersection in the wafer plane.
+The 1/$\sin(\theta)$ amplification is geometric, not algorithmic.
+
+\textbf{Skipping Option 2 (analytic 2-D) — it's mathematically the same answer.}
+\end{frame}
+
+% =====================================================================
+\begin{frame}{Why endcap doesn't suffer; what would fix barrel}
+
+\footnotesize
+\textbf{Both have $\theta=40$\,mrad and the same $\times 25$ amplification.}
+But endcap $\sigma_r=27$\,mm vs barrel $\sigma_z=54$\,mm. The \emph{cluster noise input} is different:
+\begin{itemize}\itemsep0pt
+  \item Each barrel wafer covers the full $\eta$ range $\Rightarrow$ many particles per wafer in PU.
+  \item Each endcap wafer covers a narrower angular slice $\Rightarrow$ fewer particles per wafer.
+  \item PU multi-particle merging $\Rightarrow$ cluster centroid mm-scale tail $\Rightarrow$ amplified to cm-scale SP$z$.
+\end{itemize}
+
+\medskip
+\textbf{What would actually fix it:}
+\begin{enumerate}\itemsep0pt
+  \item \alert{Reduce cluster pitch noise} — better digi clusterer (shape-aware splitting, NN per-particle splitting). Upstream work.
+  \item \alert{Larger stereo angle} — detector design; the $1/\sin\theta$ factor shrinks.
+  \item \alert{For ML downstream now:} use cluster wafer-centre $z$ in barrel, SP $r$ in endcap. The wafer-centre is bounded by the half-strip and doesn't amplify cluster noise.
+\end{enumerate}
+
+\medskip
+\alert{\textbf{Bottom line:}} SP construction is geometrically tight in endcap, unavoidably noise-amplifying in barrel. The fix is \emph{cluster reco}, not the SP algorithm.
 \end{frame}
 
 % =====================================================================
