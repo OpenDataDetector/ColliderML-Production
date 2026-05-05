@@ -146,13 +146,15 @@ if (stripGapParameter > 0.0) {
 
 \begin{tabular}{lcccccc}
 \toprule
-volume       & gap & half-len & $\theta$ & extra & extra & limit \\
+volume       & gap$^*$ & half-len & $\theta$ & extra & extra & limit \\
              & [mm] & [mm] & [mrad] & @ 0.3 & @ 1.0 & @ 1.0 \\
 \midrule
-28/30 endcap & 5  & 78 & 40  & 0.48 & 1.60 & 2.61 \\
-29   barrel  & 5  & 54 & 40  & 0.69 & 2.32 & 3.32 \\
+28/30 endcap & 5.0  & 78 & 40  & 0.48 & 1.61 & 2.62 \\
+29   barrel  & 7.32 & 54 & 40  & 1.02 & 3.40 & 4.41 \\
 \bottomrule
-\end{tabular}
+\end{tabular}\\[0.5ex]
+{\scriptsize $^*$ measured 3-D distance between paired-sensor centres in data;
+the algorithm uses $|\vec{g}|$ at runtime so this is automatic.}
 
 \bigskip
 
@@ -576,15 +578,15 @@ A small perpendicular displacement $\delta u$ of one strip shifts the intersecti
 \smallskip
 \textbf{Sanity check the numbers:}
 \begin{itemize}\itemsep0pt
-  \item 68\% cluster pitch $< 11\,\mu$m\\
-    $\Rightarrow$ 68\% $|\delta_x| < 0.3$\,mm.
-  \item Cluster pitch RMS = 0.46\,mm (PU tail)\\
-    $\Rightarrow$ $|\delta_x|$ RMS $\approx 11$\,mm.
-  \item Worst pitch error 5--10\,mm\\
-    $\Rightarrow$ $|\delta_x| > 100$\,mm.
+  \item 68\,\% pitch $< 9$--$12\,\mu$m\\
+    $\Rightarrow$ 68\,\% $|\delta_x| < 0.3$\,mm. \alert{Verified: 68\,\% within $\pm 5$\,mm.}
+  \item Pitch RMS: barrel 537\,\textmu m, endcap 373\,\textmu m\\
+    $\Rightarrow$ predicted $\sigma_x$ RMS = 19/13\,mm.
+  \item Observed $\sigma_x$ RMS: barrel 53/endcap 29\,mm\\
+    $\Rightarrow$ \alert{$\sim 2\times$ over prediction} both regions.
 \end{itemize}
 
-The observed 54\,mm barrel RMS is the long PU-merge tail of cluster errors, amplified $\times 25$.
+The qualitative $1/\sin\theta$ amplification is right. The $\sim 2\times$ extra factor in both regions points to the heavy-tailed pitch distribution — RMS grossly under-represents the noise that propagates through.
 \end{column}
 \end{columns}
 \end{frame}
@@ -629,24 +631,33 @@ The 1/$\sin(\theta)$ amplification is geometric, not algorithmic.
 \begin{frame}{Why endcap doesn't suffer; what would fix barrel}
 
 \footnotesize
-\textbf{Both have $\theta=40$\,mrad and the same $\times 25$ amplification.}
-But endcap $\sigma_r=27$\,mm vs barrel $\sigma_z=54$\,mm. The \emph{cluster noise input} is different:
-\begin{itemize}\itemsep0pt
-  \item Each barrel wafer covers the full $\eta$ range $\Rightarrow$ many particles per wafer in PU.
-  \item Each endcap wafer covers a narrower angular slice $\Rightarrow$ fewer particles per wafer.
-  \item PU multi-particle merging $\Rightarrow$ cluster centroid mm-scale tail $\Rightarrow$ amplified to cm-scale SP$z$.
-\end{itemize}
+Both have $\theta=40$\,mrad and the same $\times 25$ amplification.
+$\sigma$ is set by $\sigma_\mathrm{pitch}$ via $\sigma_x \approx \sqrt{2}\,\sigma_\mathrm{pitch}/\sin\theta$.
+
+\smallskip
+\textbf{Cluster pitch RMS — measured per region, all clusters in pipeline:}
+\begin{tabular}{lrr}
+\toprule
+& endcap (vol 28/30) & barrel (vol 29) \\
+\midrule
+$\sigma_\mathrm{pitch}$ RMS         & 373 \,\textmu m  & 537 \,\textmu m \quad ($\times$1.4 worse) \\
+68\,\% $|\Delta\mathrm{loc0}|$      & 12 \,\textmu m   & 9 \,\textmu m \\
+predicted $\sigma_\text{along}$     & 13 \,mm          & 19 \,mm \\
+\textbf{observed $\sigma_\text{along}$} & \textbf{29 \,mm} & \textbf{53 \,mm} \\
+\bottomrule
+\end{tabular}
+
+\smallskip
+Both regions are $\sim$2$\times$ the simple 1/sin($\theta$)$\cdot\sqrt{2}\sigma_\text{RMS}$ prediction (heavy-tailed pitch distribution: 95\,\% $\sigma$ is 40+\,\textmu m but RMS is dominated by $>$mm tail).
+The endcap's win is just \alert{lower cluster pitch noise} (1.4$\times$), \emph{not} lower PU per wafer (in fact endcap has more clusters/sensor: 8–13/event vs barrel 3–5/event).
 
 \medskip
 \textbf{What would actually fix it:}
 \begin{enumerate}\itemsep0pt
-  \item \alert{Reduce cluster pitch noise} — better digi clusterer (shape-aware splitting, NN per-particle splitting). Upstream work.
-  \item \alert{Larger stereo angle} — detector design; the $1/\sin\theta$ factor shrinks.
-  \item \alert{For ML downstream now:} use cluster wafer-centre $z$ in barrel, SP $r$ in endcap. The wafer-centre is bounded by the half-strip and doesn't amplify cluster noise.
+  \item \alert{Reduce cluster pitch tail} — better digi clusterer (shape-aware splitting, NN per-particle). Upstream work.
+  \item \alert{Larger stereo angle} — detector design; $1/\sin\theta$ shrinks.
+  \item \alert{For ML downstream now:} use cluster wafer-centre $z$ in barrel, SP $r$ in endcap. Bounded by half-strip, no amplification.
 \end{enumerate}
-
-\medskip
-\alert{\textbf{Bottom line:}} SP construction is geometrically tight in endcap, unavoidably noise-amplifying in barrel. The fix is \emph{cluster reco}, not the SP algorithm.
 \end{frame}
 
 % =====================================================================
@@ -679,6 +690,87 @@ on 16 events of full-PU \ttbar.\\
   \item Different SP construction (3-strip combos, beam-line constraint per event).
 \end{itemize}
 
+\end{frame}
+
+% =====================================================================
+\appendix
+
+\begin{frame}{Backup — endcap m diagnostic (sanity check)}
+
+If the diagnostic is right, endcap should show a tighter $m_\text{alg}$
+than barrel because cluster pitch noise is lower (373 vs 537\,\textmu m).
+Indeed:
+\begin{itemize}\itemsep0pt
+  \item Endcap: $m_\text{alg}$ RMS = \textbf{0.66} (vs $m_\text{truth}$ RMS = 0.55, $\Delta$RMS = 0.37)
+  \item Barrel: $m_\text{alg}$ RMS = \textbf{1.13} (vs $m_\text{truth}$ RMS = 0.55, $\Delta$RMS = 0.98)
+\end{itemize}
+
+\centering
+\includegraphics[width=0.93\linewidth]{\plotpath/endcap_vs_barrel_m_distribution.png}
+
+\vspace{-1ex}
+\footnotesize
+Endcap $m_\text{alg}$ stays close to truth (within strip), barrel spreads
+out to $|m|=2$. Same $\theta$, different cluster noise input.
+\end{frame}
+
+% =====================================================================
+\begin{frame}{Backup — cluster pitch residual: clean-primary vs all}
+
+\centering
+\includegraphics[width=0.78\linewidth]{\plotpath/cluster_pitch_clean_vs_all.png}
+
+\vspace{-1ex}
+\footnotesize
+Clean prim+pT$>$1 SPs sample (red) is \emph{cleaner} than the all-cluster
+average (blue), not noisier. So the clean-SP residual we compute is a
+valid representation. The factor-2 discrepancy with simple-formula
+prediction is intrinsic to the heavy-tailed distribution, not from
+selection bias.
+\end{frame}
+
+% =====================================================================
+\begin{frame}{Backup — per-sensor cluster density}
+
+\centering
+\includegraphics[width=0.93\linewidth]{\plotpath/per_wafer_density.png}
+
+\vspace{-1ex}
+\footnotesize
+Endcap: 8--13 clusters per sensor-face per event.\\
+Barrel: 3--5 clusters per sensor-face per event.\\
+\textbf{Endcap actually has higher density per sensor than barrel.}
+But cluster pitch noise is \emph{lower} in endcap (373\,\textmu m vs barrel 537\,\textmu m).
+Density alone does not predict cluster noise — sensor area, track angle, and digi clusterer behaviour all matter.
+\end{frame}
+
+% =====================================================================
+\begin{frame}{Backup — geometry verification (from data)}
+
+Numbers verified by direct readout from the lock-in run's
+\texttt{measurements.root}:
+
+\begin{tabular}{lcc}
+\toprule
+                            & endcap (vol 28/30) & barrel (vol 29) \\
+\midrule
+3-D paired-sensor distance  & $5.2 \pm 0.5$\,mm  & $7.32 \pm 0.4$\,mm \\
+                            & (XML: $\pm 2.5$\,mm offset \,$\Rightarrow$\,5.0\,mm) & (XML: $z\!=\!\pm 3.31$\,$\Rightarrow$\,6.61\,mm) \\
+                            &                    & (extra $\sqrt{6.61^2+2.5^2}$ from in-plane) \\
+\midrule
+Stereo angle (faces)        & $\pm 0.02$\,rad    & $0.04 / 0.0$\,rad \\
+Relative angle              & $0.04$\,rad        & $0.04$\,rad \\
+\midrule
+Half-strip (data)           & $\sim 78$\,mm      & $55 \pm 1$\,mm (XML: 54) \\
+Pitch                       & 125\,\textmu m     & 100\,\textmu m \\
+\bottomrule
+\end{tabular}
+
+\medskip
+$1/\sin(0.04) = 25.0$ → expected $\times 25$ amplification of cluster pitch
+noise into the along-strip direction. Independent of which face has
+the rotation (symmetric or asymmetric stereo) — only the
+relative angle matters.
 \end{frame}
 
 \end{document}

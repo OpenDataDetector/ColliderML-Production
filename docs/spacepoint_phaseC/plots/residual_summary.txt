@@ -1,0 +1,21 @@
+Residual summary (mm)
+--- Cluster: across-strip (loc0) — the meaningful precision ---
+Cluster Δloc0 (rec − true)               N=   736,040  median=  +0.000 RMS=  0.457 68%=  0.011 95%=   0.043
+--- Cluster: 3-D residuals (DOMINATED by loc1=strip-centre) ---
+Cluster Δx (rec_gx − true_x)             N=   736,040  median=  +0.000 RMS= 22.970 68%= 14.070 95%=  56.045
+Cluster Δy (rec_gy − true_y)             N=   736,040  median=  +0.000 RMS= 23.006 68%= 14.175 95%=  56.079
+Cluster Δz (rec_gz − true_z)             N=   736,040  median=  +0.000 RMS= 21.295 68%= 16.964 95%=  48.213
+Cluster Δr (rec_r − true_r)              N=   736,040  median=  +0.000 RMS= 32.470 68%= 30.083 95%=  70.454
+Cluster |Δ| (3-D)                        N=   736,040  median= +31.803 RMS= 38.864 68%= 43.474 95%=  70.526
+
+SP Δx clean prim+pT>1 GeV                N=     9,817  median=  +0.400 RMS= 12.394 68%=  4.575 95%=  21.691
+SP Δy clean prim+pT>1 GeV                N=     9,817  median=  +1.205 RMS= 13.687 68%=  4.943 95%=  21.876
+SP Δz clean prim+pT>1 GeV                N=     9,817  median=  +2.500 RMS= 40.156 68%= 44.374 95%=  76.545
+SP |Δ| clean prim+pT>1 GeV               N=     9,817  median= +30.458 RMS= 44.198 68%= 45.599 95%=  77.877
+SP |Δ| all matched                       N=   722,191  median=+101.536 RMS=140.688 68%=151.851 95%= 262.692
+
+--- Along-strip residual: 2-cluster SP vs single-cluster ---
+Barrel (vol 29) cluster Δz (rec - true)          N=   5,479 median=  +0.599  RMS= 29.596  68%= 34.548  95%=  49.358
+Barrel (vol 29) SP      Δz (rec - true)          N=   5,479 median= +14.406  RMS= 53.705  68%= 57.897  95%=  82.244
+Endcap (vol 28/30) cluster Δr (rec - true)       N=   4,338 median=  +4.314  RMS= 42.940  68%= 49.779  95%=  72.019
+Endcap (vol 28/30) SP      Δr (rec - true)       N=   4,338 median=  +0.104  RMS= 27.472  68%= 19.492  95%=  37.434
