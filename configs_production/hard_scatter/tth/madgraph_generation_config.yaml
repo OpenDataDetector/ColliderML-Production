@@ -1,0 +1,75 @@
+#========================================================================
+# YAML Configuration for MadGraph Event Generation (NLO ttH + FxFx)
+#========================================================================
+#
+# Second step of the two-step MadGraph workflow:
+# 1. madgraph_init: Generate and compile the process
+# 2. madgraph_generation: Parallel event generation (this config)
+#
+# Performs parallel event generation using the pre-compiled process
+# directory created by madgraph_init.
+
+# --- Dataset & Version ---
+campaign: "hard_scatter"
+dataset: "tth"
+version: "v1"
+stage: "madgraph_generation"
+
+# --- Job Configuration ---
+job_config:
+  n_runs: 250          # Tuned to give a few hundred k accepted events
+  runs_per_node: 1     # NLO ttH is memory-hungry; one run per node
+  time_limit: "02:00:00"
+  qos: "regular"
+  # execution_mode: "monolithic_slurm"
+  execution_mode: "multi_node_slurm"
+  # execution_mode: "interactive"
+  depends_on:
+
+validation_config:
+
+# --- Event Generation Parameters ---
+# Total LHE events = n_runs * events. ttH is a smaller cross section than
+# ttbar (~0.5 pb vs ~830 pb at 14 TeV), but we generate at fixed sample
+# size, not lumi-weighted. The Pythia FxFx-matching survival rate for
+# tt+X is ~40-50%, similar to ttbar.
+events: 17500
+seed: 42
+
+# --- Essential Paths & Environment ---
+mg_base_path: "{madgraph.mg_base_path}"
+generation_scratch_dir: "{madgraph.generation_scratch_dir}"
+
+# --- Card Customizations (run-level overrides) ---
+card_customizations:
+  run_card:
+    "ptj": 20.0
+    "event_norm": "sum"
+
+  # NLO -> shower_card. Keep Qcut consistent with madgraph_init.
+  shower_card:
+    "Qcut": 30.0
+    "time_shower_me_corrections": "F"
+
+  pythia8_card: {}
+
+# --- HepMC Splitting Configuration ---
+splitting_config:
+  enable: true
+  events_per_file: 1280
+  max_files_per_mg_run: 50
+  output_filename: "events.hepmc"
+
+# --- Logging ---
+log_level: "INFO"
+
+# --- Documentation ---
+# Expects that madgraph_init has been run successfully and the tarball
+# artifact exists at:
+#   {output_base_dir}/{campaign}/{dataset}/{version}/madgraph_process.tgz
+#
+# Output is placed at:
+#   {output_base_dir}/{campaign}/{dataset}/{version}/runs/<run_id>/events.hepmc
+#
+# Expected runtime per run: 30-90 minutes (NLO ttH ME evaluation is slow)
+# Expected output per run: ~10-100 MB of HepMC (compressed)

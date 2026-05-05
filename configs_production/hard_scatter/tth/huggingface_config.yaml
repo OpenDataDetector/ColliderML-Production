@@ -1,0 +1,73 @@
+# Configuration for uploading ColliderML datasets to HuggingFace Hub
+# Usage: python scripts/dataset/upload_to_huggingface.py configs_production/hard_scatter/tth/huggingface_config.yaml
+
+# Dataset identification
+campaign: "hard_scatter"
+dataset: "tth"
+version: "v1"
+pileup: 0
+year: 2026
+date: "May 2026"
+
+# Data location configuration
+data:
+  # Local base directory containing the parquet files
+  base_dir: "/global/cfs/cdirs/m4958/data/ColliderML/public/hard_scatter/tth/v1/parquet"
+
+  # Public URL base for accessing files via NERSC portal
+  public_url_base: "https://portal.nersc.gov/cfs/m4958/ColliderML/hard_scatter/tth/v1/parquet"
+
+# Objects to include in the dataset (subdirectories to look for)
+objects:
+  - particles      # Truth-level particles (in truth/particles/)
+  - tracker_hits   # Tracker detector hits (in reco/tracker_hits/)
+  - calo_hits      # Calorimeter hits (in reco/calo_hits/)
+  - tracks         # Reconstructed tracks (in reco/tracks/)
+
+# HuggingFace Hub configuration
+huggingface:
+  repo_id: "OpenDataDetector/ColliderML_tth_pu0"
+
+  pretty_name: "ColliderML ttH Production (No Pileup)"
+
+  process_description: "Top-quark pair plus Higgs (ttH) production"
+
+  process_description_long: "associated production of a top-quark pair with a Higgs boson (ttH) with no pileup (single interaction per event); Higgs decays inclusively according to Standard Model branching ratios at mH = 125 GeV"
+
+  license: "cc-by-4.0"
+
+  tags:
+    - physics
+    - high-energy-physics
+    - particle-physics
+    - tracking
+    - calorimetry
+    - machine-learning
+    - simulation
+    - higgs
+    - top-quark
+
+  # Approximate size category for HuggingFace
+  size_category: "10K<n<100K"
+
+  contact: "daniel.thomas.murnane@cern.ch"
+
+# Optional: Additional metadata for README generation
+metadata:
+  detector: "Open Data Detector (ODD)"
+  simulation_framework: "DD4hep"
+
+  collision_energy: "14 TeV"
+  collision_type: "pp"  # proton-proton
+
+  event_generator: "MadGraph5_aMC@NLO (NLO QCD, FxFx-merged ttH+0,1j)"
+  showering_tool: "Pythia8"
+  detector_simulation: "Geant4 via DD4hep"
+  track_reconstruction: "ACTS"
+
+  notes: |
+    This dataset contains simulated ttH events with no pileup, useful for
+    developing and testing machine learning algorithms for particle
+    tracking, jet reconstruction, b-tagging, and Higgs-related physics
+    analyses. The Higgs boson is decayed inclusively by Pythia8 at mH =
+    125 GeV, so all H decay channels are present in their SM proportions.

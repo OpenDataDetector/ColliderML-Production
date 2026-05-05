@@ -1,0 +1,36 @@
+# DDSim (Geant4 via DD4hep) detector simulation for ttH hard-scatter events.
+campaign: "hard_scatter"
+dataset: "tth"
+version: "v1"
+stage: "simulation"  # One of: generation, merge_smear, simulation, digitization
+
+job_config:
+  n_runs: 1000
+  runs_per_node: 16
+  time_limit: "03:00:00"
+  qos: "regular"
+  execution_mode: "multi_node_slurm"
+  # execution_mode: "interactive"
+  depends_on:
+
+validation_config:
+
+# Stage-specific configurations
+events: 1280
+input_filename: events.hepmc
+threads: 8
+minimalKineticEnergy: 0.1  # GeV; minimum KE to register in truth
+truthParticleHandler: "Geant4FullTruthParticleHandler"
+
+# Vertex smearing (applied during simulation since hardscatter skips the
+# pythia merge_smear stage)
+vertexOffset: [0.0, 0.0, 0.0, 0.0]            # x, y, z, t in mm, mm, mm, ns
+vertexSigma:  [0.0125, 0.0125, 55.5, 0.185]   # x, y, z, t in mm, mm, mm, ns
+
+# DDSim verbosity (1=VERBOSE..7=ALWAYS)
+ddsim_printLevel: 6
+
+# Filter out specific Geant4 warnings (mass tolerance, etc.)
+filter_g4_warnings: true
+
+# debug_output_dir: /global/cfs/cdirs/m4958/data/ColliderML/simulation/hard_scatter/tth/v1/runs/0

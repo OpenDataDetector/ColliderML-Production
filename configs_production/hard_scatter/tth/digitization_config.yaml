@@ -1,0 +1,50 @@
+#========================================================================
+# YAML Configuration for Digitization of ttH Events
+#========================================================================
+
+# --- Dataset & Version ---
+campaign: "hard_scatter"
+dataset: "tth"
+version: "v1"
+stage: "digitization"  # One of: generation, merge_smear, simulation, digitization
+
+# --- Job Configuration ---
+job_config:
+  n_runs: 1000
+  runs_per_node: 16
+  time_limit: "01:00:00"
+  qos: "regular"
+  # qos: "debug"
+  execution_mode: "multi_node_slurm"
+  # execution_mode: "interactive"
+  depends_on:
+
+# --- Validation Configuration ---
+validation_config:
+
+# --- Stage-specific Configurations ---
+events: 1280
+threads: 8
+digi: True
+reco: True
+# spacepoints: True  # Write spacepoints to ROOT (requires digi: True)
+num_seeds_per_spm: 40
+
+# --- Writing Configuration ---
+output_particles_root: True
+output_measurements_root: True
+
+ambi_root_output: True
+ambi_finding_performance: True
+ambi_fitting_performance: True
+
+write_helix_parameters: True
+
+# --- Digitization config ---
+digi_config: /global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml_dev/scripts/simulation/odd-full-geo-digi-config.json
+
+# --- Spacepoint config ---
+# spacepoint_geometry_selection: /global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/OtherLibraries/acts_versions/acts_v4/Examples/Configs/odd-strip-spacepoint-selection.json
+
+# --- Debugging Commands ---
+# debug_output_dir: /global/cfs/cdirs/m4958/data/ColliderML/simulation/hard_scatter/tth/v1/runs/0
