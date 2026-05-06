@@ -1,10 +1,15 @@
 #========================================================================
-# YAML Configuration for MadGraph Event Generation (LO+MLM ttH)
+# YAML Configuration for MadGraph Event Generation (NLO ttH + FxFx)
 #========================================================================
 #
 # Second step of the two-step MadGraph workflow:
 # 1. madgraph_init: Generate and compile the process
 # 2. madgraph_generation: Parallel event generation (this config)
+#
+# Mirrors the CMS official ttH gridpack (tth01j_5f_ckm_NLO_FXFX_MH125),
+# adapted to the ColliderML pipeline. Higgs decays inclusively in Pythia8
+# (mH = 125 GeV, SM branching ratios) — see the madgraph_init config for
+# the full rationale.
 
 # --- Dataset & Version ---
 campaign: "hard_scatter"
@@ -15,8 +20,8 @@ stage: "madgraph_generation"
 # --- Job Configuration ---
 job_config:
   n_runs: 250
-  runs_per_node: 1
-  time_limit: "01:00:00"
+  runs_per_node: 1     # NLO ttH is memory-hungry; one run per node
+  time_limit: "02:00:00"
   qos: "regular"
   # execution_mode: "monolithic_slurm"
   execution_mode: "multi_node_slurm"
@@ -26,8 +31,10 @@ job_config:
 validation_config:
 
 # --- Event Generation Parameters ---
-# Total LHE events = n_runs * events. Pythia MLM-matching survival rate for
-# tt+X processes is around 40-50%, similar to ttbar.
+# Total LHE events = n_runs * events. ttH at 14 TeV has sigma ~ 0.6 pb
+# (NLO QCD), much smaller than ttbar — but we generate at fixed sample
+# size, not luminosity-weighted. Pythia FxFx-matching survival is ~40-50%
+# (similar to ttbar).
 events: 17500
 seed: 42
 
@@ -36,11 +43,16 @@ mg_base_path: "{madgraph.mg_base_path}"
 generation_scratch_dir: "{madgraph.generation_scratch_dir}"
 
 # --- Card Customizations (run-level overrides) ---
-run_mode: "lo_mlm"
 card_customizations:
   run_card:
-    "ptj": 20.0      # Minimum jet pT at the ME (lower than xqcut so it
-                     # never overrides the matching cut)
+    "ptj": 20.0
+    "event_norm": "sum"
+
+  # Keep Qcut consistent with madgraph_init.
+  shower_card:
+    "Qcut": 30.0
+    "time_shower_me_corrections": "F"
+
   pythia8_card: {}
 
 # --- HepMC Splitting Configuration ---
@@ -55,8 +67,8 @@ log_level: "INFO"
 
 # --- Documentation ---
 # Higgs decays handled inclusively by Pythia8 (default 25:onMode = on at
-# mH = 125 GeV). To restrict to a specific channel, override in
-# pythia8_card here, e.g.:
+# mH = 125 GeV, SM branching ratios). To restrict to a specific channel,
+# add to the shower_card / pythia8_card here, e.g.:
 #   "25:onMode": "off"
 #   "25:onIfAny": "5 -5"   # H -> b b~
 #
@@ -67,5 +79,5 @@ log_level: "INFO"
 # Output is placed at:
 #   {output_base_dir}/{campaign}/{dataset}/{version}/runs/<run_id>/events.hepmc
 #
-# Expected runtime per run: 15-45 minutes
+# Expected runtime per run: 30-90 minutes (NLO ttH ME evaluation is slow)
 # Expected output per run: ~10-100 MB of HepMC (compressed)
