@@ -1,28 +1,41 @@
 #========================================================================
-# YAML Configuration for MadGraph Process Initialization (NLO ttH + FxFx)
+# YAML Configuration for MadGraph Process Initialization (LO+MLM ttH)
 #========================================================================
 #
 # Two-step MadGraph workflow:
 # 1. madgraph_init: Generate and compile the process (this config)
 # 2. madgraph_generation: Parallel event generation using the compiled process
 #
-# Process: pp -> t t~ H at NLO QCD, merged with one extra jet via FxFx
-# (NLO matrix elements for ttH + 0,1 jets, matched to Pythia8 parton shower).
+# Process: pp -> t t~ H (+ up to 2 extra QCD jets) at LO, MLM-matched to the
+# Pythia8 parton shower.
 #
-# Higgs is left undecayed at the matrix-element level so that Pythia8 handles
-# H decays inclusively according to Standard Model branching ratios. This
-# matches the inclusive-ttH conventions used by ATLAS/CMS (e.g. ATL-PHYS-PUB-
-# 2019-007 and the LHC Higgs Cross-Section WG recommendations) and lets the
-# same sample serve every H decay channel downstream.
+# Why LO+MLM rather than NLO+FxFx?
+# This repository uses LO+MLM (with HEFT for ggH / HH / Hjj) for every Higgs
+# final-state channel — see configs_production/full_pileup/{ggf,dihiggs}
+# and configs_production/hard_scatter/{dihiggs,diphoton,jets}. ttbar is the
+# only NLO+FxFx process in the repo. We follow the Higgs-channel convention
+# here for consistency with the other H samples in the dataset.
 #
-# Note: ttH+2j at NLO with FxFx is prohibitively expensive; we match up to
-# one additional jet, which captures the dominant hard-radiation effects for
-# this 2->3 process while keeping compile time and matrix-element evaluation
-# tractable. ttbar (a 2->2 process) goes up to +2 jets in this repo for the
-# same reason — the cost scales steeply with multiplicity.
+# Why sm-no_b_mass and NOT heft?
+# HEFT integrates out the top loop and is appropriate for ggH and gg->HH
+# where the top is virtual. In ttH the top quarks are *explicit* particles
+# in the final state (p p > t t~ h is tree-level via top-Yukawa exchange),
+# so HEFT is wrong. We use the full SM with massless b's; b's only appear
+# in the final state from t->Wb decays in Pythia, where the 5F vs 4F
+# distinction is irrelevant.
 #
-# The madgraph_init stage is run once per dataset version as a monolithic
-# job, since the process generation cannot be parallelized.
+# Higgs decays:
+# H is left undecayed at the matrix-element level. Pythia8 handles H decays
+# inclusively at hadronisation. The Pythia8 defaults for PID 25 are:
+#   25:m0      = 125.0 GeV
+#   25:mWidth  = 4.07e-3 GeV (PDG)
+#   25:mayDecay = on
+#   25:onMode  = on for all SM channels
+# so all H decay channels appear in their SM proportions. To restrict to a
+# specific channel later, override these via pythia8_card customizations
+# (e.g. "25:onMode": "off" + "25:onIfAny": "5 -5" for H -> b b~).
+# MadGraph's sm-no_b_mass model also defaults to mH = 125 GeV in
+# param_card.dat, so the ME and shower agree.
 
 # --- Dataset & Version ---
 campaign: "hard_scatter"
@@ -34,65 +47,68 @@ stage: "madgraph_init"
 job_config:
   n_runs: 1
   runs_per_node: 1
-  time_limit: "12:00:00"  # NLO ttH compilation is heavier than ttbar
+  time_limit: "01:00:00"  # LO compilation; ttH+2j ME generation is still moderately heavy
   qos: "regular"
   execution_mode: "monolithic_slurm"
   # execution_mode: "interactive"
 
 # --- MadGraph Process Definition ---
-# 5-flavour scheme with massless b's (b's from t->Wb are produced by decay
-# and not affected by the 5F vs 4F choice for the production ME).
+# Full SM (top is explicit), 5-flavour scheme.
 mg_model: "sm-no_b_mass"
 mg_definitions: []
 mg_generate_command: |
-  generate p p > t t~ h [QCD]
-  add process p p > t t~ h j [QCD]
+  define p = g u c b d s u~ c~ b~ d~ s~
+  define j = p
+  generate p p > t t~ h @0
+  add process p p > t t~ h j @1
+  add process p p > t t~ h j j @2
 
 # --- Essential Paths & Environment ---
 mg_base_path: "{madgraph.mg_base_path}"
 generation_scratch_dir: "{madgraph.generation_scratch_dir}"
 
-# --- Card Customizations (NLO + FxFx) ---
+# --- Card Customizations (LO+MLM) ---
+run_mode: "lo_mlm"
 card_customizations:
   run_card:
-    "parton_shower": "PYTHIA8"
     "ebeam1": 7000.0   # 14 TeV centre-of-mass
     "ebeam2": 7000.0
-    # "ickkw": 3       # FxFx for NLO is set automatically by MadGraph
-    "ptj": 20.0        # Generation-level minimum jet pT
-
-  # NLO processes use shower_card.dat
-  shower_card:
-    # Qcut is the FxFx merging scale. It MUST equal the value used in the
-    # Pythia8 JetMatching:qCutME (set automatically from the run card).
-    # Typical FxFx scale for tt+X processes is 30 GeV; we use 30 GeV here,
-    # below the 40 GeV used by inclusive ttbar to compensate for the
-    # softer additional-jet activity in ttH (one fewer jet in the merged
-    # multiplicity ladder).
-    "Qcut": 30.0
-    "time_shower_me_corrections": "F"
-    # "njmax": 1       # 0,1 jet ME from NLO process — set automatically
-    # "matching_mode": 0  # FxFx mode
-
-  # Pythia8 settings used only for loop-induced (noborn) processes; for
-  # this NLO (born) process Pythia is configured via shower_card. Kept
-  # here as documentation/parity with the ttbar config.
-  pythia8_card: {}
+    "ickkw": 1         # MLM matching scheme
+    # MLM matching scale (GeV). Must match JetMatching:qCut in the Pythia8
+    # card. We use 30 GeV — slightly looser than ttbar+jets (40 GeV) to
+    # account for the harder ttH scale (mttH ~ 500+ GeV) producing more
+    # collinear shower activity, and consistent with the value used for
+    # dihiggs (which has a similar overall hard scale).
+    "xqcut": 30.0
+    "auto_ptj_mjj": True
+    "maxjetflavor": 5
+    "use_syst": False
+    "systematics_program": none
+  pythia8_card:
+    "JetMatching:merge": on
+    "JetMatching:scheme": 1
+    "JetMatching:jetAlgorithm": 2
+    "JetMatching:coneRadius": 1.0
+    "JetMatching:slowJetPower": 1
+    "JetMatching:nQmatch": 5
+    "JetMatching:nJetMax": 2
+    # JetMatching:qCut is the MLM matching scale (Pythia side); it must be
+    # strictly larger than the run_card xqcut (ME-side generation cut). The
+    # repo convention is qCut = xqcut + 10 GeV (cf. dihiggs: 20/30,
+    # diphoton: 20/30, jets: 40/50).
+    "JetMatching:qCut": 40.0
+    "JetMatching:doShowerKt": off
+    "JetMatching:setMad": off
+    "UncertaintyBands:doVariations": off
 
 # --- Logging ---
 log_level: "INFO"
 
 # --- Documentation ---
-# Higgs decays are handled inclusively by Pythia8 at the hadronisation
-# stage (default H BRs at mH = 125 GeV). To restrict to a specific H decay
-# channel later (e.g. H->bb), add to the pythia8_card / shower_card:
-#   "25:onMode": "off"
-#   "25:onIfAny": "5 -5"   # for H -> b b~
-#
 # After running this stage successfully, the compiled process is stored at
 # {output_base_dir}/{campaign}/{dataset}/{version}/madgraph_process/ and
 # archived as {output_base_dir}/{campaign}/{dataset}/{version}/madgraph_process.tgz
 # (the tarball is the canonical artifact consumed by madgraph_generation).
 #
-# Expected runtime: 4-12 hours for NLO ttH compilation
-# Expected storage: ~200-700 MB for the compiled process directory
+# Expected runtime: ~1-3 hours for LO ttH+2j compilation
+# Expected storage: ~100-300 MB for the compiled process directory
