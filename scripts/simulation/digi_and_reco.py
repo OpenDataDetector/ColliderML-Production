@@ -302,8 +302,13 @@ def setup_acts_reconstruction(input_path, output_dir, config, rnd, logger=None):
                 str(spGeometrySelection)
             ),
         )
+        # Map the yaml `strip_pairing_mode` string to the ACTS enum.
+        _strip_pairing_mode_map = {
+            "top_one": acts.examples.StripPairingMode.topOne,
+            "top_k":   acts.examples.StripPairingMode.topK,
+            "all_pairs": acts.examples.StripPairingMode.allPairs,
+        }
         for cfg_key, sp_key in (
-            ("strip_pairing_mode", "stripPairingMode"),
             ("strip_top_k", "stripTopK"),
             ("strip_pairing_max_distance", "stripPairingMaxDistance"),
             ("strip_pairing_max_angle_theta", "stripPairingMaxAngleTheta"),
@@ -315,6 +320,14 @@ def setup_acts_reconstruction(input_path, output_dir, config, rnd, logger=None):
             value = getattr(config, cfg_key, None)
             if value is not None:
                 sp_kwargs[sp_key] = value
+        mode_str = getattr(config, "strip_pairing_mode", None)
+        if mode_str is not None:
+            if mode_str not in _strip_pairing_mode_map:
+                raise ValueError(
+                    f"Unknown strip_pairing_mode '{mode_str}' "
+                    f"(expected one of: {list(_strip_pairing_mode_map)})"
+                )
+            sp_kwargs["stripPairingMode"] = _strip_pairing_mode_map[mode_str]
         print(f"[DEBUG] SpacePointMaker sp_kwargs: {sp_kwargs}", flush=True)
         s.addAlgorithm(acts.examples.SpacePointMaker(**sp_kwargs))
         

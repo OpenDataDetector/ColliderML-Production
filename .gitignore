@@ -4,6 +4,12 @@
 logs/
 log/
 
+# Local ACTS rebuild + Option-A verification helpers (not for upstream)
+.build_acts*.sh
+.compare_option_a.py
+.option_b_baseline.json
+.run_digi_a.sh
+
 # Ignore log files regardless of location
 *.log
 

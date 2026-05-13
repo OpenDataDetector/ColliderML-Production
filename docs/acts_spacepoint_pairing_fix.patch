@@ -1,86 +1,330 @@
+diff --git a/Core/include/Acts/SpacePointFormation2/StripSpacePointBuilder.hpp b/Core/include/Acts/SpacePointFormation2/StripSpacePointBuilder.hpp
+index 4b41dcd1c..81cf079a3 100644
+--- a/Core/include/Acts/SpacePointFormation2/StripSpacePointBuilder.hpp
++++ b/Core/include/Acts/SpacePointFormation2/StripSpacePointBuilder.hpp
+@@ -38,18 +38,33 @@ struct CosmicOptions final {
+ };
+ 
+ /// @brief Collection of constrained space point options
++///
++/// The constrained space-point algorithm parametrises the hit position on
++/// each strip by a scalar:
++///   strip 1: 2 * x_1 = (1 + m) * top_1 + (1 - m) * bottom_1
++///   strip 2: 2 * x_2 = (1 + n) * top_2 + (1 - n) * bottom_2
++/// `m = n = 0` is the strip midpoint; `|m| = 1` (resp. `|n| = 1`) is the
++/// strip end. A valid hit requires `|m|, |n| <= limit`.
+ struct ConstrainedOptions final {
+   /// Position of the vertex
+   Vector3 vertex = Vector3::Zero();
+-  /// Tolerance scaling factor on the strip detector element length
++  /// Additive slack on the `|m|, |n| <= 1` acceptance: limit = 1 + tol.
+   double stripLengthTolerance = 0.01;
+-  /// Tolerance scaling factor of the gap between strip detector elements
++  /// Additional slack used inside the recovery branch when `|m|` or `|n|`
++  /// is just past the limit.
+   double stripLengthGapTolerance = 0.01;
+-  /// ATLAS-SCTGapParameter analogue: scales an extra |m|, |n| allowance
+-  /// from the wafer-thickness gap between the two stereo surfaces.
+-  /// Extra term added to the limit:
+-  ///   stripGapParameter * |gapVec| / sin(stereoAngle) / stripHalfLength
+-  /// 0 = legacy ACTS behaviour (no geometric gap correction).
++  /// Additional acceptance allowance that scales with the geometric gap
++  /// between the two stereo wafer faces. When > 0, the limit becomes
++  ///   1 + stripLengthTolerance
++  ///     + stripGapParameter * |gapVec| / sin(stereo) / stripHalfLength,
++  /// where `gapVec` is the vector connecting the two strip midpoints,
++  /// `stereo` is the angle between the two strip directions, and
++  /// `stripHalfLength` is half of `|top_1 - bottom_1|`. This is the
++  /// geometric-allowance piece of the ATLAS Athena strip pair algorithm
++  /// (see `SiSpacePointMakerTool::makeSCT_SpacePoint`'s `m_SCTgapParameter`
++  /// usage); it lets high-`|eta|` tracks that physically cross the
++  /// wafer-thickness gap survive the acceptance gate. 0 disables it
++  /// (the strict `|m|, |n| <= 1 + stripLengthTolerance` cut applies).
+   double stripGapParameter = 0.0;
+ };
+ 
+diff --git a/Core/src/SpacePointFormation2/StripSpacePointBuilder.cpp b/Core/src/SpacePointFormation2/StripSpacePointBuilder.cpp
+index a94f3f344..faffe0c7d 100644
+--- a/Core/src/SpacePointFormation2/StripSpacePointBuilder.cpp
++++ b/Core/src/SpacePointFormation2/StripSpacePointBuilder.cpp
+@@ -88,6 +88,13 @@ Result<Vector3> StripSpacePointBuilder::computeCosmicSpacePoint(
+ 
+ namespace {
+ 
++/// Numerical-stability floor for geometric quantities that appear in
++/// denominators below (strip half-lengths, sin of the stereo angle).
++/// Strips and stereo angles in any realistic detector are orders of
++/// magnitude above this; the guard is purely to avoid divide-by-zero on
++/// degenerate inputs.
++constexpr double kGeometryEpsilon = 1e-9;
++
+ /// @brief Struct for variables related to the calculation of space points
+ struct FormationState {
+   /// Vector pointing from bottom to top end of first SDE
+@@ -162,22 +169,22 @@ Result<void> computeConstrainedFormationState(
+   // Set the limit for the parameter
+   state.limit = 1 + stripLengthTolerance;
+ 
+-  // Geometric extra allowance from the wafer-thickness gap between the two
+-  // stereo surfaces (ATLAS SCTGapParameter analogue). Disabled when
+-  // stripGapParameter == 0 (legacy behaviour, regression-safe).
++  // Additional acceptance allowance proportional to the geometric gap
++  // between the two stereo wafer faces. See ConstrainedOptions docs for
++  // the formula. Disabled when stripGapParameter == 0.
+   if (stripGapParameter > 0.0) {
+     const Vector3 gapVec =
+         0.5 * (stripEnds2.top + stripEnds2.bottom - stripEnds1.top -
+                stripEnds1.bottom);
+     const double sdir1n = state.firstBtmToTop.norm();
+     const double sdir2n = state.secondBtmToTop.norm();
+-    if (sdir1n > 1e-9 && sdir2n > 1e-9) {
++    if (sdir1n > kGeometryEpsilon && sdir2n > kGeometryEpsilon) {
+       const double cosStereo =
+           state.firstBtmToTop.dot(state.secondBtmToTop) / (sdir1n * sdir2n);
+       const double sinStereo =
+           std::sqrt(std::max(0.0, 1.0 - cosStereo * cosStereo));
+       const double halfLen = 0.5 * sdir1n;
+-      if (sinStereo > 1e-9 && halfLen > 1e-9) {
++      if (sinStereo > kGeometryEpsilon && halfLen > kGeometryEpsilon) {
+         state.limit += stripGapParameter * gapVec.norm() / sinStereo / halfLen;
+       }
+     }
+diff --git a/Examples/Algorithms/TrackFinding/include/ActsExamples/TrackFinding/SpacePointMaker.hpp b/Examples/Algorithms/TrackFinding/include/ActsExamples/TrackFinding/SpacePointMaker.hpp
+index f3212ee55..6cf25234e 100644
+--- a/Examples/Algorithms/TrackFinding/include/ActsExamples/TrackFinding/SpacePointMaker.hpp
++++ b/Examples/Algorithms/TrackFinding/include/ActsExamples/TrackFinding/SpacePointMaker.hpp
+@@ -16,6 +16,7 @@
+ #include "ActsExamples/Framework/IAlgorithm.hpp"
+ #include "ActsExamples/Framework/ProcessCode.hpp"
+ 
++#include <cstdint>
+ #include <memory>
+ #include <string>
+ #include <vector>
+@@ -26,6 +27,16 @@ class TrackingGeometry;
+ 
+ namespace ActsExamples {
+ 
++/// Strip cluster pairing strategy, applied after partner-module mapping.
++enum class StripPairingMode : std::uint8_t {
++  /// Keep one best-distance pair per face-1 cluster.
++  TopOne,
++  /// Keep up to `stripTopK` best-distance pairs per face-1 cluster.
++  TopK,
++  /// Keep every cluster pair passing the geometric cuts.
++  AllPairs,
++};
++
+ /// Create space point representations from measurements.
+ ///
+ /// This implements simple space point construction, where each surface-based
+@@ -60,13 +71,9 @@ class SpacePointMaker final : public IAlgorithm {
+ 
+     std::vector<Acts::GeometryIdentifier> stripGeometrySelection;
+ 
+-    /// Strip cluster pairing strategy, applied after partner-module
+-    /// mapping. One of:
+-    ///   "top_one"   one best-distance pair per face-1 cluster (default).
+-    ///   "top_k"     keep the k best by distance (k = `stripTopK`).
+-    ///   "all_pairs" every cluster pair passing the geometric cuts.
+-    std::string stripPairingMode = "top_one";
+-    /// k for stripPairingMode == "top_k".
++    /// Strip cluster pairing strategy, applied after partner-module mapping.
++    StripPairingMode stripPairingMode = StripPairingMode::TopOne;
++    /// k for `stripPairingMode == StripPairingMode::TopK`.
+     std::size_t stripTopK = 1;
+     /// Geometric cuts applied to each candidate pair before mode selection.
+     /// Mirrors Acts::StripSpacePointBuilder::ClusterPairingOptions defaults.
+@@ -76,8 +83,10 @@ class SpacePointMaker final : public IAlgorithm {
+     /// Constrained-SP geometric tolerances (Acts::StripSpacePointBuilder).
+     double stripLengthTolerance = 0.01;
+     double stripLengthGapTolerance = 0.01;
+-    /// ATLAS-SCTGapParameter analogue: scales an extra |m|, |n| allowance
+-    /// from the wafer-thickness gap. 0 = legacy (no gap correction).
++    /// Additional acceptance allowance proportional to the geometric gap
++    /// between the two stereo wafer faces. Forwarded to
++    /// `Acts::StripSpacePointBuilder::ConstrainedOptions::stripGapParameter`.
++    /// See the header there for the definition. 0 disables it.
+     double stripGapParameter = 0.0;
+   };
+ 
 diff --git a/Examples/Algorithms/TrackFinding/src/SpacePointMaker.cpp b/Examples/Algorithms/TrackFinding/src/SpacePointMaker.cpp
-index 10d310a08..b6951799a 100644
+index 0a3a28c45..5cdb9b662 100644
 --- a/Examples/Algorithms/TrackFinding/src/SpacePointMaker.cpp
 +++ b/Examples/Algorithms/TrackFinding/src/SpacePointMaker.cpp
-@@ -201,17 +201,22 @@ SpacePointMaker::SpacePointMaker(Config cfg, Acts::Logging::Level lvl)
-     // within the same volume hierarchy only consider layers
-     return (ref.layer() == cmp.layer());
-   };
--  // sort geometry selection so the unique filtering works
--  std::ranges::sort(m_cfg.geometrySelection,
--                    std::less<Acts::GeometryIdentifier>{});
--  const auto geoSelLastUnique =
--      std::ranges::unique(m_cfg.geometrySelection, isDuplicate);
--  if (geoSelLastUnique.begin() != geoSelLastUnique.end()) {
--    ACTS_WARNING("Removed " << std::distance(geoSelLastUnique.begin(),
--                                             geoSelLastUnique.end())
--                            << " geometry selection duplicates");
--    m_cfg.geometrySelection.erase(geoSelLastUnique.begin(),
--                                  geoSelLastUnique.end());
-+  // sort and dedupe BOTH selection lists. For stripGeometrySelection this
-+  // is critical: the JSON typically lists per-(vol, layer) entries split
-+  // across multiple `extra` values, but the partner search must run once
-+  // per (vol, layer) -- duplicate entries would re-process the same
-+  // surfaces and throw on map insert. Applying the same (vol, layer)
-+  // dedupe here is what allows the per-selector loops below to handle
-+  // both stereo faces in a single pass.
-+  for (auto* sel :
-+       {&m_cfg.geometrySelection, &m_cfg.stripGeometrySelection}) {
-+    std::ranges::sort(*sel, std::less<Acts::GeometryIdentifier>{});
-+    const auto last = std::ranges::unique(*sel, isDuplicate);
-+    if (last.begin() != last.end()) {
-+      ACTS_WARNING("Removed " << std::distance(last.begin(), last.end())
-+                              << " geometry selection duplicates");
-+      sel->erase(last.begin(), last.end());
-+    }
+@@ -186,15 +186,8 @@ SpacePointMaker::SpacePointMaker(Config cfg,
+   if (m_cfg.geometrySelection.empty() && m_cfg.stripGeometrySelection.empty()) {
+     throw std::invalid_argument("Missing space point maker geometry selection");
+   }
+-  if (m_cfg.stripPairingMode != "top_one" &&
+-      m_cfg.stripPairingMode != "top_k" &&
+-      m_cfg.stripPairingMode != "all_pairs") {
+-    throw std::invalid_argument(
+-        "Unknown stripPairingMode '" + m_cfg.stripPairingMode +
+-        "' (expected one of: top_one, top_k, all_pairs)");
+-  }
+-  if (m_cfg.stripPairingMode == "top_k" && m_cfg.stripTopK == 0) {
+-    throw std::invalid_argument("stripTopK must be > 0 for top_k mode");
++  if (m_cfg.stripPairingMode == StripPairingMode::TopK && m_cfg.stripTopK == 0) {
++    throw std::invalid_argument("stripTopK must be > 0 for TopK mode");
    }
  
-   if (!m_cfg.stripGeometrySelection.empty()) {
-@@ -251,17 +256,16 @@ void SpacePointMaker::initializeStripPartners() {
+   m_inputMeasurements.initialize(m_cfg.inputMeasurements);
+@@ -207,8 +200,8 @@ SpacePointMaker::SpacePointMaker(Config cfg,
+       if ((geoId.approach() != 0u) || (geoId.boundary() != 0u) ||
+           (geoId.sensitive() != 0u)) {
+         throw std::invalid_argument(
+-            "Invalid geometry selection: only volume and layer are allowed to "
+-            "be set");
++            "Invalid geometry selection: only volume, layer and extra are "
++            "allowed to be set");
+       }
+     }
+   }
+@@ -219,7 +212,7 @@ SpacePointMaker::SpacePointMaker(Config cfg,
+   // we would create the space points for the layer twice.
+   const auto isDuplicate = [](Acts::GeometryIdentifier ref,
+                               Acts::GeometryIdentifier cmp) {
+-    // code assumes ref < cmp and that only volume and layer can be non-zero
++    // code assumes ref < cmp and that only volume/layer/extra can be non-zero
+     // root node always contains everything
+     if (ref.volume() == 0) {
+       return true;
+@@ -228,20 +221,20 @@ SpacePointMaker::SpacePointMaker(Config cfg,
+     if (ref.volume() != cmp.volume()) {
+       return false;
+     }
+-    // within the same volume hierarchy only consider layers
+-    return (ref.layer() == cmp.layer());
++    // within the same volume hierarchy compare (layer, extra). `extra` is
++    // used to distinguish concentric rings inside a layer; two selectors
++    // with the same (volume, layer) but different `extra` address different
++    // physical rings and must not be deduped.
++    return (ref.layer() == cmp.layer()) && (ref.extra() == cmp.extra());
+   };
+-  // dedupe both selection lists: stripGeometrySelection's per-(vol, layer)
+-  // partner setup throws on duplicate insert otherwise.
++  // dedupe both selection lists.
+   for (auto* sel :
+        {&m_cfg.geometrySelection, &m_cfg.stripGeometrySelection}) {
+     std::ranges::sort(*sel, std::less<Acts::GeometryIdentifier>{});
+     const auto last = std::ranges::unique(*sel, isDuplicate);
+     if (last.begin() != last.end()) {
+-      ACTS_LOG_WITH_LOGGER(this->logger(), Acts::Logging::WARNING,
+-                           "Removed " << std::distance(last.begin(),
+-                                                       last.end())
+-                                      << " geometry selection duplicates");
++      ACTS_WARNING("Removed " << std::distance(last.begin(), last.end())
++                              << " geometry selection duplicates");
+       sel->erase(last.begin(), last.end());
+     }
+   }
+@@ -283,10 +276,20 @@ void SpacePointMaker::initializeStripPartners() {
        allSensitivesVector.begin(), allSensitivesVector.end());
  
    for (auto selector : m_cfg.stripGeometrySelection) {
--    // Apply volume/layer range
--    auto rangeLayer =
-+    // Apply volume/layer range. NO `extra` filter: a stereo partner by
-+    // construction lives on a different `extra` value (e.g. extra=1 inner
-+    // face pairs with extra=2 outer face on the same wafer). Filtering by
-+    // selector.extra would isolate each face from its true partner and
-+    // the closest-distance partner search would pick a same-face
-+    // neighbour instead. Per-(vol, layer) dedupe in the constructor
-+    // ensures we visit each layer exactly once.
-+    auto range =
+-    // No `extra` filter: stereo partners live at different `extra` values,
+-    // so the partner search must see both faces.
+-    auto range =
++    // Apply (volume, layer) selection first, then filter by `extra` when
++    // the selector specifies a specific ring. `extra` distinguishes
++    // concentric rings within a layer (see GeometryIdentifier docs and
++    // e.g. the ODD geometry config which assigns `extra` from radial
++    // cuts). Stereo partners live in the *same* ring (same `extra`); we
++    // run the partner search per-ring so the closest-distance heuristic
++    // never has to disambiguate across rings.
++    auto rangeLayer =
          selectLowestNonZeroGeometryObject(allSensitives, selector);
++    auto range = rangeLayer | std::views::filter([&](auto srf) {
++                   return selector.extra() == 0u
++                              ? true
++                              : srf->geometryId().extra() == selector.extra();
++                 });
  
--    // Apply selector on extra if extra != 0
--    auto range = rangeLayer | std::views::filter([&](auto srf) {
--                   return srf->geometryId().extra() != 0
--                              ? srf->geometryId().extra() == selector.extra()
--                              : true;
--                 });
--
      const auto sizeBefore = m_stripPartner.size();
      const std::size_t nSurfaces = std::distance(range.begin(), range.end());
+@@ -299,7 +302,7 @@ void SpacePointMaker::initializeStripPartners() {
+     ACTS_DEBUG("Found " << nSurfaces << " surfaces for selector " << selector);
  
-@@ -365,16 +369,12 @@ ProcessCode SpacePointMaker::execute(const AlgorithmContext& ctx) const {
+     // Closest-distance partner search: for each source module, the partner
+-    // is the geometrically closest other module in the same (vol, layer).
++    // is the geometrically closest other module in the selected range.
+     for (auto mod1 : range) {
+       if (m_stripPartner.contains(mod1->geometryId())) {
+         continue;
+@@ -320,10 +323,11 @@ void SpacePointMaker::initializeStripPartners() {
+         }
+       }
+ 
+-      // Closest-distance is asymmetric in dense multi-ring layers (e.g. ODD
+-      // SS endcap with 3 rings): A's closest can be B while B's closest is
+-      // some other X. Only commit a pair when both ends are unclaimed; skip
+-      // otherwise so the unaffected pairs still go through.
++      // Closest-distance is asymmetric for layouts where some modules are
++      // not part of a clean reciprocal pair (e.g. an odd number of modules
++      // in a ring, or selectors that mix multiple rings). Only commit a
++      // pair when both ends are unclaimed; skip otherwise so the
++      // unaffected pairs still go through.
+       if (m_stripPartner.contains(partner->geometryId())) {
+         ACTS_VERBOSE("Partner " << partner->geometryId()
+                                 << " already paired; skipping " << mod1->geometryId());
+@@ -406,9 +410,16 @@ ProcessCode SpacePointMaker::execute(const AlgorithmContext& ctx) const {
      stripSourceLinkPairs.clear();
      ACTS_VERBOSE("Process strip selection " << sel);
  
--    // select volume/layer depending on what is set in the geometry id
--    const auto layerRange =
-+    // Select volume/layer. NO `extra` filter -- see comment in
-+    // initializeStripPartners. We must see measurements on BOTH stereo
-+    // faces of the layer here so that for each module mod1 we can find
-+    // its partner's measurements in mapByModule.
-+    const auto range =
+-    // No `extra` filter: see initializeStripPartners.
+-    const auto range =
++    // Apply the same (vol, layer, extra) selection as in
++    // initializeStripPartners so the per-ring partner map is consistent
++    // with the per-ring source-link grouping below.
++    const auto layerRange =
          selectLowestNonZeroGeometryObject(measurements.orderedIndices(), sel);
--    // Apply filter for extra-id, since this cannot be done with
--    // selectLowestNonZeroGeometryObject
--    auto range = layerRange | std::views::filter([&](auto sl) {
--                   return sl.geometryId().extra() != 0
--                              ? sl.geometryId().extra() == sel.extra()
--                              : true;
--                 });
++    auto range = layerRange | std::views::filter([&](auto sl) {
++                   return sel.extra() == 0u
++                              ? true
++                              : sl.geometryId().extra() == sel.extra();
++                 });
  
      // groupByModule only works with geometry containers, not with an
      // arbitrary range. do the equivalent grouping manually
+@@ -499,13 +510,17 @@ ProcessCode SpacePointMaker::execute(const AlgorithmContext& ctx) const {
+           continue;
+         }
+ 
+-        std::size_t maxOut;
+-        if (m_cfg.stripPairingMode == "top_one") {
+-          maxOut = 1;
+-        } else if (m_cfg.stripPairingMode == "top_k") {
+-          maxOut = m_cfg.stripTopK;
+-        } else {  // all_pairs
+-          maxOut = candidates.size();
++        std::size_t maxOut = 1;
++        switch (m_cfg.stripPairingMode) {
++          case StripPairingMode::TopOne:
++            maxOut = 1;
++            break;
++          case StripPairingMode::TopK:
++            maxOut = m_cfg.stripTopK;
++            break;
++          case StripPairingMode::AllPairs:
++            maxOut = candidates.size();
++            break;
+         }
+ 
+         // Sort only when we need the K best; for all_pairs the order
+diff --git a/Python/Examples/src/TrackFinding.cpp b/Python/Examples/src/TrackFinding.cpp
+index 6c7a38000..8db49dc1a 100644
+--- a/Python/Examples/src/TrackFinding.cpp
++++ b/Python/Examples/src/TrackFinding.cpp
+@@ -34,6 +34,11 @@ using namespace ActsExamples;
+ namespace ActsPython {
+ 
+ void addTrackFinding(py::module& mex) {
++  py::enum_<StripPairingMode>(mex, "StripPairingMode")
++      .value("topOne", StripPairingMode::TopOne)
++      .value("topK", StripPairingMode::TopK)
++      .value("allPairs", StripPairingMode::AllPairs);
++
+   ACTS_PYTHON_DECLARE_ALGORITHM(SpacePointMaker, mex, "SpacePointMaker",
+                                 inputMeasurements, outputSpacePoints,
+                                 trackingGeometry, geometrySelection,
