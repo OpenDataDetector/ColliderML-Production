@@ -13,11 +13,11 @@ manual review.
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import logging
-import sys
-from pathlib import Path
+from datetime import datetime, timezone
 from typing import Optional
 
 import pyarrow as pa
@@ -25,12 +25,8 @@ import pyarrow.parquet as pq
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 
 from app.auth import current_user
+from app.config import get_settings
 from app.db import db
-
-# Make the top-level benchmarks package importable — it lives next to backend/
-_REPO_ROOT = Path(__file__).resolve().parents[2]
-if str(_REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(_REPO_ROOT))
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/v1", tags=["benchmarks"])
@@ -54,10 +50,14 @@ _REPRODUCE_TOLERANCE = 0.02
 # Helpers
 # ---------------------------------------------------------------------------
 async def _load_task(task_name: str):
+    # Task registry lives in the installed `colliderml` package (was a
+    # local `benchmarks/` directory pre-v0.4.0 migration, see public-repo
+    # commit b5c4567). The deferred import keeps cold start light when
+    # the registry isn't actually exercised on every request.
     try:
-        from benchmarks import get_task
+        from colliderml.tasks import get as get_task
     except ImportError as e:
-        raise HTTPException(503, f"benchmarks package not available: {e}")
+        raise HTTPException(503, f"colliderml.tasks not available: {e}")
     try:
         return get_task(task_name)
     except ValueError as e:
@@ -73,12 +73,90 @@ async def _score_table(task, preds: pa.Table) -> dict:
     return task.score(preds)
 
 
+async def _push_result_to_hf(
+    task_name: str,
+    submission_id: str,
+    username: str,
+    scores: dict,
+    credits_earned: float,
+    pred_hash: str,
+    model_repo_id: str,
+) -> None:
+    """Fire-and-forget: push result JSON to HF dataset + eval_results to model repo."""
+    settings = get_settings()
+    if not settings.hf_token:
+        logger.debug("hf_token not set — skipping HF result push")
+        return
+    try:
+        from huggingface_hub import HfApi
+
+        api = HfApi(token=settings.hf_token)
+        result_json = json.dumps(
+            {
+                "submission_id": submission_id,
+                "task": task_name,
+                "submitter": username,
+                "model_repo_id": model_repo_id or None,
+                "submitted_at": datetime.now(timezone.utc).isoformat(),
+                "scores": scores,
+                "credits_earned": credits_earned,
+                "is_baseline": False,
+                "predictions_sha256": pred_hash,
+            },
+            indent=2,
+        )
+        api.upload_file(
+            path_or_fileobj=result_json.encode(),
+            path_in_repo=f"results/{task_name}/{username}/{pred_hash[:12]}.json",
+            repo_id=settings.hf_results_dataset,
+            repo_type="dataset",
+            commit_message=f"score: {task_name} by {username}",
+        )
+        logger.info("pushed result to %s for %s/%s", settings.hf_results_dataset, task_name, username)
+
+        if model_repo_id:
+            metrics_yaml = _build_eval_results_yaml(task_name, scores, settings.hf_results_dataset)
+            api.upload_file(
+                path_or_fileobj=metrics_yaml.encode(),
+                path_in_repo=f".eval_results/colliderml_{task_name}.yaml",
+                repo_id=model_repo_id,
+                commit_message=f"ColliderML {task_name} benchmark scores",
+            )
+            logger.info("pushed eval_results to model repo %s", model_repo_id)
+    except Exception:
+        logger.exception("HF result push failed (non-fatal)")
+
+
+def _build_eval_results_yaml(task_name: str, scores: dict, dataset_id: str) -> str:
+    import yaml
+
+    metrics = [
+        {"type": k, "value": round(float(v), 6), "name": k, "verified": False}
+        for k, v in scores.items()
+    ]
+    doc = [
+        {
+            "config": f"colliderml_{task_name}",
+            "dataset": {
+                "type": dataset_id,
+                "name": f"ColliderML {task_name.replace('_', ' ').title()} Benchmark",
+            },
+            "metrics": metrics,
+            "source": {
+                "url": f"https://api.colliderml.com/v1/leaderboard/{task_name}",
+                "name": "ColliderML Backend",
+            },
+        }
+    ]
+    return yaml.dump(doc, default_flow_style=False, sort_keys=False)
+
+
 # ---------------------------------------------------------------------------
 # Routes
 # ---------------------------------------------------------------------------
 @router.get("/benchmark/tasks")
 async def list_tasks_route() -> list[dict]:
-    from benchmarks import list_tasks, get_task
+    from colliderml.tasks import list_tasks, get as get_task
     rows = []
     for name in list_tasks():
         t = get_task(name)
@@ -118,6 +196,7 @@ async def submit_benchmark(
     task_name: str,
     predictions: UploadFile = File(...),
     local_scores: str = Form(default="{}"),
+    model_repo_id: str = Form(default=""),
     user: dict = Depends(current_user),
 ) -> dict:
     """Re-score a prediction file and award credits for new bests."""
@@ -137,9 +216,15 @@ async def submit_benchmark(
         pred_hash,
     )
     if existing is not None:
+        # `scores` comes back from JSONB as a raw string under the default
+        # asyncpg codec; deserialise so callers see the same dict shape
+        # whether they hit the dedup branch or the fresh-submit branch.
+        existing_scores = existing["scores"]
+        if isinstance(existing_scores, str):
+            existing_scores = json.loads(existing_scores)
         return {
             "submission_id": str(existing["id"]),
-            "scores": existing["scores"],
+            "scores": existing_scores,
             "credits_earned": float(existing["credits_earned"]),
             "deduplicated": True,
         }
@@ -205,6 +290,16 @@ async def submit_benchmark(
             "update benchmark_submissions set credits_earned = $1 where id = $2",
             credits_earned, submission_row["id"],
         )
+
+    asyncio.create_task(_push_result_to_hf(
+        task_name=task_name,
+        submission_id=submission_id,
+        username=user["hf_username"],
+        scores=scores,
+        credits_earned=credits_earned,
+        pred_hash=pred_hash,
+        model_repo_id=model_repo_id,
+    ))
 
     return {
         "submission_id": submission_id,
