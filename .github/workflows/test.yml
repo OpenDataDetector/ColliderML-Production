@@ -1,0 +1,79 @@
+name: backend tests
+
+# Runs the backend pytest suite against a real Postgres + the live
+# `app.main` FastAPI application via Starlette's TestClient. This is
+# the release gate for v0.4.0 — the leaderboard submit → score →
+# HF push path is otherwise unverified in CI.
+#
+# The HF data layer (colliderml.tasks._loading.load_task_data) and
+# the fire-and-forget HF push are mocked inside the tests; nothing
+# here calls hf.co or downloads parquet shards.
+
+on:
+  pull_request:
+    paths:
+      - 'backend/**'
+      - '.github/workflows/test.yml'
+  push:
+    branches:
+      - main
+      - staging
+      - 'feat/**'
+
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: colliderml
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 2s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/colliderml
+      ADMIN_TOKEN: dev-admin-token
+      # Tutorial-friendly tracking defaults so the integration test runs
+      # against the small PU=0 split and not the 700+ GB production one.
+      COLLIDERML_TRACKING_DATASET: ttbar_pu0
+      COLLIDERML_TRACKING_EVAL_RANGE: "0:1000"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install backend with extras
+        working-directory: backend
+        run: |
+          python -m pip install --upgrade pip
+          # The backend pyproject.toml pins `colliderml>=0.4.0rc1` from
+          # PyPI, but the leaderboard path needs the v0.4.0 task registry.
+          # `--pre` opts into the rc; bump to a stable pin once v0.4.0 ships.
+          pip install --pre .
+          pip install pytest pytest-asyncio polars pyarrow
+
+      - name: Apply migrations
+        env:
+          PGPASSWORD: postgres
+        run: |
+          for f in backend/migrations/*.sql; do
+            echo "Applying $f"
+            psql -h localhost -U postgres -d colliderml -f "$f"
+          done
+
+      - name: Run pytest
+        working-directory: backend
+        run: pytest tests/ -v --tb=short
