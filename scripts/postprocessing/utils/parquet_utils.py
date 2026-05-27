@@ -192,7 +192,19 @@ def build_parquet_from_flat_df(
     if df.empty:
         logger.warning(f"Skipping empty DataFrame for {output_file}")
         return
-    
+
+    # NaN-safe sentinel for unmatched truth associations: integer columns whose
+    # schema is list_of(<int>) cannot carry NaN once Arrow tries to coerce. Fill
+    # with 0, the conventional "no particle / no match" sentinel for these IDs.
+    if schema_overrides:
+        df = df.copy()
+        for col, dtype in schema_overrides.items():
+            if col not in df.columns:
+                continue
+            value_type = getattr(dtype, "value_type", None)
+            if value_type is not None and pa.types.is_integer(value_type):
+                df[col] = df[col].fillna(0)
+
     # Group by event
     grouped = group_by_event_to_lists(df)
 
