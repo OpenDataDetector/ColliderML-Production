@@ -23,98 +23,15 @@ Run with:
 
 from __future__ import annotations
 
-import asyncio
 import os
 import time
 
 import pytest
 
-pytest_plugins = ["pytest_asyncio"]
+# Shared fixtures (client, _reset_user) live in conftest.py.
 
 
 _HAS_DB = bool(os.environ.get("DATABASE_URL"))
-
-
-@pytest.fixture
-def client(monkeypatch):
-    """FastAPI TestClient with stubbed HF auth."""
-    if not _HAS_DB:
-        pytest.skip("DATABASE_URL not set")
-
-    from fastapi.testclient import TestClient
-
-    # Ensure mock SFAPI mode
-    monkeypatch.delenv("SFAPI_CLIENT_ID", raising=False)
-    monkeypatch.delenv("SFAPI_CLIENT_SECRET", raising=False)
-
-    from app.main import app
-    from app.auth import current_user
-
-    # Seed a fixed test user and make current_user return it.
-    from datetime import datetime, timezone
-
-    async def fake_user():
-        # Pull the live credits from the database so tests see the actual
-        # current balance (credits are mutated by deductions/grants during tests).
-        import asyncpg
-        conn = await asyncpg.connect(os.environ["DATABASE_URL"])
-        try:
-            row = await conn.fetchrow(
-                "select credits from users where hf_username = 'e2e_alice'"
-            )
-            credits = float(row["credits"]) if row else 10.0
-        finally:
-            await conn.close()
-        now = datetime.now(timezone.utc)
-        return {
-            "hf_username": "e2e_alice",
-            "email": "alice@test.example",
-            "credits": credits,
-            "banned": False,
-            "created_at": now,
-            "last_seen_at": now,
-            "notes": None,
-        }
-
-    app.dependency_overrides[current_user] = fake_user
-
-    with TestClient(app) as c:
-        yield c
-
-    app.dependency_overrides.pop(current_user, None)
-
-
-def _ensure_user(dsn: str):
-    """Insert e2e_alice directly into the DB (idempotent)."""
-    import asyncpg
-
-    async def _run():
-        conn = await asyncpg.connect(dsn)
-        try:
-            await conn.execute(
-                """
-                insert into users (hf_username, email, credits)
-                values ('e2e_alice', 'alice@test.example', 10)
-                on conflict (hf_username) do update set credits = 10, banned = false
-                """
-            )
-            # Clear prior runs so dedup doesn't fire
-            await conn.execute("delete from simulation_requests where hf_username = 'e2e_alice'")
-            await conn.execute("delete from credit_transactions where hf_username = 'e2e_alice'")
-            await conn.execute(
-                "insert into credit_transactions (hf_username, delta, reason) values ('e2e_alice', 10, 'signup')"
-            )
-            await conn.execute("update global_config set submissions_frozen = false where id = 1")
-        finally:
-            await conn.close()
-
-    asyncio.get_event_loop().run_until_complete(_run())
-
-
-@pytest.fixture(autouse=True)
-def _reset_user():
-    if _HAS_DB:
-        _ensure_user(os.environ["DATABASE_URL"])
 
 
 # ---------------------------------------------------------------------------

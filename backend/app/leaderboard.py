@@ -216,9 +216,15 @@ async def submit_benchmark(
         pred_hash,
     )
     if existing is not None:
+        # `scores` comes back from JSONB as a raw string under the default
+        # asyncpg codec; deserialise so callers see the same dict shape
+        # whether they hit the dedup branch or the fresh-submit branch.
+        existing_scores = existing["scores"]
+        if isinstance(existing_scores, str):
+            existing_scores = json.loads(existing_scores)
         return {
             "submission_id": str(existing["id"]),
-            "scores": existing["scores"],
+            "scores": existing_scores,
             "credits_earned": float(existing["credits_earned"]),
             "deduplicated": True,
         }
