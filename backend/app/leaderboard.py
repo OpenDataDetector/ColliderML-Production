@@ -17,9 +17,7 @@ import asyncio
 import hashlib
 import json
 import logging
-import sys
 from datetime import datetime, timezone
-from pathlib import Path
 from typing import Optional
 
 import pyarrow as pa
@@ -29,11 +27,6 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from app.auth import current_user
 from app.config import get_settings
 from app.db import db
-
-# Make the top-level benchmarks package importable — it lives next to backend/
-_REPO_ROOT = Path(__file__).resolve().parents[2]
-if str(_REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(_REPO_ROOT))
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/v1", tags=["benchmarks"])
@@ -57,10 +50,14 @@ _REPRODUCE_TOLERANCE = 0.02
 # Helpers
 # ---------------------------------------------------------------------------
 async def _load_task(task_name: str):
+    # Task registry lives in the installed `colliderml` package (was a
+    # local `benchmarks/` directory pre-v0.4.0 migration, see public-repo
+    # commit b5c4567). The deferred import keeps cold start light when
+    # the registry isn't actually exercised on every request.
     try:
-        from benchmarks import get_task
+        from colliderml.tasks import get as get_task
     except ImportError as e:
-        raise HTTPException(503, f"benchmarks package not available: {e}")
+        raise HTTPException(503, f"colliderml.tasks not available: {e}")
     try:
         return get_task(task_name)
     except ValueError as e:
@@ -159,7 +156,7 @@ def _build_eval_results_yaml(task_name: str, scores: dict, dataset_id: str) -> s
 # ---------------------------------------------------------------------------
 @router.get("/benchmark/tasks")
 async def list_tasks_route() -> list[dict]:
-    from benchmarks import list_tasks, get_task
+    from colliderml.tasks import list_tasks, get as get_task
     rows = []
     for name in list_tasks():
         t = get_task(name)
