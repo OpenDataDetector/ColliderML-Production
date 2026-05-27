@@ -282,10 +282,11 @@ if [ -d "$CACHE_DIR" ]; then
     if ! python3 -c "import pyarrow" 2>/dev/null; then
         echo "Installing Python packages for postprocessing..."
         mkdir -p "$_pip_target"
-        timeout 120 python3 -m pip install --quiet --timeout 15 \
+        timeout 180 python3 -m pip install --quiet --timeout 15 \
             --trusted-host pypi.org --trusted-host files.pythonhosted.org \
             --target="$_pip_target" \
-            pyarrow uproot pandas awkward h5py tqdm pyhepmc psutil pyedm4hep 2>/dev/null \
+            pyarrow uproot pandas awkward h5py tqdm pyhepmc psutil pyedm4hep \
+            polars huggingface_hub 2>/dev/null \
             && echo "Python packages installed." \
             || echo "WARNING: pip install failed. Postprocessing stages may fail."
         # Update PYTHONPATH if target was just created
