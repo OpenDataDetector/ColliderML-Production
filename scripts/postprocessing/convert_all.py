@@ -613,10 +613,23 @@ def convert_all(config: dict, chunk_index: int | None = None) -> None:
 
 def main():
     main_start_time = time.time()
-    
+
+    # Accept the same baseline args every other pipeline stage takes
+    # (--output, --events, --seed, --output-subdir) even though we only
+    # need --config + --chunk-index ourselves. The colliderml.simulate
+    # driver passes --output/--output-subdir/--seed to every stage in
+    # the manifest; rejecting them here breaks the pipeline.
     parser = argparse.ArgumentParser(description="Convert all EDM4HEP data to HDF5 (config-driven)")
     parser.add_argument("--config", required=True, help="Path to YAML configuration file")
     parser.add_argument("--chunk-index", type=int, default=None, help="Optional chunk index to process (for distributed runs)")
+    parser.add_argument("--output", "-o", type=Path, default=None,
+                        help="Output directory (ignored — the YAML config controls output paths)")
+    parser.add_argument("--events", "-n", type=int, default=None,
+                        help="Number of events (ignored — converts whatever the prior stages produced)")
+    parser.add_argument("--seed", type=str, default=None,
+                        help="Random seed (ignored — conversion is deterministic)")
+    parser.add_argument("--output-subdir", type=str, default=None,
+                        help="Output subdirectory (ignored — the YAML config controls output paths)")
     args = parser.parse_args()
     
     config_load_start = time.time()
