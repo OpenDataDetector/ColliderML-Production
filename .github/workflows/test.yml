@@ -59,14 +59,9 @@ jobs:
         working-directory: backend
         run: |
           python -m pip install --upgrade pip
-          # The integration test (test_leaderboard_e2e.py) needs the
-          # COLLIDERML_TRACKING_DATASET / EVAL_RANGE env-var overrides
-          # on TrackingTask, which land in the public repo's
-          # dry-run-fixes/v0.4.0 branch and aren't yet on PyPI. Install
-          # colliderml directly from that branch until v0.4.0 ships,
-          # then bump the backend pyproject pin to `colliderml>=0.4.0`
-          # and drop this line.
-          pip install "colliderml[all] @ git+https://github.com/OpenDataDetector/ColliderML.git@dry-run-fixes/v0.4.0"
+          # The colliderml dep is pinned to the dry-run-fixes branch in
+          # pyproject.toml (will go back to a stable PyPI pin once v0.4.0
+          # ships); `pip install .` picks it up.
           pip install .
           pip install pytest pytest-asyncio polars pyarrow
 

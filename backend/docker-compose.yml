@@ -40,6 +40,13 @@ services:
       COLLIDERML_TRACKING_EVAL_RANGE: ${COLLIDERML_TRACKING_EVAL_RANGE:-0:1000}
     ports:
       - "8000:8000"
+    volumes:
+      # Persist the colliderml HF cache across container restarts so
+      # the backend doesn't re-download every shard on every rebuild.
+      # First request after a fresh build still pays the download cost
+      # once; subsequent requests are instant.
+      - colliderml_cache:/root/.cache/colliderml
 
 volumes:
   pg_data:
+  colliderml_cache:
