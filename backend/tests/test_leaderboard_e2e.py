@@ -232,8 +232,9 @@ def test_tracking_submit_with_model_repo_id_propagates(
 def test_tracking_submit_dedups_identical_blob(
     client, patched_loader, hf_push_recorder
 ) -> None:
-    """Same parquet bytes from the same user should hit the dedup branch
-    (returns 200 with deduplicated=True) — no second HF push fires."""
+    """Same parquet bytes from the same user, with no new model_repo_id,
+    should hit dedup (deduplicated=True) and NOT re-fire the HF push.
+    The dataset JSON is already there from the first call."""
     blob = _perfect_preds_parquet()
     files = {"predictions": ("preds.parquet", blob, "application/octet-stream")}
 
@@ -253,8 +254,45 @@ def test_tracking_submit_dedups_identical_blob(
     # Give the second call a chance to fire a (spurious) push before asserting
     time.sleep(0.5)
     assert len(hf_push_recorder) == pushed_before, (
-        "dedup path must not re-fire the HF push"
+        "dedup path must not re-fire the HF push without a new model_repo_id"
     )
+
+
+def test_dedup_still_fires_push_when_new_model_repo_id_supplied(
+    client, patched_loader, hf_push_recorder
+) -> None:
+    """Typical late-link flow: a user submitted predictions, then later
+    created an HF model repo and wants to link the scores to its model
+    card. Re-submitting the same parquet WITH a model_repo_id should
+    fire the HF push again (eval_results yaml lands on the model repo)
+    even though the dataset JSON dedupe still kicks in."""
+    blob = _perfect_preds_parquet()
+
+    # First submit: no model_repo_id, dataset JSON pushed.
+    files = {"predictions": ("preds.parquet", blob, "application/octet-stream")}
+    first = client.post("/v1/benchmark/tracking/submit", files=files)
+    assert first.status_code == 200
+    _wait_for_push(hf_push_recorder)
+    assert hf_push_recorder[-1]["model_repo_id"] == ""
+
+    # Second submit: identical predictions, now with model_repo_id.
+    # Dedup tag = True, but the eval_results push must still fire.
+    files = {"predictions": ("preds.parquet", blob, "application/octet-stream")}
+    form = {"model_repo_id": "e2e_alice/my-tracker"}
+    pushed_before = len(hf_push_recorder)
+    second = client.post(
+        "/v1/benchmark/tracking/submit", files=files, data=form
+    )
+    assert second.status_code == 200, second.text
+    assert second.json()["deduplicated"] is True
+    # Wait for the new push.
+    deadline = time.time() + 5.0
+    while len(hf_push_recorder) == pushed_before and time.time() < deadline:
+        time.sleep(0.05)
+    assert len(hf_push_recorder) == pushed_before + 1, (
+        "dedup branch must still fire the HF push when a new model_repo_id is supplied"
+    )
+    assert hf_push_recorder[-1]["model_repo_id"] == "e2e_alice/my-tracker"
 
 
 def test_invalid_parquet_returns_400(
