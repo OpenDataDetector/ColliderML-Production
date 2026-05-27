@@ -59,10 +59,15 @@ jobs:
         working-directory: backend
         run: |
           python -m pip install --upgrade pip
-          # The backend pyproject.toml pins `colliderml>=0.4.0rc1` from
-          # PyPI, but the leaderboard path needs the v0.4.0 task registry.
-          # `--pre` opts into the rc; bump to a stable pin once v0.4.0 ships.
-          pip install --pre .
+          # The integration test (test_leaderboard_e2e.py) needs the
+          # COLLIDERML_TRACKING_DATASET / EVAL_RANGE env-var overrides
+          # on TrackingTask, which land in the public repo's
+          # dry-run-fixes/v0.4.0 branch and aren't yet on PyPI. Install
+          # colliderml directly from that branch until v0.4.0 ships,
+          # then bump the backend pyproject pin to `colliderml>=0.4.0`
+          # and drop this line.
+          pip install "colliderml[all] @ git+https://github.com/OpenDataDetector/ColliderML.git@dry-run-fixes/v0.4.0"
+          pip install .
           pip install pytest pytest-asyncio polars pyarrow
 
       - name: Apply migrations
