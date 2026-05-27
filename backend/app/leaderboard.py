@@ -222,6 +222,24 @@ async def submit_benchmark(
         existing_scores = existing["scores"]
         if isinstance(existing_scores, str):
             existing_scores = json.loads(existing_scores)
+
+        # If the caller is supplying a new `model_repo_id` on a re-submit
+        # (typical flow: "I scored my model, then later created an HF
+        # model repo and want to link the scores to its model card"),
+        # fire the push side-effect even though the dataset JSON is
+        # already up to date. Without this the dedup branch silently
+        # eats the link request.
+        if model_repo_id:
+            asyncio.create_task(_push_result_to_hf(
+                task_name=task_name,
+                submission_id=str(existing["id"]),
+                username=user["hf_username"],
+                scores=existing_scores,
+                credits_earned=float(existing["credits_earned"]),
+                pred_hash=pred_hash,
+                model_repo_id=model_repo_id,
+            ))
+
         return {
             "submission_id": str(existing["id"]),
             "scores": existing_scores,
