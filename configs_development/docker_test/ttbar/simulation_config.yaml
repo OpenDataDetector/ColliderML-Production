@@ -1,0 +1,26 @@
+# Docker test: ttbar detector simulation
+campaign: "docker_test"
+dataset: "ttbar"
+version: "v1"
+stage: "simulation"
+
+job_config:
+  n_runs: 1
+  runs_per_node: 1
+  time_limit: "00:30:00"
+  qos: "debug"
+  execution_mode: "interactive"
+
+common:
+  output_base_dir: "/output"
+
+events: 10
+input_filename: merged_events.hepmc3
+threads: 1
+minimalKineticEnergy: 0.1
+truthParticleHandler: "Geant4FullTruthParticleHandler"
+
+vertexOffset: [0.0, 0.0, 0.0, 0.0]
+vertexSigma: [0.0, 0.0, 0.0, 0.0]
+
+ddsim_printLevel: 4

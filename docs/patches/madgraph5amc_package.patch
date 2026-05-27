@@ -1,0 +1,72 @@
+--- a/spack_repo/colliderml/packages/madgraph5amc/package.py
++++ b/spack_repo/colliderml/packages/madgraph5amc/package.py
+@@ -1,6 +1,8 @@
+ from spack_repo.builtin.packages.madgraph5amc.package import (
+     Madgraph5amc as Madgraph5amcBase,
+ )
++from spack.util.executable import which
++from llnl.util.filesystem import working_dir, mkdirp, filter_file, join_path, install, install_tree
+
+ from spack.package import *
+
+@@ -54,14 +56,51 @@
+
+             shutil.copy2(src, dst)
+
+-            with open("install-pythia8-interface", "w") as f:
+-                f.write(
+-                    f"""set pythia8_path {spec["pythia8"].prefix}
+-                            install mg5amc_py8_interface
+-                    """
+-                )
+-            mg5 = Executable(join_path(prefix, "bin", "mg5_aMC"))
+-            mg5("install-pythia8-interface")
++            # Compile MG5aMC_PY8_interface directly with explicit HepMC2 flags.
++            # MG5's built-in installer fails because Pythia8's Makefile.inc doesn't
++            # include -lHepMC (Pythia8 was built by spack without HepMC2 in its makefile).
++            py8_interface_dir = join_path(prefix, "HEPTools", "MG5aMC_PY8_interface")
++            mkdirp(py8_interface_dir)
++
++            git = which("git")
++            git("clone", "--depth", "1",
++                "https://github.com/mg5amcnlo/MG5aMC_PY8_interface.git",
++                py8_interface_dir)
++
++            py8_prefix = spec["pythia8"].prefix
++            hepmc2_prefix = spec["hepmc"].prefix
++            zlib_prefix = spec["zlib-ng"].prefix
++
++            cxx = which(os.environ.get("CXX", "g++"))
++            with working_dir(py8_interface_dir):
++                cxx(
++                    "MG5aMC_PY8_interface.cc", "-o", "MG5aMC_PY8_interface",
++                    f"-I{py8_prefix}/include",
++                    f"-I{hepmc2_prefix}/include",
++                    f"-I{zlib_prefix}/include",
++                    "-O2", "-std=c++20", "-fPIC", "-pthread", "-DGZIP",
++                    f"-L{py8_prefix}/lib", f"-Wl,-rpath,{py8_prefix}/lib", "-lpythia8",
++                    f"-L{hepmc2_prefix}/lib", f"-Wl,-rpath,{hepmc2_prefix}/lib", "-lHepMC",
++                    f"-L{zlib_prefix}/lib", f"-Wl,-rpath,{zlib_prefix}/lib", "-lz", "-ldl",
++                )
++
++                # Create version markers MG5 expects
++                with open("MG5AMC_VERSION_ON_INSTALL", "w") as vf:
++                    vf.write(str(spec.version))
++                with open("PYTHIA8_VERSION_ON_INSTALL", "w") as vf:
++                    vf.write(str(spec["pythia8"].version))
++
++            # Configure mg5_configuration.txt
++            mg5_config = join_path(prefix, "input", "mg5_configuration.txt")
++            filter_file(
++                r"# mg5amc_py8_interface_path = ./HEPTools/MG5aMC_PY8_interface",
++                f"mg5amc_py8_interface_path = {py8_interface_dir}",
++                mg5_config,
++            )
++
++            if "lhapdf" in spec:
++                lhapdf_config_path = join_path(spec["lhapdf"].prefix, "bin", "lhapdf-config")
++                filter_file(
++                    r"# lhapdf = /PATH/TO/lhapdf-config",
++                    f"lhapdf = {lhapdf_config_path}",
++                    mg5_config,
++                )

@@ -1,0 +1,45 @@
+# Docker test: Higgs portal Pythia generation with low pileup
+campaign: "docker_test"
+dataset: "higgs_portal"
+version: "v1"
+stage: "pythia_generation"
+
+job_config:
+  n_runs: 1
+  runs_per_node: 1
+  time_limit: "00:10:00"
+  qos: "debug"
+  execution_mode: "interactive"
+
+common:
+  output_base_dir: "/output"
+
+events: 10
+pileup: 10
+merge: true
+poisson_sample: true
+poisson_buffer_sigma: 5.0
+
+hard_process: "HiggsBSM:gg2H2"
+
+vertex_sigma_xy: 0.0125
+vertex_sigma_z: 55.5
+vertex_sigma_t: 0.185
+
+pythia_settings:
+  - "Print:quiet = off"
+  - "Higgs:useBSM = on"
+  - "35:m0 = 125.0"
+  - "35:mWidth = 0.00407"
+  - "35:doForceWidth = on"
+  - "35:onMode = off"
+  - "35:onIfMatch = 36 36"
+  - "36:oneChannel = 1 1.0 101 5 -5"
+  - "36:m0 = 55.0"
+  - "36:mMin = 54.5"
+  - "36:mMax = 55.5"
+  - "36:mWidth = 1.97327e-15"
+  - "36:tau0 = 100.0"
+  - "36:mayDecay = on"
+  - "ParticleDecays:limitTau0 = off"
+  - "ParticleDecays:tau0Max = 100000.0"

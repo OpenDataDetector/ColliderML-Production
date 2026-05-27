@@ -8,6 +8,7 @@ from acts.examples.hepmc3 import (
         HepMC3Writer,
         HepMC3Reader,
     )
+from acts.examples.pythia8 import Pythia8Generator
 import traceback
 # Removed pyhepmc, numpy imports as they will be handled by the imported module
 
@@ -157,7 +158,7 @@ def _build_pythia_event(settings, seed, vertex=None):
         or acts.examples.GaussianVertexGenerator(
             mean=acts.Vector4(0, 0, 0, 0), stddev=acts.Vector4(0, 0, 0, 0)
         ),
-        particles=acts.examples.pythia8.Pythia8Generator(
+        particles=Pythia8Generator(
             level=LOG_LEVEL,
             settings=settings or [],
         ),

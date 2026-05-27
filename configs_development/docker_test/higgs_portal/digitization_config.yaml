@@ -1,0 +1,28 @@
+# Docker test: Higgs portal digitization + reconstruction
+campaign: "docker_test"
+dataset: "higgs_portal"
+version: "v1"
+stage: "digitization"
+
+job_config:
+  n_runs: 1
+  runs_per_node: 1
+  time_limit: "00:30:00"
+  qos: "debug"
+  execution_mode: "interactive"
+
+common:
+  output_base_dir: "/output"
+
+events: 10
+threads: 1
+digi: true
+reco: true
+num_seeds_per_spm: 40
+
+output_particles_root: true
+output_measurements_root: true
+
+ambi_root_output: true
+ambi_finding_performance: true
+ambi_fitting_performance: true

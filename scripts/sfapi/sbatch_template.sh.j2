@@ -1,0 +1,71 @@
+#!/bin/bash
+#SBATCH -A {{ project }}
+#SBATCH -C cpu
+#SBATCH -q {{ qos }}
+#SBATCH -t {{ time_limit }}
+#SBATCH -N {{ n_nodes }}
+#SBATCH --image={{ image }}
+#SBATCH --module=cvmfs
+#SBATCH -J colliderml_{{ request_id }}
+#SBATCH -o {{ work_dir }}/slurm.out
+#SBATCH -e {{ work_dir }}/slurm.err
+{%- if user_email %}
+#SBATCH --mail-user={{ user_email }}
+#SBATCH --mail-type=END,FAIL
+{%- endif %}
+
+set -euo pipefail
+
+# =============================================================================
+# ColliderML SFAPI sbatch script for request {{ request_id }}
+# Channel: {{ channel }}
+# Events:  {{ events }}
+# Pileup:  {{ pileup }}
+# Seed:    {{ seed }}
+# =============================================================================
+
+WORK={{ work_dir }}
+mkdir -p "$WORK"
+cd "$WORK"
+
+# Clone the repo at a pinned commit (or use an already-cached copy in CFS).
+if [ ! -d repo ]; then
+    git clone --depth 1 --branch {{ repo_branch }} \
+        https://github.com/OpenDataDetector/ColliderML-Production.git repo
+fi
+cd repo
+
+export OUTPUT_DIR="$WORK/output"
+mkdir -p "$OUTPUT_DIR"
+
+# Make the cache directory persistent across runs for this user.
+export COLLIDERML_CACHE="{{ cache_dir }}"
+mkdir -p "$COLLIDERML_CACHE"
+
+# Use shifter (NERSC's container runtime) instead of docker.
+# The --image and --module directives above pre-stage the image on the node.
+shifter bash -c "
+    set -euo pipefail
+    source /workspace/scripts/cli/setup_container_env.sh
+    export EVENTS={{ events }}
+    export SEED={{ seed }}
+    export PILEUP={{ pileup }}
+    bash /workspace/scripts/cli/run_pipeline_docker.sh --channel {{ channel }}
+" --volume="$PWD:/workspace" --volume="$OUTPUT_DIR:/output" --volume="$COLLIDERML_CACHE:/cache"
+
+{% if upload_to_hf %}
+# Post-job: upload the parquet output to HuggingFace
+# using the service account token stored in $HF_TOKEN (set in the backend env).
+echo "Uploading results to {{ output_hf_repo }}..."
+shifter bash -c "
+    source /workspace/scripts/cli/setup_container_env.sh
+    python /workspace/scripts/sfapi/upload_request_output.py \
+        --request-id {{ request_id }} \
+        --repo {{ output_hf_repo }} \
+        --channel {{ channel }} \
+        --pileup {{ pileup }} \
+        --run-dir /output/runs/0
+" --volume="$PWD:/workspace" --volume="$OUTPUT_DIR:/output"
+{% endif %}
+
+echo "Done."

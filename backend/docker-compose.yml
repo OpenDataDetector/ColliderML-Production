@@ -1,0 +1,52 @@
+services:
+  postgres:
+    image: docker.io/library/postgres:16
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: colliderml
+    ports:
+      - "5432:5432"
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+      - ./migrations/001_initial.sql:/docker-entrypoint-initdb.d/001_initial.sql:ro
+      - ./migrations/002_benchmarks.sql:/docker-entrypoint-initdb.d/002_benchmarks.sql:ro
+      - ./migrations/003_webhooks.sql:/docker-entrypoint-initdb.d/003_webhooks.sql:ro
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "postgres"]
+      interval: 2s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build: .
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/colliderml
+      ADMIN_TOKEN: ${ADMIN_TOKEN:-dev-admin-token}
+      SFAPI_CLIENT_ID: ${SFAPI_CLIENT_ID:-}
+      SFAPI_CLIENT_SECRET: ${SFAPI_CLIENT_SECRET:-}
+      NERSC_PROJECT: ${NERSC_PROJECT:-}
+      NERSC_USER: ${NERSC_USER:-}
+      HF_TOKEN: ${HF_TOKEN:-}
+      HF_DATASET_ORG: ${HF_DATASET_ORG:-CERN}
+      # Tutorial / small-machine defaults: scoring runs against the much
+      # smaller PU=0 split with a 1000-event eval slice. Real production
+      # deploys should unset these (or set to PU=200 + the full 10k range)
+      # via the operator's `.env` / orchestrator.
+      COLLIDERML_TRACKING_DATASET: ${COLLIDERML_TRACKING_DATASET:-ttbar_pu0}
+      COLLIDERML_TRACKING_EVAL_RANGE: ${COLLIDERML_TRACKING_EVAL_RANGE:-0:1000}
+    ports:
+      - "8000:8000"
+    volumes:
+      # Persist the colliderml HF cache across container restarts so
+      # the backend doesn't re-download every shard on every rebuild.
+      # First request after a fresh build still pays the download cost
+      # once; subsequent requests are instant.
+      - colliderml_cache:/root/.cache/colliderml
+
+volumes:
+  pg_data:
+  colliderml_cache:
