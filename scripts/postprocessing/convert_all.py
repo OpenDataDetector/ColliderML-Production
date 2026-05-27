@@ -51,7 +51,21 @@ def _compute_paths(config: dict) -> tuple[Path, Path, str, str]:
     dataset = config["dataset"]
     version = config["version"]
     common_cfg = config.get("common", {})
-    input_base_dir = Path(common_cfg["output_base_dir"]) / campaign / dataset / version
+
+    # Path layout differs between two callers:
+    # - Production NERSC pipeline writes each campaign's runs under
+    #   ``<output_base_dir>/<campaign>/<dataset>/<version>/runs/<N>/``,
+    #   so convert_all needs the campaign-keyed prefix.
+    # - The colliderml.simulate driver writes flat to
+    #   ``<output_base_dir>/runs/<N>/`` (no campaign prefix), which is
+    #   what get_run_paths() expects out of the box.
+    # The YAML can declare ``input_base_dir`` explicitly to override the
+    # campaign-keyed default. The docker_test configs set it to the same
+    # value as ``common.output_base_dir`` so the simulate driver works.
+    if "input_base_dir" in config:
+        input_base_dir = Path(config["input_base_dir"])
+    else:
+        input_base_dir = Path(common_cfg["output_base_dir"]) / campaign / dataset / version
     output_base_dir = Path(config.get("h5_output_dir", common_cfg["output_base_dir"]))
     dataset_base = f"{campaign}/{dataset}/{version}"
     dataset_name_dot = dataset_base.replace("/", ".")
