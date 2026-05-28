@@ -482,7 +482,23 @@ def setup_acts_reconstruction(input_path, output_dir, config, rnd, logger=None):
     # Add ROOT writers for particles/simhits if requested
     if output_particles_root or output_simhits_root:
         add_root_writers(s, output_dir, field, config)
-    
+
+    # Optional: emit ACTS-native parquet via the Arrow plugin (PR#5410 + #5441).
+    # Drops one parquet shard per object per event into ``output_dir``;
+    # downstream the postprocessing convert_all.py becomes a no-op once this
+    # is validated against the legacy ROOT-based path (regression harness at
+    # tests/regression/test_actsnative_vs_v1.py).
+    if getattr(config, "output_parquet_arrow", False):
+        from _arrow_writers import add_arrow_writers
+        add_arrow_writers(
+            s,
+            output_dir=output_dir,
+            field=field,
+            tracking_geometry=trackingGeometry,
+            has_reco=getattr(config, "reco", True),
+            log_level=LOG_LEVEL,
+        )
+
     return s
 
 def add_root_writers(s, output_dir, field, config=None):
