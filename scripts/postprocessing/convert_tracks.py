@@ -76,9 +76,6 @@ def process_event_for_tracks(
     if "track_id" not in track_fitting_df.columns:
         raise ValueError("tracksummary slice is missing track_id/track_nr column")
 
-    if "measurementIDs" not in track_fitting_df.columns:
-        raise ValueError("tracksummary is missing measurementIDs column; cannot build hit_ids")
-
     # Per-event digitized measurements/hits (global event id)
     ev_meas = digihits_run_df[digihits_run_df.event_id == global_event_num].reset_index(drop=True)
 
@@ -100,8 +97,31 @@ def process_event_for_tracks(
         mode_vals = labels.mode()
         return mode_vals.iat[0] if len(mode_vals) else np.nan
 
-    hit_ids_series = track_fitting_df["measurementIDs"].apply(to_hit_array)
-    majority_particle_ids = track_fitting_df["measurementIDs"].apply(majority_from_ids)
+    n_tracks = len(track_fitting_df)
+    if "measurementIDs" in track_fitting_df.columns:
+        # Legacy ACTS: per-track measurement-index list present → build hit_ids
+        # and derive majority particle by majority vote over the matched hits.
+        hit_ids_series = track_fitting_df["measurementIDs"].apply(to_hit_array)
+        majority_particle_ids = track_fitting_df["measurementIDs"].apply(majority_from_ids)
+    else:
+        # Current ACTS (Paul's branch) dropped the measurementIDs branch from
+        # RootTrackSummaryWriter — only nMeasurements (a count) survives, and the
+        # per-hit list lives only in the in-memory measurement_simhits_map that
+        # feeds the native Arrow track writer. We can no longer reconstruct
+        # hit_ids from ROOT, so emit empty lists and take majority_particle_id
+        # from the majorityParticleId_particle barcode component when present.
+        logging.warning(
+            "tracksummary has no measurementIDs branch (ACTS API change); "
+            "hit_ids will be empty for v1 tracks — cross-check hit_ids via the "
+            "native Arrow writer instead."
+        )
+        hit_ids_series = pd.Series([np.array([], dtype=np.int32)] * n_tracks,
+                                   index=track_fitting_df.index)
+        if "majorityParticleId_particle" in track_fitting_df.columns:
+            majority_particle_ids = track_fitting_df["majorityParticleId_particle"]
+        else:
+            majority_particle_ids = pd.Series([np.nan] * n_tracks,
+                                              index=track_fitting_df.index)
 
     # Combine data
     track_finding_data = {

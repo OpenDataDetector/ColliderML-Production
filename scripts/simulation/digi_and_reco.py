@@ -177,6 +177,11 @@ def setup_acts_reconstruction(input_path, output_dir, config, rnd, logger=None):
     s.addReader(podioReader)
     
     # Step 2: EDM4hepSimInputConverter algorithm to convert EDM4hep data to ACTS format
+    want_arrow = getattr(config, "output_parquet_arrow", False)
+    # Only the Arrow-enabled ACTS build supports outputMCParticleMap (PR #5410);
+    # pass it solely when we need the native parquet path so the legacy image's
+    # converter signature is untouched.
+    _sim_extra = {"outputMCParticleMap": "mcparticle_index_map"} if want_arrow else {}
     edm4hepConverter = EDM4hepSimInputConverter(
         level=LOG_LEVEL,
         inputFrame="events",
@@ -201,9 +206,37 @@ def setup_acts_reconstruction(input_path, output_dir, config, rnd, logger=None):
         particleRMax=None,
         particleZ=(None, None),
         particlePtMin=None,
+        **_sim_extra,
     )
     s.addAlgorithm(edm4hepConverter)
     s.addWhiteboardAlias("particles", edm4hepConverter.config.outputParticlesSimulation)
+
+    # Calo hits for the native Arrow path: read SimCalorimeterHit collections
+    # from the same podio frame and resolve contributors through the
+    # MCParticle index map (PR #5441). Detector codes match v1's
+    # CALO_DETECTOR_CODES (scripts/postprocessing/utils/detector_enums.py) so
+    # the parquet `detector` enum is identical to convert_all.py output.
+    if want_arrow:
+        _cc = acts.examples.edm4hep.CaloCollectionDetectorCodes
+        caloConverter = acts.examples.edm4hep.EDM4hepCaloHitInputConverter(
+            level=LOG_LEVEL,
+            inputFrame="events",
+            inputCaloHitCollections=[
+                "ECalBarrelCollection",
+                "ECalEndcapCollection",
+                "HCalBarrelCollection",
+                "HCalEndcapCollection",
+            ],
+            inputMCParticleMap="mcparticle_index_map",
+            outputCaloHits="calo_hits",
+            caloDetectorCodesByCollectionName={
+                "ECalBarrelCollection": _cc.barrel(10),
+                "ECalEndcapCollection": _cc.endcap(9, 11),
+                "HCalBarrelCollection": _cc.barrel(13),
+                "HCalEndcapCollection": _cc.endcap(12, 14),
+            },
+        )
+        s.addAlgorithm(caloConverter)
     
     # Add sim particle selection (filters particles from simulation)
     if not getattr(config, 'output_all_particles', False):

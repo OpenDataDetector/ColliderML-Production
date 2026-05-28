@@ -342,6 +342,7 @@ def _process_chunk_for_all(
                         "track_id",
                         "track_nr",
                         "measurementIDs",
+                        "majorityParticleId_particle",
                         "eLOC0_fit",
                         "eLOC1_fit",
                         "ePHI_fit",
