@@ -136,25 +136,11 @@ def add_arrow_writers(
         collections[arr_tracks.config.outputTable] = "tracks"
         expected[arr_tracks.config.outputTable] = trackSchema()
 
-    # Calo is opt-in inside the broader pipeline; if the EDM4hepCaloHitInputConverter
-    # has been run upstream it parks "calo_hits" on the EventStore. We probe at
-    # runtime by checking whether the converter can find its input; if not we
-    # silently skip (the ParquetWriter handles that fine).
-    try:
-        from acts.arrow import caloHitSchema  # noqa: F401
-        from acts.examples.arrow import ArrowCaloHitOutputConverter
-        arr_calo = ArrowCaloHitOutputConverter(
-            level=log_level,
-            inputCaloHits="calo_hits",
-            outputTable="calo_hits_arrow",
-        )
-        s.addAlgorithm(arr_calo)
-        collections[arr_calo.config.outputTable] = "calo_hits"
-        expected[arr_calo.config.outputTable] = caloHitSchema()
-    except (ImportError, AttributeError):
-        # PR #5441 not yet present in this ACTS build, or the calo input
-        # collection was not produced upstream.
-        logger.info("Skipping Arrow calo writer (input or schema not available)")
+    # Calo writer needs EDM4hepCaloHitInputConverter parked upstream to
+    # produce the "calo_hits" EventStore key. Not yet wired in our
+    # digi_and_reco.py — left out until we add the input converter. The
+    # tracker side (particles, simhits, tracks) is enough to validate the
+    # ACTS-native parquet path against convert_all.py.
 
     s.addWriter(
         ParquetWriter(
