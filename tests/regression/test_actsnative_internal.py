@@ -95,34 +95,42 @@ def test_calo_contrib_particle_ids_subset_of_particles(acts_calo_hits, acts_part
         )
 
 
-def test_tracker_hits_unique_xyz_count_consistent_with_simhit_count(acts_tracker_hits):
-    """Per event, the number of distinct (x, y, z) tuples should be ≤ the
-    number of rows (simhits). Equality means no clustering happened; strict
-    inequality means some simhits were cluster-merged. A regression where
-    *more* unique positions exist than rows would mean the ACTS writer is
-    emitting per-measurement rows instead of per-simhit rows."""
-    flat = acts_tracker_hits.explode(["x", "y", "z"])
-    flat_with_idx = flat.with_columns(pl.int_range(0, pl.len()).over("event_id").alias("idx"))
-    # Skip rows where x is NaN (simhits below digi threshold).
-    flat_with_idx = flat_with_idx.filter(pl.col("x").is_not_nan())
+def test_tracker_hits_unique_xyz_count_consistent_with_simhit_count(acts_parquet_root):
+    """Per event, the number of distinct (x, y, z) tuples should be <= the
+    number of rows (simhits). Equality means no clustering; strict inequality
+    means some simhits were cluster-merged. More unique positions than rows
+    would mean the writer is emitting per-measurement, not per-simhit, rows.
 
-    per_event = flat_with_idx.group_by("event_id").agg(
-        pl.col("idx").count().alias("n_simhits"),
-        pl.struct(["x", "y", "z"]).n_unique().alias("n_unique"),
-    ).with_columns(
-        (pl.col("n_simhits") - pl.col("n_unique")).alias("n_clustered")
-    )
+    Memory-frugal: stream per-event via pyarrow + numpy (no full explode)."""
+    import pyarrow.parquet as pq
+    import numpy as np
 
-    over_count = per_event.filter(pl.col("n_unique") > pl.col("n_simhits"))
-    if over_count.height > 0:
+    shards = sorted((acts_parquet_root / "tracker_hits").glob("*.parquet"))
+    if not shards:
+        pytest.skip("ACTS-native has no tracker_hits parquet shards")
+
+    over = []
+    total_simhits = total_clustered = 0
+    for shard in shards:
+        cols = pq.read_table(str(shard), columns=["event_id", "x", "y", "z"]).to_pydict()
+        for i, ev in enumerate(cols["event_id"]):
+            x = np.asarray(cols["x"][i], dtype=np.float64)
+            y = np.asarray(cols["y"][i], dtype=np.float64)
+            z = np.asarray(cols["z"][i], dtype=np.float64)
+            finite = ~np.isnan(x)
+            key = np.stack([np.round(x[finite], 4), np.round(y[finite], 4),
+                            np.round(z[finite], 4)], axis=1)
+            n_simhits = len(key)
+            n_unique = len(np.unique(key, axis=0)) if n_simhits else 0
+            if n_unique > n_simhits:
+                over.append((int(ev), n_simhits, n_unique))
+            total_simhits += n_simhits
+            total_clustered += n_simhits - n_unique
+    if over:
         pytest.fail(
             f"some events have more unique (x,y,z) than rows — the writer "
-            f"may be emitting per-measurement, not per-simhit:\n{over_count}"
+            f"may be emitting per-measurement, not per-simhit:\n{over}"
         )
-
-    # Soft signal: total cluster merging across the dataset.
-    total_simhits = int(per_event["n_simhits"].sum())
-    total_clustered = int(per_event["n_clustered"].sum())
     frac = total_clustered / max(total_simhits, 1)
     print(
         f"\ncluster-merging fraction in ACTS-native output: "

@@ -98,3 +98,53 @@ def acts_tracks(acts_parquet_root):
 @pytest.fixture(scope="session")
 def acts_calo_hits(acts_parquet_root):
     return _read_acts_object(acts_parquet_root, "calo_hits")
+
+
+@pytest.fixture(scope="session")
+def pid_bijection(acts_particles, v1_particles):
+    """Per-event {native_particle_id -> v1_particle_id} map.
+
+    The two pipelines enumerate the *same* particles in *different* orders
+    (ACTS SimParticleContainer order vs EDM4hep MCParticles creation order),
+    so the raw particle_id integers are not comparable. We recover the
+    bijection by matching particles on physical kinematics
+    (pdg, px, py, pz, vx, vy, vz) within each event. Hits/calo/track tests use
+    this to compare *which physical particle* is referenced, not the index.
+
+    Returns {event_id: {native_pid: v1_pid}}. Kinematic keys that aren't unique
+    within an event are dropped (can't disambiguate) — they're a tiny fraction.
+    """
+    import numpy as np
+
+    def kin_map(df):
+        out = {}  # event_id -> {key -> [pid,...]}
+        for row in df.iter_rows(named=True):
+            ev = int(row["event_id"])
+            pid = np.asarray(row["particle_id"], dtype=np.int64)
+            pdg = np.asarray(row["pdg_id"], dtype=np.int64)
+            px = np.asarray(row["px"], float); py = np.asarray(row["py"], float)
+            pz = np.asarray(row["pz"], float)
+            vx = np.asarray(row["vx"], float); vy = np.asarray(row["vy"], float)
+            vz = np.asarray(row["vz"], float)
+            d = {}
+            for i in range(len(pid)):
+                k = (int(pdg[i]), round(float(px[i]), 4), round(float(py[i]), 4),
+                     round(float(pz[i]), 4), round(float(vx[i]), 4),
+                     round(float(vy[i]), 4), round(float(vz[i]), 4))
+                d.setdefault(k, []).append(int(pid[i]))
+            out[ev] = d
+        return out
+
+    nat = kin_map(acts_particles)
+    v1 = kin_map(v1_particles)
+    bij = {}
+    for ev, nd in nat.items():
+        vd = v1.get(ev, {})
+        m = {}
+        for k, npids in nd.items():
+            vpids = vd.get(k)
+            # only unambiguous 1:1 kinematic keys
+            if vpids is not None and len(npids) == 1 and len(vpids) == 1:
+                m[npids[0]] = vpids[0]
+        bij[ev] = m
+    return bij

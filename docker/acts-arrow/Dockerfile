@@ -99,6 +99,15 @@ RUN git clone --depth 100 --branch ${ACTS_REF} ${ACTS_REPO} /opt/acts-arrow-src 
  && cd /opt/acts-arrow-src \
  && git checkout ${ACTS_SHA}
 
+# Port Daniel's measurementIDs patch (murnanedaniel/acts@feat/root-writer-
+# measurement-ids, c12ad97) onto Paul's branch so RootTrackSummaryWriter emits
+# a per-track measurementIDs branch. This restores hit_ids to the v1
+# convert_all-from-ROOT track path, enabling an independent cross-check against
+# the native Arrow track writer's hit_ids. Anchored insertion (not cherry-pick)
+# because the fork diverged on the majorityParticleId representation.
+COPY patch_measurement_ids.py /opt/patch_measurement_ids.py
+RUN python3 /opt/patch_measurement_ids.py
+
 # ACTS ships an in-tree Python package ``codegen/`` whose sympy-based scripts
 # run at compile time to generate C++ math headers. Install it into the spack
 # python so the generators can import their helper module.
