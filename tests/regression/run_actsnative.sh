@@ -61,6 +61,9 @@ output_measurements_root: true
 output_particles_root: true
 output_simhits_root: false
 output_parquet_arrow: true
+# Write the ambiguity-resolved tracksummary ROOT so convert_all.py can build
+# v1 tracks (with hit_ids, via the ported measurementIDs branch).
+ambi_root_output: true
 EOF
 
 # convert_all config pointing at this run.
