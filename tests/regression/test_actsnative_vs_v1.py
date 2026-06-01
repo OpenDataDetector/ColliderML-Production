@@ -305,6 +305,53 @@ def test_tracks_majority_particle_consistency(acts_tracks, v1_tracks):
         pytest.skip("no tracks in first event")
 
 
+def test_tracks_num_measurements_matches(acts_tracks, v1_tracks):
+    """`num_measurements` (genuine merged-cluster count) must agree exactly
+    between native and v1, per track. Native emits `track.nMeasurements()`;
+    v1 carries the ROOT `nMeasurements` branch. Compared as the per-event
+    multiset (track ordering may differ)."""
+    import collections
+    if "num_measurements" not in acts_tracks.columns:
+        pytest.skip("native tracks lack num_measurements (rebuild the image)")
+    if "num_measurements" not in v1_tracks.columns:
+        pytest.skip("v1 tracks lack num_measurements")
+    for ev in sorted(set(acts_tracks["event_id"].to_list())):
+        a = collections.Counter(
+            int(x) for x in acts_tracks.filter(pl.col("event_id") == ev)
+            ["num_measurements"].explode().to_list())
+        v = collections.Counter(
+            int(x) for x in v1_tracks.filter(pl.col("event_id") == ev)
+            ["num_measurements"].explode().to_list())
+        assert a == v, (
+            f"event {ev}: num_measurements multiset differs native vs v1; "
+            f"symmetric diff sample: "
+            f"{list((a - v).items())[:5]} | {list((v - a).items())[:5]}"
+        )
+
+
+def test_tracks_hit_outlier_excluded_matches_v1(acts_tracks, v1_tracks):
+    """Native `hit_ids` filtered to `hit_outlier==False` must, per track,
+    have the same count as v1 `hit_ids` (v1 = measurements only). Confirms the
+    outlier flag exactly accounts for the native/v1 hit_ids difference."""
+    if "hit_outlier" not in acts_tracks.columns:
+        pytest.skip("native tracks lack hit_outlier (rebuild the image)")
+    # Per event: distribution of (non-outlier native hit count) vs (v1 hit count),
+    # as multisets — track ordering may differ between the two writers.
+    import collections
+    for ev in sorted(set(acts_tracks["event_id"].to_list()))[:3]:  # spot-check
+        at = acts_tracks.filter(pl.col("event_id") == ev)
+        vt = v1_tracks.filter(pl.col("event_id") == ev)
+        a_counts = collections.Counter()
+        for hids, outs in zip(at["hit_ids"].to_list(), at["hit_outlier"].to_list()):
+            a_counts[sum(1 for h, o in zip(hids, outs) if not o)] += 1
+        v_counts = collections.Counter(len(h) for h in vt["hit_ids"].to_list())
+        assert a_counts == v_counts, (
+            f"event {ev}: native non-outlier hit-count multiset != v1 hit-count "
+            f"multiset:\n  native {dict(sorted(a_counts.items()))}\n"
+            f"  v1     {dict(sorted(v_counts.items()))}"
+        )
+
+
 # ---------------------------------------------------------------------------
 # Calo hits: contributor multiset
 # ---------------------------------------------------------------------------

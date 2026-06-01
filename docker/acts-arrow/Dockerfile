@@ -20,9 +20,13 @@
 # =============================================================================
 FROM ghcr.io/opendatadetector/sw:0.2.2_linux-ubuntu24.04_gcc-13.3.0
 
-ARG ACTS_REPO=https://github.com/paulgessinger/acts.git
-ARG ACTS_REF=feat/calo-hit-conversion
-ARG ACTS_SHA=e485e4cdfd41fb9aa3a9098efbfb229baaa48a36
+# ColliderML ACTS fork branch: Paul's arrow branch (feat/calo-hit-conversion,
+# e485e4c) + Daniel's measurementIDs commit (cherry-picked) + the hit_outlier /
+# num_measurements track-schema commit. Real git history (no build-time
+# patchers), PR-able upstream once Paul's Arrow PRs (#5410/#5441) merge.
+ARG ACTS_REPO=https://github.com/murnanedaniel/acts.git
+ARG ACTS_REF=feat/colliderml-arrow-tracks
+ARG ACTS_SHA=7cba36b17
 # Keep parallelism modest — the host running this build has ~7 GB and the
 # LTO-heavy pybind11 link steps each consume 2-4 GB. JOBS=2 fits two
 # concurrent link processes; higher values trip the kernel OOM killer
@@ -99,14 +103,6 @@ RUN git clone --depth 100 --branch ${ACTS_REF} ${ACTS_REPO} /opt/acts-arrow-src 
  && cd /opt/acts-arrow-src \
  && git checkout ${ACTS_SHA}
 
-# Port Daniel's measurementIDs patch (murnanedaniel/acts@feat/root-writer-
-# measurement-ids, c12ad97) onto Paul's branch so RootTrackSummaryWriter emits
-# a per-track measurementIDs branch. This restores hit_ids to the v1
-# convert_all-from-ROOT track path, enabling an independent cross-check against
-# the native Arrow track writer's hit_ids. Anchored insertion (not cherry-pick)
-# because the fork diverged on the majorityParticleId representation.
-COPY patch_measurement_ids.py /opt/patch_measurement_ids.py
-RUN python3 /opt/patch_measurement_ids.py
 
 # ACTS ships an in-tree Python package ``codegen/`` whose sympy-based scripts
 # run at compile time to generate C++ math headers. Install it into the spack
