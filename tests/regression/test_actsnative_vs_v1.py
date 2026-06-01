@@ -329,27 +329,66 @@ def test_tracks_num_measurements_matches(acts_tracks, v1_tracks):
         )
 
 
-def test_tracks_hit_outlier_excluded_matches_v1(acts_tracks, v1_tracks):
-    """Native `hit_ids` filtered to `hit_outlier==False` must, per track,
-    have the same count as v1 `hit_ids` (v1 = measurements only). Confirms the
-    outlier flag exactly accounts for the native/v1 hit_ids difference."""
+def test_tracks_hit_outlier_excluded_matches_v1(
+    acts_tracks, v1_tracks, acts_tracker_hits, v1_tracker_hits
+):
+    """Filtering native `hit_ids` to `hit_outlier==False` and dereferencing to
+    hit POSITIONS must, per track, equal v1's hit positions exactly.
+
+    Position-based (not count-based) because native lists hits at sim-hit level
+    — a merged cluster contributes multiple hit_ids at the *same* reco position
+    — so only after dedup-by-position do the two pipelines line up. The outlier
+    flag is what accounts for the rest of the difference: dropping outliers must
+    reproduce v1's measurement-cluster set exactly.
+
+    Parquets are event-nested (list-per-event); explode track-level columns to
+    one row per track and match native↔v1 by (event_id, track_id)."""
     if "hit_outlier" not in acts_tracks.columns:
         pytest.skip("native tracks lack hit_outlier (rebuild the image)")
-    # Per event: distribution of (non-outlier native hit count) vs (v1 hit count),
-    # as multisets — track ordering may differ between the two writers.
-    import collections
-    for ev in sorted(set(acts_tracks["event_id"].to_list()))[:3]:  # spot-check
-        at = acts_tracks.filter(pl.col("event_id") == ev)
-        vt = v1_tracks.filter(pl.col("event_id") == ev)
-        a_counts = collections.Counter()
-        for hids, outs in zip(at["hit_ids"].to_list(), at["hit_outlier"].to_list()):
-            a_counts[sum(1 for h, o in zip(hids, outs) if not o)] += 1
-        v_counts = collections.Counter(len(h) for h in vt["hit_ids"].to_list())
-        assert a_counts == v_counts, (
-            f"event {ev}: native non-outlier hit-count multiset != v1 hit-count "
-            f"multiset:\n  native {dict(sorted(a_counts.items()))}\n"
-            f"  v1     {dict(sorted(v_counts.items()))}"
-        )
+
+    # per-event hit-position lookup tables (row index -> (x,y,z))
+    def pos_table(df):
+        out = {}
+        for r in df.iter_rows(named=True):
+            out[int(r["event_id"])] = list(
+                zip((round(float(v), 3) for v in r["x"]),
+                    (round(float(v), 3) for v in r["y"]),
+                    (round(float(v), 3) for v in r["z"])))
+        return out
+    nat_pos = pos_table(acts_tracker_hits)
+    v1_pos = pos_table(v1_tracker_hits)
+
+    at = acts_tracks.explode(["hit_ids", "hit_outlier", "track_id"])
+    vt = v1_tracks.explode(["hit_ids", "track_id"])
+    # v1 lookup: (event, track_id) -> set of hit positions
+    v1_lut = {}
+    for r in vt.iter_rows(named=True):
+        ev = int(r["event_id"])
+        v1_lut[(ev, int(r["track_id"]))] = {
+            v1_pos[ev][int(i)] for i in r["hit_ids"]}
+
+    mismatch = []
+    checked = 0
+    for r in at.iter_rows(named=True):
+        ev = int(r["event_id"]); tid = int(r["track_id"])
+        key = (ev, tid)
+        if key not in v1_lut:
+            continue
+        nat_set = {nat_pos[ev][int(i)]
+                   for i, o in zip(r["hit_ids"], r["hit_outlier"]) if not o}
+        checked += 1
+        if nat_set != v1_lut[key]:
+            if len(mismatch) < 5:
+                mismatch.append((ev, tid, len(nat_set), len(v1_lut[key]),
+                                 len(nat_set & v1_lut[key])))
+    assert checked > 0, "no native↔v1 tracks matched by (event, track_id)"
+    if mismatch:
+        rows = "\n".join(
+            f"  ev{e} tk{t}: native_nonoutlier={a} v1={b} shared={s}"
+            for e, t, a, b, s in mismatch)
+        pytest.fail(
+            f"{len(mismatch)}/{checked} tracks: non-outlier native hit positions "
+            f"!= v1 hit positions:\n{rows}")
 
 
 # ---------------------------------------------------------------------------
