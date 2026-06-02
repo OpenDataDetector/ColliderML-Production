@@ -81,6 +81,9 @@ TRACKS_PARQUET_TYPES = {
     "qop": list_of(pa.float32()),
     "hit_ids": nested_list_of(pa.uint32()),
     "track_id": list_of(pa.uint16()),
+    # Genuine merged-cluster count per track (= ACTS nMeasurements), matches the
+    # native Arrow track writer's num_measurements field.
+    "num_measurements": list_of(pa.uint32()),
 }
 
 

@@ -11,6 +11,7 @@ job_config:
   qos: "debug"
   execution_mode: "interactive"
 
+input_base_dir: "/output"  # docker_test layout: stages 1-3 write to /output/runs/<N>/ directly
 common:
   output_base_dir: "/output"
 
@@ -55,6 +56,8 @@ tracks_columns_keep:
   - "theta"
   - "qop"
   - "majority_particle_id"
+  - "hit_ids"
+  - "num_measurements"
 
 calo_columns_keep:
   - "event_id"

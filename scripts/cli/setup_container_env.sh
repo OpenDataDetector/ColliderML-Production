@@ -131,10 +131,21 @@ done
 # ACTS installs its Python package under <prefix>/python/ with __init__.py
 # directly in that directory, but it must be importable as "acts". We create
 # a symlink so Python can find it as a package named "acts".
-_acts_python_dir=$(find "$SPACK_BASE"/acts-main-*/python -maxdepth 0 -type d 2>/dev/null | head -1)
+_acts_python_dir=$(find "$SPACK_BASE"/acts-*/python -maxdepth 0 -type d 2>/dev/null | head -1)
 if [ -n "$_acts_python_dir" ]; then
-    ln -sf "$_acts_python_dir" /tmp/acts
-    _py_paths="/tmp:$_py_paths"
+    if [ -f "$_acts_python_dir/acts/__init__.py" ]; then
+        # Standard layout: <prefix>/python/acts/ is the package. The native
+        # Arrow spack image (acts +python) installs this way, so just put
+        # <prefix>/python on PYTHONPATH.
+        _py_paths="$_acts_python_dir:$_py_paths"
+    elif [ -f "$_acts_python_dir/__init__.py" ]; then
+        # Legacy layout (sw:0.2.2): <prefix>/python/ IS the acts package, with
+        # __init__.py directly inside. Symlink so it imports as "acts".
+        ln -sf "$_acts_python_dir" /tmp/acts
+        _py_paths="/tmp:$_py_paths"
+    else
+        echo "WARNING: ACTS python dir found but no recognizable package layout"
+    fi
 else
     echo "WARNING: ACTS Python bindings not found"
 fi

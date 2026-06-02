@@ -177,6 +177,11 @@ def setup_acts_reconstruction(input_path, output_dir, config, rnd, logger=None):
     s.addReader(podioReader)
     
     # Step 2: EDM4hepSimInputConverter algorithm to convert EDM4hep data to ACTS format
+    want_arrow = getattr(config, "output_parquet_arrow", False)
+    # Only the Arrow-enabled ACTS build supports outputMCParticleMap (PR #5410);
+    # pass it solely when we need the native parquet path so the legacy image's
+    # converter signature is untouched.
+    _sim_extra = {"outputMCParticleMap": "mcparticle_index_map"} if want_arrow else {}
     edm4hepConverter = EDM4hepSimInputConverter(
         level=LOG_LEVEL,
         inputFrame="events",
@@ -201,9 +206,37 @@ def setup_acts_reconstruction(input_path, output_dir, config, rnd, logger=None):
         particleRMax=None,
         particleZ=(None, None),
         particlePtMin=None,
+        **_sim_extra,
     )
     s.addAlgorithm(edm4hepConverter)
     s.addWhiteboardAlias("particles", edm4hepConverter.config.outputParticlesSimulation)
+
+    # Calo hits for the native Arrow path: read SimCalorimeterHit collections
+    # from the same podio frame and resolve contributors through the
+    # MCParticle index map (PR #5441). Detector codes match v1's
+    # CALO_DETECTOR_CODES (scripts/postprocessing/utils/detector_enums.py) so
+    # the parquet `detector` enum is identical to convert_all.py output.
+    if want_arrow:
+        _cc = acts.examples.edm4hep.CaloCollectionDetectorCodes
+        caloConverter = acts.examples.edm4hep.EDM4hepCaloHitInputConverter(
+            level=LOG_LEVEL,
+            inputFrame="events",
+            inputCaloHitCollections=[
+                "ECalBarrelCollection",
+                "ECalEndcapCollection",
+                "HCalBarrelCollection",
+                "HCalEndcapCollection",
+            ],
+            inputMCParticleMap="mcparticle_index_map",
+            outputCaloHits="calo_hits",
+            caloDetectorCodesByCollectionName={
+                "ECalBarrelCollection": _cc.barrel(10),
+                "ECalEndcapCollection": _cc.endcap(9, 11),
+                "HCalBarrelCollection": _cc.barrel(13),
+                "HCalEndcapCollection": _cc.endcap(12, 14),
+            },
+        )
+        s.addAlgorithm(caloConverter)
     
     # Add sim particle selection (filters particles from simulation)
     if not getattr(config, 'output_all_particles', False):
@@ -325,7 +358,7 @@ def setup_acts_reconstruction(input_path, output_dir, config, rnd, logger=None):
             s,
             trackingGeometry,
             field,
-            seedingAlgorithm=SeedingAlgorithm.Default,
+            seedingAlgorithm=SeedingAlgorithm.GridTriplet,
             particleHypothesis=acts.ParticleHypothesis.pion,
             seedFinderConfigArg=SeedFinderConfigArg(
                 r=(33 * u.mm, 200 * u.mm),
@@ -482,7 +515,23 @@ def setup_acts_reconstruction(input_path, output_dir, config, rnd, logger=None):
     # Add ROOT writers for particles/simhits if requested
     if output_particles_root or output_simhits_root:
         add_root_writers(s, output_dir, field, config)
-    
+
+    # Optional: emit ACTS-native parquet via the Arrow plugin (PR#5410 + #5441).
+    # Drops one parquet shard per object per event into ``output_dir``;
+    # downstream the postprocessing convert_all.py becomes a no-op once this
+    # is validated against the legacy ROOT-based path (regression harness at
+    # tests/regression/test_actsnative_vs_v1.py).
+    if getattr(config, "output_parquet_arrow", False):
+        from _arrow_writers import add_arrow_writers
+        add_arrow_writers(
+            s,
+            output_dir=output_dir,
+            field=field,
+            tracking_geometry=trackingGeometry,
+            has_reco=getattr(config, "reco", True),
+            log_level=LOG_LEVEL,
+        )
+
     return s
 
 def add_root_writers(s, output_dir, field, config=None):
