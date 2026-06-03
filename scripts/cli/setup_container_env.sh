@@ -206,45 +206,68 @@ fi
 
 # --- 8. OpenDataDetector (ODD) geometry + factory library ---
 # The ODD detector geometry is required for simulation and digitization stages.
-# Uses ODD v4.0.4 from CERN GitLab (matches the ACTS version in this container).
+# Uses ODD v5.0.0 from CERN GitLab — the tag the released ColliderML dataset was
+# generated with (verified by calo geometry: ECal/HCal inner radii + cell pitch).
 # The factory library (libOpenDataDetector.so) provides DD4hep geometry plugins
 # (ODDCylinder, ODDPixelBarrel, etc.) needed by ddsim to construct the detector.
-_odd_src="${CACHE_DIR}/odd-v4"
-_odd_install="${CACHE_DIR}/odd-v4-install"
+# Prefer a baked-in ODD when the image ships one. The sw image installs ODD
+# v5.0.0 at /opt/odd (with its LFS material map resolved at build) and the
+# prebuilt factory library at /opt/odd-install. When present we use it directly
+# and skip the per-run clone + build.
+if [ -f "/opt/odd/xml/OpenDataDetector.xml" ] \
+        && [ -f "/opt/odd-install/lib/libOpenDataDetector.so" ]; then
+    export ODD_PATH="/opt/odd"
+    export LD_LIBRARY_PATH="/opt/odd-install/lib:$LD_LIBRARY_PATH"
+    echo "Using baked-in ODD at /opt/odd (skipping cache clone + build)."
+else
+    _odd_src="${CACHE_DIR}/odd-v5"
+    _odd_install="${CACHE_DIR}/odd-v5-install"
 
-# Clone ODD source if not present
-if [ ! -f "$_odd_src/xml/OpenDataDetector.xml" ]; then
-    echo "ODD geometry not found. Cloning ODD v4.0.4 from CERN GitLab..."
-    mkdir -p "$(dirname "$_odd_src")"
-    if git clone --depth 1 --branch v4.0.4 \
-        https://gitlab.cern.ch/acts/OpenDataDetector.git "$_odd_src" 2>/dev/null; then
-        echo "ODD v4.0.4 cloned successfully to $_odd_src"
-    else
-        echo "WARNING: Failed to clone ODD. Simulation/digitization stages will fail."
-        echo "  Manual fix: git clone --branch v4.0.4 https://gitlab.cern.ch/acts/OpenDataDetector.git $_odd_src"
+    # Clone ODD source if not present
+    if [ ! -f "$_odd_src/xml/OpenDataDetector.xml" ]; then
+        echo "ODD geometry not found. Cloning ODD v5.0.0 from CERN GitLab..."
+        mkdir -p "$(dirname "$_odd_src")"
+        if git clone --depth 1 --branch v5.0.0 \
+            https://gitlab.cern.ch/acts/OpenDataDetector.git "$_odd_src" 2>/dev/null; then
+            echo "ODD v5.0.0 cloned successfully to $_odd_src"
+        else
+            echo "WARNING: Failed to clone ODD. Simulation/digitization stages will fail."
+            echo "  Manual fix: git clone --branch v5.0.0 https://gitlab.cern.ch/acts/OpenDataDetector.git $_odd_src"
+        fi
     fi
-fi
 
-# Build ODD factory library if not present
-if [ -f "$_odd_src/CMakeLists.txt" ] && [ ! -f "$_odd_install/lib/libOpenDataDetector.so" ]; then
-    echo "Building ODD factory library..."
-    _odd_build="/tmp/odd-build"
-    rm -rf "$_odd_build" && mkdir -p "$_odd_build"
-    if (cd "$_odd_build" && \
-        cmake "$_odd_src" -DCMAKE_INSTALL_PREFIX="$_odd_install" 2>/dev/null && \
-        make -j"$(nproc)" 2>/dev/null && \
-        make install 2>/dev/null); then
-        echo "ODD factory library built successfully."
-    else
-        echo "WARNING: Failed to build ODD factory library. Simulation will fail."
+    # v5.0.0 ships its material map (+ b-field) via Git LFS. A plain clone on a
+    # host without git-lfs leaves a pointer that ACTS can't open as ROOT, so
+    # resolve the LFS objects here (git-lfs is available inside the container).
+    if [ -f "$_odd_src/data/odd-material-maps.root" ] \
+            && head -c 64 "$_odd_src/data/odd-material-maps.root" 2>/dev/null | grep -q 'git-lfs'; then
+        echo "Fetching ODD LFS objects (material map)..."
+        ( cd "$_odd_src" && git lfs install --local && git lfs pull ) 2>/dev/null \
+            && echo "ODD LFS objects fetched." \
+            || echo "WARNING: git lfs pull failed; reco material map may be missing."
     fi
-    rm -rf "$_odd_build"
-fi
 
-# Set ODD_PATH and add factory library to LD_LIBRARY_PATH
-export ODD_PATH="${ODD_PATH:-$_odd_src}"
-if [ -d "$_odd_install/lib" ]; then
-    export LD_LIBRARY_PATH="$_odd_install/lib:$LD_LIBRARY_PATH"
+    # Build ODD factory library if not present
+    if [ -f "$_odd_src/CMakeLists.txt" ] && [ ! -f "$_odd_install/lib/libOpenDataDetector.so" ]; then
+        echo "Building ODD factory library..."
+        _odd_build="/tmp/odd-build"
+        rm -rf "$_odd_build" && mkdir -p "$_odd_build"
+        if (cd "$_odd_build" && \
+            cmake "$_odd_src" -DCMAKE_INSTALL_PREFIX="$_odd_install" 2>/dev/null && \
+            make -j"$(nproc)" 2>/dev/null && \
+            make install 2>/dev/null); then
+            echo "ODD factory library built successfully."
+        else
+            echo "WARNING: Failed to build ODD factory library. Simulation will fail."
+        fi
+        rm -rf "$_odd_build"
+    fi
+
+    # Set ODD_PATH and add factory library to LD_LIBRARY_PATH
+    export ODD_PATH="${ODD_PATH:-$_odd_src}"
+    if [ -d "$_odd_install/lib" ]; then
+        export LD_LIBRARY_PATH="$_odd_install/lib:$LD_LIBRARY_PATH"
+    fi
 fi
 
 # --- 9. Geant4 physics datasets ---

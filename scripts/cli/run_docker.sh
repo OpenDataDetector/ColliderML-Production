@@ -86,13 +86,10 @@ echo "=============================================="
 CACHE_DIR="$REPO_ROOT/.cache"
 mkdir -p "$CACHE_DIR"
 
-# Clone ODD v4.0.4 if not present (done on host where network access works)
-if [ ! -f "$CACHE_DIR/odd-v4/xml/OpenDataDetector.xml" ]; then
-    echo "Cloning OpenDataDetector v4.0.4 from CERN GitLab..."
-    git clone --depth 1 --branch v4.0.4 \
-        https://gitlab.cern.ch/acts/OpenDataDetector.git "$CACHE_DIR/odd-v4" 2>/dev/null \
-        || echo "WARNING: Failed to clone ODD. Simulation stages will fail."
-fi
+# ODD (OpenDataDetector v5.0.0) is handled inside the container by
+# setup_container_env.sh: it prefers the image's baked-in /opt/odd, else clones
+# v5.0.0 there (and resolves the LFS material map, since git-lfs lives in the
+# container, not necessarily on the host). No host-side clone needed.
 
 # Clone MG5aMC_PY8_interface if not present (needed for MadGraph+Pythia8 shower)
 if [ ! -f "$CACHE_DIR/MG5aMC_PY8_interface/MG5aMC_PY8_interface.cc" ]; then
