@@ -1,8 +1,11 @@
 """Attach ACTS-native Arrow + Parquet writers to a Sequencer.
 
 Wraps the ArrowParticleOutputConverter / ArrowSimHitOutputConverter /
-ArrowTrackOutputConverter / ArrowCaloHitOutputConverter machinery from
-acts-project/acts PR #5410 (+ #5441 for calo). All four converters park
+ArrowMeasurementOutputConverter / ArrowTrackOutputConverter /
+ArrowCaloHitOutputConverter machinery (acts-project/acts PR #5410 lineage,
+extended on murnanedaniel/acts tracker-hits-v2 with the Release-2 sim/reco
+split: a reco `tracker_hits` table + a truth `tracker_simhits` table linked
+by simhit_ids). The converters park
 arrow::Table objects on the EventStore; one ParquetWriter then drains
 them to ``<output_dir>/<collection>/<event_id>.parquet`` shards using
 the ACTS-canonical schemas.
@@ -64,11 +67,13 @@ def add_arrow_writers(
     """
     try:
         from acts.arrow import (
+            measurementSchema,
             particleSchema,
             simHitSchema,
             trackSchema,
         )
         from acts.examples.arrow import (
+            ArrowMeasurementOutputConverter,
             ArrowParticleOutputConverter,
             ArrowSimHitOutputConverter,
             ArrowTrackOutputConverter,
@@ -102,25 +107,42 @@ def add_arrow_writers(
     )
     s.addAlgorithm(arr_particles)
 
+    # Truth table: one row per sim-hit, ALL sim-hits (re-digitization complete).
     arr_simhits = ArrowSimHitOutputConverter(
         level=log_level,
         inputSimHits="simhits",
         inputParticles="particles_simulated",
-        inputMeasurements="measurements",
-        inputSimHitMeasurementsMap="simhit_measurements_map",
-        outputTable="simhits_arrow",
-        trackingGeometry=tracking_geometry,
+        outputTable="tracker_simhits_arrow",
         detectorResolver=detector_resolver,
     )
     s.addAlgorithm(arr_simhits)
 
+    # Reco table: one row per measurement, truth LINKS (particle_ids +
+    # simhit_ids) into the particle/tracker_simhits tables. The clusters
+    # container is produced by the geometric digitization (parallel to the
+    # measurements) and feeds the cluster-shape columns.
+    arr_measurements = ArrowMeasurementOutputConverter(
+        level=log_level,
+        inputMeasurements="measurements",
+        inputClusters="clusters",
+        inputSimHits="simhits",
+        inputParticles="particles_simulated",
+        inputSimHitMeasurementsMap="simhit_measurements_map",
+        outputTable="tracker_hits_arrow",
+        trackingGeometry=tracking_geometry,
+        detectorResolver=detector_resolver,
+    )
+    s.addAlgorithm(arr_measurements)
+
     collections: dict[str, str] = {
         arr_particles.config.outputTable: "particles",
-        arr_simhits.config.outputTable: "tracker_hits",
+        arr_simhits.config.outputTable: "tracker_simhits",
+        arr_measurements.config.outputTable: "tracker_hits",
     }
     expected: dict[str, Any] = {
         arr_particles.config.outputTable: particleSchema(),
         arr_simhits.config.outputTable: simHitSchema(),
+        arr_measurements.config.outputTable: measurementSchema(),
     }
 
     if has_reco:

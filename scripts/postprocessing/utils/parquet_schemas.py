@@ -118,6 +118,66 @@ CALO_CLUSTERS_PARQUET_TYPES = {
 }
 
 
+# Release-2 tracker RECO table: one row per event, one list entry per
+# MEASUREMENT (the entry's position is the measurement id referenced by the
+# tracks table's hit_ids). Local parameters are always filled; the subspace
+# bitmask (bit0=loc0, bit1=loc1, bit2=time) says which were measured. Truth is
+# LINKED, not embedded: particle_ids are particle-table row indices,
+# simhit_ids are TRACKER_SIMHITS row indices of the same event.
+TRACKER_HITS_PARQUET_TYPES = {
+    "event_id": pa.uint32(),
+    "loc0": list_of(pa.float32()),
+    "loc1": list_of(pa.float32()),
+    "var_loc0": list_of(pa.float32()),
+    "var_loc1": list_of(pa.float32()),
+    "time": list_of(pa.float32()),
+    "var_time": list_of(pa.float32()),
+    "subspace": list_of(pa.uint8()),
+    "x": list_of(pa.float32()),
+    "y": list_of(pa.float32()),
+    "z": list_of(pa.float32()),
+    "detector": list_of(pa.uint8()),
+    "volume_id": list_of(pa.uint8()),
+    "layer_id": list_of(pa.uint16()),
+    "surface_id": list_of(pa.uint32()),
+    "size_loc0": list_of(pa.uint16()),
+    "size_loc1": list_of(pa.uint16()),
+    "n_channels": list_of(pa.uint16()),
+    "sum_activation": list_of(pa.float32()),
+    "local_eta": list_of(pa.float32()),
+    "local_phi": list_of(pa.float32()),
+    "global_eta": list_of(pa.float32()),
+    "global_phi": list_of(pa.float32()),
+    "eta_angle": list_of(pa.float32()),
+    "phi_angle": list_of(pa.float32()),
+    "particle_ids": nested_list_of(pa.uint64()),
+    "simhit_ids": nested_list_of(pa.uint32()),
+}
+
+# Release-2 tracker TRUTH table: one row per event, one list entry per sim-hit
+# (ALL sim-hits, container order = the simhit_ids referenced above).
+# Standalone-complete for re-digitization: position+time, 4-momentum at the
+# hit, deposited energy, particle link, trajectory hit index, sensor ids.
+TRACKER_SIMHITS_PARQUET_TYPES = {
+    "event_id": pa.uint32(),
+    "true_x": list_of(pa.float32()),
+    "true_y": list_of(pa.float32()),
+    "true_z": list_of(pa.float32()),
+    "true_time": list_of(pa.float32()),
+    "tpx": list_of(pa.float32()),
+    "tpy": list_of(pa.float32()),
+    "tpz": list_of(pa.float32()),
+    "tE": list_of(pa.float32()),
+    "dE": list_of(pa.float32()),
+    "particle_id": list_of(pa.uint64()),
+    "hit_index": list_of(pa.uint16()),
+    "detector": list_of(pa.uint8()),
+    "volume_id": list_of(pa.uint8()),
+    "layer_id": list_of(pa.uint16()),
+    "surface_id": list_of(pa.uint32()),
+}
+
+
 # Digitised calorimeter cells (DDCaloDigi output, the cells particle flow consumed):
 # one row per event, list-valued columns per cell; truth via digi->sim links
 # (contrib particle ids are MCParticle row indices, same convention as particles table).

@@ -14,12 +14,22 @@ import pytest
 
 
 def _per_event_particle_ids(df: pl.DataFrame, col: str = "particle_id") -> dict[int, set[int]]:
-    """Return {event_id: set(particle_id)} for a per-event nested-layout table."""
+    """Return {event_id: set(particle_id)} for a per-event nested-layout table.
+
+    Handles both flat (list<id>) and doubly nested (list<list<id>>) columns —
+    the Release-2 tracker_hits truth links are nested per measurement."""
     out: dict[int, set[int]] = {}
     for row in df.iter_rows(named=True):
         ev = int(row["event_id"])
-        ids = row[col]
-        out[ev] = set(int(x) for x in ids if x is not None)
+        ids: set[int] = set()
+        for x in row[col]:
+            if x is None:
+                continue
+            if isinstance(x, (list, tuple)):
+                ids.update(int(v) for v in x if v is not None)
+            else:
+                ids.add(int(x))
+        out[ev] = ids
     return out
 
 
@@ -28,7 +38,7 @@ def test_tracker_hits_particle_id_subset_of_particles(acts_tracker_hits, acts_pa
     the same event. If this fails, the (particles, tracker_hits) tables key
     on different enumerations and downstream joins are broken."""
     pids_by_ev = _per_event_particle_ids(acts_particles)
-    hit_pids_by_ev = _per_event_particle_ids(acts_tracker_hits)
+    hit_pids_by_ev = _per_event_particle_ids(acts_tracker_hits, col="particle_ids")
 
     sentinel_max_u64 = (1 << 64) - 1
     bad: list[str] = []
@@ -43,7 +53,7 @@ def test_tracker_hits_particle_id_subset_of_particles(acts_tracker_hits, acts_pa
             )
     if bad:
         pytest.fail(
-            "tracker_hits.particle_id values must all appear in particles.particle_id "
+            "tracker_hits.particle_ids values must all appear in particles.particle_id "
             f"for the same event:\n" + "\n".join(bad[:5])
         )
 
@@ -95,6 +105,8 @@ def test_calo_contrib_particle_ids_subset_of_particles(acts_calo_hits, acts_part
         )
 
 
+@pytest.mark.skip(reason="superseded: native rows are measurements now "
+                  "(Release-2 two-table schema); see test_tracker_tables.py")
 def test_tracker_hits_unique_xyz_count_consistent_with_simhit_count(acts_parquet_root):
     """Per event, the number of distinct (x, y, z) tuples should be <= the
     number of rows (simhits). Equality means no clustering; strict inequality
