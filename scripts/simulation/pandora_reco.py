@@ -20,8 +20,9 @@ Environment (loaded by the pipeline via env_setup.yaml):
 Calibration: ODDreconstruction.py defaults ARE the calibrated realistic-digi constants;
 no env knobs needed. Config keys (yaml):
   events                  event cap (default: all)
-  track_collection        "ActsTracks" (charged PF, default if input has tracks) or
-                          "EmptyTracks" (calo-only neutral PF)
+  track_collection        "ActsTracks" (charged PF, the default and REQUIRED mode: the stage
+                          errors out if the input file has no such collection) or, ONLY when
+                          set explicitly, "EmptyTracks" (calo-only neutral PF)
   pandora_settings        settings XML (default: PandoraSettingsCLD.xml for ActsTracks,
                           ODDreconstruction.py default Minimal for EmptyTracks)
   max_track_sigma_pop     track-quality cut (default 999 for ActsTracks: masks the
@@ -52,10 +53,9 @@ def run_pandora_reco(input_file, output_dir, config, logger):
         raise FileNotFoundError(f"k4ODD script not found: {k4odd_script}")
 
     events = getattr(config, "events", -1)
-    track_collection = getattr(config, "track_collection", None)
-    if track_collection is None:
-        # default: charged PF when the input was produced by the tracking step
-        track_collection = "ActsTracks" if "with_tracks" in input_file.name else "EmptyTracks"
+    # Charged particle flow is the production mode. Calo-only is NEVER a fallback:
+    # it must be requested explicitly (track_collection: EmptyTracks in the config).
+    track_collection = getattr(config, "track_collection", None) or "ActsTracks"
     charged = track_collection != "EmptyTracks"
 
     pandora_settings = getattr(config, "pandora_settings", None)
@@ -64,6 +64,16 @@ def run_pandora_reco(input_file, output_dir, config, logger):
 
     input_file = input_file.resolve()
     output_file = (output_dir / "reco_edm4hep.root").resolve()
+
+    if charged:
+        # Hard guard: refuse to run charged PF on an input without the track collection.
+        # (Silently degrading to calo-only would produce wrong-looking PFOs downstream.)
+        dump = subprocess.run(["podio-dump", str(input_file)], capture_output=True, text=True)
+        if track_collection not in dump.stdout:
+            raise RuntimeError(
+                f"Input {input_file} has no '{track_collection}' collection - run the ACTS "
+                f"tracking step first. Calo-only reconstruction requires explicitly setting "
+                f"track_collection: EmptyTracks in the stage config.")
 
     env = os.environ.copy()
     if charged:
