@@ -88,6 +88,23 @@ TRACKS_PARQUET_TYPES = {
 
 
 # Calorimeter hits: one row per event, list-valued cell properties
+# Digitised calorimeter cells (DDCaloDigi output, the cells particle flow consumed):
+# one row per event, list-valued columns per cell; truth via digi->sim links
+# (contrib particle ids are MCParticle row indices, same convention as particles table).
+CALO_CELLS_PARQUET_TYPES = {
+    "event_id": pa.uint32(),
+    "detector": list_of(pa.uint8()),
+    "cell_id": list_of(pa.uint64()),
+    "energy": list_of(pa.float32()),
+    "x": list_of(pa.float32()),
+    "y": list_of(pa.float32()),
+    "z": list_of(pa.float32()),
+    "time": list_of(pa.float32()),
+    "contrib_particle_ids": nested_list_of(pa.uint64()),
+    "contrib_energies": nested_list_of(pa.float32()),
+}
+
+
 CALOHITS_PARQUET_TYPES = {
     "event_id": pa.uint32(),
     "detector": list_of(pa.uint8()),
