@@ -17,13 +17,6 @@ import polars as pl
 import pytest
 
 
-@pytest.fixture(scope="session")
-def acts_tracker_simhits(acts_parquet_root):
-    from conftest import _read_acts_object
-
-    return _read_acts_object(acts_parquet_root, "tracker_simhits")
-
-
 def _rows(df):
     return list(df.iter_rows(named=True))
 

@@ -91,6 +91,11 @@ def acts_tracker_hits(acts_parquet_root):
 
 
 @pytest.fixture(scope="session")
+def acts_tracker_simhits(acts_parquet_root):
+    return _read_acts_object(acts_parquet_root, "tracker_simhits")
+
+
+@pytest.fixture(scope="session")
 def acts_tracks(acts_parquet_root):
     return _read_acts_object(acts_parquet_root, "tracks")
 
