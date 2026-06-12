@@ -388,6 +388,15 @@ def test_tracks_hit_outlier_excluded_matches_v1(
             if len(mismatch) < 5:
                 mismatch.append((ev, tid, len(nat_set), len(v1_lut[key]),
                                  len(nat_set & v1_lut[key])))
+        # The v1 hit_ids come from the tracksummary measurementIDs branch - a
+        # colliderml-fork ACTS patch that rebased builds (tracker-hits-v2) do
+        # not carry. When v1 extracted nothing, the comparison is unavailable.
+        if all(len(v) == 0 for v in v1_lut.values()):
+            pytest.skip(
+                "v1 tracks have no hit_ids (tracksummary measurementIDs branch "
+                "absent in this ACTS build) - legacy comparison unavailable; "
+                "native track->hit linkage is covered by test_tracker_tables.py"
+            )
     assert checked > 0, "no native↔v1 tracks matched by (event, track_id)"
     if mismatch:
         rows = "\n".join(
