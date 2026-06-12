@@ -94,16 +94,13 @@ def add_arrow_writers(
         _ODD_TRACKER_VOLUME_MAP, 255
     )
 
+    # tracker-hits-v2: the particle converter is minimal (inputParticles +
+    # outputTable); the helix/perigee knobs of the old colliderml fork are gone
+    # (perigee_d0/z0 are nullable in the schema and emitted as nulls).
     arr_particles = ArrowParticleOutputConverter(
         level=log_level,
         inputParticles="particles_simulated",
         outputTable="particles_arrow",
-        writeHelixParameters=True,
-        # Match the existing RootParticleWriter knobs in digi_and_reco.py:
-        # propagate truth helix → perigee surface at the origin.
-        minHelixTransverseMomentum=500 * u.MeV,
-        maxHelixEta=5.0,
-        bField=field,
     )
     s.addAlgorithm(arr_particles)
 
