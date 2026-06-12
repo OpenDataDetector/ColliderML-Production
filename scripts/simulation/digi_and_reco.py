@@ -181,7 +181,15 @@ def setup_acts_reconstruction(input_path, output_dir, config, rnd, logger=None):
     # Only the Arrow-enabled ACTS build supports outputMCParticleMap (PR #5410);
     # pass it solely when we need the native parquet path so the legacy image's
     # converter signature is untouched.
-    _sim_extra = {"outputMCParticleMap": "mcparticle_index_map"} if want_arrow else {}
+    # Feature-detect: the colliderml fork's converter had outputMCParticleMap
+    # (feeding the calo truth path); the tracker-hits-v2 rebase dropped it along
+    # with the whole calo input/output machinery (#5441 not re-applied).
+    _supports_mcmap = want_arrow and hasattr(
+        EDM4hepSimInputConverter.Config(), "outputMCParticleMap"
+    )
+    _sim_extra = (
+        {"outputMCParticleMap": "mcparticle_index_map"} if _supports_mcmap else {}
+    )
     edm4hepConverter = EDM4hepSimInputConverter(
         level=LOG_LEVEL,
         inputFrame="events",
@@ -216,7 +224,12 @@ def setup_acts_reconstruction(input_path, output_dir, config, rnd, logger=None):
     # MCParticle index map (PR #5441). Detector codes match v1's
     # CALO_DETECTOR_CODES (scripts/postprocessing/utils/detector_enums.py) so
     # the parquet `detector` enum is identical to convert_all.py output.
-    if want_arrow:
+    if want_arrow and not hasattr(acts.examples.edm4hep, "EDM4hepCaloHitInputConverter"):
+        logger.warning(
+            "This ACTS build has no EDM4hepCaloHitInputConverter (tracker-hits-v2 "
+            "dropped the #5441 calo machinery) - skipping native calo parquet; "
+            "use convert_calo_digi.py on the Pandora reco output instead.")
+    elif want_arrow:
         _cc = acts.examples.edm4hep.CaloCollectionDetectorCodes
         caloConverter = acts.examples.edm4hep.EDM4hepCaloHitInputConverter(
             level=LOG_LEVEL,
