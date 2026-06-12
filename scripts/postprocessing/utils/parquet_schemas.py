@@ -88,6 +88,36 @@ TRACKS_PARQUET_TYPES = {
 
 
 # Calorimeter hits: one row per event, list-valued cell properties
+# Pandora particle-flow objects: one row per event, list-valued per PFO.
+# cluster_ids index CALO_CLUSTERS rows; track_ids index the tracks-table track_id
+# (= ActsTracks collection order).
+PFOS_PARQUET_TYPES = {
+    "event_id": pa.uint32(),
+    "pfo_id": list_of(pa.uint32()),
+    "pdg": list_of(pa.int32()),
+    "charge": list_of(pa.int8()),
+    "energy": list_of(pa.float32()),
+    "px": list_of(pa.float32()),
+    "py": list_of(pa.float32()),
+    "pz": list_of(pa.float32()),
+    "goodness_of_pid": list_of(pa.float32()),
+    "cluster_ids": nested_list_of(pa.uint32()),
+    "track_ids": nested_list_of(pa.uint32()),
+}
+
+# Pandora calorimeter clusters: one row per event, list-valued per cluster.
+# cell_ids join CALO_CELLS.cell_id within the same event.
+CALO_CLUSTERS_PARQUET_TYPES = {
+    "event_id": pa.uint32(),
+    "cluster_id": list_of(pa.uint32()),
+    "energy": list_of(pa.float32()),
+    "x": list_of(pa.float32()),
+    "y": list_of(pa.float32()),
+    "z": list_of(pa.float32()),
+    "cell_ids": nested_list_of(pa.uint64()),
+}
+
+
 # Digitised calorimeter cells (DDCaloDigi output, the cells particle flow consumed):
 # one row per event, list-valued columns per cell; truth via digi->sim links
 # (contrib particle ids are MCParticle row indices, same convention as particles table).
