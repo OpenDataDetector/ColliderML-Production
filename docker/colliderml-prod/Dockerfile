@@ -55,7 +55,7 @@ RUN set -e; source /opt/build-env.sh; \
       -DGAUDI_USE_AIDA=OFF -DGAUDI_USE_XERCESC=OFF -DGAUDI_USE_HEPPDT=OFF \
       -DGAUDI_USE_CPPUNIT=OFF -DGAUDI_USE_GPERFTOOLS=OFF -DGAUDI_USE_DOXYGEN=OFF \
       -DBUILD_TESTING=OFF; \
-    cmake --build /tmp/gaudi-build -j6 --target install; \
+    cmake --build /tmp/gaudi-build -j4 --target install; \
     rm -rf /tmp/gaudi-build; echo "Gaudi ${GAUDI_REF} built"
 
 # --- k4FWCore (needs Gaudi + edm4hep + podio) -------------------------------
@@ -63,7 +63,7 @@ RUN set -e; source /opt/build-env.sh; export CMAKE_PREFIX_PATH="/opt/gaudi-insta
     git clone --depth 1 https://github.com/key4hep/k4FWCore.git /opt/k4fwcore-src; \
     cmake -S /opt/k4fwcore-src -B /tmp/k4fw-build -GNinja -DCMAKE_BUILD_TYPE=Release \
       -DCMAKE_INSTALL_PREFIX=/opt/k4fwcore-install -DBUILD_TESTING=OFF; \
-    cmake --build /tmp/k4fw-build -j6 --target install; \
+    cmake --build /tmp/k4fw-build -j4 --target install; \
     rm -rf /tmp/k4fw-build; echo "k4FWCore built"
 
 # --- key4hep setup shim: makes the in-image stack look like a key4hep env so
@@ -86,7 +86,7 @@ RUN set -e; \
     git clone --depth 1 --branch ${K4ODD_REF} https://github.com/OpenDataDetector/k4ODD.git /opt/k4ODD; \
     cd /opt/k4ODD; \
     export KEY4HEP_SETUP=/opt/key4hep-shim.sh; \
-    export PANDORA_STACK_DIR=/opt/pandora-stack PANDORA_STACK_BUILD=/tmp/pandora-build CMAKE_BUILD_PARALLEL_LEVEL=6; \
+    export PANDORA_STACK_DIR=/opt/pandora-stack PANDORA_STACK_BUILD=/tmp/pandora-build CMAKE_BUILD_PARALLEL_LEVEL=4; \
     bash ci/build_pandora_stack.sh; \
     rm -rf /tmp/pandora-build; \
     test -f /opt/pandora-stack/install/setup_stack.sh && echo "Pandora stack built"
@@ -95,7 +95,7 @@ RUN set -e; \
 RUN set -e; source /opt/key4hep-shim.sh; source /opt/pandora-stack/install/setup_stack.sh; \
     cmake -S /opt/k4ODD -B /tmp/k4odd-build -GNinja -DCMAKE_BUILD_TYPE=Release \
       -DCMAKE_INSTALL_PREFIX=/opt/k4ODD/install; \
-    cmake --build /tmp/k4odd-build -j6 --target install; \
+    cmake --build /tmp/k4odd-build -j4 --target install; \
     rm -rf /tmp/k4odd-build; echo "k4ODD built"
 
 # k4ODD env for the calo/pandora stages: K4ODD_PATH=/opt/k4ODD, ODD already baked.
