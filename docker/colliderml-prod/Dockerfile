@@ -25,10 +25,13 @@ ENV SPACK_BASE=/spack/opt/spack/linux-x86_64
 RUN apt-get update -qq && apt-get install -y -qq \
       libmsgsl-dev librange-v3-dev nlohmann-json3-dev wget && rm -rf /var/lib/apt/lists/*
 
-COPY steps/ /opt/steps/
-
 # --- Boost components Gaudi needs (-> sw PR: boost +fiber +python +log ...) --
+# COPY build_boost.sh in its OWN layer first so iterating on later step scripts
+# does not invalidate this ~6-min boost build.
+COPY steps/build_boost.sh /opt/steps/build_boost.sh
 RUN bash /opt/steps/build_boost.sh
+
+COPY steps/ /opt/steps/
 
 # --- Gaudi (from source, against the image's deps) --------------------------
 RUN bash /opt/steps/build_gaudi.sh
