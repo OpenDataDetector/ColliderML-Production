@@ -27,7 +27,6 @@ from utils.track_utils import load_root_file
 from utils.parquet_utils import build_parquet_from_flat_df
 from utils.parquet_schemas import PARTICLES_PARQUET_TYPES
 
-sys.path.append("/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/OtherLibraries/pyedm4hep")
 from pyedm4hep import EDM4hepEvent, EDM4hepEventBatch
 
 logger = logging.getLogger(__name__)
