@@ -6,6 +6,13 @@ set -e
 K4ODD_REF="${K4ODD_REF:-feat/pandora-calibrated-reco}"
 git clone --depth 1 --branch "$K4ODD_REF" https://github.com/OpenDataDetector/k4ODD.git /opt/k4ODD
 cd /opt/k4ODD
+
+# k4GaudiPandora's test/ subdir requires k4geo (a key4hep geometry package we don't
+# fold in). It is guarded by BUILD_TESTING, but the stack builder doesn't disable
+# tests. Patch its cmake invocation to add -DBUILD_TESTING=OFF for all packages.
+sed -i 's#-DCMAKE_BUILD_TYPE=RelWithDebInfo \\#-DCMAKE_BUILD_TYPE=RelWithDebInfo -DBUILD_TESTING=OFF \\#' ci/build_pandora_stack.sh
+grep -q "BUILD_TESTING=OFF" ci/build_pandora_stack.sh && echo "patched build_pandora_stack.sh: tests off"
+
 export KEY4HEP_SETUP=/opt/key4hep-shim.sh
 export PANDORA_STACK_DIR=/opt/pandora-stack
 export PANDORA_STACK_BUILD=/tmp/pandora-build

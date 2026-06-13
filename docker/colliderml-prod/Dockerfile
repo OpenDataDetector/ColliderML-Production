@@ -40,9 +40,25 @@ RUN bash /opt/steps/build_gaudi.sh
 COPY steps/build_k4fwcore.sh /opt/steps/build_k4fwcore.sh
 RUN bash /opt/steps/build_k4fwcore.sh
 
+# --- Legacy tracking stack for k4Reco::GaudiTrkUtils (k4GaudiPandora track refit) --
+# LCIO + KalTest + DDKalTest + k4Reco(GaudiTrkUtils) — the sw image ships none of
+# these; k4GaudiPandora's DDTrackCreatorBase refits ACTS tracks with DDKalTest.
+COPY steps/build_lcio.sh /opt/steps/build_lcio.sh
+RUN bash /opt/steps/build_lcio.sh
+
+COPY steps/build_kaltest.sh /opt/steps/build_kaltest.sh
+RUN bash /opt/steps/build_kaltest.sh
+
+COPY steps/build_ddkaltest.sh /opt/steps/build_ddkaltest.sh
+RUN bash /opt/steps/build_ddkaltest.sh
+
 # --- key4hep setup shim (build-time + runtime) ------------------------------
 COPY steps/key4hep-shim.sh /opt/steps/key4hep-shim.sh
 RUN cp /opt/steps/key4hep-shim.sh /opt/key4hep-shim.sh
+
+# --- k4Reco (only GaudiTrkUtils; needs the shim + LCIO/KalTest/DDKalTest) ----
+COPY steps/build_k4reco.sh /opt/steps/build_k4reco.sh
+RUN bash /opt/steps/build_k4reco.sh
 
 # --- Pandora stack (PandoraSDK/LCContent/k4GaudiPandora/k4DetectorPerformance)
 COPY steps/build_pandora.sh /opt/steps/build_pandora.sh
