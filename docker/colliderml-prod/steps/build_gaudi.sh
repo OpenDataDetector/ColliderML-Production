@@ -10,6 +10,16 @@ source /opt/build-env.sh
 export LD_LIBRARY_PATH="$(ls -d /spack/opt/spack/linux-x86_64/*/lib /spack/opt/spack/linux-x86_64/*/lib64 /spack/opt/spack/linux-x86_64/*/lib/root 2>/dev/null | tr '\n' ':')${LD_LIBRARY_PATH:-}"
 # ROOTSYS + module-path fix so Gaudi genconf's cling init finds libc.pcm.
 source /opt/steps/root_fix.sh
+# Build against the SPACK python 3.13.11, not the ubuntu system python 3.12: the
+# system python lacks _gdbm AND dbm.sqlite3, so the .confdb2 merge silently falls to
+# dbm.dumb (split .dir/.dat files, no single Gaudi.confdb2). The spack python has
+# _gdbm; it is also the python k4run uses at runtime, so Gaudi's python modules must
+# be built against it for ABI consistency.
+PYBIN=$(ls -d /spack/opt/spack/linux-x86_64/python-3.13*/bin | head -1)
+export PATH="$PYBIN:$PATH"
+PYEXE="$PYBIN/python3"
+echo "build python: $PYEXE ($($PYEXE --version 2>&1)); has _gdbm: $($PYEXE -c 'import _gdbm; print("yes")' 2>/dev/null || echo no)"
+
 git clone --depth 1 --branch "$GAUDI_REF" https://gitlab.cern.ch/gaudi/Gaudi.git /opt/gaudi-src
 
 # .confdb2 merge backend: Gaudi's merge_confdb2_parts forces the reliable dbm.gnu
@@ -24,6 +34,7 @@ grep -q 'dbm._defaultmod = dbm.gnu' "$_MERGE" && echo "patched merge_confdb2_par
 
 cmake -S /opt/gaudi-src -B /tmp/gaudi-build -GNinja -DCMAKE_BUILD_TYPE=Release \
   -DCMAKE_INSTALL_PREFIX=/opt/gaudi-install \
+  -DPython_EXECUTABLE="$PYEXE" -DPython3_EXECUTABLE="$PYEXE" \
   -DGAUDI_USE_AIDA=OFF -DGAUDI_USE_XERCESC=OFF -DGAUDI_USE_HEPPDT=OFF \
   -DGAUDI_USE_CPPUNIT=OFF -DGAUDI_USE_GPERFTOOLS=OFF -DGAUDI_USE_DOXYGEN=OFF \
   -DBUILD_TESTING=OFF
