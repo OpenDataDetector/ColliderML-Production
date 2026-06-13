@@ -123,16 +123,21 @@ CONTAINER_BIND_PATHS = [
     "/pscratch/sd/d/danieltm",
 ]
 
-def build_podman_run_prefix(container, srun_options=None):
+def build_podman_run_prefix(container, srun_options=None, cache_dir=None):
     """Return the `[srun ...] podman-hpc run ... bash -c "` prefix (opening quote, no
     close — the caller appends `<env && python>"`). Mirrors the old shifter prefix so
-    the downstream assembly in job_submission is reused unchanged."""
+    the downstream assembly in job_submission is reused unchanged.
+
+    cache_dir: if set, mount it at the same path + export COLLIDERML_CACHE (the
+    NOT-baked arrow image populates it at runtime). For the production image the cache
+    is BAKED, so leave cache_dir unset and the image's own COLLIDERML_CACHE wins."""
     if not container:
         raise ValueError("common.container must be set (the local podman-hpc image tag)")
     mounts = " ".join(f"-v {p}:{p}" for p in CONTAINER_BIND_PATHS if os.path.isdir(p))
-    cache = "${COLLIDERML_CACHE:-/tmp/colliderml-cache}"
-    run = (f"podman-hpc run --rm {mounts} "
-           f"-v {cache}:/cache -e COLLIDERML_CACHE=/cache "
+    cache = ""
+    if cache_dir:
+        cache = f"-v {cache_dir}:{cache_dir} -e COLLIDERML_CACHE={cache_dir} "
+    run = (f"podman-hpc run --rm {mounts} {cache}"
            f"--entrypoint /bin/bash {container} -c \"")
     return f"srun {srun_options} {run}" if srun_options else run
 
@@ -245,7 +250,8 @@ def build_stage_command(config, config_path, stage_script_path, output_dir, outp
             if not container:
                 raise ValueError(f"Stage '{stage}' requires shifter container but 'common.container' not found in config")
             
-            shifter_cmd = build_podman_run_prefix(container)
+            cache_dir = config.get("common", {}).get("cache_dir")
+            shifter_cmd = build_podman_run_prefix(container, cache_dir=cache_dir)
 
             # Combine env setup and python command inside the container
             inner_commands = env_setup_cmds + [python_command]
@@ -284,7 +290,8 @@ def build_stage_command(config, config_path, stage_script_path, output_dir, outp
             srun_options = "--exact --kill-on-bad-exit=0 -u"
             # podman-hpc run wraps the task; the image is loaded once per node in the
             # SLURM preamble (no SBATCH --image directive — that was shifter-only).
-            shifter_cmd = build_podman_run_prefix(container, srun_options=srun_options)
+            cache_dir = config.get("common", {}).get("cache_dir")
+            shifter_cmd = build_podman_run_prefix(container, srun_options=srun_options, cache_dir=cache_dir)
 
             # Environment setup commands + python command run inside the container.
             return {

@@ -1,0 +1,79 @@
+# =============================================================================
+# ColliderML production image — Phase 2: bake the runtime workarounds
+# =============================================================================
+# FROM the arrow image and bake everything setup_container_env.sh would otherwise
+# clone/download/compile/pip-install at runtime, so compute nodes need NO network:
+#   - bc (MadGraph shower)
+#   - MG5aMC_PY8_interface compiled against the image's Pythia 8.313 + HepMC2
+#   - ODD v4.0.4 geometry + libOpenDataDetector.so factory lib
+#   - Geant4 physics datasets (~2 GB)
+#   - the python postprocessing libs into the spack python
+# Each block is labeled with the upstream sw PR that would obsolete it (Phase 5).
+#
+# Cache model: bake into /opt/colliderml-cache and set COLLIDERML_CACHE so
+# setup_container_env.sh's existence-guards all pass (no runtime clone/download).
+# =============================================================================
+FROM localhost/colliderml/acts-arrow:tracker-hits-v2-tables
+
+ENV COLLIDERML_CACHE=/opt/colliderml-cache
+RUN mkdir -p /opt/colliderml-cache
+ENV SPACK_BASE=/spack/opt/spack/linux-x86_64
+
+# --- bc  (-> sw PR: bake bc) -------------------------------------------------
+RUN apt-get update -qq && apt-get install -y -qq bc git cmake && rm -rf /var/lib/apt/lists/*
+
+# --- MG5aMC_PY8_interface  (-> sw PR: MG5 interface) -------------------------
+# Compile the Pythia8-shower driver against the image's Pythia 8.313 + HepMC2,
+# install into the in-image MadGraph HEPTools dir, write version markers, and
+# point mg5_configuration.txt at it (lifts setup_container_env.sh §0b verbatim).
+RUN set -e; \
+    MG=$(ls -d "$SPACK_BASE"/madgraph5amc-*/ 2>/dev/null | head -1); MG="${MG%/}"; \
+    PY8=$(ls -d "$SPACK_BASE"/pythia8-*/ 2>/dev/null | head -1); PY8="${PY8%/}"; \
+    HM=$(ls -d "$SPACK_BASE"/hepmc-*/ 2>/dev/null | head -1); HM="${HM%/}"; \
+    ZL=$(ls -d "$SPACK_BASE"/zlib-ng-*/ 2>/dev/null | head -1); ZL="${ZL%/}"; \
+    if [ -n "$MG" ] && [ -n "$PY8" ] && [ -n "$HM" ]; then \
+      DST="$MG/HEPTools/MG5aMC_PY8_interface"; mkdir -p "$DST"; \
+      git clone --depth 1 https://github.com/mg5amcnlo/MG5aMC_PY8_interface.git /tmp/mgpy8 && \
+      cp /tmp/mgpy8/*.cc /tmp/mgpy8/*.h "$DST"/ 2>/dev/null || true; \
+      cd "$DST"; \
+      g++ MG5aMC_PY8_interface.cc -o MG5aMC_PY8_interface \
+        -I"$PY8/include" -I"$HM/include" ${ZL:+-I"$ZL/include"} \
+        -O2 -std=c++20 -fPIC -pthread -DGZIP \
+        -L"$PY8/lib" -Wl,-rpath,"$PY8/lib" -lpythia8 \
+        -L"$HM/lib" -Wl,-rpath,"$HM/lib" -lHepMC \
+        ${ZL:+-L"$ZL/lib" -Wl,-rpath,"$ZL/lib"} -lz -ldl && \
+      echo "3.5.9" > MG5AMC_VERSION_ON_INSTALL && echo "8.313" > PYTHIA8_VERSION_ON_INSTALL && \
+      sed -i "s|# mg5amc_py8_interface_path = ./HEPTools/MG5aMC_PY8_interface|mg5amc_py8_interface_path = $DST|" \
+        "$MG/input/mg5_configuration.txt" 2>/dev/null || true; \
+      rm -rf /tmp/mgpy8; \
+      echo "MG5aMC_PY8_interface baked at $DST"; \
+    else echo "WARNING: MadGraph/Pythia8/HepMC not found; MG5 interface NOT baked"; fi
+
+# --- ODD v4.0.4 geometry + factory library  (-> sw PR: bake ODD) ------------
+RUN set -e; \
+    git clone --depth 1 --branch v4.0.4 https://gitlab.cern.ch/acts/OpenDataDetector.git \
+      /opt/colliderml-cache/odd-v4 && \
+    bash -c 'source /opt/acts-arrow/setup.sh >/dev/null 2>&1; \
+      DD=$(ls "$SPACK_BASE"/dd4hep-*/bin/thisdd4hep.sh | head -1); source "$DD"; \
+      cmake -S /opt/colliderml-cache/odd-v4 -B /tmp/odd-build \
+        -DCMAKE_INSTALL_PREFIX=/opt/colliderml-cache/odd-v4-install && \
+      cmake --build /tmp/odd-build -j6 --target install' && \
+    rm -rf /tmp/odd-build && \
+    test -f /opt/colliderml-cache/odd-v4-install/lib/libOpenDataDetector.so && \
+    echo "ODD v4.0.4 baked"
+
+# --- Geant4 physics datasets ~2 GB  (-> sw PR: bake G4 data) ----------------
+RUN bash -c 'G4=$(ls "$SPACK_BASE"/geant4-*/bin/geant4.sh | head -1); source "$G4"; \
+    DATA=$(ls -d "$SPACK_BASE"/geant4-*/share/Geant4/data | head -1); \
+    if [ -z "$(ls -A "$DATA" 2>/dev/null)" ]; then \
+      echo "downloading Geant4 datasets into $DATA ..."; \
+      download_geant4_datasets.sh || echo "WARNING: G4 dataset download failed"; \
+    else echo "G4 datasets already present"; fi'
+
+# --- python postprocessing libs into the spack python  (-> sw PR: py libs) --
+RUN PY=$(ls -d "$SPACK_BASE"/python-venv-*/bin/python3 | head -1) && \
+    $PY -m pip install --no-cache-dir \
+      pyarrow uproot pandas awkward h5py tqdm pyhepmc psutil pyedm4hep polars huggingface_hub && \
+    echo "postproc python libs baked"
+
+CMD ["/bin/bash"]
