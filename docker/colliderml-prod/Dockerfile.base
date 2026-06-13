@@ -19,8 +19,20 @@ ENV COLLIDERML_CACHE=/opt/colliderml-cache
 RUN mkdir -p /opt/colliderml-cache
 ENV SPACK_BASE=/spack/opt/spack/linux-x86_64
 
-# --- bc  (-> sw PR: bake bc) -------------------------------------------------
-RUN apt-get update -qq && apt-get install -y -qq bc git cmake && rm -rf /var/lib/apt/lists/*
+# --- bc + git  (-> sw PR: bake bc) -------------------------------------------
+RUN apt-get update -qq && apt-get install -y -qq bc git && rm -rf /var/lib/apt/lists/*
+
+# --- reusable build env: the SPACK cmake (newer than apt 3.28) + ALL spack
+# package prefixes on CMAKE_PREFIX_PATH, so find_package(Boost/ROOT/DD4hep/...)
+# resolves. Sourced by every from-source build below (ODD here; Gaudi/Pandora
+# in the Phase-3 layer).
+RUN cat > /opt/build-env.sh <<'EOF'
+SB=/spack/opt/spack/linux-x86_64
+_cm=$(ls -d "$SB"/cmake-*/bin 2>/dev/null | head -1)
+[ -n "$_cm" ] && export PATH="$_cm:$PATH"
+export CMAKE_PREFIX_PATH="$(ls -d "$SB"/*/ 2>/dev/null | tr '\n' ':')${CMAKE_PREFIX_PATH:-}"
+_dd=$(ls "$SB"/dd4hep-*/bin/thisdd4hep.sh 2>/dev/null | head -1); [ -n "$_dd" ] && source "$_dd" >/dev/null 2>&1 || true
+EOF
 
 # --- MG5aMC_PY8_interface  (-> sw PR: MG5 interface) -------------------------
 # Compile the Pythia8-shower driver against the image's Pythia 8.313 + HepMC2,
@@ -53,8 +65,7 @@ RUN set -e; \
 RUN set -e; \
     git clone --depth 1 --branch v4.0.4 https://gitlab.cern.ch/acts/OpenDataDetector.git \
       /opt/colliderml-cache/odd-v4 && \
-    bash -c 'source /opt/acts-arrow/setup.sh >/dev/null 2>&1; \
-      DD=$(ls "$SPACK_BASE"/dd4hep-*/bin/thisdd4hep.sh | head -1); source "$DD"; \
+    bash -c 'source /opt/build-env.sh; \
       cmake -S /opt/colliderml-cache/odd-v4 -B /tmp/odd-build \
         -DCMAKE_INSTALL_PREFIX=/opt/colliderml-cache/odd-v4-install && \
       cmake --build /tmp/odd-build -j6 --target install' && \
