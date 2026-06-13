@@ -16,6 +16,9 @@
 # Each from-source step lives in steps/*.sh and is run with an explicit `bash`:
 # podman-hpc's builder does NOT honour the `SHELL` instruction, so the default
 # RUN shell is dash and bare `source` (a bashism) fails with exit 127.
+#
+# Each step script is COPYed in its OWN layer right before its RUN, so editing a
+# later step does not invalidate the (long) earlier build layers.
 # =============================================================================
 FROM localhost/colliderml/prod-base:20260613
 
@@ -26,26 +29,27 @@ RUN apt-get update -qq && apt-get install -y -qq \
       libmsgsl-dev librange-v3-dev nlohmann-json3-dev wget && rm -rf /var/lib/apt/lists/*
 
 # --- Boost components Gaudi needs (-> sw PR: boost +fiber +python +log ...) --
-# COPY build_boost.sh in its OWN layer first so iterating on later step scripts
-# does not invalidate this ~6-min boost build.
 COPY steps/build_boost.sh /opt/steps/build_boost.sh
 RUN bash /opt/steps/build_boost.sh
 
-COPY steps/ /opt/steps/
-
 # --- Gaudi (from source, against the image's deps) --------------------------
+COPY steps/root_fix.sh steps/build_gaudi.sh /opt/steps/
 RUN bash /opt/steps/build_gaudi.sh
 
 # --- k4FWCore (needs Gaudi + edm4hep + podio) -------------------------------
+COPY steps/build_k4fwcore.sh /opt/steps/build_k4fwcore.sh
 RUN bash /opt/steps/build_k4fwcore.sh
 
 # --- key4hep setup shim (build-time + runtime) ------------------------------
+COPY steps/key4hep-shim.sh /opt/steps/key4hep-shim.sh
 RUN cp /opt/steps/key4hep-shim.sh /opt/key4hep-shim.sh
 
 # --- Pandora stack (PandoraSDK/LCContent/k4GaudiPandora/k4DetectorPerformance)
+COPY steps/build_pandora.sh /opt/steps/build_pandora.sh
 RUN bash /opt/steps/build_pandora.sh
 
 # --- k4ODD plugins (libk4ODDPlugins.so) + calibrated options ----------------
+COPY steps/build_k4odd.sh /opt/steps/build_k4odd.sh
 RUN bash /opt/steps/build_k4odd.sh
 
 # k4ODD env for the calo/pandora stages: K4ODD_PATH=/opt/k4ODD, ODD already baked.

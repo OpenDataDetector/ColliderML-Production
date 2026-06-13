@@ -10,6 +10,29 @@ export KEY4HEP_SETUP=/opt/key4hep-shim.sh
 export PANDORA_STACK_DIR=/opt/pandora-stack
 export PANDORA_STACK_BUILD=/tmp/pandora-build
 export CMAKE_BUILD_PARALLEL_LEVEL=4
+
+# The PandoraSDK org-fork hand-rolls a minimal PandoraSDKConfig.cmake but ships NO
+# PandoraSDKConfigVersion.cmake (it relied on a stock cvmfs PandoraSDK to supply the
+# version). Without cvmfs, LCContent's find_package(PandoraSDK 03.00.00 REQUIRED)
+# sees version "unknown" and rejects it. Pre-seed a ConfigVersion in the prefix
+# (version derived from the pinned PANDORASDK_REF). k4GaudiPandora/k4DetectorPerformance
+# request no version, so this is the only version check in the chain.
+PSDK_VER=$(grep 'PANDORASDK_REF' ci/pandora_stack.env | grep -oE 'v[0-9]+-[0-9]+-[0-9]+' | head -1 | tr -d v | tr - .)
+[ -z "$PSDK_VER" ] && PSDK_VER="03.04.01"
+mkdir -p /opt/pandora-stack/install
+cat > /opt/pandora-stack/install/PandoraSDKConfigVersion.cmake <<EOF
+set(PACKAGE_VERSION "${PSDK_VER}")
+if(PACKAGE_VERSION VERSION_LESS PACKAGE_FIND_VERSION)
+  set(PACKAGE_VERSION_COMPATIBLE FALSE)
+else()
+  set(PACKAGE_VERSION_COMPATIBLE TRUE)
+  if(PACKAGE_VERSION VERSION_EQUAL PACKAGE_FIND_VERSION)
+    set(PACKAGE_VERSION_EXACT TRUE)
+  endif()
+endif()
+EOF
+echo "pre-seeded PandoraSDKConfigVersion.cmake version=${PSDK_VER}"
+
 bash ci/build_pandora_stack.sh
 rm -rf /tmp/pandora-build
 test -f /opt/pandora-stack/install/setup_stack.sh
