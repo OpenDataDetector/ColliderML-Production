@@ -19,11 +19,22 @@ env_variables:
   CONTAINER_SETUP: "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-prod-container/scripts/cli/setup_container_env.sh"
   # Arrow-enabled ACTS overlay (baked in the image): overrides the spack ACTS.
   ACTS_ARROW_SETUP: "/opt/acts-arrow/setup.sh"
+  # key4hep setup shim (baked in the image, Phase 3): puts the in-image Gaudi +
+  # k4FWCore (k4run) on PATH/LD_LIBRARY_PATH/PYTHONPATH so the calo/pandora stages
+  # have a key4hep-style environment without cvmfs.
+  KEY4HEP_SHIM: "/opt/key4hep-shim.sh"
   # Pandora particle-flow stack (baked in the image, Phase 3): the pinned/optimized
   # LCContent + k4GaudiPandora + k4DetectorPerformance against in-image Gaudi+k4FWCore.
   PANDORA_STACK_SETUP: "/opt/pandora-stack/install/setup_stack.sh"
+  # ODD geometry (baked, Phase 2): this_odd.sh puts libOpenDataDetector.so on
+  # LD_LIBRARY_PATH; ODD_INSTALL is what ODDdigitisation/ODDreconstruction read as
+  # ODD_INSTALL_DIR to find share/OpenDataDetector/xml/OpenDataDetector.xml.
+  ODD_THIS_SCRIPT: "/opt/colliderml-cache/odd-v4-install/bin/this_odd.sh"
+  ODD_INSTALL: "/opt/colliderml-cache/odd-v4-install"
+  # k4ODD: K4ODD_PATH = repo clone (options at $K4ODD_PATH/k4ODD/options/...);
+  # K4ODD_INSTALL/lib carries libk4ODDPlugins.so + libddODD.
   K4ODD_PATH: "/opt/k4ODD"
-  ODD_INSTALL: "/opt/odd-v4"
+  K4ODD_INSTALL: "/opt/k4ODD/install"
 
 config_defaults:
   common:
@@ -59,20 +70,26 @@ madgraph:
   - 'source {CONTAINER_SETUP}'
 
 # Calo digitisation: needs the key4hep/Gaudi world + Pandora stack + k4ODD (Phase 3 layer).
+# Order matters: base spack runtime (root/podio/edm4hep/dd4hep/python) first, then the
+# Gaudi/k4FWCore shim, then the Pandora stack, then the ODD geometry libs.
 calo_digitization:
   - 'source {CONTAINER_SETUP}'
-  - 'source {ACTS_ARROW_SETUP}'
+  - 'source {KEY4HEP_SHIM}'
   - 'source {PANDORA_STACK_SETUP}'
+  - 'source {ODD_THIS_SCRIPT}'
   - 'export K4ODD_PATH={K4ODD_PATH}'
-  - 'export OpenDataDetector={ODD_INSTALL}'
+  - 'export ODD_INSTALL_DIR={ODD_INSTALL}'
+  - 'export LD_LIBRARY_PATH={K4ODD_INSTALL}/lib:{K4ODD_INSTALL}/lib64:$LD_LIBRARY_PATH'
 
 # Pandora particle-flow reconstruction: same key4hep/Pandora environment as calo digi.
 pandora_reco:
   - 'source {CONTAINER_SETUP}'
-  - 'source {ACTS_ARROW_SETUP}'
+  - 'source {KEY4HEP_SHIM}'
   - 'source {PANDORA_STACK_SETUP}'
+  - 'source {ODD_THIS_SCRIPT}'
   - 'export K4ODD_PATH={K4ODD_PATH}'
-  - 'export OpenDataDetector={ODD_INSTALL}'
+  - 'export ODD_INSTALL_DIR={ODD_INSTALL}'
+  - 'export LD_LIBRARY_PATH={K4ODD_INSTALL}/lib:{K4ODD_INSTALL}/lib64:$LD_LIBRARY_PATH'
 
 # Postprocessing/convert_*: python libs (polars/pyarrow/uproot/pyedm4hep) baked into the
 # image's python and put on PYTHONPATH by the assembler. No conda.
