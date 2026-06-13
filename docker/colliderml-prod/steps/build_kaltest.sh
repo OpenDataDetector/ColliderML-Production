@@ -4,10 +4,12 @@
 set -e
 source /opt/build-env.sh
 source /opt/steps/root_fix.sh
+export CMAKE_PREFIX_PATH="/opt/ilcutil-install:$CMAKE_PREFIX_PATH"
 KALTEST_REF="${KALTEST_REF:-v02-05-02}"
 git clone --depth 1 --branch "$KALTEST_REF" https://github.com/iLCSoft/KalTest.git /opt/kaltest-src
 cmake -S /opt/kaltest-src -B /tmp/kaltest-build -GNinja -DCMAKE_BUILD_TYPE=Release \
-  -DCMAKE_INSTALL_PREFIX=/opt/kaltest-install -DBUILD_TESTING=OFF
+  -DCMAKE_INSTALL_PREFIX=/opt/kaltest-install -DBUILD_TESTING=OFF \
+  -DCMAKE_POLICY_VERSION_MINIMUM=3.5
 cmake --build /tmp/kaltest-build -j4 --target install
 rm -rf /tmp/kaltest-build
 echo "KalTest ${KALTEST_REF} built"

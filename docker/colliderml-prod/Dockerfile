@@ -43,6 +43,9 @@ RUN bash /opt/steps/build_k4fwcore.sh
 # --- Legacy tracking stack for k4Reco::GaudiTrkUtils (k4GaudiPandora track refit) --
 # LCIO + KalTest + DDKalTest + k4Reco(GaudiTrkUtils) — the sw image ships none of
 # these; k4GaudiPandora's DDTrackCreatorBase refits ACTS tracks with DDKalTest.
+COPY steps/build_ilcutil.sh /opt/steps/build_ilcutil.sh
+RUN bash /opt/steps/build_ilcutil.sh
+
 COPY steps/build_lcio.sh /opt/steps/build_lcio.sh
 RUN bash /opt/steps/build_lcio.sh
 

@@ -5,8 +5,8 @@
 source /opt/build-env.sh
 # Gaudi + k4FWCore + the legacy tracking stack (LCIO/KalTest/DDKalTest/k4Reco) that
 # k4GaudiPandora's DDTrackCreatorBase needs via k4Reco::GaudiTrkUtils.
-export CMAKE_PREFIX_PATH="/opt/gaudi-install:/opt/k4fwcore-install:/opt/lcio-install:/opt/kaltest-install:/opt/ddkaltest-install:/opt/k4reco-install:${CMAKE_PREFIX_PATH:-}"
-_trklibs="/opt/lcio-install/lib:/opt/lcio-install/lib64:/opt/kaltest-install/lib:/opt/kaltest-install/lib64:/opt/ddkaltest-install/lib:/opt/ddkaltest-install/lib64:/opt/k4reco-install/lib:/opt/k4reco-install/lib64"
+export CMAKE_PREFIX_PATH="/opt/gaudi-install:/opt/k4fwcore-install:/opt/ilcutil-install:/opt/lcio-install:/opt/kaltest-install:/opt/ddkaltest-install:/opt/k4reco-install:${CMAKE_PREFIX_PATH:-}"
+_trklibs="/opt/ilcutil-install/lib:/opt/ilcutil-install/lib64:/opt/lcio-install/lib:/opt/lcio-install/lib64:/opt/kaltest-install/lib:/opt/kaltest-install/lib64:/opt/ddkaltest-install/lib:/opt/ddkaltest-install/lib64:/opt/k4reco-install/lib:/opt/k4reco-install/lib64"
 # Spack runtime libs on LD_LIBRARY_PATH: needed at build time so Pandora/k4ODD
 # genconf can dlopen plugins (boost/root/python/tbb); harmless at runtime where
 # setup_container_env.sh already sets them.
