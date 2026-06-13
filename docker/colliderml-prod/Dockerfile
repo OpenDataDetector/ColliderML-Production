@@ -14,6 +14,10 @@
 # =============================================================================
 FROM localhost/colliderml/prod-base:20260613
 
+# Every from-source RUN below sources spack/dd4hep/key4hep setup scripts; `source`
+# is a bashism, and the default RUN shell is dash. Use bash for all RUN steps.
+SHELL ["/bin/bash", "-c"]
+
 ENV SPACK_BASE=/spack/opt/spack/linux-x86_64
 
 # Gaudi header-only deps the image lacks.
