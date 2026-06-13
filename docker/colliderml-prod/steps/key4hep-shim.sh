@@ -13,3 +13,6 @@ export PATH="/opt/gaudi-install/bin:/opt/k4fwcore-install/bin:$PATH"
 _pyv=$(ls -d /spack/opt/spack/linux-x86_64/python-venv-*/bin 2>/dev/null | head -1)
 [ -n "$_pyv" ] && export PATH="$_pyv:$PATH"
 export PYTHONPATH="/opt/gaudi-install/python:/opt/k4fwcore-install/python:${PYTHONPATH:-}"
+# ROOTSYS + module-path fix so genconf (build) and k4run (runtime) cling init
+# finds ROOT's C++ system modules (buildcache ROOT bakes a stale build path).
+source /opt/steps/root_fix.sh

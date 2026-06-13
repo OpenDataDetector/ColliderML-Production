@@ -8,6 +8,8 @@ source /opt/build-env.sh
 # the spack runtime libs (boost_context, RIO, python, tbb, fmt) must be on
 # LD_LIBRARY_PATH (build-env.sh only sets CMAKE_PREFIX_PATH).
 export LD_LIBRARY_PATH="$(ls -d /spack/opt/spack/linux-x86_64/*/lib /spack/opt/spack/linux-x86_64/*/lib64 /spack/opt/spack/linux-x86_64/*/lib/root 2>/dev/null | tr '\n' ':')${LD_LIBRARY_PATH:-}"
+# ROOTSYS + module-path fix so Gaudi genconf's cling init finds libc.pcm.
+source /opt/steps/root_fix.sh
 git clone --depth 1 --branch "$GAUDI_REF" https://gitlab.cern.ch/gaudi/Gaudi.git /opt/gaudi-src
 cmake -S /opt/gaudi-src -B /tmp/gaudi-build -GNinja -DCMAKE_BUILD_TYPE=Release \
   -DCMAKE_INSTALL_PREFIX=/opt/gaudi-install \
