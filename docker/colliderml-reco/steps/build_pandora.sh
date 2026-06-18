@@ -26,7 +26,13 @@ export CMAKE_BUILD_PARALLEL_LEVEL=4
 # request no version, so this is the only version check in the chain.
 PSDK_VER=$(grep 'PANDORASDK_REF' ci/pandora_stack.env | grep -oE 'v[0-9]+-[0-9]+-[0-9]+' | head -1 | tr -d v | tr - .)
 [ -z "$PSDK_VER" ] && PSDK_VER="03.04.01"
-mkdir -p /opt/pandora-stack/install
+# Pre-create install/lib64: build_pandora_stack.sh runs `set -eo pipefail` and ends with
+# `find "$prefix/lib" "$prefix/lib64" ... 2>/dev/null` to list the install tree. On this
+# Ubuntu/key4hep base CMake installs to lib/ (no lib64/), so find exits 1 on the missing
+# path (2>/dev/null hides the message, not the exit code) and set -e kills the script
+# right BEFORE it writes setup_stack.sh — leaving a fully-built stack with no setup file.
+# An empty lib64/ lets the listing find succeed.
+mkdir -p /opt/pandora-stack/install/lib64
 cat > /opt/pandora-stack/install/PandoraSDKConfigVersion.cmake <<EOF
 set(PACKAGE_VERSION "${PSDK_VER}")
 if(PACKAGE_VERSION VERSION_LESS PACKAGE_FIND_VERSION)
