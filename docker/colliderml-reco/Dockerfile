@@ -33,11 +33,7 @@ RUN apt-get update -qq && apt-get install -y -qq \
 # Native key4hep activation, exposed at the path the reused build steps expect.
 COPY steps/key4hep-shim.sh /opt/key4hep-shim.sh
 
-# --- ODD v4.0.4 geometry + factory lib (vs the image's DD4hep 1.32.1) --------
-COPY steps/build_odd.sh /opt/steps/build_odd.sh
-RUN bash /opt/steps/build_odd.sh
-
-# --- k4Reco v0.2.1 from source (the base's spack k4reco ships no CMake export) ---
+# --- k4Reco v0.3.0 GaudiTrkUtils from source (base's spack k4reco ships no CMake export) ---
 # Must precede the Pandora build: k4GaudiPandora find_package(k4Reco) needs the real
 # k4RecoConfig.cmake + k4Reco::GaudiTrkUtils target this produces in /opt/k4reco-install.
 COPY steps/build_k4reco.sh /opt/steps/build_k4reco.sh
@@ -55,6 +51,11 @@ RUN bash /opt/steps/build_k4odd.sh
 COPY steps/patch_k4fwcore.sh /opt/steps/patch_k4fwcore.sh
 RUN bash /opt/steps/patch_k4fwcore.sh
 
+# --- ODD v6.0.2 geometry + factory lib (sets calo DetType flags; needs no Pandora,
+# so kept LATE to preserve the cached Pandora/k4Reco layers when the ODD ref changes) --
+COPY steps/build_odd.sh /opt/steps/build_odd.sh
+RUN bash /opt/steps/build_odd.sh
+
 # --- reco-side postproc python libs (convert_pfos / convert_calo_digi) -------
 # Best-effort into the key4hep python; the converters are uproot/pyarrow based
 # and can also run in the sim image, but bake them so the reco image is
@@ -66,6 +67,6 @@ RUN bash -lc 'source /opt/key4hep-shim.sh && \
 
 # Env for the calo_digitization / pandora_reco stages.
 ENV K4ODD_PATH=/opt/k4ODD
-ENV ODD_INSTALL_DIR=/opt/odd-v4-install
+ENV ODD_INSTALL_DIR=/opt/odd-install
 
 CMD ["/bin/bash"]
