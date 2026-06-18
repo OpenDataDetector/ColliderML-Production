@@ -37,6 +37,12 @@ COPY steps/key4hep-shim.sh /opt/key4hep-shim.sh
 COPY steps/build_odd.sh /opt/steps/build_odd.sh
 RUN bash /opt/steps/build_odd.sh
 
+# --- k4Reco v0.2.1 from source (the base's spack k4reco ships no CMake export) ---
+# Must precede the Pandora build: k4GaudiPandora find_package(k4Reco) needs the real
+# k4RecoConfig.cmake + k4Reco::GaudiTrkUtils target this produces in /opt/k4reco-install.
+COPY steps/build_k4reco.sh /opt/steps/build_k4reco.sh
+RUN bash /opt/steps/build_k4reco.sh
+
 # --- Calibrated Pandora stack (PandoraSDK/LCContent/k4GaudiPandora/k4DetPerf) -
 COPY steps/build_pandora.sh /opt/steps/build_pandora.sh
 RUN bash /opt/steps/build_pandora.sh
