@@ -142,6 +142,19 @@ def build_podman_run_prefix(container, srun_options=None, cache_dir=None):
     return f"srun {srun_options} {run}" if srun_options else run
 
 
+def resolve_stage_container(config, stage):
+    """Resolve (container, tarball) for a stage in the two-container model.
+
+    A per-stage override in common.stage_containers[<stage>] (the key4hep reco image
+    for calo_digitization/pandora_reco + the reco-side converters) wins; otherwise the
+    common default (the sw-based sim image). Returns (container_tag, tarball_path)."""
+    common_cfg = config.get("common", {})
+    override = (common_cfg.get("stage_containers") or {}).get(stage) or {}
+    container = override.get("container") or common_cfg.get("container")
+    tarball = override.get("container_tarball") or common_cfg.get("container_tarball")
+    return container, tarball
+
+
 def build_stage_command(config, config_path, stage_script_path, output_dir, output_subdir="0",
                        execution_mode="interactive", slurm_procid_offset=0, run_id_expr=None):
     """
@@ -245,11 +258,10 @@ def build_stage_command(config, config_path, stage_script_path, output_dir, outp
     if execution_mode == "interactive":
         if use_shifter:
             # Interactive mode with shifter
-            common_cfg = config.get("common", {})
-            container = common_cfg.get("container")
+            container, _ = resolve_stage_container(config, stage)
             if not container:
-                raise ValueError(f"Stage '{stage}' requires shifter container but 'common.container' not found in config")
-            
+                raise ValueError(f"Stage '{stage}' requires a container but neither common.stage_containers['{stage}'] nor common.container is set")
+
             cache_dir = config.get("common", {}).get("cache_dir")
             shifter_cmd = build_podman_run_prefix(container, cache_dir=cache_dir)
 
@@ -282,11 +294,10 @@ def build_stage_command(config, config_path, stage_script_path, output_dir, outp
     else:  # SLURM modes
         if use_shifter:
             # SLURM with shifter (stages that need containers)
-            common_cfg = config.get("common", {})
-            container = common_cfg.get("container")
+            container, _ = resolve_stage_container(config, stage)
             if not container:
-                raise ValueError(f"Stage '{stage}' requires shifter container but 'common.container' not found in config")
-            
+                raise ValueError(f"Stage '{stage}' requires a container but neither common.stage_containers['{stage}'] nor common.container is set")
+
             srun_options = "--exact --kill-on-bad-exit=0 -u"
             # podman-hpc run wraps the task; the image is loaded once per node in the
             # SLURM preamble (no SBATCH --image directive — that was shifter-only).

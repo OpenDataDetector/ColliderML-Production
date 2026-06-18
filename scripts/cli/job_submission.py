@@ -129,12 +129,10 @@ class JobSubmitter:
         """Emit standard environment setup commands into the slurm script."""
         slurm.add_cmd(r"cd $HOME")
         slurm.add_cmd("export SLURM_CPU_BIND=\"cores\"")
-        # Single-container model: load the production image into each node's local
-        # podman-hpc store from a CFS tarball, once, before any task. (podman-hpc
-        # migrate is unreliable on login sessions; tarball+load on the node is robust.)
-        common_cfg = self.config.get("common", {})
-        container = common_cfg.get("container")
-        image_tar = common_cfg.get("container_tarball")
+        # Two-container model: load THIS job's stage image (sim or reco) into each
+        # node's local podman-hpc store from a CFS tarball, once, before any task.
+        # (podman-hpc migrate is unreliable on login sessions; tarball+load is robust.)
+        container, image_tar = cli_utils.resolve_stage_container(self.config, self.config.get("stage"))
         if container and image_tar:
             slurm.add_cmd("")
             slurm.add_cmd(f"echo 'Loading container image {container} on $(hostname)...'")
@@ -728,10 +726,8 @@ class JobSubmitter:
             ntasks=1
         )
 
-        # Single-container model: load the image and run validation inside it (no conda).
-        common_cfg = self.config.get("common", {})
-        container = common_cfg.get("container")
-        image_tar = common_cfg.get("container_tarball")
+        # Two-container model: load the stage's image and run validation inside it (no conda).
+        container, image_tar = cli_utils.resolve_stage_container(self.config, self.config.get("stage"))
         slurm.add_cmd("cd $HOME")
         if container and image_tar:
             slurm.add_cmd(f"podman-hpc image exists {container} || podman-hpc load -i {image_tar}")
