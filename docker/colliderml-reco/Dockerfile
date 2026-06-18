@@ -51,6 +51,10 @@ RUN bash /opt/steps/build_pandora.sh
 COPY steps/build_k4odd.sh /opt/steps/build_k4odd.sh
 RUN bash /opt/steps/build_k4odd.sh
 
+# --- base-image k4FWCore 1.3 <-> Gaudi 40 k4run fix (EventLoopMgr.Warnings) --
+COPY steps/patch_k4fwcore.sh /opt/steps/patch_k4fwcore.sh
+RUN bash /opt/steps/patch_k4fwcore.sh
+
 # --- reco-side postproc python libs (convert_pfos / convert_calo_digi) -------
 # Best-effort into the key4hep python; the converters are uproot/pyarrow based
 # and can also run in the sim image, but bake them so the reco image is
