@@ -21,6 +21,18 @@ cmake -S /opt/odd-src -B /tmp/odd-build \
   -DCMAKE_POLICY_VERSION_MINIMUM=3.5
 cmake --build /tmp/odd-build -j6 --target install
 rm -rf /tmp/odd-build
+
+# v6 types the muon system as DetType_MUON + BARREL/ENDCAP, but k4GaudiPandora's
+# DDGeometryCreator (DDGeometryCreator.cc:109) queries it as CALORIMETER|MUON|BARREL
+# (the muon system is treated as a tail-catcher calorimeter in particle flow, as in
+# CLD/ILD). Without the CALORIMETER bit, getExtension(0x2012) finds no muon detector
+# and Pandora FATALs at geometry setup. Add DetType_CALORIMETER to the muon type_flags.
+MUON_XML=$(find /opt/odd-install -name MuonSystem.xml | head -1)
+if [ -n "$MUON_XML" ]; then
+  sed -i 's/DetType_MUON +/DetType_CALORIMETER + DetType_MUON +/g' "$MUON_XML"
+  grep -q 'DetType_CALORIMETER + DetType_MUON' "$MUON_XML" && echo "patched muon type_flags (+CALORIMETER) in $MUON_XML"
+fi
+
 test -f /opt/odd-install/lib/libOpenDataDetector.so
 test -f /opt/odd-install/share/OpenDataDetector/xml/OpenDataDetector.xml
 echo "ODD ${ODD_REF} built -> /opt/odd-install"
