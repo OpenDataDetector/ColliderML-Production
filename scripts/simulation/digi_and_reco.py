@@ -122,9 +122,13 @@ def setup_acts_reconstruction(input_path, output_dir, config, rnd, logger=None):
         trackFpes=False,
     )
     
-    # Get detector and field
-    geoDir = getOpenDataDetectorDirectory()
-    
+    # Get detector and field. ODD_GEO_DIR overrides the ACTS-bundled ODD so ACTS
+    # tracking runs on the SAME geometry as the sim (e.g. azaborow/addLayeredCalo_MuonCoil
+    # for the calibrated charged-PF chain). The dir must hold xml/, data/odd-material-maps.root
+    # and config/odd-{digi-smearing,seeding}-config.json.
+    _geo_override = os.environ.get("ODD_GEO_DIR")
+    geoDir = Path(_geo_override) if _geo_override else getOpenDataDetectorDirectory()
+
     # Granular control of ROOT output and performance writers
     output_particles_root = getattr(config, "output_particles_root", False)
     output_simhits_root = getattr(config, "output_simhits_root", False)
