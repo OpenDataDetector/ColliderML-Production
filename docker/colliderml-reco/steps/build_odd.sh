@@ -1,38 +1,29 @@
 #!/bin/bash
-# ODD v6.0.2 geometry + libOpenDataDetector.so factory lib, built against the reco
-# image's key4hep DD4hep (1.32.1).
+# ODD geometry + libOpenDataDetector.so factory lib, built against the reco image's
+# key4hep DD4hep (1.32.1).
 #
-# Why v6 (not v4.0.4): v4's calorimeters use the stock DD4hep_PolyhedraBarrelCalorimeter2
-# plugin, which does NOT attach DetType type_flags — so under DD4hep 1.32.1 every calo
-# DetElement loads with typeFlag=0x0 and Pandora's getExtension(CALORIMETER|BARREL|EM)
-# finds nothing -> no PFOs. v6 ships its OWN ODDPolyhedraBarrelCalorimeter plugin (the
-# merged addLayeredCalo work) that sets the flags correctly (ECalBarrel -> 0x812 etc.),
-# which is exactly what the calibrated Pandora reco needs.
+# Geometry = gitlab.cern.ch/azaborow/OpenDataDetector branch addLayeredCalo_MuonCoil:
+# this is the EXACT geometry the calibrated Pandora reco was benchmarked/validated
+# against (k4ODD's CI clone_ODD test pins it). It has the layered ECAL/HCAL AND a
+# layered MUON calorimeter with the dd4hep::rec::LayeredCalorimeterData extension that
+# k4GaudiPandora's DDGeometryCreator requires for MUON_BARREL/ENDCAP. Stock acts ODD
+# (v4 / v6.0.2) differs: v4's calos don't set DetType flags at all, and v6.0.2's muon
+# is a spectrometer (ODDMuonBarrel) lacking LayeredCalorimeterData -> Pandora FATALs.
 #
 # pandora_reco.py / calo_digitization.py resolve geometry via ODD_INSTALL_DIR ->
-# $ODD_INSTALL_DIR/share/OpenDataDetector/xml/OpenDataDetector.xml, and this_odd.sh
-# puts libOpenDataDetector.so (the type_flag-setting plugin factory) on LD_LIBRARY_PATH.
+# $ODD_INSTALL_DIR/share/OpenDataDetector/xml/OpenDataDetector.xml; this_odd.sh puts
+# libOpenDataDetector.so (the type_flag + extension-setting plugin factory) on
+# LD_LIBRARY_PATH.
 set -e
 source /opt/key4hep-shim.sh
-ODD_REF="${ODD_REF:-v6.0.2}"
-git clone --depth 1 --branch "$ODD_REF" https://gitlab.cern.ch/acts/OpenDataDetector.git /opt/odd-src
+ODD_REPO="${ODD_REPO:-https://gitlab.cern.ch/azaborow/OpenDataDetector.git}"
+ODD_REF="${ODD_REF:-addLayeredCalo_MuonCoil}"
+git clone --depth 1 --single-branch --branch "$ODD_REF" "$ODD_REPO" /opt/odd-src
 cmake -S /opt/odd-src -B /tmp/odd-build \
   -DCMAKE_INSTALL_PREFIX=/opt/odd-install \
   -DCMAKE_POLICY_VERSION_MINIMUM=3.5
 cmake --build /tmp/odd-build -j6 --target install
 rm -rf /tmp/odd-build
-
-# v6 types the muon system as DetType_MUON + BARREL/ENDCAP, but k4GaudiPandora's
-# DDGeometryCreator (DDGeometryCreator.cc:109) queries it as CALORIMETER|MUON|BARREL
-# (the muon system is treated as a tail-catcher calorimeter in particle flow, as in
-# CLD/ILD). Without the CALORIMETER bit, getExtension(0x2012) finds no muon detector
-# and Pandora FATALs at geometry setup. Add DetType_CALORIMETER to the muon type_flags.
-MUON_XML=$(find /opt/odd-install -name MuonSystem.xml | head -1)
-if [ -n "$MUON_XML" ]; then
-  sed -i 's/DetType_MUON +/DetType_CALORIMETER + DetType_MUON +/g' "$MUON_XML"
-  grep -q 'DetType_CALORIMETER + DetType_MUON' "$MUON_XML" && echo "patched muon type_flags (+CALORIMETER) in $MUON_XML"
-fi
-
 test -f /opt/odd-install/lib/libOpenDataDetector.so
 test -f /opt/odd-install/share/OpenDataDetector/xml/OpenDataDetector.xml
 echo "ODD ${ODD_REF} built -> /opt/odd-install"
