@@ -58,9 +58,15 @@ def run_pandora_reco(input_file, output_dir, config, logger):
     track_collection = getattr(config, "track_collection", None) or "ActsTracks"
     charged = track_collection != "EmptyTracks"
 
+    # Always pass an ABSOLUTE settings path. ODDreconstruction.py's default resolves it
+    # via os.path.abspath(__file__), but k4run exec()s the options file so __file__ points
+    # at the k4FWCore package dir, not k4ODD/options -> the default path is wrong and
+    # Pandora dies with "Invalid xml file". Setting K4ODD_PANDORA_SETTINGS (below) sidesteps
+    # that. Charged -> CLD; calo-only (EmptyTracks) -> Minimal.
     pandora_settings = getattr(config, "pandora_settings", None)
-    if pandora_settings is None and charged:
-        pandora_settings = str(Path(k4odd_base) / "k4ODD/options/PandoraSettingsCLD.xml")
+    if pandora_settings is None:
+        _settings_name = "PandoraSettingsCLD.xml" if charged else "PandoraSettingsMinimal.xml"
+        pandora_settings = str(Path(k4odd_base) / "k4ODD/options" / _settings_name)
 
     input_file = input_file.resolve()
     output_file = (output_dir / "reco_edm4hep.root").resolve()
