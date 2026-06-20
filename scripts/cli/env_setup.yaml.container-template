@@ -1,17 +1,17 @@
-# ColliderML Environment Setup — SINGLE-CONTAINER variant
+# ColliderML Environment Setup — TWO-CONTAINER variant
 # =====================================================================
-# Every pipeline stage runs inside ONE self-contained image (the OpenDataDetector/sw
-# spack image + our acts-arrow overlay), via podman-hpc, replacing the old patchwork of
-# shifter-ATLAS + LCG cvmfs + bare-metal acts/dd4hep + conda.
+# Stages run inside ONE of two self-contained images via podman-hpc, replacing the old
+# patchwork of shifter-ATLAS + LCG/key4hep cvmfs + bare-metal acts/dd4hep + conda:
+#   - SIM image  (OpenDataDetector/sw spack image + acts-arrow overlay): gen, ddsim,
+#     ACTS digi/tracking, the uproot-based converters.
+#   - RECO image (key4hep + calibrated Pandora): calo_digitization + pandora_reco.
+# Per-stage routing is via common.stage_containers (see cli_utils.resolve_stage_container).
 #
 # Path model: podman-hpc mounts /global/cfs/cdirs/m4958 and $PSCRATCH at their SAME
-# absolute paths inside the container (see cli_utils.build_podman_run_prefix), so host
-# absolute paths in commands need no translation. The only in-image-only paths are the
-# baked software: /spack, /opt/acts-arrow.
-#
-# Each stage block just sources the in-container env assembler. No cvmfs, no bare-metal.
-# (The reco container — calo_digitization / pandora_reco — is layered on top of this in
-# a follow-up; this template covers the sim-side run mechanism only.)
+# absolute paths inside the container, so host absolute paths in commands need no
+# translation. The only in-image-only paths are the baked software: /spack,
+# /opt/acts-arrow (sim); /opt/key4hep-shim.sh, /opt/pandora-stack, /opt/k4ODD,
+# /opt/odd-install (reco).
 # =====================================================================
 
 env_variables:
@@ -19,21 +19,40 @@ env_variables:
   # In-container env assembler (lives on CFS, mounted at the same path). Sets up
   # PATH/LD_LIBRARY_PATH/PYTHONPATH for the whole spack stack + ACTS + ODD + python.
   CONTAINER_SETUP: "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-prod-container/scripts/cli/setup_container_env.sh"
-  # Arrow-enabled ACTS overlay (baked in the image): overrides the spack ACTS.
+  # Arrow-enabled ACTS overlay (baked in the SIM image): overrides the spack ACTS.
   ACTS_ARROW_SETUP: "/opt/acts-arrow/setup.sh"
+  # --- RECO image (key4hep + Pandora), baked paths ---
+  # key4hep activation shim: in-image Gaudi + k4FWCore (k4run) on PATH without cvmfs.
+  KEY4HEP_SHIM: "/opt/key4hep-shim.sh"
+  # Calibrated Pandora stack (LCContent + k4GaudiPandora + k4DetectorPerformance).
+  PANDORA_STACK_SETUP: "/opt/pandora-stack/install/setup_stack.sh"
+  # azaborow ODD geometry (baked): ODD_INSTALL is what ODDdigitisation/ODDreconstruction
+  # read as ODD_INSTALL_DIR to find share/OpenDataDetector/xml/OpenDataDetector.xml.
+  ODD_THIS_SCRIPT: "/opt/odd-install/bin/this_odd.sh"
+  ODD_INSTALL: "/opt/odd-install"
+  # k4ODD: K4ODD_PATH = repo clone (options at $K4ODD_PATH/k4ODD/options/...);
+  # K4ODD_INSTALL/lib carries libk4ODDPlugins.so.
+  K4ODD_PATH: "/opt/k4ODD"
+  K4ODD_INSTALL: "/opt/k4ODD/install"
 
 config_defaults:
   common:
     account: m4958
-    # The local podman-hpc image tag (loaded from a CFS tarball on each node).
+    # Default (SIM) image, loaded from a CFS tarball on each node.
     container: "localhost/colliderml/acts-arrow:tracker-hits-v2-tables"
-    # CFS tarball loaded into each node's podman-hpc store at job start.
     container_tarball: "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/stress_mu200/thv2_image.tar"
+    # Per-stage overrides: the reco stages run in the key4hep/Pandora image.
+    stage_containers:
+      calo_digitization:
+        container: "localhost/colliderml/reco:20260618"
+        container_tarball: "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/stress_mu200/reco_image.tar"
+      pandora_reco:
+        container: "localhost/colliderml/reco:20260618"
+        container_tarball: "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/stress_mu200/reco_image.tar"
     output_base_dir: "/global/cfs/cdirs/m4958/data/ColliderML/simulation"
     public_output_base_dir: "/global/cfs/cdirs/m4958/data/ColliderML/public"
 
   madgraph:
-    # MadGraph 3.5.9 is in the image (spack). generation scratch on $PSCRATCH.
     mg_base_path: "MG5_IN_IMAGE"   # resolved in-container by setup_container_env.sh ($SPACK_BASE/madgraph5amc-*)
     generation_scratch_dir: "/pscratch/sd/d/danieltm/ColliderML/mg_scratch"
     output: "/pscratch/sd/d/danieltm/ColliderML/simulation"
@@ -45,16 +64,35 @@ config_defaults:
 # Per-stage setup — every block sources the in-container assembler.
 # =====================================================================
 
-# Generation + simulation + ACTS digitization/tracking: spack stack + arrow ACTS.
+# Generation + simulation + ACTS digitization/tracking: spack stack + arrow ACTS (SIM image).
 simulation:
   - 'source {CONTAINER_SETUP}'
   - 'source {ACTS_ARROW_SETUP}'
 
-# MadGraph: same image (MG5/Pythia8/LHAPDF + bc + MG5_PY8 interface handled by the assembler).
+# MadGraph: same SIM image (MG5/Pythia8/LHAPDF + bc + MG5_PY8 interface via the assembler).
 madgraph:
   - 'source {CONTAINER_SETUP}'
 
-# Postprocessing/convert_*: python libs (polars/pyarrow/uproot/pyedm4hep) baked into the
-# image's python and put on PYTHONPATH by the assembler. No conda.
+# Calo digitisation (RECO image): key4hep/Gaudi world + Pandora stack + k4ODD + ODD geometry.
+calo_digitization:
+  - 'source {KEY4HEP_SHIM}'
+  - 'source {PANDORA_STACK_SETUP}'
+  - 'source {ODD_THIS_SCRIPT}'
+  - 'export K4ODD_PATH={K4ODD_PATH}'
+  - 'export ODD_INSTALL_DIR={ODD_INSTALL}'
+  - 'export LD_LIBRARY_PATH={K4ODD_INSTALL}/lib:{K4ODD_INSTALL}/lib64:$LD_LIBRARY_PATH'
+  - 'export PYTHONPATH={K4ODD_INSTALL}/python:$PYTHONPATH'
+
+# Pandora particle-flow reconstruction (RECO image): same key4hep/Pandora env as calo digi.
+pandora_reco:
+  - 'source {KEY4HEP_SHIM}'
+  - 'source {PANDORA_STACK_SETUP}'
+  - 'source {ODD_THIS_SCRIPT}'
+  - 'export K4ODD_PATH={K4ODD_PATH}'
+  - 'export ODD_INSTALL_DIR={ODD_INSTALL}'
+  - 'export LD_LIBRARY_PATH={K4ODD_INSTALL}/lib:{K4ODD_INSTALL}/lib64:$LD_LIBRARY_PATH'
+  - 'export PYTHONPATH={K4ODD_INSTALL}/python:$PYTHONPATH'
+
+# Postprocessing/convert_*: python libs baked into the SIM image's python. No conda.
 postprocessing:
   - 'source {CONTAINER_SETUP}'
