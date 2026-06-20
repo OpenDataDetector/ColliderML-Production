@@ -1,0 +1,60 @@
+# ColliderML Environment Setup — SINGLE-CONTAINER variant
+# =====================================================================
+# Every pipeline stage runs inside ONE self-contained image (the OpenDataDetector/sw
+# spack image + our acts-arrow overlay), via podman-hpc, replacing the old patchwork of
+# shifter-ATLAS + LCG cvmfs + bare-metal acts/dd4hep + conda.
+#
+# Path model: podman-hpc mounts /global/cfs/cdirs/m4958 and $PSCRATCH at their SAME
+# absolute paths inside the container (see cli_utils.build_podman_run_prefix), so host
+# absolute paths in commands need no translation. The only in-image-only paths are the
+# baked software: /spack, /opt/acts-arrow.
+#
+# Each stage block just sources the in-container env assembler. No cvmfs, no bare-metal.
+# (The reco container — calo_digitization / pandora_reco — is layered on top of this in
+# a follow-up; this template covers the sim-side run mechanism only.)
+# =====================================================================
+
+env_variables:
+  SOFTWARE_BASE_DIR: "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software"
+  # In-container env assembler (lives on CFS, mounted at the same path). Sets up
+  # PATH/LD_LIBRARY_PATH/PYTHONPATH for the whole spack stack + ACTS + ODD + python.
+  CONTAINER_SETUP: "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-prod-container/scripts/cli/setup_container_env.sh"
+  # Arrow-enabled ACTS overlay (baked in the image): overrides the spack ACTS.
+  ACTS_ARROW_SETUP: "/opt/acts-arrow/setup.sh"
+
+config_defaults:
+  common:
+    account: m4958
+    # The local podman-hpc image tag (loaded from a CFS tarball on each node).
+    container: "localhost/colliderml/acts-arrow:tracker-hits-v2-tables"
+    # CFS tarball loaded into each node's podman-hpc store at job start.
+    container_tarball: "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/stress_mu200/thv2_image.tar"
+    output_base_dir: "/global/cfs/cdirs/m4958/data/ColliderML/simulation"
+    public_output_base_dir: "/global/cfs/cdirs/m4958/data/ColliderML/public"
+
+  madgraph:
+    # MadGraph 3.5.9 is in the image (spack). generation scratch on $PSCRATCH.
+    mg_base_path: "MG5_IN_IMAGE"   # resolved in-container by setup_container_env.sh ($SPACK_BASE/madgraph5amc-*)
+    generation_scratch_dir: "/pscratch/sd/d/danieltm/ColliderML/mg_scratch"
+    output: "/pscratch/sd/d/danieltm/ColliderML/simulation"
+
+  templates:
+    pythia8_card_fxfx: "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-prod-container/configs_production/templates/pythia8_card_fxfx_template.dat"
+
+# =====================================================================
+# Per-stage setup — every block sources the in-container assembler.
+# =====================================================================
+
+# Generation + simulation + ACTS digitization/tracking: spack stack + arrow ACTS.
+simulation:
+  - 'source {CONTAINER_SETUP}'
+  - 'source {ACTS_ARROW_SETUP}'
+
+# MadGraph: same image (MG5/Pythia8/LHAPDF + bc + MG5_PY8 interface handled by the assembler).
+madgraph:
+  - 'source {CONTAINER_SETUP}'
+
+# Postprocessing/convert_*: python libs (polars/pyarrow/uproot/pyedm4hep) baked into the
+# image's python and put on PYTHONPATH by the assembler. No conda.
+postprocessing:
+  - 'source {CONTAINER_SETUP}'
