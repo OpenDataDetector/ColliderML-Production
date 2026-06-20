@@ -1,0 +1,65 @@
+name: Charged-PF two-container e2e
+
+# End-to-end test of the charged particle-flow chain across the two production images:
+# the sim image runs ddsim + digi_and_reco (ACTS tracking -> sim_with_tracks.root with an
+# ActsTracks edm4hep collection), the reco image runs pandora_reco on it (charged PF) and
+# we assert GaudiPandoraPFOs come out. This exercises the new sim_with_tracks integration
+# in digi_and_reco.py and the full sim->reco handoff that per-image smoke tests can't.
+#
+# HEAVY (two ~25 GB images + Geant4 + Pandora) -> dispatch + nightly only, never per-PR,
+# never gates a merge. Point `runner` at a self-hosted / larger runner when available.
+
+on:
+  workflow_dispatch:
+    inputs:
+      sim_image:
+        description: "Sim image (acts-arrow)"
+        default: "ghcr.io/opendatadetector/sw:tracker-hits-v2-tables"
+      reco_image:
+        description: "Reco image (Pandora)"
+        default: "ghcr.io/opendatadetector/sw:pandora"
+      n_events:
+        description: "Number of gun events"
+        default: "2"
+      runner:
+        description: "Runner label"
+        default: "ubuntu-24.04"
+  schedule:
+    - cron: "50 4 * * *"
+
+jobs:
+  e2e:
+    runs-on: ${{ github.event.inputs.runner || 'ubuntu-24.04' }}
+    permissions:
+      contents: read
+      packages: read
+    env:
+      SIM_IMAGE: ${{ github.event.inputs.sim_image || 'ghcr.io/opendatadetector/sw:tracker-hits-v2-tables' }}
+      RECO_IMAGE: ${{ github.event.inputs.reco_image || 'ghcr.io/opendatadetector/sw:pandora' }}
+      NEV: ${{ github.event.inputs.n_events || '2' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Free disk
+        run: |
+          df -h
+          sudo rm -rf /usr/local/lib/android /opt/ghc /usr/share/dotnet /opt/hostedtoolcache || true
+          df -h
+
+      # The Pandora/sim images live in the OpenDataDetector/sw package registry. If they are
+      # private, this token needs read access to those packages (or supply a PAT secret).
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Pull both images
+        run: |
+          docker pull "$SIM_IMAGE"
+          docker pull "$RECO_IMAGE"
+
+      - name: Run charged-PF two-container e2e
+        run: |
+          chmod +x tests/e2e/run_two_container_e2e.sh
+          tests/e2e/run_two_container_e2e.sh "$SIM_IMAGE" "$RECO_IMAGE" "$NEV"

@@ -1,3 +1,4 @@
+import os
 import time
 from pathlib import Path
 import acts
@@ -142,16 +143,23 @@ def configure_detector(ddsim):
     Returns:
         DD4hepSimulation: Configured DD4hepSimulation instance
     """
-    # Get detector XML
-    odd_dir = getOpenDataDetectorDirectory()
-    odd_xml = odd_dir / "xml" / "OpenDataDetector.xml"
-    
+    # Geometry override: ODD_COMPACT_FILE lets the pipeline pin a specific ODD compact
+    # file so SIM and RECO share the SAME geometry. The calibrated Pandora reco needs the
+    # azaborow/addLayeredCalo_MuonCoil geometry (layered ECAL/HCAL/Muon), so point both
+    # containers at it. Falls back to the ACTS-bundled ODD when unset.
+    odd_override = os.environ.get("ODD_COMPACT_FILE")
+    if odd_override:
+        odd_xml = odd_override
+    else:
+        odd_dir = getOpenDataDetectorDirectory()
+        odd_xml = str(odd_dir / "xml" / "OpenDataDetector.xml")
+
     # Configure DD4hep # TODO: This logic is probably backwards!!
     if isinstance(ddsim.compactFile, list):
         ddsim.compactFile = [str(odd_xml)]
     else:
         ddsim.compactFile = str(odd_xml)
-    
+
     return ddsim
 
 def configure_physics(ddsim, config, logger):

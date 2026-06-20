@@ -1,3 +1,4 @@
+import os
 import time
 from pathlib import Path
 import acts
@@ -33,7 +34,12 @@ from utils.app_logging import setup_logging, TimingRecorder
 from utils.config import create_base_parser, load_config
 from contextlib import contextmanager
 import math
-from acts.examples.edm4hep import EDM4hepSimInputConverter, PodioReader
+from acts.examples.edm4hep import (
+    EDM4hepSimInputConverter,
+    PodioReader,
+    EDM4hepTrackOutputConverter,
+    PodioWriter,
+)
 
 u = acts.UnitConstants
 
@@ -122,9 +128,13 @@ def setup_acts_reconstruction(input_path, output_dir, config, rnd, logger=None):
         trackFpes=False,
     )
     
-    # Get detector and field
-    geoDir = getOpenDataDetectorDirectory()
-    
+    # Get detector and field. ODD_GEO_DIR overrides the ACTS-bundled ODD so ACTS
+    # tracking runs on the SAME geometry as the sim (e.g. azaborow/addLayeredCalo_MuonCoil
+    # for the calibrated charged-PF chain). The dir must hold xml/, data/odd-material-maps.root
+    # and config/odd-{digi-smearing,seeding}-config.json.
+    _geo_override = os.environ.get("ODD_GEO_DIR")
+    geoDir = Path(_geo_override) if _geo_override else getOpenDataDetectorDirectory()
+
     # Granular control of ROOT output and performance writers
     output_particles_root = getattr(config, "output_particles_root", False)
     output_simhits_root = getattr(config, "output_simhits_root", False)
@@ -181,7 +191,15 @@ def setup_acts_reconstruction(input_path, output_dir, config, rnd, logger=None):
     # Only the Arrow-enabled ACTS build supports outputMCParticleMap (PR #5410);
     # pass it solely when we need the native parquet path so the legacy image's
     # converter signature is untouched.
-    _sim_extra = {"outputMCParticleMap": "mcparticle_index_map"} if want_arrow else {}
+    # Feature-detect: the colliderml fork's converter had outputMCParticleMap
+    # (feeding the calo truth path); the tracker-hits-v2 rebase dropped it along
+    # with the whole calo input/output machinery (#5441 not re-applied).
+    _supports_mcmap = want_arrow and hasattr(
+        EDM4hepSimInputConverter.Config(), "outputMCParticleMap"
+    )
+    _sim_extra = (
+        {"outputMCParticleMap": "mcparticle_index_map"} if _supports_mcmap else {}
+    )
     edm4hepConverter = EDM4hepSimInputConverter(
         level=LOG_LEVEL,
         inputFrame="events",
@@ -216,7 +234,12 @@ def setup_acts_reconstruction(input_path, output_dir, config, rnd, logger=None):
     # MCParticle index map (PR #5441). Detector codes match v1's
     # CALO_DETECTOR_CODES (scripts/postprocessing/utils/detector_enums.py) so
     # the parquet `detector` enum is identical to convert_all.py output.
-    if want_arrow:
+    if want_arrow and not hasattr(acts.examples.edm4hep, "EDM4hepCaloHitInputConverter"):
+        logger.warning(
+            "This ACTS build has no EDM4hepCaloHitInputConverter (tracker-hits-v2 "
+            "dropped the #5441 calo machinery) - skipping native calo parquet; "
+            "use convert_calo_digi.py on the Pandora reco output instead.")
+    elif want_arrow:
         _cc = acts.examples.edm4hep.CaloCollectionDetectorCodes
         caloConverter = acts.examples.edm4hep.EDM4hepCaloHitInputConverter(
             level=LOG_LEVEL,
@@ -512,6 +535,32 @@ def setup_acts_reconstruction(input_path, output_dir, config, rnd, logger=None):
                 outputDirRoot=output_dir if getattr(config, 'output_root', True) else None,
             )
     
+    # Optional: write the edm4hep sim+tracks file the Pandora reco stage consumes.
+    # After ambiguity resolution the resolved ACTS tracks live under the "tracks" alias;
+    # convert them to an edm4hep::Track collection ("ActsTracks") and append it onto the
+    # original ddsim "events" frame (calo SimHits + MCParticles) via PodioWriter
+    # (inputFrame="events"), so pandora_reco gets tracks + calo in ONE file. The metadata
+    # frames PodioWriter drops (<coll>__CellIDEncoding) are restored post-run in main()
+    # (else the reco stage's DDCaloDigi fails with "bad optional access"). Bz must match
+    # the ODD nominal field (3 T) AND Pandora's field, or reconstructed momentum is scaled.
+    if getattr(config, "output_sim_with_tracks", False) and reco_enabled:
+        track_converter = EDM4hepTrackOutputConverter(
+            level=LOG_LEVEL,
+            inputTracks="tracks",
+            outputTracks="ActsTracks",
+            Bz=3 * u.T,
+        )
+        s.addAlgorithm(track_converter)
+        s.addWriter(
+            PodioWriter(
+                level=LOG_LEVEL,
+                outputPath=str(output_dir / "sim_with_tracks.root"),
+                category="events",
+                inputFrame="events",
+                collections=track_converter.collections,
+            )
+        )
+
     # Add ROOT writers for particles/simhits if requested
     if output_particles_root or output_simhits_root:
         add_root_writers(s, output_dir, field, config)
@@ -568,6 +617,41 @@ def add_root_writers(s, output_dir, field, config=None):
             )
         )
 
+def _restore_metadata_frames(with_tracks, sim, logger=None):
+    """Copy non-`events` frames (metadata/runs/meta) from the original ddsim file into the
+    sim+tracks file ACTS's PodioWriter just wrote. PodioWriter only writes the `events`
+    category, dropping the metadata frames ddsim wrote — without them the downstream reco
+    stage's DDCaloDigi fails with "bad optional access" (missing <coll>__CellIDEncoding).
+    Rewrites with_tracks in place via a temp file + rename."""
+    from podio import root_io
+    with_tracks = Path(with_tracks)
+    sim = Path(sim)
+    if not with_tracks.exists() or not sim.exists():
+        if logger:
+            logger.warning(f"metadata restore skipped (missing {with_tracks} or {sim})")
+        return
+    tmp_out = with_tracks.with_suffix(with_tracks.suffix + ".tmp")
+    src_reader = root_io.Reader(str(with_tracks))
+    src_categories = list(src_reader.categories)
+    sim_reader = root_io.Reader(str(sim))
+    sim_categories = list(sim_reader.categories)
+    writer = root_io.Writer(str(tmp_out))
+    # 1) copy everything already in the sim+tracks file (events + tracks)
+    for category in src_categories:
+        for frame in src_reader.get(category):
+            writer.write_frame(frame, category)
+    # 2) copy non-events frames from the original sim (metadata, runs, meta)
+    for category in sim_categories:
+        if category in src_categories:
+            continue
+        for frame in sim_reader.get(category):
+            writer.write_frame(frame, category)
+    del writer, src_reader, sim_reader  # close before rename
+    os.replace(tmp_out, with_tracks)
+    if logger:
+        logger.info(f"restored metadata frames into {with_tracks}")
+
+
 def main():
     logger = setup_logging()
     try:
@@ -592,7 +676,12 @@ def main():
         with timer.record("ACTS Reconstruction"):
             s = setup_acts_reconstruction(input_path, output_dir, config, rnd, logger)
             s.run()
-        
+
+        # Restore metadata frames the PodioWriter dropped from sim_with_tracks.root, so the
+        # downstream Pandora reco stage (DDCaloDigi) can find <coll>__CellIDEncoding.
+        if getattr(config, "output_sim_with_tracks", False) and getattr(config, "reco", False):
+            _restore_metadata_frames(output_dir / "sim_with_tracks.root", input_path, logger)
+
         # Write timing report
         timer.write_report()
         
