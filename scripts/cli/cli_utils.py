@@ -111,7 +111,50 @@ def get_env_setup_cmds(config):
 
     return processed_cmds
 
-def build_stage_command(config, config_path, stage_script_path, output_dir, output_subdir="0", 
+# --- Single-container run model ----------------------------------------------
+# Every stage runs inside ONE podman-hpc image (replacing shifter-ATLAS + cvmfs +
+# bare-metal + conda). Host paths need no translation: we bind-mount the CFS project
+# root and $PSCRATCH at their SAME absolute paths inside the container, so absolute
+# paths in commands resolve identically in- and out-of-container. /spack, /opt/* are
+# baked in the image.
+CONTAINER_BIND_PATHS = [
+    "/global/cfs/cdirs/m4958",
+    "/pscratch/sd/d/danieltm",
+]
+
+def build_podman_run_prefix(container, srun_options=None, cache_dir=None):
+    """Return the `[srun ...] podman-hpc run ... bash -c "` prefix (opening quote, no
+    close — the caller appends `<env && python>"`). Mirrors the old shifter prefix so
+    the downstream assembly in job_submission is reused unchanged.
+
+    cache_dir: if set, mount it at the same path + export COLLIDERML_CACHE (the
+    NOT-baked arrow image populates it at runtime). For the production image the cache
+    is BAKED, so leave cache_dir unset and the image's own COLLIDERML_CACHE wins."""
+    if not container:
+        raise ValueError("common.container must be set (the local podman-hpc image tag)")
+    mounts = " ".join(f"-v {p}:{p}" for p in CONTAINER_BIND_PATHS if os.path.isdir(p))
+    cache = ""
+    if cache_dir:
+        cache = f"-v {cache_dir}:{cache_dir} -e COLLIDERML_CACHE={cache_dir} "
+    run = (f"podman-hpc run --rm {mounts} {cache}"
+           f"--entrypoint /bin/bash {container} -c \"")
+    return f"srun {srun_options} {run}" if srun_options else run
+
+
+def resolve_stage_container(config, stage):
+    """Resolve (container, tarball) for a stage in the two-container model.
+
+    A per-stage override in common.stage_containers[<stage>] (the key4hep reco image
+    for calo_digitization/pandora_reco + the reco-side converters) wins; otherwise the
+    common default (the sw-based sim image). Returns (container_tag, tarball_path)."""
+    common_cfg = config.get("common", {})
+    override = (common_cfg.get("stage_containers") or {}).get(stage) or {}
+    container = override.get("container") or common_cfg.get("container")
+    tarball = override.get("container_tarball") or common_cfg.get("container_tarball")
+    return container, tarball
+
+
+def build_stage_command(config, config_path, stage_script_path, output_dir, output_subdir="0",
                        execution_mode="interactive", slurm_procid_offset=0, run_id_expr=None):
     """
     Build the complete command setup for running a stage, handling both simulation and postprocessing stages.
@@ -146,9 +189,11 @@ def build_stage_command(config, config_path, stage_script_path, output_dir, outp
     
     # Get environment setup commands
     env_setup_cmds = get_env_setup_cmds(config)
-    
-    # Determine if we need shifter (only specific stages need it)
-    use_shifter = stage in SHIFTER_STAGES
+
+    # Single-container model: EVERY stage runs in the one podman-hpc image. The
+    # `use_shifter` flag is kept True so job_submission reuses the same assembly path
+    # (it just wraps a `bash -c "..."` prefix); the prefix is podman-hpc, not shifter.
+    use_shifter = True
     
     # Build the main Python command
     python_cmd_parts = [
@@ -212,14 +257,14 @@ def build_stage_command(config, config_path, stage_script_path, output_dir, outp
     if execution_mode == "interactive":
         if use_shifter:
             # Interactive mode with shifter
-            common_cfg = config.get("common", {})
-            container = common_cfg.get("container")
+            container, _ = resolve_stage_container(config, stage)
             if not container:
-                raise ValueError(f"Stage '{stage}' requires shifter container but 'common.container' not found in config")
-            
-            shifter_cmd = f"shifter --image={container} --module=cvmfs bash -c \""
-            
-            # Combine env setup and python command inside shifter
+                raise ValueError(f"Stage '{stage}' requires a container but neither common.stage_containers['{stage}'] nor common.container is set")
+
+            cache_dir = config.get("common", {}).get("cache_dir")
+            shifter_cmd = build_podman_run_prefix(container, cache_dir=cache_dir)
+
+            # Combine env setup and python command inside the container
             inner_commands = env_setup_cmds + [python_command]
             inner_command_str = " && ".join(inner_commands)
             
@@ -248,17 +293,17 @@ def build_stage_command(config, config_path, stage_script_path, output_dir, outp
     else:  # SLURM modes
         if use_shifter:
             # SLURM with shifter (stages that need containers)
-            common_cfg = config.get("common", {})
-            container = common_cfg.get("container")
+            container, _ = resolve_stage_container(config, stage)
             if not container:
-                raise ValueError(f"Stage '{stage}' requires shifter container but 'common.container' not found in config")
-            
-            srun_options = "--exact --kill-on-bad-exit=0"
-            # Note: --image and --module moved to SBATCH directives for performance
-            shifter_cmd = f"srun {srun_options} -u shifter bash -c \""
-            
-            # Environment setup commands are added inside the shifter container
-            # Python command is also inside
+                raise ValueError(f"Stage '{stage}' requires a container but neither common.stage_containers['{stage}'] nor common.container is set")
+
+            srun_options = "--exact --kill-on-bad-exit=0 -u"
+            # podman-hpc run wraps the task; the image is loaded once per node in the
+            # SLURM preamble (no SBATCH --image directive — that was shifter-only).
+            cache_dir = config.get("common", {}).get("cache_dir")
+            shifter_cmd = build_podman_run_prefix(container, srun_options=srun_options, cache_dir=cache_dir)
+
+            # Environment setup commands + python command run inside the container.
             return {
                 "use_shifter": True,
                 "shifter_command": shifter_cmd,

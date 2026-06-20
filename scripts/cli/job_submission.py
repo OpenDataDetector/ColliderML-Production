@@ -129,6 +129,16 @@ class JobSubmitter:
         """Emit standard environment setup commands into the slurm script."""
         slurm.add_cmd(r"cd $HOME")
         slurm.add_cmd("export SLURM_CPU_BIND=\"cores\"")
+        # Two-container model: load THIS job's stage image (sim or reco) into each
+        # node's local podman-hpc store from a CFS tarball, once, before any task.
+        # (podman-hpc migrate is unreliable on login sessions; tarball+load is robust.)
+        container, image_tar = cli_utils.resolve_stage_container(self.config, self.config.get("stage"))
+        if container and image_tar:
+            slurm.add_cmd("")
+            slurm.add_cmd(f"echo 'Loading container image {container} on $(hostname)...'")
+            slurm.add_cmd(
+                f"podman-hpc image exists {container} || podman-hpc load -i {image_tar}"
+            )
     
     def add_validation_and_guardian_to_script(self, slurm, runs_dir, run_range=None, run_list=None):
         """
@@ -416,14 +426,9 @@ class JobSubmitter:
         setattr(slurm.namespace, "requeue", "")  # Boolean flag - no value
         setattr(slurm.namespace, "open-mode", "append")  # Flag with value
         
-        # Add shifter image to SBATCH directives if needed (for performance)
-        # Use setattr to add custom directive with multiple options on one line
-        stage = self.config["stage"]
-        if stage in cli_utils.SHIFTER_STAGES:
-            container = common_cfg.get("container")
-            if container:
-                # Direct attribute injection: image value includes both --image and --module
-                setattr(slurm.namespace, "image", f"{container} --module=cvmfs")
+        # (No SBATCH --image directive: that was shifter-only. The single-container
+        # model uses `podman-hpc run` inside each task; the image is loaded once per
+        # node in the preamble via cli_utils image-load command.)
         
         # Calculate run offset based on run range or normal distribution
         previous_runs = self.compute_previous_runs(node_idx)
@@ -674,14 +679,9 @@ class JobSubmitter:
         setattr(slurm.namespace, "requeue", "")  # Boolean flag - no value
         setattr(slurm.namespace, "open-mode", "append")  # Flag with value
         
-        # Add shifter image to SBATCH directives if needed (for performance)
-        # Use setattr to add custom directive with multiple options on one line
-        stage = self.config["stage"]
-        if stage in cli_utils.SHIFTER_STAGES:
-            container = common_cfg.get("container")
-            if container:
-                # Direct attribute injection: image value includes both --image and --module
-                setattr(slurm.namespace, "image", f"{container} --module=cvmfs")
+        # (No SBATCH --image directive: that was shifter-only. The single-container
+        # model uses `podman-hpc run` inside each task; the image is loaded once per
+        # node in the preamble via cli_utils image-load command.)
 
         # Add srun command invoking tasks across nodes
         self._add_multinode_commands(slurm)
@@ -726,10 +726,11 @@ class JobSubmitter:
             ntasks=1
         )
 
-        # Basic env setup (reuse production env)
-        slurm.add_cmd("cd /global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software")
-        slurm.add_cmd("eval \"$(conda shell.bash hook)\"")
-        slurm.add_cmd("conda activate collider-env")
+        # Two-container model: load the stage's image and run validation inside it (no conda).
+        container, image_tar = cli_utils.resolve_stage_container(self.config, self.config.get("stage"))
+        slurm.add_cmd("cd $HOME")
+        if container and image_tar:
+            slurm.add_cmd(f"podman-hpc image exists {container} || podman-hpc load -i {image_tar}")
 
         # Locate validation script: prefer simulation/validation then fallback
         validation_script_full_path = None
@@ -748,11 +749,16 @@ class JobSubmitter:
             # Fall back to a standard path; may fail at runtime if not present
             validation_script_full_path = f"colliderml_dev/scripts/simulation/validation/validate_{self.config['stage']}.py"
 
-        # Validation CLI: stage and runs directory
-        cmd = (f"python {validation_script_full_path} "
-               f"--stage {self.config['stage']} "
-               f"--runs-dir {self.run_dir}")
-
+        # Validation CLI: stage and runs directory, wrapped in the container.
+        env_cmds = cli_utils.get_env_setup_cmds(self.config)
+        py = (f"python {validation_script_full_path} "
+              f"--stage {self.config['stage']} --runs-dir {self.run_dir}")
+        inner = " && ".join(env_cmds + [py]) if env_cmds else py
+        if container:
+            prefix = cli_utils.build_podman_run_prefix(container)  # ends with: bash -c \"
+            cmd = f"{prefix}{inner}\""
+        else:
+            cmd = inner
         slurm.add_cmd(cmd)
 
         if self.dry_run:
