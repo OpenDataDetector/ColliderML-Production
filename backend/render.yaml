@@ -46,6 +46,17 @@ services:
       - key: NERSC_USER
         value: ""
 
+      # --- Copilot LLM proxy (/v1/chat) ---
+      # Set ANTHROPIC_API_KEY (or OPENAI_API_KEY) in the Render dashboard to
+      # enable the docs assistant + workflow-builder copilot. Left unset, the
+      # endpoint returns a graceful "not configured" message.
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: CHAT_MODEL
+        value: "claude-sonnet-4-6"
+
       # --- HuggingFace uploads ---
       # Optional in mock mode. If set, completed jobs get uploaded to this org.
       - key: HF_TOKEN
