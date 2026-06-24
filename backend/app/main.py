@@ -86,6 +86,10 @@ app.include_router(leaderboard_router)
 from app.webhooks import router as webhooks_router  # noqa: E402
 app.include_router(webhooks_router)
 
+# Copilot chat proxy: docs assistant + workflow-builder agent (POST /v1/chat)
+from app.chat import router as chat_router  # noqa: E402
+app.include_router(chat_router)
+
 
 # ===========================================================================
 # Public / user routes
