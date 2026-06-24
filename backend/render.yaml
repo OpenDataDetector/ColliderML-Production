@@ -15,7 +15,7 @@ services:
     name: colliderml-backend
     runtime: docker
     region: oregon
-    plan: starter                    # free tier; upgrade to standard for custom domain
+    plan: free                       # free instance (spins down when idle); bump to starter/standard for always-on + custom domain
     branch: staging
     autoDeploy: true
     rootDir: backend
@@ -72,7 +72,7 @@ services:
       - key: SMTP_USER
         value: ""
       - key: SMTP_PASSWORD
-        sync: false
+        value: ""        # optional; set in dashboard only if you wire up email
       - key: SMTP_FROM
         value: "colliderml@noreply.example"
 
@@ -84,7 +84,7 @@ services:
 
       # --- GitHub webhook for credit automation ---
       - key: GITHUB_WEBHOOK_SECRET
-        sync: false
+        value: ""        # optional; set in dashboard only to enable PR-merge credit grants
 
       # --- Polling ---
       - key: POLL_INTERVAL_SECONDS
