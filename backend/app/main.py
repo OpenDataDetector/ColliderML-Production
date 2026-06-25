@@ -22,6 +22,7 @@ All admin routes require `X-Admin-Token: <shared-secret>`.
 from __future__ import annotations
 
 import logging
+import os
 from contextlib import asynccontextmanager
 from typing import Optional
 
@@ -70,9 +71,19 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# Browser callers are the docs site (GitHub Pages) and local dev/preview. The
+# Gradio Spaces call the backend server-side, so CORS doesn't gate them. Extra
+# origins can be added via CORS_ALLOW_ORIGINS (comma-separated).
+_default_origins = [
+    "https://opendatadetector.github.io",
+    "http://localhost:5173",
+    "http://localhost:4173",
+]
+_extra_origins = [o.strip() for o in os.environ.get("CORS_ALLOW_ORIGINS", "").split(",") if o.strip()]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=_default_origins + _extra_origins,
     allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],

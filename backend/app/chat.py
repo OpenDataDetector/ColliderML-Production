@@ -24,12 +24,15 @@ from __future__ import annotations
 
 import json
 import os
+import time
+from collections import defaultdict, deque
+from datetime import datetime, timezone
 from functools import lru_cache
 from pathlib import Path
 from typing import Any, Literal, Optional, Union
 
 import httpx
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
 router = APIRouter()
@@ -333,11 +336,52 @@ async def _call_openai(req: ChatRequest, key: str) -> ChatResponse:
 
 
 # ---------------------------------------------------------------------------
+# Rate limiting
+# ---------------------------------------------------------------------------
+# /v1/chat is public and unauthenticated, and each turn spends Anthropic tokens
+# on the server's key (the frontend can fire up to ~6 calls per user message).
+# Bound that with an in-memory per-IP sliding window plus a global daily cap.
+# In-memory is fine: the backend runs as a single Render instance.
+
+_RATE_WINDOW_S = 60
+_RATE_MAX_PER_IP = int(os.environ.get("CHAT_RATE_PER_MIN", "15") or "15")
+_DAILY_CAP = int(os.environ.get("CHAT_DAILY_CAP", "2000") or "2000")
+_ip_hits: dict[str, deque] = defaultdict(deque)
+_daily = {"day": "", "n": 0}
+
+
+def _client_ip(request: Request) -> str:
+    fwd = request.headers.get("x-forwarded-for")
+    if fwd:
+        return fwd.split(",")[0].strip()
+    return request.client.host if request.client else "unknown"
+
+
+def _enforce_rate_limit(request: Request) -> None:
+    """Raise 429 when the per-IP window or the global daily cap is exceeded."""
+    now = time.time()
+    today = datetime.now(timezone.utc).date().isoformat()
+    if _daily["day"] != today:
+        _daily["day"], _daily["n"] = today, 0
+    if _daily["n"] >= _DAILY_CAP:
+        raise HTTPException(429, "The copilot has hit its daily limit. Please try again tomorrow.")
+    dq = _ip_hits[_client_ip(request)]
+    cutoff = now - _RATE_WINDOW_S
+    while dq and dq[0] < cutoff:
+        dq.popleft()
+    if len(dq) >= _RATE_MAX_PER_IP:
+        raise HTTPException(429, "You're sending messages too fast — give it a few seconds.")
+    dq.append(now)
+    _daily["n"] += 1
+
+
+# ---------------------------------------------------------------------------
 # Route
 # ---------------------------------------------------------------------------
 
 @router.post("/v1/chat", response_model=ChatResponse)
-async def chat(req: ChatRequest) -> ChatResponse:
+async def chat(req: ChatRequest, request: Request) -> ChatResponse:
+    _enforce_rate_limit(request)
     anthropic_key = os.environ.get("ANTHROPIC_API_KEY", "").strip()
     openai_key = os.environ.get("OPENAI_API_KEY", "").strip()
     if anthropic_key:
