@@ -142,6 +142,49 @@ def parse_args():
     return parser.parse_args()
 
 
+def create_vertex_generator(config, logger):
+    """Create the ACTS vertex generator for the particle gun.
+
+    If the config provides uniform vertex ranges (a "drifting beamspot"), use a
+    UniformVertexGenerator; otherwise fall back to the original point vertex
+    (GaussianVertexGenerator with zero spread) for backward compatibility.
+
+    Optional config fields:
+        vertex_uniform: bool        -- enable uniform vertex smearing
+        vertex_min: [x, y, z, t]    -- lower bounds (x,y,z in mm, t in ns)
+        vertex_max: [x, y, z, t]    -- upper bounds (x,y,z in mm, t in ns)
+    """
+    vertex_uniform = getattr(config, 'vertex_uniform', False)
+    vertex_min = getattr(config, 'vertex_min', None)
+    vertex_max = getattr(config, 'vertex_max', None)
+
+    if vertex_uniform and vertex_min and vertex_max:
+        logger.info(
+            f"Uniform vertex smearing: min={vertex_min}, max={vertex_max} "
+            f"(x,y,z in mm; t in ns)"
+        )
+        return acts.examples.UniformVertexGenerator(
+            min=acts.Vector4(
+                vertex_min[0] * u.mm,
+                vertex_min[1] * u.mm,
+                vertex_min[2] * u.mm,
+                vertex_min[3] * u.ns,
+            ),
+            max=acts.Vector4(
+                vertex_max[0] * u.mm,
+                vertex_max[1] * u.mm,
+                vertex_max[2] * u.mm,
+                vertex_max[3] * u.ns,
+            ),
+        )
+
+    # Back-compat: original point vertex (no spread)
+    return acts.examples.GaussianVertexGenerator(
+        mean=acts.Vector4(0, 0, 0, 0),
+        stddev=acts.Vector4(0, 0, 0, 0),
+    )
+
+
 def generate_particle_gun_events(output_dir, config, logger):
     """Generate single particle events using ACTS ParametricParticleGenerator
     
@@ -192,10 +235,7 @@ def generate_particle_gun_events(output_dir, config, logger):
         generators=[
             acts.examples.EventGenerator.Generator(
                 multiplicity=acts.examples.FixedMultiplicityGenerator(n=1),
-                vertex=acts.examples.GaussianVertexGenerator(
-                    mean=acts.Vector4(0, 0, 0, 0),
-                    stddev=acts.Vector4(0, 0, 0, 0),
-                ),
+                vertex=create_vertex_generator(config, logger),
                 particles=acts.examples.ParametricParticleGenerator(
                     p=(energy_min, energy_max),
                     pLogUniform=log_uniform,
@@ -223,7 +263,6 @@ def generate_particle_gun_events(output_dir, config, logger):
             acts.logging.INFO,
             inputEvent=evGen.config.outputEvent,
             outputPath=output_path,
-            perEvent=False,
         )
     )
     
