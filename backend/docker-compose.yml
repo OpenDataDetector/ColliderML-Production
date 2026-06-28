@@ -32,6 +32,10 @@ services:
       NERSC_USER: ${NERSC_USER:-}
       HF_TOKEN: ${HF_TOKEN:-}
       HF_DATASET_ORG: ${HF_DATASET_ORG:-CERN}
+      # Hermetic-CI auth seam: when set, any bearer token resolves to a seeded
+      # test user (see app/auth.py). Off by default; never set in production.
+      ALLOW_TEST_TOKEN: ${ALLOW_TEST_TOKEN:-}
+      AUTH_TEST_USER: ${AUTH_TEST_USER:-ci-pipeline}
       # Tutorial / small-machine defaults: scoring runs against the much
       # smaller PU=0 split with a 1000-event eval slice. Real production
       # deploys should unset these (or set to PU=200 + the full 10k range)
