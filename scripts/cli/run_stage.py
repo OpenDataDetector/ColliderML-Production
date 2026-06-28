@@ -115,7 +115,7 @@ def get_stage_script_path(config, git_repo_path):
 def run_validation(config, runs_dir, run_ids=None, run_range=None):
     """Run validation and return results."""
     logger.info("Loading validation library...")
-    validation_path = Path(__file__).parent.parent / 'simulation' / 'validation'
+    validation_path = Path(__file__).resolve().parent.parent / 'simulation' / 'validation'
     sys.path.insert(0, str(validation_path))
     
     try:
@@ -167,7 +167,7 @@ def run_guardian(validation_result, config, runs_dir):
         return {'action': 'FAIL', 'exit_code': 1, 'reason': 'Validation failed to run'}
     
     logger.info("Loading error guardian...")
-    validation_path = Path(__file__).parent.parent / 'simulation' / 'validation'
+    validation_path = Path(__file__).resolve().parent.parent / 'simulation' / 'validation'
     
     try:
         from error_guardian import make_decision, load_guardian_policy
