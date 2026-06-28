@@ -1,0 +1,41 @@
+# Digitization + tracking — Single Muons 10 GeV (tracker-only)
+# Reads the sim edm4hep.root, runs ACTS digitization -> seeding -> CKF tracking ->
+# ambiguity resolution, writes measurements + tracks. Uses the ODD v6.0.2 geometry that
+# matches the tracker-only sim (ACTS tracking geometry is the tracker either way).
+campaign: "drift_beamspot"
+dataset: "single_muon_100GeV"
+version: "v1"
+stage: "digitization"
+
+common:
+  container: "ghcr.io/opendatadetector/sw:pr-4"
+  container_tarball: "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/stress_mu200/sw_pr4_image.tar"
+
+job_config:
+  n_runs: 1
+  runs_per_node: 1
+  time_limit: "01:00:00"
+  qos: "interactive"
+  execution_mode: "interactive"
+
+events: 10000
+threads: 64
+
+# ACTS geometry/material/digi configs: /opt/odd in sw:pr-4 holds xml/ + config/ + data/
+# (material map) for ODD v6.0.2. Read by digi_and_reco (config.odd_geo_dir).
+odd_geo_dir: /opt/odd
+digi_config: /opt/odd/config/odd-digi-smearing-config.json
+
+digi: True
+reco: True
+num_seeds_per_spm: 40
+
+# Output writers
+output_particles_root: True
+output_measurements_root: True
+ambi_root_output: True
+ambi_finding_performance: True
+ambi_fitting_performance: True
+write_helix_parameters: True
+
+debug_output_dir: "/global/cfs/cdirs/m4958/data/ColliderML/simulation/drift_beamspot/single_muon_100GeV/v1/runs/0"
