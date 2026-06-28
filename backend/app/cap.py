@@ -24,7 +24,6 @@ _BASE_SECONDS_PER_EVENT = {
     "susy_gmsb": 60.0,
     "hidden_valley": 60.0,
     "zprime": 60.0,
-    "single_muon": 5.0,
 }
 
 # MadGraph overhead per request (init + generation, independent of events).
@@ -40,7 +39,6 @@ _MADGRAPH_OVERHEAD_SECONDS = {
     "zee": 0.0,
     "diphoton": 0.0,
     "jets": 0.0,
-    "single_muon": 0.0,
 }
 
 

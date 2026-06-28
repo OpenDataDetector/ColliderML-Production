@@ -110,7 +110,7 @@ A workflow is an ordered list of stages. Valid stage `type` values and their
 - `reconstruction`  — params: {}   (ACTS seeding + CKF track finding)
 
 Channels: higgs_portal, ttbar, zmumu, zee, diphoton, jets, susy_gmsb,
-hidden_valley, zprime, single_muon.
+hidden_valley, zprime.
 
 ## Validity rules to enforce (flag issues, offer to fix)
 1. **Ordering**: stages must appear in the canonical order
@@ -121,8 +121,8 @@ hidden_valley, zprime, single_muon.
    A geometry stage should come first if present.
 3. **Generator/channel sanity**: hard-process channels (ttbar, susy_gmsb,
    zprime, hidden_valley, jets) are MadGraph→Pythia, so `generator` should be
-   "madgraph". Soft/portal channels (higgs_portal, zmumu, zee, diphoton,
-   single_muon) are Pythia-only, so `generator` should be "pythia".
+   "madgraph". Soft/portal channels (higgs_portal, zmumu, zee, diphoton) are
+   Pythia-only, so `generator` should be "pythia".
 4. **Parameter coherence**: events in 1..100000; pileup in 0..200; a pileup
    above ~100 is very expensive — warn the user.
 5. **Completeness**: a runnable workflow needs at least generation +

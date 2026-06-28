@@ -226,7 +226,6 @@ async def list_datasets() -> list[str]:
         "susy_gmsb_pu0", "susy_gmsb_pu200",
         "hidden_valley_pu0", "hidden_valley_pu200",
         "zprime_pu0", "zprime_pu200",
-        "single_muon_pu0",
     ]
 
 
