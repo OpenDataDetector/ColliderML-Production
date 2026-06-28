@@ -31,6 +31,7 @@ vertexSigma:  [0.0, 0.0, 0.0, 0.0]
 odd_compact_files:
   - /opt/odd-install/share/OpenDataDetector/xml/OpenDataDetectorDefs.xml
   - /opt/odd-install/share/OpenDataDetector/xml/OpenDataDetectorTracker.xml
+  - /global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-prod-container/configs_production/drift_beamspot/geometry/tracker_fields_plugins.xml
 
 # Note: ttbar produces split run dirs (runs/0, runs/1, ...). Point debug_output_dir at the
 # run to simulate, or run in multi_node mode for the full set.

@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  ODD v6.0.2 tracker-only extras. Loaded AFTER the staged fragments Defs.xml + Tracker.xml
+  (ddsim accepts a compactFile list), this fragment supplies the three things that live
+  ONLY in the top-level OpenDataDetector.xml and are therefore missing from a staged
+  Defs+Tracker build:
+
+    1. <info>    - sets the dd4hep::Detector Header. Without it the EDM4hep writer
+                   segfaults at run finalization in Geant4Output2EDM4hep::saveRun() ->
+                   dd4hep::Header::name() (null Header). This is the actual crash cause
+                   for a no-<info> (e.g. calo-removed) staged geometry.
+    2. <fields>  - the GlobalSolenoid B-field (sol_* constants come from the Solenoid
+                   stage included by Tracker; Field_nominal_value from Defs).
+    3. <plugins> - DD4hepVolumeManager + InstallSurfaceManager, for the tracker
+                   sensitive-detector / ACTS surface setup under ddsim.
+
+  This fragment has NO relative includes, so it is location-independent (lives on CFS).
+-->
+<lccdd>
+        <info name="OpenDataDetector" title="Open Data Detector (tracker only)"
+              author="drift_beamspot" url="" status="alpha" version="0">
+                <comment>ODD v6.0.2 tracker + solenoid only (calo + muon removed)</comment>
+        </info>
+
+        <fields>
+                <field type="solenoid" name="GlobalSolenoid" inner_field="Field_nominal_value"
+                        outer_field="outerField_nominal_value" zmax="sol_hlength"
+                        inner_radius="sol_rmin"
+                        outer_radius="sol_rmax" />
+        </fields>
+
+        <plugins>
+                <plugin name="DD4hepVolumeManager"/>
+                <plugin name="InstallSurfaceManager"/>
+        </plugins>
+</lccdd>
