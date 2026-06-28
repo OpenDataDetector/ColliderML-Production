@@ -75,7 +75,10 @@ def stage_tarball_to_scratch(config):
     copied_process_dir = job_scratch_dir / "process"
     copied_process_dir.mkdir(exist_ok=True)
     logger.info(f"Extracting {local_tarball} to {copied_process_dir}")
-    run_command(["tar", "-xzf", str(local_tarball), "-C", str(copied_process_dir)])
+    # --no-same-owner: inside the podman/rootless container, restoring the tarball's
+    # original uid/gid fails ("Cannot change ownership ... Invalid argument") and aborts
+    # the extraction. Skip the chown — file ownership is irrelevant for the build/run.
+    run_command(["tar", "--no-same-owner", "-xzf", str(local_tarball), "-C", str(copied_process_dir)])
 
     # The tar contains a top-level directory named 'madgraph_process'
     # Normalize to point at that directory
