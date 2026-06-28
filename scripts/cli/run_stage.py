@@ -202,9 +202,11 @@ def run_guardian(validation_result, config, runs_dir):
 def run_interactive(config, config_path_arg, stage_script_path):
     """Runs the stage script interactively with integrated validation + guardian."""
     
-    # Check if validation is enabled (default: true)
+    # Check if validation is enabled (default: true). Skip for interactive debug runs
+    # (debug_output_dir): the production validator expects numbered run subdirs
+    # (runs/0, runs/1, ...), which a single debug run directory does not have.
     validation_config = config.get('validation_config') or {}
-    validation_enabled = validation_config.get('enabled', True)
+    validation_enabled = validation_config.get('enabled', True) and not config.get("debug_output_dir")
     
     logger.info("=" * 80)
     logger.info(f"STAGE: {config['stage']}")
