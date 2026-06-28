@@ -8,10 +8,28 @@ users are rejected with 403.
 
 from __future__ import annotations
 
+import os
+
 import httpx
 from fastapi import Depends, Header, HTTPException
 
 from app.db import db
+
+
+async def _maybe_ci_test_user() -> dict | None:
+    """CI/hermetic auth seam: when ALLOW_TEST_TOKEN is set, any bearer token
+    resolves to a single seeded test user instead of being verified against
+    HuggingFace. This lets an out-of-process client (the library) authenticate
+    in CI with no real HF token. NEVER set ALLOW_TEST_TOKEN in production.
+    """
+    if not os.environ.get("ALLOW_TEST_TOKEN"):
+        return None
+    username = os.environ.get("AUTH_TEST_USER", "ci-pipeline")
+    user = await db.get_user(username)
+    if user is None:
+        await db.create_user(username, None, credits=0)
+        user = await db.get_user(username)
+    return user
 
 
 async def _fetch_hf_whoami(token: str) -> dict:
@@ -71,6 +89,9 @@ async def current_user(
     token = authorization.split(" ", 1)[1].strip()
     if not token:
         raise HTTPException(401, "Empty Bearer token")
+    ci_user = await _maybe_ci_test_user()
+    if ci_user is not None:
+        return ci_user
     return await verify_hf_token(token)
 
 
