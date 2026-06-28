@@ -1,0 +1,40 @@
+# Particle Gun — Single Muons, uniform pt in [1, 110] GeV
+# Campaign: drift_beamspot (uniform drifting beamspot + tracker-only geometry)
+campaign: "drift_beamspot"
+dataset: "single_muon_uniform"
+version: "v1"
+stage: "particlegun_generation"
+
+common:
+  container: "ghcr.io/opendatadetector/sw:pr-4"
+  container_tarball: "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/stress_mu200/sw_pr4_image.tar"
+
+job_config:
+  n_runs: 1
+  runs_per_node: 1
+  time_limit: "00:30:00"
+  qos: "interactive"
+  execution_mode: "interactive"
+
+events: 10000          # pilot; final = 100000000 (100M)
+seed: 42
+
+particle: "mu-"
+energy_min: 1.0
+energy_max: 110.0
+log_uniform: false     # flat (uniform) in pt
+transverse: true
+
+eta_min: -3.0
+eta_max: 3.0
+phi_min: 0.0
+phi_max: 6.28318530718
+
+vertex_uniform: true
+vertex_min: [-5.0, -5.0, -200.0, -0.32]
+vertex_max: [ 5.0,  5.0,  200.0,  0.32]
+
+debug_output_dir: "/global/cfs/cdirs/m4958/data/ColliderML/simulation/drift_beamspot/single_muon_uniform/v1/runs/0"
+splitting_config:
+  enable: false
+  n_runs: 1

@@ -1,0 +1,28 @@
+# DDSim simulation — Single Muons 2 GeV — TRACKER-ONLY geometry (calo + muon OFF)
+campaign: "drift_beamspot"
+dataset: "single_muon_2GeV"
+version: "v1"
+stage: "simulation"
+
+common:
+  container: "ghcr.io/opendatadetector/sw:pr-4"
+  container_tarball: "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/stress_mu200/sw_pr4_image.tar"
+
+job_config:
+  n_runs: 1
+  runs_per_node: 1
+  time_limit: "01:00:00"
+  qos: "interactive"
+  execution_mode: "interactive"
+
+events: 10000
+threads: 64
+input_filename: events.hepmc3
+minimalKineticEnergy: 0.1
+truthParticleHandler: "Geant4FullTruthParticleHandler"
+
+odd_compact_files:
+  - /opt/odd-install/share/OpenDataDetector/xml/OpenDataDetectorDefs.xml
+  - /opt/odd-install/share/OpenDataDetector/xml/OpenDataDetectorTracker.xml
+
+debug_output_dir: "/global/cfs/cdirs/m4958/data/ColliderML/simulation/drift_beamspot/single_muon_2GeV/v1/runs/0"

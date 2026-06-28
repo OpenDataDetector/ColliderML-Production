@@ -134,20 +134,31 @@ def log_particle_gun_config(ddsim, logger):
     logger.info(f"  Distribution: {ddsim.gun.distribution}")
     logger.info(f"  Multiplicity: {ddsim.gun.multiplicity}")
 
-def configure_detector(ddsim):
+def configure_detector(ddsim, config=None):
     """Configure the detector for simulation
-    
+
     Args:
         ddsim: DD4hepSimulation instance
-        
+        config: Configuration object (optional)
+
     Returns:
         DD4hepSimulation: Configured DD4hepSimulation instance
     """
-    # Geometry override: ODD_COMPACT_FILE lets the pipeline pin a specific ODD compact
-    # file so SIM and RECO share the SAME geometry. The calibrated Pandora reco needs the
-    # azaborow/addLayeredCalo_MuonCoil geometry (layered ECAL/HCAL/Muon), so point both
-    # containers at it. Falls back to the ACTS-bundled ODD when unset.
-    odd_override = os.environ.get("ODD_COMPACT_FILE")
+    # Staged geometry: if the config provides a list of compact files
+    # (`odd_compact_files`), load exactly those — e.g. ODD v6 staged build
+    # `[OpenDataDetectorDefs.xml, OpenDataDetectorTracker.xml]` for a tracker-only
+    # (calo + muon OFF) geometry. This takes precedence over everything below.
+    compact_files = getattr(config, 'odd_compact_files', None) if config is not None else None
+    if compact_files:
+        ddsim.compactFile = [str(f) for f in compact_files]
+        return ddsim
+
+    # Geometry override: ODD_COMPACT_FILE (config field or env var) lets the pipeline pin a
+    # specific ODD compact file so SIM and RECO share the SAME geometry. The calibrated
+    # Pandora reco needs the azaborow/addLayeredCalo_MuonCoil geometry (layered
+    # ECAL/HCAL/Muon), so point both containers at it. Falls back to the ACTS-bundled ODD.
+    odd_override = (getattr(config, 'odd_compact_file', None) if config is not None else None) \
+        or os.environ.get("ODD_COMPACT_FILE")
     if odd_override:
         odd_xml = odd_override
     else:
@@ -272,7 +283,7 @@ def run_ddsim(input_path, output_path, config, logger=None):
     ddsim = DD4hepSimulation()
     
     # Configure detector
-    ddsim = configure_detector(ddsim)
+    ddsim = configure_detector(ddsim, config)
     
     # Check if we're using single particle mode
     use_single_particle = getattr(config, 'single_particle', False)

@@ -1,0 +1,43 @@
+# MadGraph generation — ttbar (NLO FxFx) — uniform drifting beamspot
+# Campaign: drift_beamspot. Reuses the COMPILED process copied from hard_scatter/ttbar/v1
+# (madgraph_process.tgz) so madgraph_init is NOT re-run.
+campaign: "drift_beamspot"
+dataset: "ttbar"
+version: "v1"
+stage: "madgraph_generation"
+
+common:
+  container: "ghcr.io/opendatadetector/sw:pr-4"
+  container_tarball: "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/stress_mu200/sw_pr4_image.tar"
+
+job_config:
+  n_runs: 1
+  runs_per_node: 1
+  time_limit: "01:00:00"
+  qos: "interactive"
+  execution_mode: "interactive"
+
+events: 10000          # pilot; final = 1000000 (scale n_runs in multi_node mode)
+seed: 42
+
+mg_base_path: "{madgraph.mg_base_path}"
+generation_scratch_dir: "{madgraph.generation_scratch_dir}"
+
+# NOTE: the uniform drifting-beamspot vertex is applied in a SEPARATE merge_smear stage
+# (see merge_smear_config.yaml), not here. Generation produces events at the origin.
+
+card_customizations:
+  run_card:
+    "ptj": 20.0
+    "event_norm": "sum"
+  shower_card:
+    "Qcut": 40.0
+    "time_shower_me_corrections": "F"
+
+splitting_config:
+  enable: true
+  events_per_file: 1280
+  max_files_per_mg_run: 50
+  output_filename: "events.hepmc"
+
+log_level: "INFO"
