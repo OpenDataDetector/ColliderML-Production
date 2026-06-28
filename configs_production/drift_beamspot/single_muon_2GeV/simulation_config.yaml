@@ -24,5 +24,6 @@ truthParticleHandler: "Geant4FullTruthParticleHandler"
 odd_compact_files:
   - /opt/odd-install/share/OpenDataDetector/xml/OpenDataDetectorDefs.xml
   - /opt/odd-install/share/OpenDataDetector/xml/OpenDataDetectorTracker.xml
+  - /global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-prod-container/configs_production/drift_beamspot/geometry/tracker_fields_plugins.xml
 
 debug_output_dir: "/global/cfs/cdirs/m4958/data/ColliderML/simulation/drift_beamspot/single_muon_2GeV/v1/runs/0"
