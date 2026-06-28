@@ -18,7 +18,6 @@ Channel = Literal[
     "susy_gmsb",
     "hidden_valley",
     "zprime",
-    "single_muon",
 ]
 
 RequestState = Literal["queued", "submitted", "running", "completed", "failed", "cancelled"]

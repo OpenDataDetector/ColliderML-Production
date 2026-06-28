@@ -17,6 +17,7 @@ import asyncio
 import hashlib
 import json
 import logging
+import os
 from datetime import datetime, timezone
 from typing import Optional
 
@@ -143,7 +144,10 @@ def _build_eval_results_yaml(task_name: str, scores: dict, dataset_id: str) -> s
             },
             "metrics": metrics,
             "source": {
-                "url": f"https://api.colliderml.com/v1/leaderboard/{task_name}",
+                "url": (
+                    os.environ.get("COLLIDERML_PUBLIC_URL", "https://colliderml-backend.onrender.com").rstrip("/")
+                    + f"/v1/leaderboard/{task_name}"
+                ),
                 "name": "ColliderML Backend",
             },
         }

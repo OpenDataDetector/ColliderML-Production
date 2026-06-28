@@ -39,16 +39,14 @@ def test_ten_credits_equals_thousand_pu0_events():
     """The canonical calibration: 10 credits ~ 1000 pu0 events.
 
     For higgs_portal (60s/event): 1000 events = 60000s = 16.67 hours = 16.67 credits.
-    For single_muon (5s/event): 1000 events = 5000s = 1.39 hours = 1.39 credits.
     For ttbar (90s/event + 300s overhead): 1000 events = 90300s = 25 credits.
 
-    The plan says "~1000 pu0 events" - this is approximate. Single_muon is
-    much cheaper, ttbar is more expensive, higgs_portal is in the ballpark.
+    The plan says "~1000 pu0 events" - this is approximate. ttbar is more
+    expensive, higgs_portal is in the ballpark.
     """
     for channel, expected_range in [
         ("higgs_portal", (15, 20)),
         ("ttbar", (23, 27)),
-        ("single_muon", (1, 2)),
     ]:
         cost = estimate_node_hours(channel, 1000, 0)
         lo, hi = expected_range
