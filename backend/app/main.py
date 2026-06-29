@@ -233,6 +233,17 @@ async def list_datasets() -> list[str]:
 # Admin routes
 # ===========================================================================
 
+@app.get("/admin/sfapi/health", dependencies=[Depends(admin_only)])
+async def sfapi_health() -> dict:
+    """SFAPI / egress drift check (used by the scheduled sfapi-health CI lane).
+
+    Reports the backend's egress IP, whether it's inside the NERSC-registered
+    allowlist CIDR, and a live authenticated SFAPI ping — catching both egress
+    drift and credential expiry before they silently break real simulation.
+    """
+    return await runner.health_check()
+
+
 @app.post("/admin/freeze", dependencies=[Depends(admin_only)])
 async def admin_freeze(frozen: bool = True) -> dict:
     await db.set_submissions_frozen(frozen)
