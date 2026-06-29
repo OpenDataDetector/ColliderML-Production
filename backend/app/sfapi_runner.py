@@ -82,6 +82,58 @@ class SFAPIRunner:
                 pass
 
     # -----------------------------------------------------------------------
+    # Health / drift detection
+    # -----------------------------------------------------------------------
+    async def health_check(self) -> dict:
+        """Diagnostic for CI: does the backend's network position let it reach
+        SFAPI? Reports the egress IP (as NERSC sees it), whether it's inside the
+        registered allowlist CIDR, and a live authenticated SFAPI ping.
+
+        Surfaces the two silent failure modes for real simulation: the Render
+        egress IP drifting out of the NERSC allowlist, and credential
+        expiry/revocation. CI can't test SFAPI directly (its runner IP isn't
+        allowlisted) — it must ask the backend, which is the allowlisted vantage.
+        """
+        import ipaddress
+        import os
+
+        import httpx
+
+        out: dict = {"mock_mode": self._client is None}
+
+        egress = None
+        try:
+            async with httpx.AsyncClient(timeout=10) as c:
+                r = await c.get("https://api.ipify.org", params={"format": "json"})
+                egress = r.json().get("ip")
+        except Exception as e:  # pragma: no cover - network
+            out["egress_error"] = str(e)[:200]
+        out["egress_ip"] = egress
+
+        cidr = os.environ.get("SFAPI_ALLOWLIST_CIDR", "").strip()
+        out["allowlist_cidr"] = cidr or None
+        try:
+            out["in_allowlist"] = bool(
+                egress and cidr
+                and ipaddress.ip_address(egress) in ipaddress.ip_network(cidr, strict=False)
+            )
+        except ValueError:
+            out["in_allowlist"] = False
+
+        if self._client is None:
+            out["sfapi_ok"] = None
+            out["detail"] = "mock mode (SFAPI credentials not configured)"
+        else:
+            try:
+                user = await asyncio.to_thread(self._client.user)
+                out["sfapi_ok"] = True
+                out["sfapi_user"] = getattr(user, "name", str(user))
+            except Exception as e:
+                out["sfapi_ok"] = False
+                out["detail"] = f"{type(e).__name__}: {e}"[:300]
+        return out
+
+    # -----------------------------------------------------------------------
     # Submission
     # -----------------------------------------------------------------------
     def _split_request(self, req: SimulateRequest) -> dict:
