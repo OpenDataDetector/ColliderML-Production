@@ -35,6 +35,10 @@ logger = logging.getLogger(__name__)
 
 _TEMPLATE_PATH = Path(__file__).parent / "sbatch_template.sh.j2"
 
+#: How long /v1/sfapi/health caches its result (seconds) so the public endpoint
+#: can't be hammered into repeated live SFAPI calls.
+_HEALTH_TTL_S = 300
+
 
 class SFAPIRunner:
     """Submit and poll ColliderML jobs via the NERSC Superfacility API."""
@@ -85,19 +89,29 @@ class SFAPIRunner:
     # Health / drift detection
     # -----------------------------------------------------------------------
     async def health_check(self) -> dict:
-        """Diagnostic for CI: does the backend's network position let it reach
-        SFAPI? Reports the egress IP (as NERSC sees it), whether it's inside the
-        registered allowlist CIDR, and a live authenticated SFAPI ping.
+        """Diagnostic for the public SFAPI drift check.
 
-        Surfaces the two silent failure modes for real simulation: the Render
-        egress IP drifting out of the NERSC allowlist, and credential
-        expiry/revocation. CI can't test SFAPI directly (its runner IP isn't
-        allowlisted) — it must ask the backend, which is the allowlisted vantage.
+        Reports whether the backend's egress IP is inside the registered NERSC
+        allowlist and whether a live authenticated SFAPI ping succeeds —
+        surfacing the two silent failure modes for real simulation (egress IP
+        drift, credential expiry). CI can't test SFAPI directly (its runner IP
+        isn't allowlisted), so it asks the backend, the allowlisted vantage.
+
+        Returns only non-sensitive health signals (booleans + the egress IP,
+        which is already public via the allowlist) — no credentials, no NERSC
+        username. The result is cached for ``_HEALTH_TTL_S`` so the public
+        endpoint can't be hammered into repeated live SFAPI calls.
         """
         import ipaddress
         import os
+        import time
 
         import httpx
+
+        now = time.time()
+        cached = getattr(self, "_health_cache", None)
+        if cached and (now - cached[0]) < _HEALTH_TTL_S:
+            return cached[1]
 
         out: dict = {"mock_mode": self._client is None}
 
@@ -125,12 +139,13 @@ class SFAPIRunner:
             out["detail"] = "mock mode (SFAPI credentials not configured)"
         else:
             try:
-                user = await asyncio.to_thread(self._client.user)
+                await asyncio.to_thread(self._client.user)  # cheap authenticated ping
                 out["sfapi_ok"] = True
-                out["sfapi_user"] = getattr(user, "name", str(user))
             except Exception as e:
                 out["sfapi_ok"] = False
-                out["detail"] = f"{type(e).__name__}: {e}"[:300]
+                out["detail"] = f"{type(e).__name__}: {str(e)[:160]}"
+
+        self._health_cache = (now, out)
         return out
 
     # -----------------------------------------------------------------------
