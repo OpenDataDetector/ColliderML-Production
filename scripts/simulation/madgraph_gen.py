@@ -22,6 +22,7 @@ The script will:
 
 import os
 import sys
+import uuid
 import subprocess
 import shutil
 import argparse
@@ -60,8 +61,11 @@ def stage_tarball_to_scratch(config):
 
     scratch_dir = Path(config.generation_scratch_dir)
     process_name = f"{config.dataset}_{config.version}"
-    # Make this unique per process/task to avoid collisions
-    uniq = os.environ.get('SLURM_JOB_ID') or 'nojid'
+    # Make this unique per process/task to avoid collisions. Inside the podman container
+    # SLURM_* env vars are NOT propagated and os.getpid() is 1 (PID namespace), so without a
+    # random fallback every run reuses the same scratch dir -> collisions between concurrent
+    # runs and stale MG5 RunWeb locks. Fall back to a random suffix to guarantee uniqueness.
+    uniq = os.environ.get('SLURM_JOB_ID') or os.environ.get('SLURM_JOBID') or uuid.uuid4().hex[:8]
     proc = os.environ.get('SLURM_PROCID') or os.getpid()
     job_scratch_dir = scratch_dir / f"mg5_gen_{process_name}_{uniq}_{proc}"
     job_scratch_dir.mkdir(parents=True, exist_ok=True)
@@ -512,7 +516,14 @@ def process_output_files(copied_process_dir, staging_output_dir, run_name, split
                     )
     
     if files_processed_count == 0:
-        logger.warning("No event files were found, moved, or split from the MadGraph run.")
+        # Hard-fail rather than silently "succeed" with no output: an empty run almost always
+        # means the MadGraph run aborted (e.g. an ajob exited non-zero) but the wrapper did not
+        # propagate the error. Raising here makes run_stage see a non-zero exit.
+        raise RuntimeError(
+            "No event files were found, moved, or split from the MadGraph run "
+            f"(searched {len(actual_events_subdirs)} Events subdir(s) under {copied_process_dir}). "
+            "The generation step produced no events — check the MadGraph/ajob logs."
+        )
 
 def copy_final_cards(copied_process_dir, process_type, process_name, staging_output_dir, config, logger):
     """

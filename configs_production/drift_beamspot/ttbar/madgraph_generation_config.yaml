@@ -1,6 +1,11 @@
 # MadGraph generation — ttbar (NLO FxFx) — uniform drifting beamspot
-# Campaign: drift_beamspot. Reuses the COMPILED process copied from hard_scatter/ttbar/v1
-# (madgraph_process.tgz) so madgraph_init is NOT re-run.
+# Campaign: drift_beamspot.
+# WARNING: the copied hard_scatter/ttbar/v1 madgraph_process.tgz is built against the HOST
+# MG5 toolchain (OtherLibraries/MG5_aMC_v3_5_8) and is NOT usable in the sw container image
+# (FastJet ABI mismatch: needs PseudoJet::operator= which image fastjet 3.5.0 doesn't export;
+# plus CutTools compiler mismatch). The process MUST be regenerated in-image via madgraph_init
+# before this stage will run in pr-8. Proven recipe (LO+NLO) generates fresh with the image's
+# own MG5 3.5.9. Do NOT assume "skip madgraph_init by reusing the tarball" works across images.
 campaign: "drift_beamspot"
 dataset: "ttbar"
 version: "v1"
