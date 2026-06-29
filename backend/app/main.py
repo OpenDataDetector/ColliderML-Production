@@ -233,13 +233,16 @@ async def list_datasets() -> list[str]:
 # Admin routes
 # ===========================================================================
 
-@app.get("/admin/sfapi/health", dependencies=[Depends(admin_only)])
+@app.get("/v1/sfapi/health")
 async def sfapi_health() -> dict:
-    """SFAPI / egress drift check (used by the scheduled sfapi-health CI lane).
+    """Public SFAPI / egress drift check (used by the scheduled sfapi-health CI lane).
 
-    Reports the backend's egress IP, whether it's inside the NERSC-registered
-    allowlist CIDR, and a live authenticated SFAPI ping — catching both egress
-    drift and credential expiry before they silently break real simulation.
+    Intentionally unauthenticated so the public-repo CI needs no token. Returns
+    only non-sensitive health signals — egress IP (already public via the NERSC
+    allowlist), whether it's inside the registered allowlist CIDR, and a live
+    authenticated SFAPI ping (boolean) — never any credential or NERSC username.
+    Cached server-side (see _HEALTH_TTL_S) so it can't be hammered into repeated
+    live SFAPI calls.
     """
     return await runner.health_check()
 
