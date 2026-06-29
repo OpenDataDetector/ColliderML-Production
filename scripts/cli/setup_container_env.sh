@@ -45,58 +45,12 @@ if ! command -v bc &>/dev/null; then
     fi
 fi
 
-# --- 0b. Install MG5aMC_PY8_interface (MadGraph needs this to run Pythia8 shower) ---
-# Compiles the C++ driver that steers Pythia8 showering from MadGraph.
-# Uses HepMC2 (dynamic linking) + Pythia 8.313. Pre-compiled binary cached.
-_mg_dir=$(ls -d "$SPACK_BASE"/madgraph5amc-*/bin 2>/dev/null | head -1)
-_mg_dir="${_mg_dir%/bin}"
-if [ -n "$_mg_dir" ] && [ ! -f "$_mg_dir/HEPTools/MG5aMC_PY8_interface/MG5aMC_PY8_interface" ]; then
-    _hepmc2_dir=$(ls -d "$SPACK_BASE"/hepmc-*/include 2>/dev/null | head -1)
-    _hepmc2_dir="${_hepmc2_dir%/include}"
-    _py8_dir=$(ls -d "$SPACK_BASE"/pythia8-*/include 2>/dev/null | head -1)
-    _py8_dir="${_py8_dir%/include}"
-    _zlib_dir=$(ls -d "$SPACK_BASE"/zlib-ng-*/include 2>/dev/null | head -1)
-    _zlib_dir="${_zlib_dir%/include}"
-
-    if [ -n "$_hepmc2_dir" ] && [ -n "$_py8_dir" ]; then
-        mkdir -p "$_mg_dir/HEPTools/MG5aMC_PY8_interface"
-
-        # Use cached source + binary if available
-        if [ -f "$CACHE_DIR/MG5aMC_PY8_interface/MG5aMC_PY8_interface" ]; then
-            cp -r "$CACHE_DIR/MG5aMC_PY8_interface/"* "$_mg_dir/HEPTools/MG5aMC_PY8_interface/"
-            echo "MG5aMC_PY8_interface installed from cache."
-        elif [ -f "$CACHE_DIR/MG5aMC_PY8_interface/MG5aMC_PY8_interface.cc" ]; then
-            cp -r "$CACHE_DIR/MG5aMC_PY8_interface/"* "$_mg_dir/HEPTools/MG5aMC_PY8_interface/"
-            cd "$_mg_dir/HEPTools/MG5aMC_PY8_interface"
-            echo "Compiling MG5aMC_PY8_interface against Pythia8 + HepMC2..."
-            g++ MG5aMC_PY8_interface.cc -o MG5aMC_PY8_interface \
-                -I"$_py8_dir/include" -I"$_hepmc2_dir/include" ${_zlib_dir:+-I"$_zlib_dir/include"} \
-                -O2 -std=c++20 -fPIC -pthread -DGZIP \
-                -L"$_py8_dir/lib" -Wl,-rpath,"$_py8_dir/lib" -lpythia8 \
-                -L"$_hepmc2_dir/lib" -Wl,-rpath,"$_hepmc2_dir/lib" -lHepMC \
-                ${_zlib_dir:+-L"$_zlib_dir/lib" -Wl,-rpath,"$_zlib_dir/lib"} -lz -ldl 2>/dev/null \
-                && echo "MG5aMC_PY8_interface compiled successfully." \
-                || echo "WARNING: MG5aMC_PY8_interface compilation failed."
-            # Create version marker files MG5 expects
-            echo "3.5.9" > MG5AMC_VERSION_ON_INSTALL
-            echo "8.313" > PYTHIA8_VERSION_ON_INSTALL
-            # Cache the compiled binary + markers
-            [ -f MG5aMC_PY8_interface ] && cp MG5aMC_PY8_interface MG5AMC_VERSION_ON_INSTALL PYTHIA8_VERSION_ON_INSTALL "$CACHE_DIR/MG5aMC_PY8_interface/"
-            cd - >/dev/null
-        else
-            echo "WARNING: MG5aMC_PY8_interface source not found in cache. MadGraph shower disabled."
-            echo "  Fix: git clone https://github.com/mg5amcnlo/MG5aMC_PY8_interface.git $CACHE_DIR/MG5aMC_PY8_interface"
-        fi
-
-        # Configure MG5 to use the interface
-        if [ -f "$_mg_dir/HEPTools/MG5aMC_PY8_interface/MG5aMC_PY8_interface" ]; then
-            sed -i "s|# mg5amc_py8_interface_path = ./HEPTools/MG5aMC_PY8_interface|mg5amc_py8_interface_path = $_mg_dir/HEPTools/MG5aMC_PY8_interface|" \
-                "$_mg_dir/input/mg5_configuration.txt" 2>/dev/null
-        fi
-    fi
-    unset _hepmc2_dir _py8_dir _zlib_dir
-fi
-unset _mg_dir
+# --- 0b. MG5aMC_PY8_interface ---
+# The Pythia8 shower interface is now BUILT INTO the image at build time by the sw spack
+# package `colliderml.madgraph5amc +pythia8` (runs MG5's `install mg5amc_py8_interface`
+# against Pythia 8.313 + swaps in MadGraph's JetMatching.h), and mg5_configuration.txt is
+# pre-pointed at it. The old runtime g++ compile workaround that lived here is therefore
+# dead code and has been removed. (Verified: LO + NLO ttbar shower to HepMC in-image.)
 
 # --- 1. Source .bashrc for PATH and CMAKE_PREFIX_PATH ---
 # The container's .bashrc sets up PATH and CMAKE_PREFIX_PATH for all spack

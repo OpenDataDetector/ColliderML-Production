@@ -154,14 +154,25 @@ back to `noshower` mode and only produces LHE files (no HepMC output).
 RUN apt-get update && apt-get install -y bc
 ```
 
-### 2. mg5amc_py8_interface incompatible with Pythia 8.3+ (blocks ttbar NLO+PS)
+### 2. mg5amc_py8_interface vs Pythia 8.3+ — RESOLVED (build-time fix in sw image)
+
+> **RESOLVED (2026-06):** Fixed at image-build time by the sw spack package
+> `colliderml.madgraph5amc +pythia8`, which runs MG5's `install mg5amc_py8_interface`
+> against Pythia 8.313 and swaps in MadGraph's `JetMatching.h`. The pr-8 image ships a
+> working interface, pre-pointed in `mg5_configuration.txt` (verified: LO **and** NLO
+> ttbar shower to HepMC fresh in-image). The runtime `g++` compile workaround in
+> `setup_container_env.sh` has been removed. The notes below are kept as history.
+>
+> Note: the separate ttbar blocker is *not* Pythia — a host-compiled `madgraph_process.tgz`
+> is toolchain-incompatible with the image (FastJet ABI + CutTools); regenerate the process
+> in-image.
 
 The container ships Pythia 8.313, but the `mg5amc_py8_interface` (C++ driver MadGraph
 uses to steer Pythia8 showering) only works with Pythia 8.2.x. This is a
 [known upstream issue](https://gitlab.com/Pythia8/releases/-/issues/24).
 
-**Impact:** ttbar NLO events cannot be showered inside MadGraph. Only LHE output is
-produced, which the downstream Pythia merge stage cannot read (expects HepMC).
+**Impact (historical):** ttbar NLO events could not be showered inside MadGraph. Only LHE
+output was produced, which the downstream Pythia merge stage cannot read (expects HepMC).
 
 **Fix options (choose one):**
 1. **Pre-install the interface with `--pythia8_makefile` flag** — compiles the interface
