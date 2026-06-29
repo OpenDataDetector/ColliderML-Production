@@ -7,8 +7,8 @@ stage: "particlegun_generation"
 
 # Run inside the sw:pr-4 image (ODD v6.0.2 staged build + arrow-measurements ACTS).
 common:
-  container: "ghcr.io/opendatadetector/sw:pr-4"
-  container_tarball: "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/stress_mu200/sw_pr4_image.tar"
+  container: "ghcr.io/opendatadetector/sw:pr-8"
+  container_tarball: "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/stress_mu200/sw_pr8_image.tar"
 
 job_config:
   n_runs: 1
