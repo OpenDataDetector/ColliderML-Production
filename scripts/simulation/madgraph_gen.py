@@ -91,6 +91,17 @@ def stage_tarball_to_scratch(config):
         if len(subdirs) == 1:
             copied_process_dir = subdirs[0]
 
+    # Strip stale MG5 run-locks that may have been packaged into the tarball. MG5 drops a
+    # `RunWeb` sentinel (and a `crashed` marker) in the me_dir while a run is active and
+    # refuses to start if it finds one on launch ("AlreadyRunning: Another instance ... is
+    # currently running"). A lock baked into the compiled-process tarball would otherwise
+    # block every reuse of that process. Safe to remove: each extraction is a fresh copy.
+    for lock_name in ("RunWeb", "RunWeb.lock", "crashed"):
+        lock_path = copied_process_dir / lock_name
+        if lock_path.exists():
+            logger.info(f"Removing stale MG5 lock from packaged process: {lock_path}")
+            lock_path.unlink()
+
     # Log extracted statistics
     total_size = sum(f.stat().st_size for f in copied_process_dir.rglob('*') if f.is_file())
     total_size_mb = total_size / (1024 * 1024)
