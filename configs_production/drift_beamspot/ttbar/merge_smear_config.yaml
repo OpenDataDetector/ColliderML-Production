@@ -1,0 +1,28 @@
+# Merge & smear — ttbar — applies the UNIFORM drifting-beamspot vertex (no pileup -> smear-only)
+# Reads events.hepmc (from madgraph_generation), translates every event's vertices by a
+# uniformly-sampled offset (ACTS UniformVertexGenerator), writes merged_events.hepmc3.
+campaign: "drift_beamspot"
+dataset: "ttbar"
+version: "v1"
+stage: "merge_smear"
+
+common:
+  container: "ghcr.io/opendatadetector/sw:pr-8"
+  container_tarball: "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/stress_mu200/sw_pr8_image.tar"
+
+job_config:
+  n_runs: 1
+  runs_per_node: 1
+  time_limit: "00:30:00"
+  qos: "interactive"
+  execution_mode: "interactive"
+
+seed: 42
+input_filename: events.hepmc      # signal produced by madgraph_generation (no pileup)
+
+# Uniform "drifting beamspot" production vertex (x,y,z in mm; t in ns)
+vertex_uniform: true
+vertex_min: [-5.0, -5.0, -200.0, -0.32]
+vertex_max: [ 5.0,  5.0,  200.0,  0.32]
+
+debug_output_dir: "/global/cfs/cdirs/m4958/data/ColliderML/simulation/drift_beamspot/ttbar/v1/runs/0"

@@ -115,7 +115,7 @@ def get_stage_script_path(config, git_repo_path):
 def run_validation(config, runs_dir, run_ids=None, run_range=None):
     """Run validation and return results."""
     logger.info("Loading validation library...")
-    validation_path = Path(__file__).parent.parent / 'simulation' / 'validation'
+    validation_path = Path(__file__).resolve().parent.parent / 'simulation' / 'validation'
     sys.path.insert(0, str(validation_path))
     
     try:
@@ -167,7 +167,7 @@ def run_guardian(validation_result, config, runs_dir):
         return {'action': 'FAIL', 'exit_code': 1, 'reason': 'Validation failed to run'}
     
     logger.info("Loading error guardian...")
-    validation_path = Path(__file__).parent.parent / 'simulation' / 'validation'
+    validation_path = Path(__file__).resolve().parent.parent / 'simulation' / 'validation'
     
     try:
         from error_guardian import make_decision, load_guardian_policy
@@ -202,9 +202,11 @@ def run_guardian(validation_result, config, runs_dir):
 def run_interactive(config, config_path_arg, stage_script_path):
     """Runs the stage script interactively with integrated validation + guardian."""
     
-    # Check if validation is enabled (default: true)
+    # Check if validation is enabled (default: true). Skip for interactive debug runs
+    # (debug_output_dir): the production validator expects numbered run subdirs
+    # (runs/0, runs/1, ...), which a single debug run directory does not have.
     validation_config = config.get('validation_config') or {}
-    validation_enabled = validation_config.get('enabled', True)
+    validation_enabled = validation_config.get('enabled', True) and not config.get("debug_output_dir")
     
     logger.info("=" * 80)
     logger.info(f"STAGE: {config['stage']}")

@@ -1,0 +1,38 @@
+# DDSim simulation — ttbar — TRACKER-ONLY geometry (calo + muon OFF)
+# Vertex is applied at the GENERATION stage (ACTS UniformVertexGenerator), so ddsim does
+# NO smearing here: vertexSigma = 0.
+campaign: "drift_beamspot"
+dataset: "ttbar"
+version: "v1"
+stage: "simulation"
+
+common:
+  container: "ghcr.io/opendatadetector/sw:pr-8"
+  container_tarball: "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/stress_mu200/sw_pr8_image.tar"
+
+job_config:
+  n_runs: 1
+  runs_per_node: 1
+  time_limit: "03:00:00"
+  qos: "interactive"
+  execution_mode: "interactive"
+
+events: 1280
+threads: 64
+input_filename: merged_events.hepmc3   # output of the merge_smear stage (vertex-smeared)
+minimalKineticEnergy: 0.1
+truthParticleHandler: "Geant4FullTruthParticleHandler"
+
+# No ddsim vertex smearing — the uniform drifting beamspot is applied in the merge_smear stage.
+vertexOffset: [0.0, 0.0, 0.0, 0.0]
+vertexSigma:  [0.0, 0.0, 0.0, 0.0]
+
+# Tracker-only geometry: ODD v6.0.2 staged build (Defs + Tracker only).
+odd_compact_files:
+  - /opt/odd-install/share/OpenDataDetector/xml/OpenDataDetectorDefs.xml
+  - /opt/odd-install/share/OpenDataDetector/xml/OpenDataDetectorTracker.xml
+  - /global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-prod-container/configs_production/drift_beamspot/geometry/tracker_fields_plugins.xml
+
+# Note: ttbar produces split run dirs (runs/0, runs/1, ...). Point debug_output_dir at the
+# run to simulate, or run in multi_node mode for the full set.
+debug_output_dir: "/global/cfs/cdirs/m4958/data/ColliderML/simulation/drift_beamspot/ttbar/v1/runs/0"
