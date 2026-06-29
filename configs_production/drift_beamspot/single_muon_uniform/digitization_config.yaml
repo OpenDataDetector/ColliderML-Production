@@ -8,8 +8,8 @@ version: "v1"
 stage: "digitization"
 
 common:
-  container: "ghcr.io/opendatadetector/sw:pr-4"
-  container_tarball: "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/stress_mu200/sw_pr4_image.tar"
+  container: "ghcr.io/opendatadetector/sw:pr-8"
+  container_tarball: "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/stress_mu200/sw_pr8_image.tar"
 
 job_config:
   n_runs: 1
@@ -26,6 +26,7 @@ threads: 64
 odd_geo_dir: /opt/odd
 digi_config: /opt/odd/config/odd-digi-smearing-config.json
 
+output_parquet_arrow: True   # native ACTS parquet: tracker_simhits + tracker_hits + particles + tracks
 digi: True
 reco: True
 num_seeds_per_spm: 40
