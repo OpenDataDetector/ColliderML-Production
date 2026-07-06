@@ -351,9 +351,14 @@ def fig_resolution_vs(dfs, figures_dir, summary):
         else:
             ax.set_xlim(-3, 3)
     axes[0, 0].set_ylabel(r"$d_0$ resolution width [$\mu$m]")
-    axes[0, 0].set_yscale("log")
-    ylo, yhi = axes[0, 0].get_ylim()
-    axes[0, 0].set_ylim(ylo * 0.8, yhi * 1.6)
+    # log y on BOTH top panels, shared range
+    for a in (axes[0, 0], axes[0, 1]):
+        a.set_yscale("log")
+    lo = min(axes[0, 0].get_ylim()[0], axes[0, 1].get_ylim()[0])
+    hi = max(axes[0, 0].get_ylim()[1], axes[0, 1].get_ylim()[1])
+    for a in (axes[0, 0], axes[0, 1]):
+        a.set_ylim(lo * 0.85, hi * 1.5)
+    axes[0, 1].tick_params(labelleft=False)  # same scale as left panel
     axes[1, 0].set_ylabel("ratio to\nno beamspot", fontsize=10)
     odd_label(axes[0, 0])
     handles, labels = axes[0, 0].get_legend_handles_labels()
