@@ -39,7 +39,11 @@ from acts.examples.simulation import (
 )
 from acts.examples.reconstruction import (
     addSeeding,
+    SeedingAlgorithm,
+    SeedFinderConfigArg,
     addCKFTracks,
+    addAmbiguityResolution,
+    AmbiguityResolutionConfig,
     TrackSelectorConfig,
     CkfConfig,
 )
@@ -122,14 +126,17 @@ def build_sequencer(args):
     )
     s.addWhiteboardAlias("particles", "particles_simulated")
 
-    # Same particle selection as the original study
+    # --- Track finding matched EXACTLY to the standard digi_and_reco chain, so the
+    # tracking efficiency is identical to the paper's baseline; the beamspot study is
+    # only the extra RefittingAlgorithm on top. ---
+
+    # Sim particle selection (truth denominator)
     addSimParticleSelection(
         s,
         ParticleSelectorConfig(
-            rho=(0.0, 24 * u.mm),
-            absZ=(0.0, 1.0 * u.m),
-            eta=(-3.0, 3.0),
-            removeNeutral=True,
+            rho=(0.0, 1080 * u.mm),
+            absZ=(0.0, 3.03 * u.m),
+            pt=(150 * u.MeV, None),
         ),
     )
 
@@ -140,13 +147,30 @@ def build_sequencer(args):
         digiConfigFile=odd_dir / "config/odd-digi-smearing-config.json",
         rnd=rnd,
     )
+
+    # Digi particle selection with the >=3-pixel-hits requirement (as digi_and_reco)
+    def _make_geoid(vol=None, lay=None):
+        gid = acts.GeometryIdentifier()
+        if vol is not None:
+            gid.volume = vol
+        if lay is not None:
+            gid.layer = lay
+        return gid
+
+    measurementCounter = acts.examples.ParticleSelector.MeasurementCounter()
+    measurementCounter.addCounter(
+        [_make_geoid(16), _make_geoid(17), _make_geoid(18)], 3, 2 ** 31 - 1)
     addDigiParticleSelection(
         s,
         ParticleSelectorConfig(
-            pt=(0.9 * u.GeV, None),
-            measurements=(7, None),
+            rho=(0.0, 24 * u.mm),
+            absZ=(0.0, 1.0 * u.m),
+            eta=(-3.0, 3.0),
+            pt=(0.999 * u.GeV, None),
+            measurements=(6, None),
             removeNeutral=True,
-            removeSecondaries=True,
+            removeSecondaries=False,
+            nMeasurementsGroupMin=measurementCounter,
         ),
     )
 
@@ -154,21 +178,29 @@ def build_sequencer(args):
         s,
         trackingGeometry,
         field,
-        rnd=rnd,
-        inputParticles="particles_generated",
-        particleHypothesis=acts.ParticleHypothesis.muon,
+        seedingAlgorithm=SeedingAlgorithm.GridTriplet,
+        particleHypothesis=acts.ParticleHypothesis.pion,
+        seedFinderConfigArg=SeedFinderConfigArg(
+            r=(33 * u.mm, 200 * u.mm),
+            deltaR=(1 * u.mm, 300 * u.mm),
+            collisionRegion=(-250 * u.mm, 250 * u.mm),
+            z=(-2000 * u.mm, 2000 * u.mm),
+            maxSeedsPerSpM=5,
+            sigmaScattering=5,
+            radLengthPerSeed=0.1,
+            minPt=0.5 * u.GeV,
+            impactMax=3 * u.mm,
+            zBinEdges=[-1600, -1000, -600, 0, 600, 1000, 1600],
+        ),
         initialSigmas=[
-            1 * u.mm,
-            1 * u.mm,
-            1 * u.degree,
-            1 * u.degree,
-            0 / u.GeV,
-            1 * u.ns,
+            1 * u.mm, 1 * u.mm, 1 * u.degree, 1 * u.degree,
+            0.1 * u.e / u.GeV, 1 * u.ns,
         ],
-        initialSigmaQoverPt=0.1 / u.GeV,
+        initialSigmaQoverPt=0.1 * u.e / u.GeV,
         initialSigmaPtRel=0.1,
         initialVarInflation=[1e0] * 6,
         geoSelectionConfigFile=odd_dir / "config/odd-seeding-config.json",
+        rnd=rnd,
     )
 
     addCKFTracks(
@@ -176,32 +208,19 @@ def build_sequencer(args):
         trackingGeometry,
         field,
         TrackSelectorConfig(
-            pt=(1.0 * u.GeV, None),
-            absEta=(None, 3.0),
-            loc0=(-4.0 * u.mm, 4.0 * u.mm),
-            nMeasurementsMin=7,
-            maxHoles=2,
-            maxOutliers=2,
+            pt=(0.7 * u.GeV, None),
+            absEta=(None, 3.5),
+            nMeasurementsMin=6,
+            maxHolesAndOutliers=3,
         ),
         CkfConfig(
             chi2CutOffMeasurement=15.0,
             chi2CutOffOutlier=25.0,
-            numMeasurementsCutOff=2,
-            pixelVolumes=[16, 17, 18],
-            stripVolumes=[23, 24, 25],
-            maxPixelHoles=1,
-            maxStripHoles=2,
-            constrainToVolumes=[
-                2,  # beam pipe
-                32,
-                4,  # beam pipe gap
-                16, 17, 18,  # pixel
-                20,  # PST
-                23, 24, 25,  # short strip
-                26, 8,  # long strip gap
-                28, 29, 30,  # long strip
-            ],
+            numMeasurementsCutOff=1,
+            seedDeduplication=True,
+            stayOnSeed=True,
         ),
+        twoWay=True,
         outputDirRoot=None,  # explicit writers below
         writeTrackSummary=False,
         writeTrackStates=False,
@@ -209,11 +228,28 @@ def build_sequencer(args):
         writeCovMat=False,
     )
 
-    # Base (pre-refit) CKF reference output
+    # Greedy ambiguity resolution — matches the standard digi_and_reco chain. Removes
+    # duplicate/shared-hit CKF candidates so ~one track survives per particle; without
+    # it the sample carries ~14 combinatorial candidates/particle at mu=200, inflating
+    # the resolution-width tails. Sets the "tracks" alias -> "ambi_tracks".
+    addAmbiguityResolution(
+        s,
+        config=AmbiguityResolutionConfig(
+            maximumSharedHits=3,
+            maximumIterations=1000000,
+            nMeasurementsMin=6,
+        ),
+        outputDirRoot=None,
+        writeTrackSummary=False,
+        writeTrackStates=False,
+        writePerformance=False,
+    )
+
+    # Base (pre-refit) ambiguity-resolved reference output
     s.addWriter(
         RootTrackSummaryWriter(
             level=acts.logging.INFO,
-            inputTracks="ckf_tracks",
+            inputTracks="ambi_tracks",
             inputParticles="particles_selected",
             inputTrackParticleMatching="track_particle_matching",
             filePath=str(outputDir / "tracksummary_ckf_base.root"),
@@ -246,7 +282,7 @@ def build_sequencer(args):
         s.addAlgorithm(
             acts.examples.RefittingAlgorithm(
                 level=acts.logging.INFO,
-                inputTracks="ckf_tracks",
+                inputTracks="ambi_tracks",
                 outputTracks=f"ckf_refit_tracks_{tag}",
                 initialVarInflation=6 * [100.0],
                 fit=acts.examples.makeKalmanFitterFunction(
