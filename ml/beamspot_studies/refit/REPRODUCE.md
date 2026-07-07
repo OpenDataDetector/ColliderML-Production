@@ -58,6 +58,29 @@ Outputs per run dir: `tracksummary_ckf_refit_{none,corrected,doga}.root`,
 conda run -p /pscratch/sd/d/danieltm/envs/hep4m2 python \
     ../evaluation/refit_beamspot_plots.py --prod-dir <out>/prod
 ```
-Row-concatenates the tracksummary TTrees (never merge histogram files), dedups CKF
-duplicates per (run, event, majority particle), and writes the figures + a
+Row-concatenates the tracksummary TTrees (never merge histogram files), keeps **all**
+majority-matched tracks (ACTS `ResPlotTool` convention — no per-particle dedup, so the
+widths reproduce ACTS's own performance-file output), and writes the figures + a
 `refit_summary.json` with the widths into `../paper/figures/`.
+
+## Plotting style (`evaluation/odd_plot_style.py`)
+The shared, study-agnostic look lives in `odd_plot_style.py` — import it for any other
+ODD tracking/beamspot study so figures match:
+```python
+from odd_plot_style import (paper_style, odd_label, draw_series, draw_hist,
+                            legend_lines, gauss_width, iqr_sigma, density_hist)
+```
+Conventions it enforces: series told apart by **colour only** (never marker shape too);
+data drawn as **error-bar lines** (horizontal bin-width segment + y-error, no markers);
+the bold-italic **ODD Simulation** label.
+
+- **ACTS version** in the label is `ACTS_VERSION` in that module (currently `v46.8.0`).
+  The container's ACTS is the `murnanedaniel/acts` fork at master commit `5c4c1b583`
+  (2026-06-12); its `version_number` is the dev placeholder `999.999.999`, so cite the
+  matching upstream release instead: get the commit date and match it to an
+  `acts-project/acts` GitHub release (commit tracks upstream through PR #5574 → v46.8.0).
+- **Bold font self-heal:** some matplotlib installs (the NERSC `hep4m2` env among them)
+  ship only the *regular* DejaVu Sans face; then every `fontweight="bold"` silently
+  renders un-bold with no error. `paper_style()` calls `ensure_bold_font()`, which
+  registers the bold faces vendored in `evaluation/fonts/` when the env lacks one — so
+  the label is bold anywhere, no env surgery needed.

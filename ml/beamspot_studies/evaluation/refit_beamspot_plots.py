@@ -4,19 +4,21 @@
 Reads the per-run tracksummary ROOT files produced by
 ml/beamspot_studies/refit/run_ckf_refit.py (configs: none / corrected / doga),
 row-concatenates them (never merges histograms — that corrupted widths in the
-original study), dedups CKF duplicates per matched particle, and draws:
+original study), keeps all majority-matched tracks (ACTS ResPlotTool convention),
+and draws:
 
-  fig1  d0 residuals (+ ratio-to-no-beamspot panel): unconstrained vs
-        beamspot-constrained vs naive predict-0
-  fig2  z0 residuals (+ ratio panel); naive is ~55 mm wide -> inset
-  fig3  d0 resolution vs pT and vs eta (-3..3), three configs
+  fig1  d0 residuals: unconstrained vs beamspot-constrained vs naive predict-0
+  fig2  z0 residuals; naive is ~55 mm wide -> inset
+  fig3  d0 resolution vs pT and vs eta (-3..3), three configs (two figures)
   fig4  cross-check: corrected vs original-study ('doga') constraint matrix
 
-Estimator note: the plotted "resolution width" is a single-Gaussian fit width
-(iterative +-4 sigma window), matching ACTS ResPlotTool `reswidth_*` — NOT the RMS
-(which is ~2x larger at mu=200 because of non-Gaussian tails) and NOT an aggressive
-clipped core (which is ~25% smaller). This is the standard, ATLAS/ACTS-comparable
-definition and reproduces the numbers from the original study's ResPlotTool plots.
+The shared look (ODD label, error-bar-line style, colours, Gaussian width) lives
+in odd_plot_style.py — reuse that module for other ODD studies. Series are told
+apart by COLOUR only and drawn as error-bar lines (no markers).
+
+Estimator note: the "resolution width" is a single-Gaussian fit width (iterative
++-3 sigma window), matching ACTS ResPlotTool `reswidth_*` — NOT the RMS and NOT an
+aggressive clipped core. See odd_plot_style.gauss_width.
 
 The "naive" curve is the trivial predictor d0 = z0 = 0 (assume every track comes
 from the beamspot centre): residual = -t_d0, from the SAME matched-track sample as
@@ -29,6 +31,7 @@ Run (login node): conda run -p /pscratch/sd/d/danieltm/envs/hep4m2 \
 import argparse
 import glob
 import json
+import sys
 from pathlib import Path
 
 import numpy as np
@@ -38,7 +41,10 @@ import matplotlib
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
-from scipy.optimize import curve_fit
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from odd_plot_style import (density_hist, draw_hist, draw_series, gauss_width,  # noqa: E402
+                            iqr_sigma, legend_lines, odd_label, paper_style)
 
 CONFIGS = ["none", "corrected", "doga"]
 
@@ -56,7 +62,6 @@ LABEL = {
     "naive": r"naive $d_0\!=\!z_0\!=\!0$ (beamspot only)",
     "doga": "original constraint matrix",
 }
-MARKER = {"none": "o", "corrected": "s", "naive": "^", "doga": "D"}
 
 PID_COLS = [
     "majorityParticleId_vertex_primary", "majorityParticleId_vertex_secondary",
@@ -128,110 +133,11 @@ def load_config(prod_dir: Path, cfg: str, cache_dir: Path) -> pd.DataFrame:
     return df
 
 
-# ---------- estimators ----------
-
-def _gauss(x, a, mu, s):
-    return a * np.exp(-0.5 * ((x - mu) / s) ** 2)
-
-
-def gauss_width(x, book_range=0.5e3, book_bins=100, sigma_range=3.0, iters=3):
-    """ACTS ResPlotTool width: replicates ActsPlugins::extractMeanWidthProfiles.
-    Books the residual in a fixed range (ACTS default +-0.5 mm = +-500 um for
-    d0/z0), then does an iterative Gaussian fit restricted to +-sigma_range*sigma,
-    for `iters` iterations. Returns (sigma, sigma_err) in the input units.
-    Verified against ACTS's own hadd'd histogram output (~within binning)."""
-    x = np.asarray(x, float)
-    x = x[np.isfinite(x)]
-    if len(x) < 20:
-        return np.nan, np.nan
-    # auto-widen the booked range for distributions far broader than it (e.g. the
-    # naive z0 baseline, ~55 mm): keeps ACTS's +-0.5 mm for the narrow fit residuals.
-    iqr = (np.percentile(x, 75) - np.percentile(x, 25)) / 1.349
-    if 3 * iqr > book_range:
-        book_range = 8 * iqr
-    h, edges = np.histogram(x, bins=book_bins, range=(-book_range, book_range))
-    c = 0.5 * (edges[:-1] + edges[1:])
-    mu = np.median(x[np.abs(x) < book_range]) if (np.abs(x) < book_range).any() else 0.0
-    s = (np.percentile(x, 75) - np.percentile(x, 25)) / 1.349 or x.std()
-    serr = s / np.sqrt(2 * len(x))
-    for _ in range(iters):
-        m = (c > mu - sigma_range * s) & (c < mu + sigma_range * s)
-        if m.sum() < 5:
-            break
-        try:
-            p, cov = curve_fit(_gauss, c[m], h[m], p0=[max(h[m].max(), 1), mu, s],
-                               sigma=np.sqrt(h[m] + 1), maxfev=8000)
-            mu, s = p[1], abs(p[2])
-            serr = float(np.sqrt(cov[2, 2])) if np.all(np.isfinite(cov)) else s / np.sqrt(2 * m.sum())
-        except Exception:
-            break
-    return float(s), float(serr)
-
-
-def iqr_sigma(x):
-    x = np.asarray(x, float)
-    x = x[np.isfinite(x)]
-    if len(x) < 10:
-        return np.nan
-    return (np.percentile(x, 75) - np.percentile(x, 25)) / 1.349
-
-
-# ---------- style + primitives ----------
-
-def paper_style():
-    """ATLAS-like tracking-plot style: full axis box, ticks inside on all four
-    sides with minor ticks, no grid, sans-serif."""
-    plt.rcParams.update({
-        "figure.dpi": 120, "savefig.dpi": 300,
-        "font.family": "sans-serif",
-        "font.sans-serif": ["Helvetica", "Arial", "DejaVu Sans"],
-        "font.size": 12, "axes.labelsize": 13,
-        "legend.fontsize": 10.5, "legend.frameon": False,
-        "axes.grid": False, "axes.linewidth": 1.0,
-        "xtick.direction": "in", "ytick.direction": "in",
-        "xtick.top": True, "ytick.right": True,
-        "xtick.minor.visible": True, "ytick.minor.visible": True,
-        "xtick.major.size": 6, "ytick.major.size": 6,
-        "xtick.minor.size": 3, "ytick.minor.size": 3,
-        "lines.linewidth": 1.6,
-        "errorbar.capsize": 0,
-    })
-
-
-def odd_label(ax, extra=None, x=0.05, y=0.95):
-    ax.text(x, y, "OpenDataDetector", transform=ax.transAxes,
-            fontsize=13, fontweight="bold", fontstyle="italic", va="top")
-    info = r"Simulation,  $t\bar{t}$,  $\langle\mu\rangle = 200$"
-    if extra:
-        info += f",  {extra}"
-    ax.text(x, y - 0.065, info, transform=ax.transAxes, fontsize=10.5, va="top")
-
-
-def density_hist(vals, bins):
-    """Return (centres, density, density_err, half_bin_width). No lines drawn."""
-    h, edges = np.histogram(vals, bins=bins)
-    centres = 0.5 * (edges[:-1] + edges[1:])
-    width = edges[1] - edges[0]
-    norm = max(h.sum() * width, 1)
-    return centres, h / norm, np.sqrt(h) / norm, np.full_like(centres, width / 2)
-
-
-def draw_hist(ax, vals, bins, key, sigma=None, unit=r"$\mu$m", fmt="{:.1f}"):
-    """Density histogram as error-bar markers (x err = half bin width). Every bin is
-    drawn (identical binning across series -> identical marker count)."""
-    c, d, derr, xerr = density_hist(vals, bins)
-    lbl = LABEL[key] if sigma is None else (
-        f"{LABEL[key]}  (" + rf"$\sigma$ = {fmt.format(sigma)} {unit})")
-    ax.errorbar(c, d, yerr=derr, xerr=xerr, fmt=MARKER[key],
-                color=COLOR[key], ms=4.0, lw=1.1, mec=COLOR[key], label=lbl)
-    return c, d, derr, xerr
-
-
 # ---------- figures ----------
 
 def fig_residual(dfs, axis, fname, figures_dir, summary, pt_min=None):
-    """axis 'd0'/'z0'. Single residual panel; all series share identical binning and
-    every bin is drawn (same marker count). Widths = ACTS ResPlotTool convention."""
+    """axis 'd0'/'z0'. Single residual panel; all series share identical binning.
+    Widths = ACTS ResPlotTool convention (see odd_plot_style.gauss_width)."""
     res_branch = "res_eLOC0_fit" if axis == "d0" else "res_eLOC1_fit"
     truth_branch = "t_d0" if axis == "d0" else "t_z0"
 
@@ -259,29 +165,37 @@ def fig_residual(dfs, axis, fname, figures_dir, summary, pt_min=None):
     bins = np.linspace(-lim, lim, 51)   # 50 identical bins, all series
 
     fig, ax = plt.subplots(figsize=(6.0, 4.6))
-    draw_hist(ax, r_none, bins, "none", sigma=w_none)
-    draw_hist(ax, r_corr, bins, "corrected", sigma=w_corr)
+    draw_hist(ax, r_none, bins, COLOR["none"])
+    draw_hist(ax, r_corr, bins, COLOR["corrected"])
+    keys = ["none", "corrected"]
+    labels = [rf"{LABEL['none']}  ($\sigma$ = {w_none:.1f} $\mu$m)",
+              rf"{LABEL['corrected']}  ($\sigma$ = {w_corr:.1f} $\mu$m)"]
     if axis == "d0":
-        draw_hist(ax, naive_um, bins, "naive", sigma=w_naive)
+        draw_hist(ax, naive_um, bins, COLOR["naive"])
+        keys.append("naive")
+        labels.append(rf"{LABEL['naive']}  ($\sigma$ = {w_naive:.1f} $\mu$m)")
     else:
-        axins = ax.inset_axes([0.64, 0.36, 0.33, 0.36])
+        axins = ax.inset_axes([0.65, 0.15, 0.32, 0.30])
         bmm = np.linspace(-200, 200, 51)
         c2, d2, de2, xe2 = density_hist(naive_mm, bmm)
-        axins.errorbar(c2, d2, yerr=de2, xerr=xe2, fmt="^",
-                       color=COLOR["naive"], ms=3.0, lw=0.9)
+        draw_series(axins, c2, d2, xe2, COLOR["naive"], yerr=de2, elinewidth=1.2)
+        axins.set_ylim(top=axins.get_ylim()[1] * 1.45)  # headroom for the sigma text
         axins.set_xlabel(r"naive $z_0$ res. [mm]", fontsize=8)
         axins.tick_params(labelsize=7)
         axins.set_yticks([])
-        axins.text(0.05, 0.86, rf"$\sigma$ = {gauss_width(naive_mm)[0]:.0f} mm",
+        axins.text(0.05, 0.87, rf"$\sigma$ = {gauss_width(naive_mm)[0]:.0f} mm",
                    transform=axins.transAxes, fontsize=8.5, color=COLOR["naive"])
 
     sym = r"d_0" if axis == "d0" else r"z_0"
     ax.set_xlabel(rf"${sym}$ residual (fit $-$ truth) [$\mu$m]")
     ax.set_ylabel("Normalised tracks")
     ax.set_xlim(-lim, lim)
-    ax.set_ylim(0, ax.get_ylim()[1] * 1.5)
+    # extra top headroom so the label + legend stack sits above the peak
+    ax.set_ylim(0, ax.get_ylim()[1] * 2.0)
     odd_label(ax, extra=(rf"$p_T > {pt_min:g}$ GeV" if pt_min else None))
-    ax.legend(loc="upper right", bbox_to_anchor=(0.985, 0.80))
+    # legend (colour lines) stacked just below the ODD label, clear of all points
+    legend_lines(ax, [COLOR[k] for k in keys], labels,
+                 loc="upper left", bbox_to_anchor=(0.05, 0.70))
     fig.tight_layout()
     for ext in ("pdf", "png"):
         fig.savefig(figures_dir / f"{fname}.{ext}")
@@ -303,19 +217,18 @@ def _profile(x, y, edges, min_n=30):
 
 
 def fig_resolution_vs(dfs, figures_dir, summary):
-    """d0 resolution width vs pT and vs eta (-3..3), each with a ratio-to-no-beamspot
-    panel below. Error-bar markers only (x err = half bin width), no lines."""
-    fig, axes = plt.subplots(2, 2, figsize=(10.4, 5.6), sharex="col",
-                             gridspec_kw=dict(height_ratios=[3, 1], hspace=0.06))
-    pt_edges = np.array([1, 1.5, 2, 3, 5, 8, 13, 21, 35, 60, 100])
-    eta_edges = np.linspace(-3.0, 3.0, 25)
-
+    """d0 resolution width vs pT and vs eta, drawn as TWO separate figures, each a
+    width panel + ratio-to-no-beamspot panel with its own legend and ODD label."""
+    specs = [
+        ("t_pT", np.array([1, 1.5, 2, 3, 5, 8, 13, 21, 35, 60, 100]),
+         r"$p_T$ [GeV]", "pt", True),
+        ("t_eta", np.linspace(-3.0, 3.0, 25), r"$\eta$", "eta", False),
+    ]
     improvement = {}
-    for col, (var, edges, xlabel) in enumerate([
-        ("t_pT", pt_edges, r"$p_T$ [GeV]"),
-        ("t_eta", eta_edges, r"$\eta$"),
-    ]):
-        ax, axr = axes[0, col], axes[1, col]
+    for var, edges, xlabel, tag, logx in specs:
+        fig, (ax, axr) = plt.subplots(
+            2, 1, figsize=(6.4, 5.4), sharex=True,
+            gridspec_kw=dict(height_ratios=[3, 1], hspace=0.06))
         widths = {}
         for key in ["none", "corrected", "naive"]:
             src = dfs["none"] if key == "naive" else dfs[key]
@@ -323,8 +236,7 @@ def fig_resolution_vs(dfs, figures_dir, summary):
             y = (-src["t_d0"].to_numpy() if key == "naive"
                  else src["res_eLOC0_fit"].to_numpy()) * 1e3
             cen, xerr, w, we = _profile(x, y, edges)
-            ax.errorbar(cen, w, yerr=we, xerr=xerr, fmt=MARKER[key],
-                        color=COLOR[key], ms=4.5, lw=1.1, label=LABEL[key])
+            draw_series(ax, cen, w, xerr, COLOR[key], yerr=we)
             widths[key] = (cen, xerr, w, we)
         # ratio-to-no-beamspot panel
         n_cen, _, n_w, n_we = widths["none"]
@@ -334,15 +246,18 @@ def fig_resolution_vs(dfs, figures_dir, summary):
             idx = np.isin(cen, common); nidx = np.isin(n_cen, common)
             rr = w[idx] / n_w[nidx]
             rre = rr * np.sqrt((we[idx] / w[idx]) ** 2 + (n_we[nidx] / n_w[nidx]) ** 2)
-            axr.errorbar(cen[idx], rr, yerr=rre, xerr=xerr[:, idx],
-                         fmt=MARKER[key], color=COLOR[key], ms=4.0, lw=1.1)
+            draw_series(axr, cen[idx], rr, xerr[:, idx], COLOR[key], yerr=rre)
             if key == "corrected" and var == "t_pT":
                 improvement = {f"pt_{v:g}GeV": float(1 - rv)
                                for v, rv in zip(cen[idx], rr)}
         axr.axhline(1.0, color="0.4", lw=1.0, ls=(0, (4, 3)))
         axr.set_ylim(0, 1.35)
         axr.set_xlabel(xlabel)
-        if var == "t_pT":
+        ax.set_ylabel(r"$d_0$ resolution width [$\mu$m]")
+        axr.set_ylabel("ratio to\nno beamspot", fontsize=10)
+        ax.set_yscale("log")
+        ax.set_ylim(top=ax.get_ylim()[1] * 1.9)  # headroom for the legend
+        if logx:
             for a in (ax, axr):
                 a.set_xscale("log")
             axr.set_xticks([1, 2, 5, 10, 20, 50, 100])
@@ -350,29 +265,19 @@ def fig_resolution_vs(dfs, figures_dir, summary):
             axr.xaxis.set_minor_formatter(matplotlib.ticker.NullFormatter())
         else:
             ax.set_xlim(-3, 3)
-    axes[0, 0].set_ylabel(r"$d_0$ resolution width [$\mu$m]")
-    # log y on BOTH top panels, shared range
-    for a in (axes[0, 0], axes[0, 1]):
-        a.set_yscale("log")
-    lo = min(axes[0, 0].get_ylim()[0], axes[0, 1].get_ylim()[0])
-    hi = max(axes[0, 0].get_ylim()[1], axes[0, 1].get_ylim()[1])
-    for a in (axes[0, 0], axes[0, 1]):
-        a.set_ylim(lo * 0.85, hi * 1.5)
-    axes[0, 1].tick_params(labelleft=False)  # same scale as left panel
-    axes[1, 0].set_ylabel("ratio to\nno beamspot", fontsize=10)
-    odd_label(axes[0, 0])
-    handles, labels = axes[0, 0].get_legend_handles_labels()
-    fig.legend(handles, labels, loc="lower center", ncol=3, fontsize=10.5,
-               bbox_to_anchor=(0.5, -0.02), columnspacing=1.6)
+        odd_label(ax)
+        legend_lines(ax, [COLOR[k] for k in ("none", "corrected", "naive")],
+                     [LABEL["none"], LABEL["corrected"], LABEL["naive"]],
+                     loc="upper right", fontsize=10)
+        fig.tight_layout()
+        for ext in ("pdf", "png"):
+            fig.savefig(figures_dir / f"refit_d0_resolution_vs_{tag}.{ext}")
+        plt.close(fig)
     summary["d0_improvement_vs_naive_frac_by_pt"] = improvement
-    fig.tight_layout(rect=[0, 0.05, 1, 1])
-    for ext in ("pdf", "png"):
-        fig.savefig(figures_dir / f"refit_d0_resolution_vs_pt_eta.{ext}")
-    plt.close(fig)
 
 
 def fig_xcheck(dfs, figures_dir, summary):
-    """Corrected vs original ('doga') constraint matrix; error-bar markers,
+    """Corrected vs original ('doga') constraint matrix; error-bar lines,
     identical binning, single panel per parameter."""
     xlabel = {"corrected": r"beamspot $\sigma^2$ (correct)",
               "doga": r"$\sigma$ as covariance (bug)"}
@@ -381,18 +286,19 @@ def fig_xcheck(dfs, figures_dir, summary):
             [("res_eLOC0_fit", "d_0", 100), ("res_eLOC1_fit", "z_0", 300)]):
         ax = axes[col]
         bins = np.linspace(-lim, lim, 51)
-        for key in ["corrected", "doga"]:
+        keys, labels = ["corrected", "doga"], []
+        for key in keys:
             r = dfs[key][res_branch].to_numpy() * 1e3
             c, d, de, xerr = density_hist(r, bins)
-            ax.errorbar(c, d, yerr=de, xerr=xerr, fmt=MARKER[key],
-                        color=COLOR[key], ms=4.0, lw=1.1,
-                        label=rf"{xlabel[key]}  ($\sigma$ = {gauss_width(r)[0]:.1f} $\mu$m)")
+            draw_series(ax, c, d, xerr, COLOR[key], yerr=de)
+            labels.append(rf"{xlabel[key]}  ($\sigma$ = {gauss_width(r)[0]:.1f} $\mu$m)")
         ax.set_ylim(0, ax.get_ylim()[1] * 1.28)
         ax.set_xlim(-lim, lim)
-        ax.legend(loc="upper right", fontsize=8.5)
+        legend_lines(ax, [COLOR[k] for k in keys], labels, loc="upper right",
+                     bbox_to_anchor=(0.97, 0.99), fontsize=8.5)
         ax.set_xlabel(rf"${sym}$ residual [$\mu$m]")
     axes[0].set_ylabel("Normalised tracks")
-    fig.suptitle(r"OpenDataDetector  Simulation,  $t\bar{t}$,  $\langle\mu\rangle = 200$   "
+    fig.suptitle(r"ODD Simulation,  $t\bar{t}$,  $\sqrt{s}$ = 14 TeV,  $\langle\mu\rangle$ = 200   "
                  "— constraint-matrix cross-check", fontsize=11, y=0.98)
     summary["pull_widths"] = {
         key: {"pull_d0": float(gauss_width(dfs[key]["pull_eLOC0_fit"].to_numpy())[0]),
@@ -421,7 +327,7 @@ def main():
 
     dfs = {cfg: load_config(prod, cfg, cache) for cfg in CONFIGS}
     for cfg, df in dfs.items():
-        print(f"{cfg}: {len(df)} matched deduped tracks from {df['run'].nunique()} runs")
+        print(f"{cfg}: {len(df)} matched tracks from {df['run'].nunique()} runs")
 
     summary = {}
     fig_residual(dfs, "d0", "refit_d0_residual", figures_dir, summary)
