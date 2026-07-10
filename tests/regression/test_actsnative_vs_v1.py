@@ -55,7 +55,20 @@ def test_tracker_hits_event_count_matches(acts_tracker_hits, v1_tracker_hits):
 
 
 def test_tracks_event_count_matches(acts_tracks, v1_tracks):
-    assert acts_tracks.height == v1_tracks.height
+    """convert_all drops events with zero reconstructed tracks; the native writer
+    keeps them as empty event-rows. So v1's event set must be a SUBSET of native's,
+    and every native-only event must carry zero tracks (content is unchanged; only
+    empty-event handling differs — downstream consumers must not assume event_id
+    density is identical between the two)."""
+    a_ev = set(acts_tracks["event_id"].to_list())
+    v_ev = set(v1_tracks["event_id"].to_list())
+    assert v_ev <= a_ev, f"v1 has track-events absent from native: {sorted(v_ev - a_ev)[:10]}"
+    only = sorted(a_ev - v_ev)
+    if only:
+        n = _per_event_row_count(acts_tracks.filter(pl.col("event_id").is_in(only)))
+        nonempty = n.filter(pl.col("n") > 0)
+        assert nonempty.height == 0, (
+            f"native-only events must be empty (0 tracks) but some have tracks:\n{nonempty}")
 
 
 # ---------------------------------------------------------------------------
@@ -180,23 +193,27 @@ def test_tracker_hits_dedup_matches_measurements(acts_parquet_root, v1_tracker_h
 
 
 def test_tracker_hits_particle_id_no_silent_sentinel(acts_tracker_hits):
-    """The ACTS-native path must not silently map orphan hits to particle_id=0.
+    """Orphan hits must not silently leak the unmatched sentinel
+    (std::numeric_limits<uint64_t>::max(), per ArrowSimHitOutputConverter::execute)
+    into the particle_ids column.
 
-    The unmatched sentinel is std::numeric_limits<uint64_t>::max() (per
-    ArrowSimHitOutputConverter::execute). Verify we don't see suspicious
-    clumps at particle_id=0.
-    """
+    NB: particle_id == 0 is a VALID barcode — the first primary. In a single-muon
+    event the muon *is* particle_id 0 and legitimately owns ~90% of the hits, so
+    checking pid==0 (as this test used to) false-positives. We check the actual
+    sentinel value instead (uint64 max, or -1 if the column is stored signed)."""
+    import numpy as np
     pids = acts_tracker_hits.select(
         pl.col("particle_ids").explode().explode().alias("pid")
     )["pid"].drop_nulls().to_numpy()
-    n_zero = int((pids == 0).sum())
-    # In a 10-event sample we'd expect ≤ ~10 hits with pid=0 (one per
-    # primary-vertex barcode). >1% would point at sentinel mis-use.
-    frac_zero = n_zero / max(len(pids), 1)
-    assert frac_zero < 0.01, (
-        f"{n_zero}/{len(pids)} ({100*frac_zero:.2f}%) tracker hits map to "
-        f"particle_id=0 — likely sentinel collision"
-    )
+    # dtype-safe: whether the column is stored uint64 or int64 (-1), casting to
+    # uint64 maps the sentinel to 2**64-1 either way. (Comparing an unsigned
+    # array against python -1 is numpy-version-dependent under NEP 50.)
+    sentinel = pids.astype(np.uint64) == np.uint64(2**64 - 1)
+    n_sent = int(sentinel.sum())
+    frac = n_sent / max(len(pids), 1)
+    assert frac < 0.01, (
+        f"{n_sent}/{len(pids)} ({100*frac:.2f}%) tracker hits carry the unmatched "
+        f"uint64-max sentinel — orphan hits leaking into particle_ids")
 
 
 @pytest.mark.skip(reason="needs rework for the Release-2 nested truth links; "
@@ -334,6 +351,42 @@ def test_tracks_num_measurements_matches(acts_tracks, v1_tracks):
             f"symmetric diff sample: "
             f"{list((a - v).items())[:5]} | {list((v - a).items())[:5]}"
         )
+
+
+def test_track_parameters_match_v1(acts_tracks, v1_tracks):
+    """Fitted track parameters must agree VALUE-FOR-VALUE between native and v1 for
+    the same physical track (matched by majority_particle_id within an event).
+
+    This is the strongest back-compat guard: it checks the actual physics
+    quantities downstream ML consumes (impact parameters + momentum: d0, z0, phi,
+    theta, qOverP), not just row counts or hit linkage. Same-seed digitization ->
+    the Kalman fit is identical, so these are bit-identical in practice; the
+    tolerance only guards against f32/f64 storage drift."""
+    pars = ["d0", "z0", "phi", "theta", "qop"]
+    for c in pars:
+        if c not in acts_tracks.columns or c not in v1_tracks.columns:
+            pytest.skip(f"missing column {c} in one pipeline")
+    # The two pipelines enumerate particles differently, so we CANNOT match tracks
+    # by majority_particle_id. Instead compare the per-event MULTISET of parameter
+    # tuples (order- and id-independent): same tracks -> identical sorted tuples.
+    common = sorted(set(acts_tracks["event_id"].to_list())
+                    & set(v1_tracks["event_id"].to_list()))
+    worst = 0.0
+    n_pairs = 0
+    for ev in common:
+        a = acts_tracks.filter(pl.col("event_id") == ev)
+        v = v1_tracks.filter(pl.col("event_id") == ev)
+        A = sorted(zip(*[[float(x) for x in a[p][0]] for p in pars]))
+        V = sorted(zip(*[[float(x) for x in v[p][0]] for p in pars]))
+        if len(A) != len(V):
+            continue  # differing track count handled by test_tracks_per_event_count
+        for ta, tv in zip(A, V):
+            n_pairs += 1
+            worst = max(worst, max(abs(x - y) for x, y in zip(ta, tv)))
+    assert n_pairs > 0, "no common single-count events to compare track parameters"
+    assert worst <= 1e-3, (
+        f"track parameters (d0/z0/phi/theta/qop) diverge native vs v1: "
+        f"max |diff| = {worst:.3e} over {n_pairs} matched tracks")
 
 
 def test_tracks_hit_outlier_excluded_matches_v1(

@@ -243,8 +243,11 @@ if [ -d "$CACHE_DIR" ]; then
     if [ -d "$_pip_target" ]; then
         export PYTHONPATH="$_pip_target:$PYTHONPATH"
     fi
-    # Install if not yet available
-    if ! python3 -c "import pyarrow" 2>/dev/null; then
+    # Install if ANY required postprocessing module is missing — not just pyarrow.
+    # An image can bake pyarrow but not pyedm4hep (which convert_all.py needs);
+    # guarding on pyarrow alone would silently skip the install and break
+    # convert_all with "No module named 'pyedm4hep'".
+    if ! python3 -c "import pyarrow, pyedm4hep, polars, uproot, pandas, awkward" 2>/dev/null; then
         echo "Installing Python packages for postprocessing..."
         mkdir -p "$_pip_target"
         timeout 180 python3 -m pip install --quiet --timeout 15 \

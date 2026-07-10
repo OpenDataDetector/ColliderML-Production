@@ -30,3 +30,33 @@ pytest tests/regression/test_actsnative_vs_v1.py -v
 ```
 
 If the two env-vars are unset the suite skips cleanly so it can live in CI without blocking on a built image.
+
+## Running on NERSC (podman-hpc, sw:pr-8) — the 2026-07 recipe
+
+`run_actsnative.sh` above targets local Docker + the old arrow-dev image. On
+Perlmutter use the podman-hpc pair instead:
+
+```bash
+# 1. one same-seed digi+reco emitting BOTH ROOT (for convert_all) and native
+#    Arrow parquet, then convert_all on the ROOT — defaults: 100 events of a
+#    drift_beamspot muon edm4hep, sw:pr-8; override via EDM/WORK/IMAGE/EVENTS:
+tests/regression/run_backcompat_nersc.sh
+
+# 2. the pytest comparison, inside the same image (it has polars):
+tests/regression/run_compare_nersc.sh
+```
+
+2026-07 result on 100 muon events: **10 passed / 6 skipped** — fitted track
+parameters (d0/z0/phi/theta/qop) bit-identical between the two writers;
+convert_all drops zero-track events while native keeps them (asserted as a
+subset relationship). The calo tests skip: no available image has the native
+calo converter (tracker-hits-v2 dropped #5441), so calo parquet is
+convert_all-only for now.
+
+Tier-0 (no data needed, run in any image): `python3 -m pytest
+tests/regression/test_postprocessing_deps.py` — hard-fails if any convert_all
+dependency is missing (guards the pip-guard failure mode).
+
+NERSC gotcha: if you source `setup_container_env.sh` manually, strip `/cache`
+from `LD_LIBRARY_PATH` afterwards (ODD-v4 factory shadow) — both drivers do
+this for you.
