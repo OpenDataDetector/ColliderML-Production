@@ -300,9 +300,14 @@ def fig_xcheck(dfs, figures_dir, summary):
     axes[0].set_ylabel("Normalised tracks")
     fig.suptitle(r"ODD Simulation,  $t\bar{t}$,  $\sqrt{s}$ = 14 TeV,  $\langle\mu\rangle$ = 200   "
                  "— constraint-matrix cross-check", fontsize=11, y=0.98)
+    # Pulls are unitless (sigma ~ 1): the default um-scale book_range (+-500) would
+    # dump everything into two central bins and the fit would fall back to the IQR
+    # seed. Book +-10 pull units so the iterative Gaussian fit actually runs.
     summary["pull_widths"] = {
-        key: {"pull_d0": float(gauss_width(dfs[key]["pull_eLOC0_fit"].to_numpy())[0]),
-              "pull_z0": float(gauss_width(dfs[key]["pull_eLOC1_fit"].to_numpy())[0])}
+        key: {"pull_d0": float(gauss_width(dfs[key]["pull_eLOC0_fit"].to_numpy(),
+                                           book_range=10.0)[0]),
+              "pull_z0": float(gauss_width(dfs[key]["pull_eLOC1_fit"].to_numpy(),
+                                           book_range=10.0)[0])}
         for key in ["none", "corrected", "doga"]}
     summary["xcheck_doga_widths_um"] = {
         "d0": float(gauss_width(dfs["doga"]["res_eLOC0_fit"].to_numpy() * 1e3)[0]),

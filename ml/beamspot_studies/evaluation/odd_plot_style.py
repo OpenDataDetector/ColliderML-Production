@@ -40,8 +40,9 @@ from pathlib import Path
 
 import numpy as np
 import matplotlib
-
-matplotlib.use("Agg")
+# NB: deliberately no matplotlib.use("Agg") here — this is a shared style module
+# and must not hijack the backend of notebook/interactive consumers. Scripts that
+# need Agg (batch figure production) set it themselves before importing pyplot.
 import matplotlib.pyplot as plt
 from matplotlib.font_manager import fontManager
 from matplotlib.lines import Line2D
