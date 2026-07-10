@@ -1,13 +1,13 @@
 """Compare ACTS-native parquet output against the legacy convert_all.py path.
 
 The two pipelines start from the same EDM4hep file and should produce
-parquets that are *semantically equivalent* even though tracker_hits has a
-different per-row meaning:
+parquets that are *semantically equivalent*. Row semantics (Release-2 layout):
 
-  - v1: one row per measurement (ACTS Digitization cluster centroid)
-  - ACTS-native: one row per simhit, with the cluster centroid projection
-    repeated across all contributing simhits → unique(x,y,z) recovers the
-    v1 row set
+  - v1 tracker_hits: one row per measurement (ACTS Digitization cluster
+    centroid), flat layout
+  - ACTS-native tracker_hits: also one row per MEASUREMENT (the Release-2
+    schema; the earlier one-row-per-simhit layout moved to the separate
+    tracker_simhits table), event-nested layout
 
 See ``tests/regression/README.md`` for how to populate the two parquet
 trees this suite reads.
@@ -54,7 +54,7 @@ def test_tracker_hits_event_count_matches(acts_tracker_hits, v1_tracker_hits):
     assert acts_tracker_hits.height == v1_tracker_hits.height
 
 
-def test_tracks_event_count_matches(acts_tracks, v1_tracks):
+def test_tracks_event_sets_consistent(acts_tracks, v1_tracks):
     """convert_all drops events with zero reconstructed tracks; the native writer
     keeps them as empty event-rows. So v1's event set must be a SUBSET of native's,
     and every native-only event must carry zero tracks (content is unchanged; only
@@ -315,18 +315,30 @@ def test_tracks_per_event_count(acts_tracks, v1_tracks):
         pytest.fail(f"tracks per-event count diverges:\n{bad}")
 
 
-def test_tracks_majority_particle_consistency(acts_tracks, v1_tracks):
-    """ACTS-native tracks should reference particles in the same enumeration
-    as ACTS-native particles. Verify that the set of majority_particle_id
-    values seen across all tracks is a subset of the particle_id column in
-    the ACTS-native particles table."""
-    # Spot-check first event only — cheap, plenty of signal.
-    ev = acts_tracks["event_id"][0]
-    mpids = set(acts_tracks.filter(pl.col("event_id") == ev)
-                ["majority_particle_id"].explode().to_list())
-    mpids.discard(None)
-    if not mpids:
-        pytest.skip("no tracks in first event")
+def test_tracks_majority_particle_consistency(acts_tracks, acts_particles):
+    """ACTS-native tracks must reference particles in the same enumeration as the
+    ACTS-native particles table: every majority_particle_id must appear in that
+    event's particle_id column. (This test used to compute the set and assert
+    nothing — vacuous; it now checks the subset relation on the first few
+    non-empty events.)"""
+    checked = 0
+    for i, ev in enumerate(acts_tracks["event_id"].to_list()):
+        mpids = set(acts_tracks.filter(pl.col("event_id") == ev)
+                    ["majority_particle_id"].explode().to_list())
+        mpids.discard(None)
+        if not mpids:
+            continue
+        pids = set(acts_particles.filter(pl.col("event_id") == ev)
+                   ["particle_id"].explode().to_list())
+        orphans = mpids - pids
+        assert not orphans, (
+            f"event {ev}: track majority_particle_id(s) {sorted(orphans)[:5]} "
+            f"not present in the native particles table")
+        checked += 1
+        if checked >= 10:   # spot-check is plenty
+            break
+    if checked == 0:
+        pytest.skip("no events with tracks")
 
 
 def test_tracks_num_measurements_matches(acts_tracks, v1_tracks):
@@ -354,14 +366,21 @@ def test_tracks_num_measurements_matches(acts_tracks, v1_tracks):
 
 
 def test_track_parameters_match_v1(acts_tracks, v1_tracks):
-    """Fitted track parameters must agree VALUE-FOR-VALUE between native and v1 for
-    the same physical track (matched by majority_particle_id within an event).
+    """Fitted track parameters must agree VALUE-FOR-VALUE between native and v1,
+    compared as per-event sorted multisets of (d0, z0, phi, theta, qop) tuples
+    (particle-enumeration-independent; see comment below on why we can't match
+    by majority_particle_id).
 
     This is the strongest back-compat guard: it checks the actual physics
-    quantities downstream ML consumes (impact parameters + momentum: d0, z0, phi,
-    theta, qOverP), not just row counts or hit linkage. Same-seed digitization ->
-    the Kalman fit is identical, so these are bit-identical in practice; the
-    tolerance only guards against f32/f64 storage drift."""
+    quantities downstream ML consumes, not just row counts or hit linkage.
+    Same-seed digitization -> the Kalman fit is identical, so these are
+    bit-identical in practice; the tolerance only guards f32/f64 storage drift.
+
+    STRICT on event coverage: this suite's contract is same-seed (one
+    digitization feeding both writers), so per-event track counts must be equal
+    in every common event — a count mismatch here FAILS rather than skipping,
+    closing the hole where test_tracks_per_event_count's ±2 slack plus a skip
+    here would leave extra/missing tracks' parameters never compared."""
     pars = ["d0", "z0", "phi", "theta", "qop"]
     for c in pars:
         if c not in acts_tracks.columns or c not in v1_tracks.columns:
@@ -371,19 +390,29 @@ def test_track_parameters_match_v1(acts_tracks, v1_tracks):
     # tuples (order- and id-independent): same tracks -> identical sorted tuples.
     common = sorted(set(acts_tracks["event_id"].to_list())
                     & set(v1_tracks["event_id"].to_list()))
+    import math
     worst = 0.0
     n_pairs = 0
+    count_mismatch = []
     for ev in common:
         a = acts_tracks.filter(pl.col("event_id") == ev)
         v = v1_tracks.filter(pl.col("event_id") == ev)
         A = sorted(zip(*[[float(x) for x in a[p][0]] for p in pars]))
         V = sorted(zip(*[[float(x) for x in v[p][0]] for p in pars]))
         if len(A) != len(V):
-            continue  # differing track count handled by test_tracks_per_event_count
+            count_mismatch.append((ev, len(A), len(V)))
+            continue
         for ta, tv in zip(A, V):
             n_pairs += 1
-            worst = max(worst, max(abs(x - y) for x, y in zip(ta, tv)))
-    assert n_pairs > 0, "no common single-count events to compare track parameters"
+            for x, y in zip(ta, tv):
+                d = abs(x - y)
+                # NaN anywhere is a divergence, not something max() may swallow
+                worst = math.inf if math.isnan(d) else max(worst, d)
+    assert not count_mismatch, (
+        f"{len(count_mismatch)} common events have differing track counts "
+        f"(native vs v1) under the same-seed contract, so their parameters were "
+        f"never compared: {count_mismatch[:5]}")
+    assert n_pairs > 0, "no common events to compare track parameters"
     assert worst <= 1e-3, (
         f"track parameters (d0/z0/phi/theta/qop) diverge native vs v1: "
         f"max |diff| = {worst:.3e} over {n_pairs} matched tracks")

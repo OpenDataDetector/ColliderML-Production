@@ -247,14 +247,14 @@ if [ -d "$CACHE_DIR" ]; then
     # An image can bake pyarrow but not pyedm4hep (which convert_all.py needs);
     # guarding on pyarrow alone would silently skip the install and break
     # convert_all with "No module named 'pyedm4hep'".
-    if ! python3 -c "import pyarrow, pyedm4hep, polars, uproot, pandas, awkward" 2>/dev/null; then
+    if ! python3 -c "import pyarrow, pyedm4hep, polars, uproot, pandas, awkward, h5py, tqdm, psutil, yaml" 2>/dev/null; then
         echo "Installing Python packages for postprocessing..."
         mkdir -p "$_pip_target"
         timeout 180 python3 -m pip install --quiet --timeout 15 \
             --trusted-host pypi.org --trusted-host files.pythonhosted.org \
             --target="$_pip_target" \
             pyarrow uproot pandas awkward h5py tqdm pyhepmc psutil pyedm4hep \
-            polars huggingface_hub 2>/dev/null \
+            polars huggingface_hub pyyaml 2>/dev/null \
             && echo "Python packages installed." \
             || echo "WARNING: pip install failed. Postprocessing stages may fail."
         # Update PYTHONPATH if target was just created

@@ -12,6 +12,12 @@ WORK="${WORK:-/pscratch/sd/d/danieltm/backcompat}"
 SETUP=$REPO/scripts/cli/setup_container_env.sh
 EVENTS=${EVENTS:-100}
 mkdir -p "$WORK/runs/0"
+# stale-output guard: a rerun (e.g. with smaller EVENTS) must not silently mix
+# old parquet shards into the comparison — clear both trees first.
+for d in "$WORK"/runs/0/particles "$WORK"/runs/0/tracker_hits \
+         "$WORK"/runs/0/tracker_simhits "$WORK"/runs/0/tracks "$WORK"/backcompat; do
+  [ -d "$d" ] && find "$d" -name '*.parquet' -delete
+done
 
 # --- digi config: seed 42, ROOT + native Arrow, tracker-only ODD v6.0.2 ---
 cat >"$WORK/digi_config.yaml" <<EOF
@@ -62,7 +68,7 @@ EOF
 run() { podman-hpc run --rm \
   -v /global/cfs/cdirs/m4958:/global/cfs/cdirs/m4958 -v /pscratch/sd/d/danieltm:/pscratch/sd/d/danieltm \
   --entrypoint /bin/bash "$IMAGE" -c "
-    source $SETUP >/tmp/setup.log 2>&1
+    source $SETUP >$WORK/setup_container.log 2>&1   # persisted (container /tmp dies with --rm)
     export LD_LIBRARY_PATH=\$(printf '%s' \"\$LD_LIBRARY_PATH\" | tr ':' '\n' | grep -v '^/cache' | paste -sd:)
     $1"; }
 
