@@ -1,0 +1,72 @@
+# Finish the ttH v1 parquet conversion — the remaining 64 of 128 runs.
+#
+# History: the original convert_all job (53286941, 2026-05-22) was cancelled on
+# its 30-minute debug-class wall clock mid-conversion, leaving 64/128 runs
+# converted (all four tables agree on the same 64). gen/sim/digi are complete
+# (128/128, see validation_reports/) — only this conversion step remained.
+# The three top-level failure_report_*_FINAL.txt are stale false alarms.
+#
+# Changes vs the dataset's configs/convert_all.yaml:
+#   - time_limit 30min -> 2h, runs_per_node 5 -> 2 (the old combo couldn't fit)
+#   - log_level DEBUG -> INFO (the DEBUG fsspec flood was a real throughput drag)
+#   - runs in the sw:pr-8 container (new mechanism; deps verified by
+#     tests/regression/test_postprocessing_deps.py — 10/10 in this image)
+#   - conversion semantics UNCHANGED: same objects, chunk_size 1000,
+#     max_chunks 1 (first 1000 of 1280 events/run — the deliberate original
+#     choice), run_size 1280, same column lists.
+#
+# Run (restrict to the 64 missing runs — list generated from the parquet shards):
+#   python scripts/cli/run_stage.py configs_production/hard_scatter/tth/convert_all_finish.yaml \
+#       --run-list 5 9 13 16 20 21 23 24 27 31 32 35 36 37 38 39 45 48 49 52 53 59 62 66 \
+#                  71 73 74 75 76 77 81 84 88 89 91 99 100 101 102 103 104 105 106 107 \
+#                  108 109 110 111 112 113 114 115 116 117 118 119 120 121 122 123 124 125 126 127
+campaign: "hard_scatter"
+dataset: "tth"
+version: "v1"
+stage: "convert_all"
+
+common:
+  container: "ghcr.io/opendatadetector/sw:pr-8"
+  container_tarball: "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/stress_mu200/sw_pr8_image.tar"
+
+job_config:
+  n_runs: 128
+  runs_per_node: 2
+  time_limit: "02:00:00"
+  qos: "regular"
+  execution_mode: "distributed_slurm"
+
+objects:
+  - tracker_hits
+  - tracks
+  - particles
+  - calo_hits
+output_format: "parquet"
+chunk_size: 1000
+max_chunks: 1
+run_size: 1280
+particles_columns_keep:
+  - particle_id
+  - pdg_id
+  - mass
+  - energy
+  - charge
+  - vx
+  - vy
+  - vz
+  - time
+  - px
+  - py
+  - pz
+  - perigee_d0
+  - perigee_z0
+  - vertex_primary
+  - parent_id
+  - primary
+digihits_columns_keep:
+  - x
+  - y
+  - z
+  - particle_id
+
+log_level: "INFO"
