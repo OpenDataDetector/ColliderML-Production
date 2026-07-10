@@ -15,11 +15,13 @@
 #     max_chunks 1 (first 1000 of 1280 events/run — the deliberate original
 #     choice), run_size 1280, same column lists.
 #
-# Run (restrict to the 64 missing runs — list generated from the parquet shards):
-#   python scripts/cli/run_stage.py configs_production/hard_scatter/tth/convert_all_finish.yaml \
-#       --run-list 5 9 13 16 20 21 23 24 27 31 32 35 36 37 38 39 45 48 49 52 53 59 62 66 \
-#                  71 73 74 75 76 77 81 84 88 89 91 99 100 101 102 103 104 105 106 107 \
-#                  108 109 110 111 112 113 114 115 116 117 118 119 120 121 122 123 124 125 126 127
+# Shard naming GOTCHA (cost one mis-scoped submission): convert_all names shards
+# events<chunk_index*1000>-..., NOT run_size-based. Derive done/missing runs by
+# dividing the filename event-start by 1000 (= chunk index = run id).
+# True missing set (57 runs) and column lists verified against the original
+# dataset config VERBATIM after the guardian caught a schema mismatch
+# (my first version dropped 8 tracker_hits columns + tracks/calo keep-lists).
+
 campaign: "hard_scatter"
 dataset: "tth"
 version: "v1"
@@ -36,37 +38,66 @@ job_config:
   qos: "regular"
   execution_mode: "distributed_slurm"
 
+# --- conversion semantics: VERBATIM from the dataset's configs/convert_all.yaml ---
 objects:
-  - tracker_hits
-  - tracks
-  - particles
-  - calo_hits
-output_format: "parquet"
+- tracker_hits
+- tracks
+- particles
+- calo_hits
+output_format: parquet
 chunk_size: 1000
-max_chunks: 1
 run_size: 1280
 particles_columns_keep:
-  - particle_id
-  - pdg_id
-  - mass
-  - energy
-  - charge
-  - vx
-  - vy
-  - vz
-  - time
-  - px
-  - py
-  - pz
-  - perigee_d0
-  - perigee_z0
-  - vertex_primary
-  - parent_id
-  - primary
+- particle_id
+- pdg_id
+- mass
+- energy
+- charge
+- vx
+- vy
+- vz
+- time
+- px
+- py
+- pz
+- perigee_d0
+- perigee_z0
+- vertex_primary
+- parent_id
+- primary
 digihits_columns_keep:
-  - x
-  - y
-  - z
-  - particle_id
+- x
+- y
+- z
+- true_x
+- true_y
+- true_z
+- time
+- particle_id
+- detector
+- volume_id
+- layer_id
+- surface_id
+tracks_columns_keep:
+- d0
+- z0
+- phi
+- theta
+- qop
+- majority_particle_id
+calo_columns_keep:
+- event_id
+- detector
+- cell_id
+- total_energy
+- x
+- y
+- z
+- contrib_particle_ids
+- contrib_energies
+- contrib_times
+max_chunks: 1
+min_tracker_hits: 0
+min_calo_hits: 0
 
 log_level: "INFO"
