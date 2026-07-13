@@ -1,0 +1,52 @@
+# MadGraph process initialization — ttbar NLO (FxFx) — drift_beamspot campaign
+#
+# WHY THIS EXISTS: the tgz currently at drift_beamspot/ttbar/v1/madgraph_process.tgz
+# is a byte-copy of hard_scatter/ttbar/v1's HOST-built process (verified: same size,
+# original safe in hard_scatter) and is NOT usable in the sw container (FastJet ABI +
+# CutTools mismatch). The process must be regenerated in-image with the image's own
+# MG5 3.5.9 (env resolves mg_base_path=MG5_IN_IMAGE). This stage OVERWRITES
+# {version_dir}/madgraph_process.tgz + madgraph_process/ — flagged and approved
+# before submission per production-data rules.
+#
+# Process definition: identical to full_pileup/ttbar/madgraph_init_config.yaml
+# (the proven NLO ttbar spec) — matches this campaign's madgraph_generation
+# card_customizations (ptj 20, Qcut 40, PYTHIA8 shower, 14 TeV).
+campaign: "drift_beamspot"
+dataset: "ttbar"
+version: "v1"
+stage: "madgraph_init"
+
+common:
+  container: "ghcr.io/opendatadetector/sw:pr-8"
+  container_tarball: "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/stress_mu200/sw_pr8_image.tar"
+
+job_config:
+  n_runs: 1
+  runs_per_node: 1
+  time_limit: "12:00:00"      # template guidance: NLO process compile = 2-12 h
+  qos: "regular"
+  execution_mode: "monolithic_slurm"   # process generation cannot parallelise
+
+# --- MadGraph process definition (verbatim from full_pileup/ttbar init) ---
+mg_model: "sm-no_b_mass"
+mg_definitions: []
+mg_generate_command: |
+  generate p p > t t~ [QCD]
+  add process p p > t t~ j [QCD]
+  add process p p > t t~ j j [QCD]
+
+mg_base_path: "{madgraph.mg_base_path}"
+generation_scratch_dir: "{madgraph.generation_scratch_dir}"
+
+card_customizations:
+  run_card:
+    "parton_shower": "PYTHIA8"
+    "ebeam1": 7000.0            # 14 TeV
+    "ebeam2": 7000.0
+    "ptj": 20.0                 # matches this campaign's generation config
+  shower_card:
+    "Qcut": 40.0                # matches generation config (FxFx merging scale)
+    "time_shower_me_corrections": "F"
+  pythia8_card: {}
+
+log_level: "INFO"
