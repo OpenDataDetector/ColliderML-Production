@@ -35,7 +35,10 @@ mg_generate_command: |
   add process p p > t t~ j [QCD]
   add process p p > t t~ j j [QCD]
 
-mg_base_path: "{madgraph.mg_base_path}"
+# NB: env_setup.yaml's "MG5_IN_IMAGE" sentinel is comment-only — NO code resolves
+# it (job 55847054 failed on the literal string). Concrete in-image path instead;
+# the spack hash is pr-8-image-specific (another reason to pin the image digest).
+mg_base_path: "/spack/opt/spack/linux-x86_64/madgraph5amc-3.5.9-nduymd6s7o634vycu23yu2sycaavaxze"
 generation_scratch_dir: "{madgraph.generation_scratch_dir}"
 
 card_customizations:
