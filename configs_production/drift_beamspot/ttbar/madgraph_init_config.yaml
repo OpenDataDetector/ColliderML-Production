@@ -23,7 +23,7 @@ common:
 job_config:
   n_runs: 1
   runs_per_node: 1
-  time_limit: "12:00:00"      # template guidance: NLO process compile = 2-12 h
+  time_limit: "48:00:00"      # template guidance: NLO process compile = 2-12 h
   qos: "regular"
   execution_mode: "monolithic_slurm"   # process generation cannot parallelise
 
