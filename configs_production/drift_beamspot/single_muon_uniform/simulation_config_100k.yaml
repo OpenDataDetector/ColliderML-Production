@@ -1,0 +1,31 @@
+# 100k-events/run PRODUCTION scale-up (2026-07-14, user-approved): 4 nodes x
+# 32 runs/node, runs 1-128 (run 0 = 10k pilot, untouched). Topology validated by
+# the debug topotest (16x8, commit 9222ef4 SLURM-env fix). Verbatim pilot physics.
+# DDSim simulation — Single Muons uniform pt — TRACKER-ONLY geometry (calo + muon OFF)
+campaign: "drift_beamspot"
+dataset: "single_muon_uniform"
+version: "v1"
+stage: "simulation"
+
+common:
+  container: "ghcr.io/opendatadetector/sw:pr-8"
+  container_tarball: "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/stress_mu200/sw_pr8_image.tar"
+
+job_config:
+  n_runs: 128
+  runs_per_node: 32
+  time_limit: "00:30:00"
+  qos: "debug"
+  execution_mode: "multi_node_slurm"
+
+events: 100000
+threads: 8
+input_filename: events.hepmc3
+minimalKineticEnergy: 0.1
+truthParticleHandler: "Geant4FullTruthParticleHandler"
+
+odd_compact_files:
+  - /opt/odd-install/share/OpenDataDetector/xml/OpenDataDetectorDefs.xml
+  - /opt/odd-install/share/OpenDataDetector/xml/OpenDataDetectorTracker.xml
+  - /global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-prod-container/configs_production/drift_beamspot/geometry/tracker_fields_plugins.xml
+
