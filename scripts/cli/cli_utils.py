@@ -137,7 +137,15 @@ def build_podman_run_prefix(container, srun_options=None, cache_dir=None):
     cache = ""
     if cache_dir:
         cache = f"-v {cache_dir}:{cache_dir} -e COLLIDERML_CACHE={cache_dir} "
-    run = (f"podman-hpc run --rm {mounts} {cache}"
+    # podman-hpc passes NO host environment into the container (verified 2026-07):
+    # forward the SLURM task identity so per-task run-id arithmetic inside the
+    # container ($((base + SLURM_PROCID))) sees the real task rank instead of
+    # silently evaluating to 0 for every task (which made every multi-task SLURM
+    # stage write run 0). `-e NAME` forwards the host value when set (each srun
+    # task) and leaves it unset otherwise (interactive mode) — no behavior change
+    # anywhere else.
+    slurm_env = "-e SLURM_PROCID -e SLURM_LOCALID -e SLURM_NODEID -e SLURM_NTASKS "
+    run = (f"podman-hpc run --rm {mounts} {slurm_env}{cache}"
            f"--entrypoint /bin/bash {container} -c \"")
     return f"srun {srun_options} {run}" if srun_options else run
 
