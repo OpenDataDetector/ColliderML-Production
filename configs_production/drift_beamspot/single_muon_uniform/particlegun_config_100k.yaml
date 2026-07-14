@@ -19,7 +19,7 @@ job_config:
   qos: "debug"
   execution_mode: "multi_node_slurm"
 
-events: 1000000         # per run; campaign final = 100M
+events: 100000         # per run; campaign final = 100M
 seed: 42
 
 particle: "mu-"
