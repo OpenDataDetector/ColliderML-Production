@@ -1,11 +1,8 @@
 # MadGraph generation — ttbar (NLO FxFx) — uniform drifting beamspot
 # Campaign: drift_beamspot.
-# WARNING: the copied hard_scatter/ttbar/v1 madgraph_process.tgz is built against the HOST
-# MG5 toolchain (OtherLibraries/MG5_aMC_v3_5_8) and is NOT usable in the sw container image
-# (FastJet ABI mismatch: needs PseudoJet::operator= which image fastjet 3.5.0 doesn't export;
-# plus CutTools compiler mismatch). The process MUST be regenerated in-image via madgraph_init
-# before this stage will run in pr-8. Proven recipe (LO+NLO) generates fresh with the image's
-# own MG5 3.5.9. Do NOT assume "skip madgraph_init by reusing the tarball" works across images.
+# NOTE: madgraph_process.tgz is the IN-IMAGE build (job 55867363, 2026-07-15,
+# validation SUCCESS, 382MB). The old host-built (FastJet-ABI-incompatible)
+# tarball is preserved as madgraph_process.tgz.host-built.bak.
 campaign: "drift_beamspot"
 dataset: "ttbar"
 version: "v1"
@@ -18,11 +15,11 @@ common:
 job_config:
   n_runs: 1
   runs_per_node: 1
-  time_limit: "01:00:00"
-  qos: "interactive"
-  execution_mode: "interactive"
+  time_limit: "02:00:00"
+  qos: "regular"
+  execution_mode: "multi_node_slurm"
 
-events: 10000          # pilot; final = 1000000 (scale n_runs in multi_node mode)
+events: 17500          # proven hard_scatter request; ~45-58% survive FxFx matching -> ~10k showered
 seed: 42
 
 mg_base_path: "{madgraph.mg_base_path}"
