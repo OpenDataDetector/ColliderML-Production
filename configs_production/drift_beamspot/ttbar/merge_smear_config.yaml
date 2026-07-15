@@ -11,11 +11,11 @@ common:
   container_tarball: "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/stress_mu200/sw_pr8_image.tar"
 
 job_config:
-  n_runs: 1
-  runs_per_node: 1
+  n_runs: 6
+  runs_per_node: 6
   time_limit: "00:30:00"
-  qos: "interactive"
-  execution_mode: "interactive"
+  qos: "debug"
+  execution_mode: "multi_node_slurm"
 
 seed: 42
 input_filename: events.hepmc      # signal produced by madgraph_generation (no pileup)
@@ -25,4 +25,3 @@ vertex_uniform: true
 vertex_min: [-5.0, -5.0, -200.0, -0.32]
 vertex_max: [ 5.0,  5.0,  200.0,  0.32]
 
-debug_output_dir: "/global/cfs/cdirs/m4958/data/ColliderML/simulation/drift_beamspot/ttbar/v1/runs/0"
