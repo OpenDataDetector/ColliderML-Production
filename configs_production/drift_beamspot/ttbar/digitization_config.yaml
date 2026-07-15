@@ -12,14 +12,14 @@ common:
   container_tarball: "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/stress_mu200/sw_pr8_image.tar"
 
 job_config:
-  n_runs: 1
-  runs_per_node: 1
+  n_runs: 6
+  runs_per_node: 6
   time_limit: "01:00:00"
-  qos: "interactive"
-  execution_mode: "interactive"
+  qos: "regular"
+  execution_mode: "multi_node_slurm"
 
 events: 1280
-threads: 64
+threads: 8
 
 # ACTS geometry/material/digi configs: /opt/odd in sw:pr-4 holds xml/ + config/ + data/
 # (material map) for ODD v6.0.2. Read by digi_and_reco (config.odd_geo_dir).
@@ -39,4 +39,3 @@ ambi_finding_performance: True
 ambi_fitting_performance: True
 write_helix_parameters: True
 
-debug_output_dir: "/global/cfs/cdirs/m4958/data/ColliderML/simulation/drift_beamspot/ttbar/v1/runs/0"
