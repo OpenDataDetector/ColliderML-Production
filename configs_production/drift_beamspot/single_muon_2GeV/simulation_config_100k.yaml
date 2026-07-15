@@ -1,0 +1,30 @@
+# 100k single-run scale-up to the campaign final (2026-07-15): run 1 additive
+# alongside the 10k pilot run 0. Recipe validated by the 12.8M uniform pilot.
+# DDSim simulation — Single Muons 2 GeV — TRACKER-ONLY geometry (calo + muon OFF)
+campaign: "drift_beamspot"
+dataset: "single_muon_2GeV"
+version: "v1"
+stage: "simulation"
+
+common:
+  container: "ghcr.io/opendatadetector/sw:pr-8"
+  container_tarball: "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/stress_mu200/sw_pr8_image.tar"
+
+job_config:
+  n_runs: 1
+  runs_per_node: 1
+  time_limit: "00:30:00"
+  qos: "debug"
+  execution_mode: "multi_node_slurm"
+
+events: 100000         # campaign final for this bin
+threads: 8
+input_filename: events.hepmc3
+minimalKineticEnergy: 0.1
+truthParticleHandler: "Geant4FullTruthParticleHandler"
+
+odd_compact_files:
+  - /opt/odd-install/share/OpenDataDetector/xml/OpenDataDetectorDefs.xml
+  - /opt/odd-install/share/OpenDataDetector/xml/OpenDataDetectorTracker.xml
+  - /global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-prod-container/configs_production/drift_beamspot/geometry/tracker_fields_plugins.xml
+
