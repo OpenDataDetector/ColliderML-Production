@@ -111,6 +111,19 @@ def parse_args():
 
     return parser.parse_args()
 
+def _truth_primary(truth_track_outputs, which):
+    """Pick the truth track collection to write to parquet.
+
+    KF wins when both fitters ran, so the parquet table is always comparable to
+    the CKF collection (same fitter). Returns None when truth tracking is off.
+    """
+    for fitter in ("kf", "gx2f"):
+        name = truth_track_outputs.get(f"{fitter}_{which}")
+        if name:
+            return name
+    return None
+
+
 def setup_acts_reconstruction(input_path, output_dir, config, rnd, logger=None):
     """Configure ACTS reconstruction chain"""
     logger = logger or setup_logging("ACTSReco")
@@ -367,6 +380,9 @@ def setup_acts_reconstruction(input_path, output_dir, config, rnd, logger=None):
     
     # Add reconstruction components if enabled
     reco_enabled = getattr(config, "reco", False)  # Default False
+    # Names of the truth-found track collections, populated only when
+    # truth_tracking is enabled below. Empty means "no truth tracks this run".
+    truth_track_outputs = {}
     if reco_enabled:
         logger.info("Adding reconstruction chain")
         # Add seeding
@@ -407,17 +423,22 @@ def setup_acts_reconstruction(input_path, output_dir, config, rnd, logger=None):
             outputDirRoot=seeds_root_dir,
         )
 
+        # Shared by the CKF and (optionally) the truth-found track collection, so
+        # the two have identical acceptance and any difference between them is
+        # attributable to track finding rather than to selection.
+        trackSelectorConfig = TrackSelectorConfig(
+            pt=(0.7 * u.GeV, None),
+            absEta=(None, 3.5),
+            nMeasurementsMin=6,
+            maxHolesAndOutliers=3,
+        )
+
         # Add CKF tracking (no ROOT writers here; handled explicitly below)
         addCKFTracks(
             s,
             trackingGeometry,
             field,
-            trackSelectorConfig=TrackSelectorConfig(
-                pt=(0.7 * u.GeV, None),
-                absEta=(None, 3.5),
-                nMeasurementsMin=6,
-                maxHolesAndOutliers=3,
-            ),
+            trackSelectorConfig=trackSelectorConfig,
             ckfConfig=CkfConfig(
                 chi2CutOffMeasurement=15.0,
                 chi2CutOffOutlier=25.0,
@@ -433,6 +454,38 @@ def setup_acts_reconstruction(input_path, output_dir, config, rnd, logger=None):
             writeTrackSummary=False,
             writePerformance=False,
         )
+
+        # Optional truth-found track collection, in the same pass. Truth informs
+        # the hit-to-track assignment only; the fit is seeded from a geometric
+        # three-point estimate off real space points (see _truth_tracking).
+        if getattr(config, "truth_tracking", False):
+            from _truth_tracking import add_truth_tracking
+
+            truth_track_outputs = add_truth_tracking(
+                s,
+                tracking_geometry=trackingGeometry,
+                field=field,
+                track_selector_config=trackSelectorConfig,
+                # addSeeding (above) created these with an empty prefix.
+                selected_particles="particles_selected",
+                space_points="spacepoints",
+                # Same initial uncertainties the CKF path uses.
+                initial_sigmas=[
+                    1 * u.mm,
+                    1 * u.mm,
+                    1 * u.degree,
+                    1 * u.degree,
+                    0.1 * u.e / u.GeV,
+                    1 * u.ns,
+                ],
+                initial_sigma_qoverpt=0.1 * u.e / u.GeV,
+                initial_sigma_ptrel=0.1,
+                initial_var_inflation=[1e0, 1e0, 1e0, 1e0, 1e0, 1e0],
+                particle_hypothesis=acts.ParticleHypothesis.pion,
+                delta_r=tuple(getattr(config, "truth_tracking_delta_r", (10.0, None))),
+                fitter=getattr(config, "truth_tracking_fitter", "kf"),
+                log_level=LOG_LEVEL,
+            )
 
         # Optional ROOT output & performance writers for CKF stage
         if ckf_root_output or ckf_finding_performance or ckf_fitting_performance:
@@ -536,8 +589,9 @@ def setup_acts_reconstruction(input_path, output_dir, config, rnd, logger=None):
         add_root_writers(s, output_dir, field, config)
 
     # Optional: emit ACTS-native parquet via the Arrow plugin (PR#5410 + #5441).
-    # Drops one parquet shard per object per event into ``output_dir``;
-    # downstream the postprocessing convert_all.py becomes a no-op once this
+    # Shard granularity is config-driven; see _arrow_writers for why the row
+    # group must be set alongside it. Defaults reproduce the historical layout.
+    # Downstream the postprocessing convert_all.py becomes a no-op once this
     # is validated against the legacy ROOT-based path (regression harness at
     # tests/regression/test_actsnative_vs_v1.py).
     if getattr(config, "output_parquet_arrow", False):
@@ -548,6 +602,14 @@ def setup_acts_reconstruction(input_path, output_dir, config, rnd, logger=None):
             field=field,
             tracking_geometry=trackingGeometry,
             has_reco=getattr(config, "reco", True),
+            # With fitter="both" the KF collection is the one written to parquet;
+            # the gx2f collection stays on the whiteboard for ROOT/perf writers.
+            truth_tracks=_truth_primary(truth_track_outputs, "tracks"),
+            truth_track_particle_matching=_truth_primary(
+                truth_track_outputs, "matching"
+            ) or "truth_track_particle_matching_kf",
+            events_per_shard=getattr(config, "parquet_events_per_shard", 1000),
+            events_per_row_group=getattr(config, "parquet_events_per_row_group", 1000),
             log_level=LOG_LEVEL,
         )
 

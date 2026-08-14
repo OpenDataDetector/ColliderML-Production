@@ -51,6 +51,10 @@ def add_arrow_writers(
     field: Any,
     tracking_geometry: Any,
     has_reco: bool = True,
+    truth_tracks: str | None = None,
+    truth_track_particle_matching: str = "truth_track_particle_matching",
+    events_per_shard: int = 1000,
+    events_per_row_group: int = 1000,
     log_level: Any = None,
 ) -> None:
     """Attach Arrow output converters + a ParquetWriter to ``s``.
@@ -64,7 +68,25 @@ def add_arrow_writers(
       - ``measurement_simhits_map``— inverse, needed for tracks
       - ``tracks``                 — TrackContainer (only when has_reco)
       - ``track_particle_matching``— track ↔ truth-particle match
+
+    ``truth_tracks`` optionally names a second TrackContainer (the truth-found
+    collection built by _truth_tracking.add_truth_tracking) to emit alongside
+    the CKF ``tracks`` table, into a ``truth_tracks/`` shard directory.
+
+    ``events_per_shard`` sets the parquet file granularity; ``events_per_row_group``
+    bounds the write buffer *within* a shard. The ParquetWriter defaults
+    eventsPerRowGroup to 0, meaning "one row group per file", which would pin peak
+    memory to a whole shard's worth of buffered tables — so we always pass it
+    explicitly. The (1000, 1000) defaults here reproduce the historical layout
+    exactly.
     """
+    if not 0 < events_per_row_group <= events_per_shard:
+        raise ValueError(
+            "events_per_row_group must satisfy 0 < row_group <= shard; got "
+            f"row_group={events_per_row_group}, shard={events_per_shard}. The "
+            "row group bounds the in-memory write buffer, so it must never "
+            "exceed the shard it is buffering into."
+        )
     try:
         from acts.arrow import (
             measurementSchema,
@@ -155,6 +177,22 @@ def add_arrow_writers(
         collections[arr_tracks.config.outputTable] = "tracks"
         expected[arr_tracks.config.outputTable] = trackSchema()
 
+    # Truth-found tracks: same schema, separate table. The hit-to-track
+    # assignment comes from truth; the fit itself sees no truth (see
+    # _truth_tracking.add_truth_tracking).
+    if truth_tracks is not None:
+        arr_truth_tracks = ArrowTrackOutputConverter(
+            level=log_level,
+            inputTracks=truth_tracks,
+            inputTrackParticleMatching=truth_track_particle_matching,
+            inputParticles="particles_simulated",
+            inputMeasurementSimHitsMap="measurement_simhits_map",
+            outputTable="truth_tracks_arrow",
+        )
+        s.addAlgorithm(arr_truth_tracks)
+        collections[arr_truth_tracks.config.outputTable] = "truth_tracks"
+        expected[arr_truth_tracks.config.outputTable] = trackSchema()
+
     # Calo: digi_and_reco.py wires EDM4hepCaloHitInputConverter upstream
     # (gated on the same output_parquet_arrow flag) to park "calo_hits" on
     # the EventStore. Emit it to parquet so it can be validated against v1.
@@ -178,10 +216,14 @@ def add_arrow_writers(
             outputDir=str(output_dir),
             collections=collections,
             expectedSchemas=expected,
+            eventsPerShard=events_per_shard,
+            eventsPerRowGroup=events_per_row_group,
         )
     )
     logger.info(
-        "Arrow writers attached: %s -> %s",
+        "Arrow writers attached: %s -> %s (%d events/shard, %d events/row group)",
         list(collections.keys()),
         output_dir,
+        events_per_shard,
+        events_per_row_group,
     )
