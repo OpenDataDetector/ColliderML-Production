@@ -1,0 +1,32 @@
+# 200M PRODUCTION scale-up (2026-08-14, user-approved): 59 nodes x 32 runs/node,
+# ADDITIVE runs 129-2016 (--run-range 129 2017). Runs 0-128 are NOT touched.
+# Body is verbatim from simulation_config_100k.yaml. Exactly ONE field differs:
+#   n_runs 128 -> 1888. qos/time_limit/threads/geometry all unchanged.
+# DDSim simulation — Single Muons uniform pt — TRACKER-ONLY geometry (calo + muon OFF)
+campaign: "drift_beamspot"
+dataset: "single_muon_uniform"
+version: "v1"
+stage: "simulation"
+
+common:
+  container: "ghcr.io/opendatadetector/sw:pr-8"
+  container_tarball: "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/stress_mu200/sw_pr8_image.tar"
+
+job_config:
+  n_runs: 1888
+  runs_per_node: 32
+  time_limit: "02:00:00"
+  qos: "regular"
+  execution_mode: "multi_node_slurm"
+
+events: 100000
+threads: 8
+input_filename: events.hepmc3
+minimalKineticEnergy: 0.1
+truthParticleHandler: "Geant4FullTruthParticleHandler"
+
+odd_compact_files:
+  - /opt/odd-install/share/OpenDataDetector/xml/OpenDataDetectorDefs.xml
+  - /opt/odd-install/share/OpenDataDetector/xml/OpenDataDetectorTracker.xml
+  - /global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-prod-container/configs_production/drift_beamspot/geometry/tracker_fields_plugins.xml
+
