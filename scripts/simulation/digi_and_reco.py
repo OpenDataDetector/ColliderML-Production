@@ -484,6 +484,10 @@ def setup_acts_reconstruction(input_path, output_dir, config, rnd, logger=None):
                 particle_hypothesis=acts.ParticleHypothesis.pion,
                 delta_r=tuple(getattr(config, "truth_tracking_delta_r", (10.0, None))),
                 fitter=getattr(config, "truth_tracking_fitter", "kf"),
+                prefit=getattr(config, "truth_tracking_prefit", None),
+                prefit_var_inflation=getattr(
+                    config, "truth_tracking_prefit_var_inflation", None
+                ),
                 log_level=LOG_LEVEL,
             )
 
