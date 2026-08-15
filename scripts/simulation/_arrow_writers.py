@@ -79,6 +79,12 @@ def add_arrow_writers(
     memory to a whole shard's worth of buffered tables — so we always pass it
     explicitly. The (1000, 1000) defaults here reproduce the historical layout
     exactly.
+
+    Measured on 5000 single-muon events at threads=8 (peak RSS in-container):
+    row group 100 -> 1.09 GB, row group 5000 (a whole shard) -> 1.93 GB. The buffer
+    scales with the row group, so raising events_per_shard to 100k while leaving the
+    row group to follow it would be roughly 20x that buffer. Busy events (ttbar,
+    pileup) carry far more per event and scale worse. Keep the row group small.
     """
     if not 0 < events_per_row_group <= events_per_shard:
         raise ValueError(
