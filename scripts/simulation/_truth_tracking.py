@@ -214,7 +214,7 @@ def add_truth_tracking(
     particle_hypothesis: Any = None,
     delta_r: tuple = (10.0, None),
     fitter: str = "kf",
-    prefit: Optional[str] = None,
+    prefit: Optional[str] = "gx2f",
     prefit_var_inflation: Optional[Sequence[float]] = None,
     log_level: Any = None,
 ) -> dict[str, str]:
@@ -231,8 +231,14 @@ def add_truth_tracking(
     """
     if fitter not in _FITTERS:
         raise ValueError(f"truth_tracking_fitter must be one of {_FITTERS}, got {fitter!r}")
+    # Accept an explicit "none"/"off" string as a disable, so a YAML config can
+    # turn the (default-on) pre-fit off without relying on null handling.
+    if isinstance(prefit, str) and prefit.lower() in ("none", "off", ""):
+        prefit = None
     if prefit is not None and prefit not in ("kf", "gx2f"):
-        raise ValueError(f"truth_tracking_prefit must be 'kf', 'gx2f' or unset, got {prefit!r}")
+        raise ValueError(
+            f"truth_tracking_prefit must be 'kf', 'gx2f', or 'none'/null, got {prefit!r}"
+        )
 
     if log_level is None:
         log_level = acts.logging.INFO
@@ -307,9 +313,16 @@ def add_truth_tracking(
         outputs[f"{kind}_matching"] = matching
 
     logger.info(
-        "Truth tracking attached (fitter=%s): truth finding only, fit seeded from "
-        "a geometric three-point estimate; outputs %s",
+        "Truth tracking attached (fitter=%s, prefit=%s): truth finding only; %s; "
+        "outputs %s",
         fitter,
+        prefit or "none",
+        (
+            f"{prefit.upper()} pre-fit over the full hit list seeds the fit "
+            "(itself started from a geometric three-point estimate)"
+            if prefit
+            else "fit seeded directly from a geometric three-point estimate"
+        ),
         sorted(outputs.values()),
     )
     return outputs

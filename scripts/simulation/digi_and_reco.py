@@ -484,7 +484,10 @@ def setup_acts_reconstruction(input_path, output_dir, config, rnd, logger=None):
                 particle_hypothesis=acts.ParticleHypothesis.pion,
                 delta_r=tuple(getattr(config, "truth_tracking_delta_r", (10.0, None))),
                 fitter=getattr(config, "truth_tracking_fitter", "kf"),
-                prefit=getattr(config, "truth_tracking_prefit", None),
+                # Default ON: a GX2F pre-fit over the full hit list seeds the KF
+                # instead of the three-point helix estimate. Set the key to null
+                # (or "none") in a config to fall back to the plain single fit.
+                prefit=getattr(config, "truth_tracking_prefit", "gx2f"),
                 prefit_var_inflation=getattr(
                     config, "truth_tracking_prefit_var_inflation", None
                 ),
