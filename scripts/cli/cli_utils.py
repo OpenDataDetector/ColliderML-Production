@@ -27,6 +27,9 @@ POSTPROCESSING_STAGES = [
     "build_particles",
     "build_manifest",
     "convert_all",
+    # Packages the ACTS-native per-run parquet into the published layout.
+    # Postprocessing, so it receives --chunk-index like convert_all.
+    "package_parquet",
 ]
 VALID_STAGES = SIMULATION_STAGES + POSTPROCESSING_STAGES
 
@@ -53,6 +56,7 @@ STAGE_SCRIPT_MAP = {
     "build_particles": "postprocessing/convert_particles.py",
     "build_manifest": "postprocessing/build_manifest.py",
     "convert_all": "postprocessing/convert_all.py",
+    "package_parquet": "postprocessing/package_native_parquet.py",
 }
 
 def get_env_setup_cmds(config):
