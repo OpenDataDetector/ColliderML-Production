@@ -8,8 +8,8 @@ joins quietly return nothing. Neither shows up as a small file.
 
 This checks, for every chunk:
   * the file exists for every object
-  * event_id covers exactly [chunk*chunk_size, (chunk+1)*chunk_size)
-  * row count and distinct-event count both equal chunk_size
+  * event_id covers exactly the chunk window (the final chunk may be short)
+  * row count and distinct-event count both equal the window size
   * all objects in a chunk carry the IDENTICAL event set
 and across the dataset:
   * chunks tile the event range with no gaps and no overlaps
@@ -70,8 +70,16 @@ def main() -> int:
     failures: list[str] = []
     covered: list[tuple[int, int]] = []
 
+    total_events = n_runs * run_size
+
     for chunk in chunks:
-        lo, hi = chunk * chunk_size, (chunk + 1) * chunk_size - 1
+        lo = chunk * chunk_size
+        # The final chunk is legitimately short whenever the event count is not a
+        # multiple of chunk_size: 2016 runs x 100k = 201.6M over 1M chunks leaves
+        # 600k in the last one. Expecting a full chunk there would report a
+        # correct dataset as corrupt.
+        hi = min(total_events, lo + chunk_size) - 1 if total_events else lo + chunk_size - 1
+        expected = hi - lo + 1
         sets: dict[str, set] = {}
         for obj in objects:
             group, name = OBJECT_LAYOUT[obj]
@@ -87,10 +95,10 @@ def main() -> int:
             sets[obj] = s
             if min(ev) != lo or max(ev) != hi:
                 failures.append(f"chunk {chunk} {obj}: range {min(ev)}-{max(ev)}, expected {lo}-{hi}")
-            if len(ev) != chunk_size:
-                failures.append(f"chunk {chunk} {obj}: {len(ev)} rows, expected {chunk_size}")
-            if len(s) != chunk_size:
-                failures.append(f"chunk {chunk} {obj}: {len(s)} distinct events, expected {chunk_size}")
+            if len(ev) != expected:
+                failures.append(f"chunk {chunk} {obj}: {len(ev)} rows, expected {expected}")
+            if len(s) != expected:
+                failures.append(f"chunk {chunk} {obj}: {len(s)} distinct events, expected {expected}")
 
         if len(sets) == len(objects) and sets:
             ref_obj = objects[0]
