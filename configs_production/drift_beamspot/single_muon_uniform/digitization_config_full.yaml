@@ -4,16 +4,15 @@
 #   staging/superseded_digi_runs0-128/ first, otherwise two generations of parquet
 #   would coexist per table dir and every event would be double-counted downstream.
 # Runs 129-192: already correct; recomputed identically to keep the range contiguous.
-# Those runs hold only edm4hep.root + events.hepmc3 today; verified zero digi
-# outputs present, so nothing is overwritten. Runs 0-128 are NOT touched.
+# Runs 193-2016 are purely additive (verified zero digi outputs present).
 #
 # Body is the proven digitization_config_100k.yaml. Deviations, all deliberate:
-#   job_config : n_runs 128 -> 1824, time_limit 2h -> 1h (pilot did 32 runs/node in 5m40s)
+#   job_config : n_runs 128 -> 2017, time_limit 2h -> 1h (pilot did 32 runs/node in 5m40s)
 #   common     : + cache_dir (the previous digi run had all 128 tasks download
 #                ~2 GB of Geant4 data each; that is what collapsed simulation at
 #                1888 tasks, so point at the pre-populated CFS cache)
-#   NEW        : truth_tracking + parquet shard/row-group keys (this is what the
-#                pilot exists to exercise)
+#   NEW        : truth_tracking + parquet shard/row-group keys, both exercised by
+#                the 64-run pilot (job 57158361) before this ran
 #
 # Header note: the 100k config's title said "Single Muons 10 GeV" - wrong, this
 # dataset is uniform pt in [1, 110] GeV. Corrected here.
