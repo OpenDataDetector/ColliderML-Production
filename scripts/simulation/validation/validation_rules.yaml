@@ -151,6 +151,48 @@ stages:
         median_threshold_pct: 0.8
         required: true
 
+  # Stage 8: package native per-run parquet into the published layout
+  package_parquet:
+    description: "Validate packaged parquet dataset (one file per chunk per object)"
+    # Same shape as convert_all: version-level output, one file per chunk rather
+    # than per run. NOTE: search_dir resolves to <version>/parquet in the tree the
+    # runs live in, so this only fires when output_base_dir points there. Content
+    # correctness (event ranges, cross-table alignment) is checked separately by
+    # scripts/postprocessing/verify_packaged_parquet.py, which the file-size rules
+    # below cannot express.
+    output_location: "parquet"
+    validate_as_chunks: true
+    file_patterns:
+      - pattern: "truth/particles/*.parquet"
+        description: "Particles parquet files"
+        min_size_mb: 1.0
+        median_threshold_pct: 0.8
+        required: true
+
+      - pattern: "truth/tracker_simhits/*.parquet"
+        description: "Tracker sim-hits parquet files"
+        min_size_mb: 1.0
+        median_threshold_pct: 0.8
+        required: true
+
+      - pattern: "reco/tracker_hits/*.parquet"
+        description: "Tracker hits parquet files"
+        min_size_mb: 1.0
+        median_threshold_pct: 0.8
+        required: true
+
+      - pattern: "reco/tracks/*.parquet"
+        description: "Tracks parquet files"
+        min_size_mb: 0.1
+        median_threshold_pct: 0.8
+        required: true
+
+      - pattern: "reco/truth_tracks/*.parquet"
+        description: "Truth-found tracks parquet files"
+        min_size_mb: 0.1
+        median_threshold_pct: 0.8
+        required: true
+
 # Global defaults (can be overridden per pattern)
 defaults:
   median_threshold_pct: 0.8  # Files must be >= 80% of median size
