@@ -34,8 +34,8 @@ job_config:
   execution_mode: "multi_node_slurm"
 
 input_base_dir: "/global/cfs/cdirs/m4958/data/ColliderML/simulation"
-# STAGING, not the public tree. Nothing here overwrites a published dataset.
-output_base_dir: "/global/cfs/cdirs/m4958/data/ColliderML/staging/native_parquet"
+# Same location as every other campaign: the simulation tree's version directory.
+output_base_dir: "/global/cfs/cdirs/m4958/data/ColliderML/simulation"
 
 run_size: 100000      # events per run directory, fixed by the gen/sim campaign
 chunk_size: 1000000   # target events per output file (10 runs)
