@@ -1,5 +1,9 @@
 # FULL digitization + parquet on the newly simulated muons (2026-08-17).
-# 57 nodes x 32 runs/node = 1824 runs, ADDITIVE on runs 193-2016 (--run-range 193 2017).
+# 64 nodes x 32 runs/node = ALL 2017 runs (--run-range 0 2017), in one job.
+# Runs 0-128: their 51,240 superseded old-format shards were moved to
+#   staging/superseded_digi_runs0-128/ first, otherwise two generations of parquet
+#   would coexist per table dir and every event would be double-counted downstream.
+# Runs 129-192: already correct; recomputed identically to keep the range contiguous.
 # Those runs hold only edm4hep.root + events.hepmc3 today; verified zero digi
 # outputs present, so nothing is overwritten. Runs 0-128 are NOT touched.
 #
@@ -29,7 +33,7 @@ common:
   cache_dir: "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-prod-container/.cache"
 
 job_config:
-  n_runs: 1824
+  n_runs: 2017
   runs_per_node: 32
   time_limit: "01:00:00"
   qos: "regular"
