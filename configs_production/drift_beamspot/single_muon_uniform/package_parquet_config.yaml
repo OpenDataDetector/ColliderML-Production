@@ -27,10 +27,14 @@ common:
   cache_dir: "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-prod-container/.cache"
 
 job_config:
-  n_runs: 6
-  runs_per_node: 6
-  time_limit: "00:30:00"
-  qos: "debug"
+  # 202 chunks over 2016 runs x 100k = 201.6M events. 7 nodes x 32 chunks/node.
+  # regular rather than debug: a 30-min kill mid-write would leave partial parquet
+  # in a web-served directory, which is the one failure mode worth paying queue
+  # time to avoid. Debug measured ~36s/chunk, so 1h is ample.
+  n_runs: 202
+  runs_per_node: 32
+  time_limit: "01:00:00"
+  qos: "regular"
   execution_mode: "multi_node_slurm"
 
 input_base_dir: "/global/cfs/cdirs/m4958/data/ColliderML/simulation"
