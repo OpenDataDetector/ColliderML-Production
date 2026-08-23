@@ -12,10 +12,15 @@ common:
   cache_dir: "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-prod-container/.cache"
 
 job_config:
-  # 32/node x threads 8 = the muon-campaign-proven full-node packing. Pilot did
-  # 6 ttbar sim runs in 14m57; 2h is ample headroom for a 32-run node.
-  n_runs: 774
-  runs_per_node: 32
+  # 6/node: the ttbar-pilot-proven packing. 32/node (proven for MUONS only) caused
+  # a synchronized mass failure in job 57452905: ~709 tasks died ~30 min in leaving
+  # corrupt ~88MB edm4hep files with no readable trees, while two nodes that
+  # serialized their tasks produced complete 414MB files. Root cause not fully
+  # pinned (no OOM messages; MaxRSS accounting inconclusive under podman) - but
+  # 6/node is proven and ttbar events are ~5x heavier than muons. Do not re-raise
+  # without an instrumented single-node test.
+  n_runs: 748
+  runs_per_node: 6
   time_limit: "02:00:00"
   qos: "regular"
   execution_mode: "multi_node_slurm"
