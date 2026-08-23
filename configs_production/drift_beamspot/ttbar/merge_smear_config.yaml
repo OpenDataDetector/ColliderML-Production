@@ -11,10 +11,14 @@ common:
   container_tarball: "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/stress_mu200/sw_pr8_image.tar"
 
 job_config:
-  n_runs: 6
-  runs_per_node: 6
+  # Scale-up from the 6-run pilot: 32 runs/node matches the packing proven across
+  # the muon campaign (2017-run digi, 1888-run sim). merge is single-threaded and
+  # light (one 151MB hepmc per run). regular qos: 774 runs / 32 = 25 nodes,
+  # above debug's 8-node cap.
+  n_runs: 774
+  runs_per_node: 32
   time_limit: "00:30:00"
-  qos: "debug"
+  qos: "regular"
   execution_mode: "multi_node_slurm"
 
 seed: 42
