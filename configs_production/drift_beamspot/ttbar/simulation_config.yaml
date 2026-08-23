@@ -20,8 +20,8 @@ job_config:
   # 6/node is proven and ttbar events are ~5x heavier than muons. Do not re-raise
   # without an instrumented single-node test.
   n_runs: 748
-  runs_per_node: 6
-  time_limit: "02:00:00"
+  runs_per_node: 16
+  time_limit: "03:00:00"
   qos: "regular"
   execution_mode: "multi_node_slurm"
 
@@ -43,3 +43,8 @@ odd_compact_files:
 
 # Note: ttbar produces split run dirs (runs/0, runs/1, ...). Point debug_output_dir at the
 # run to simulate, or run in multi_node mode for the full set.
+
+# Log hygiene, adopted from the standard hard_scatter ttbar config (its 1000-run
+# campaign): FATAL-only ddsim prints + shell-level G4Exception filtering.
+ddsim_printLevel: 6
+filter_g4_warnings: true
