@@ -65,6 +65,41 @@ OBJECT_LAYOUT: dict[str, tuple[str, str]] = {
     "truth_tracks": ("reco", "truth_tracks"),
 }
 
+# The ACTS-native writer emits time-like quantities in ACTS native units
+# (lengths, c=1): a "time" is a path length in mm. The legacy convert_all
+# datasets are in nanoseconds, and mm-as-ns is exactly the field bug a
+# downstream user caught (pixel hit "271 ns" that was really 271 mm = 0.91 ns).
+# Convert at packaging time so the published tables are in ns; per-run native
+# intermediates stay untouched. Value is the unit power: 1 for times (/c),
+# 2 for variances (/c^2).
+_MM_PER_NS = 299.792458
+TIME_COLUMNS: dict[str, dict[str, int]] = {
+    "tracker_hits": {"time": 1, "var_time": 2},
+    "tracker_simhits": {"true_time": 1},
+    "particles": {"time": 1},
+    "tracks": {"t": 1},
+    "truth_tracks": {"t": 1},
+}
+
+
+def _convert_times(table: pa.Table, obj: str) -> pa.Table:
+    """Divide time-like columns by c (mm/ns), power-aware, list-layout-aware."""
+    for col, power in TIME_COLUMNS.get(obj, {}).items():
+        if col not in table.column_names:
+            logger.warning("%s: expected time column %r absent, skipping", obj, col)
+            continue
+        idx = table.schema.get_field_index(col)
+        factor = _MM_PER_NS ** power
+        chunks = []
+        for chunk in table.column(col).chunks:
+            if pa.types.is_list(chunk.type):
+                vals = pc.divide(chunk.values, pa.scalar(factor, type=chunk.type.value_type))
+                chunks.append(pa.ListArray.from_arrays(chunk.offsets, vals))
+            else:
+                chunks.append(pc.divide(chunk, pa.scalar(factor, type=chunk.type)))
+        table = table.set_column(idx, col, pa.chunked_array(chunks))
+    return table
+
 
 def _read_run_table(run_dir: Path, obj: str) -> pa.Table | None:
     """Read a run's single native parquet file for one object."""
@@ -143,6 +178,7 @@ def package_chunk(
                 table = _slice_and_offset(table, local_start, local_stop, abs_run * run_size)
                 if table.num_rows == 0:
                     continue
+                table = _convert_times(table, obj)
                 if writer is None:
                     writer = pq.ParquetWriter(out_file, table.schema, compression=compression)
                 # Stream run by run: peak memory is one run, not one chunk.
