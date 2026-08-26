@@ -1,0 +1,51 @@
+# MG PACKING TEST arm C (2026-08-26, user-approved plan): 8 MG run(s) on ONE
+# node, mg_nb_core=32. Writes ONLY to version v1-mgpack-test (gridpack
+# copied there; production v1 untouched). Body otherwise = production gen config.
+# MadGraph generation — ttbar (NLO FxFx) — uniform drifting beamspot
+# Campaign: drift_beamspot.
+# NOTE: madgraph_process.tgz is the IN-IMAGE build (job 55867363, 2026-07-15,
+# validation SUCCESS, 382MB). The old host-built (FastJet-ABI-incompatible)
+# tarball is preserved as madgraph_process.tgz.host-built.bak.
+campaign: "drift_beamspot"
+dataset: "ttbar"
+version: "v1-mgpack-test"
+stage: "madgraph_generation"
+
+common:
+  container: "ghcr.io/opendatadetector/sw:pr-8"
+  container_tarball: "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/stress_mu200/sw_pr8_image.tar"
+
+job_config:
+  n_runs: 8
+  runs_per_node: 8
+  time_limit: "06:00:00"
+  qos: "regular"
+  execution_mode: "multi_node_slurm"
+
+events: 17500          # proven hard_scatter request; ~45-58% survive FxFx matching -> ~10k showered
+seed: 42
+
+mg_base_path: "{madgraph.mg_base_path}"
+generation_scratch_dir: "{madgraph.generation_scratch_dir}"
+
+# NOTE: the uniform drifting-beamspot vertex is applied in a SEPARATE merge_smear stage
+# (see merge_smear_config.yaml), not here. Generation produces events at the origin.
+
+card_customizations:
+  run_card:
+    "ptj": 20.0
+    "event_norm": "sum"
+  shower_card:
+    "Qcut": 40.0
+    "time_shower_me_corrections": "F"
+
+splitting_config:
+  enable: true
+  events_per_file: 1280
+  max_files_per_mg_run: 50
+  output_filename: "events.hepmc"
+
+log_level: "INFO"
+
+# MG packing test arm C: 8 runs/node, capped cores each
+mg_nb_core: 32
