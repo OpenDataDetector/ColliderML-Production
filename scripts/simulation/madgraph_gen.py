@@ -106,6 +106,23 @@ def stage_tarball_to_scratch(config):
             logger.info(f"Removing stale MG5 lock from packaged process: {lock_path}")
             lock_path.unlink()
 
+    # Optional core cap for MG's internal multicore scheduler. MG auto-detects
+    # every core on the host (256 on Perlmutter CPU nodes), so when several MG
+    # runs share a node each instance must be capped or they oversubscribe
+    # 256*k threads. Absent from config => file untouched => auto-detect,
+    # byte-for-byte today's behaviour. Written into the extracted process
+    # copy's configuration files, which per-run extraction makes private.
+    nb_core = getattr(config, 'mg_nb_core', None)
+    if nb_core is not None:
+        wrote = []
+        for cfg_name in ("me5_configuration.txt", "amcatnlo_configuration.txt"):
+            cfg_path = copied_process_dir / "Cards" / cfg_name
+            if cfg_path.exists():
+                with open(cfg_path, "a") as f:
+                    f.write(f"\nrun_mode = 2\nnb_core = {int(nb_core)}\n")
+                wrote.append(cfg_name)
+        logger.info(f"Capped MG nb_core={nb_core} via {wrote or 'NO CONFIG FILES FOUND'}")
+
     # Log extracted statistics
     total_size = sum(f.stat().st_size for f in copied_process_dir.rglob('*') if f.is_file())
     total_size_mb = total_size / (1024 * 1024)
