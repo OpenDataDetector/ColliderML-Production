@@ -1,0 +1,55 @@
+# Package per-run ACTS-native parquet into the published dataset layout.
+# Reads  <input_base_dir>/drift_beamspot/ttbar/v1/runs/<N>/<table>/*.parquet
+# Writes <output_base_dir>/drift_beamspot/ttbar/v1/parquet/<group>/<object>/
+#            drift_beamspot.ttbar.v1.<group>.<object>.events<A>-<B>.parquet
+#
+# Conventions inherited from convert_all.py so the native and legacy paths produce
+# interchangeable datasets: global event numbering (event_id += run * run_size, no
+# run_id column) and event-based chunking that spans runs.
+#
+# chunk_size 1e6 = 10 runs per file -> 202 files per object over the full 2017 runs,
+# ~1010 files total. Per-file sizes: tracker_simhits 788MB, tracker_hits 495MB,
+# particles 91MB, truth_tracks 42MB, tracks 35MB. Comparable to the published
+# hard_scatter/ttbar files (~195MB at chunk_size 1000).
+campaign: "drift_beamspot"
+dataset: "ttbar"
+version: "v1"
+stage: "package_parquet"
+
+# package_parquet is not in cli_utils.STAGE_SCRIPT_MAP; supply it per-config so
+# nothing global changes for other campaigns.
+stage_script_map:
+  package_parquet: "postprocessing/package_native_parquet.py"
+
+common:
+  container: "ghcr.io/opendatadetector/sw:pr-8"
+  container_tarball: "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/stress_mu200/sw_pr8_image.tar"
+  cache_dir: "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-prod-container/.cache"
+
+job_config:
+  # 202 chunks over 2016 runs x 100k = 201.6M events. 7 nodes x 32 chunks/node.
+  # regular rather than debug: a 30-min kill mid-write would leave partial parquet
+  # in a web-served directory, which is the one failure mode worth paying queue
+  # time to avoid. Debug measured ~36s/chunk, so 1h is ample.
+  n_runs: 1005
+  runs_per_node: 32
+  time_limit: "01:00:00"
+  qos: "regular"
+  execution_mode: "multi_node_slurm"
+
+input_base_dir: "/global/cfs/cdirs/m4958/data/ColliderML/simulation"
+# Same location as every other campaign: the simulation tree's version directory.
+output_base_dir: "/global/cfs/cdirs/m4958/data/ColliderML/simulation"
+
+run_size: 1280      # events per ttbar run directory
+chunk_size: 1000    # hard_scatter/ttbar convention (~200MB tracker_hits files)
+
+objects:
+  - particles
+  - tracker_simhits
+  - tracker_hits
+  - tracks
+  - truth_tracks
+
+compression: "snappy"
+row_group_size: 100000   # rows per row group within an output file
