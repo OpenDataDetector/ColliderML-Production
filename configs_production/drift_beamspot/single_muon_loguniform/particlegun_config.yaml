@@ -1,0 +1,42 @@
+# LOG-UNIFORM single muon campaign (2026-08-29, user-approved): pT log-uniform in
+# [0.9, 110] GeV (was flat [1, 110]). Spectrum validated on 20k scratch events:
+# equal counts per equal-log bin, edges exact. 2000 runs x 100k = 200M, submitted
+# dense 0-1999 in one job (NO 10k pilot run in-tree - the uniform campaign's run-0
+# lesson). All other physics verbatim from the proven uniform campaign.
+campaign: "drift_beamspot"
+dataset: "single_muon_loguniform"
+version: "v1"
+stage: "particlegun_generation"
+
+common:
+  container: "ghcr.io/opendatadetector/sw:pr-8"
+  container_tarball: "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/stress_mu200/sw_pr8_image.tar"
+
+job_config:
+  n_runs: 2000
+  runs_per_node: 32
+  time_limit: "00:45:00"
+  qos: "regular"
+  execution_mode: "multi_node_slurm"
+
+events: 100000         # per run; 2000 runs x 100k = 200M, dense 0-1999 from the start
+seed: 42
+
+particle: "mu-"
+energy_min: 0.9
+energy_max: 110.0
+log_uniform: true      # log-uniform in pt (collaborator request)
+transverse: true
+
+eta_min: -3.0
+eta_max: 3.0
+phi_min: 0.0
+phi_max: 6.28318530718
+
+vertex_uniform: true
+vertex_min: [-5.0, -5.0, -200.0, -0.32]
+vertex_max: [ 5.0,  5.0,  200.0,  0.32]
+
+splitting_config:
+  enable: false
+  n_runs: 1

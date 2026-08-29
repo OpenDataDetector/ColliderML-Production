@@ -1,0 +1,58 @@
+# LOG-UNIFORM muon digi (2026-08-29): proven uniform-campaign recipe (truth
+# tracking + gx2f prefit + 100k shards + G4 cache) + the ONE physics deviation:
+# digi_particle_pt_min 0.999 -> 0.85 so 0.9-1.0 GeV muons are trackable.
+campaign: "drift_beamspot"
+dataset: "single_muon_loguniform"
+version: "v1"
+stage: "digitization"
+
+common:
+  container: "ghcr.io/opendatadetector/sw:pr-8"
+  container_tarball: "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/stress_mu200/sw_pr8_image.tar"
+  cache_dir: "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-prod-container/.cache"
+
+job_config:
+  n_runs: 2000
+  runs_per_node: 32
+  time_limit: "01:00:00"
+  qos: "regular"
+  execution_mode: "multi_node_slurm"
+
+events: 100000
+threads: 8
+
+# ACTS geometry/material/digi configs: /opt/odd in sw:pr-4 holds xml/ + config/ + data/
+# (material map) for ODD v6.0.2. Read by digi_and_reco (config.odd_geo_dir).
+odd_geo_dir: /opt/odd
+digi_config: /opt/odd/config/odd-digi-smearing-config.json
+
+output_parquet_arrow: True   # native ACTS parquet: tracker_simhits + tracker_hits + particles + tracks
+digi: True
+reco: True
+num_seeds_per_spm: 40
+
+# --- NEW: truth-found tracks, written as a `truth_tracks/` table beside `tracks/`.
+# Truth decides only which hits belong to which particle; the fit is seeded by a
+# GX2F pre-fit over those hits (material effects on), never by truth kinematics.
+truth_tracking: true
+truth_tracking_fitter: kf
+truth_tracking_prefit: gx2f
+
+# --- NEW: one parquet file per table per run instead of 100.
+# Row group stays small on purpose: it bounds the in-memory write buffer, and
+# letting it follow the shard would buffer a whole run's worth of tables.
+# Measured on 5000 muon events: row group 100 -> 1.09 GB, 5000 -> 1.93 GB peak RSS.
+parquet_events_per_shard: 100000
+parquet_events_per_row_group: 1000
+
+# Output writers
+output_particles_root: True
+output_measurements_root: True
+ambi_root_output: True
+ambi_finding_performance: True
+ambi_fitting_performance: True
+write_helix_parameters: True
+
+# Reconstruction eligibility floor lowered below the 0.9 GeV gun floor
+# (user-approved). Seed floor 0.5 and track cut 0.7 are already below it.
+digi_particle_pt_min: 0.85

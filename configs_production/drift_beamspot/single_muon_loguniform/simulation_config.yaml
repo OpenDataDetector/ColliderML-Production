@@ -1,0 +1,36 @@
+# LOG-UNIFORM muon sim (2026-08-29): verbatim proven uniform-campaign recipe
+# (tracker-only geometry, G4 cache, 32/node), only dataset + n_runs differ.
+campaign: "drift_beamspot"
+dataset: "single_muon_loguniform"
+version: "v1"
+stage: "simulation"
+
+common:
+  container: "ghcr.io/opendatadetector/sw:pr-8"
+  container_tarball: "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/stress_mu200/sw_pr8_image.tar"
+  # sw:pr-8 ships an EMPTY Geant4 data dir and sets no COLLIDERML_CACHE, so without
+  # this every task downloads ~2 GB of Geant4 datasets at startup. That squeaked
+  # through at 128 tasks (the 12.8M pilot: 128/128 downloaded) but collapsed at 1888
+  # (job 56955129: 1831 download failures -> G4Exception PART70000 from
+  # G4NuclideTable -> 82/1888 runs produced). Pointing at a pre-populated CFS cache
+  # makes tasks link the datasets instead of fetching them.
+  cache_dir: "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-prod-container/.cache"
+
+job_config:
+  n_runs: 2000
+  runs_per_node: 32
+  time_limit: "02:00:00"
+  qos: "regular"
+  execution_mode: "multi_node_slurm"
+
+events: 100000
+threads: 8
+input_filename: events.hepmc3
+minimalKineticEnergy: 0.1
+truthParticleHandler: "Geant4FullTruthParticleHandler"
+
+odd_compact_files:
+  - /opt/odd-install/share/OpenDataDetector/xml/OpenDataDetectorDefs.xml
+  - /opt/odd-install/share/OpenDataDetector/xml/OpenDataDetectorTracker.xml
+  - /global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-prod-container/configs_production/drift_beamspot/geometry/tracker_fields_plugins.xml
+
