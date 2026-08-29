@@ -32,7 +32,7 @@ plus a zero-overwrite scan of the target run dirs before submitting.
 | digitization | muons 100k ev/run | 32 | 1h | 2017-run campaign |
 | digitization | ttbar 1280 ev/run | 16 | 1h | hard_scatter/ttbar |
 | merge_smear | ttbar | 32 | 30m | light, single-threaded |
-| madgraph_generation | ttbar 17.5k ev/MG-run | 1 | **3h** | 2h wall killed slow-channel runs (9, 34) |
+| madgraph_generation | ttbar 17.5k ev/MG-run | **8** (`mg_nb_core: 32`) | **4h** | packing test 2026-08-28: A/B/C = 1/4/8 runs/node -> 159.6 / 64.5 / 33.6 node-h per 1M showered events (C = 4.75x cheaper, outputs identical-quality: 6 full files/run, same survival). Single-run utilization measured 3.3% - MG's shower/tail phases are near-serial, so whole-node-per-run pays ~97% idle. ALWAYS set mg_nb_core = 256/runs_per_node. 2h wall killed slow-channel runs (9, 34) at 1/node; C arm ran 2h04 for 8 runs |
 | package_parquet | any | 32 chunks/node | 30-60m | ~36s/chunk (muons) |
 
 `qos: debug` caps at 8 nodes; anything larger goes `regular`. Prefer regular for
@@ -64,6 +64,10 @@ files in public view).
   (the splitter discards the final partial chunk after creating the dir). These
   are junk: move them to staging before normalising — `normalise_runs.py` only
   removes truly empty dirs, and a 0-byte file makes a dir non-empty.
+- Packing: 8 MG runs/node with `mg_nb_core: 32` is the proven-efficient shape
+  (see table); madgraph_gen.py caps MG's core auto-detection via the
+  `mg_nb_core` config key - without it every co-scheduled instance grabs all
+  256 cores.
 - FxFx survival is ~44-58%, so downstream dir counts are estimates until
   generation finishes. Build sim/digi run lists from what exists (non-empty
   `events.hepmc` above ~140 MB for 1280-event files).
