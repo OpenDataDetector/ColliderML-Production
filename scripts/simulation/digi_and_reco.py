@@ -324,13 +324,17 @@ def setup_acts_reconstruction(input_path, output_dir, config, rnd, logger=None):
         )
         
         # Add digi particle selection (filters particles with sufficient measurements)
+        # Reconstruction eligibility floor. Config-driven since the log-uniform
+        # muon campaign (gun floor 0.9 GeV needs a gate below it); default is the
+        # historical 0.999 so every existing config is byte-identical in behaviour.
+        digi_pt_min = getattr(config, "digi_particle_pt_min", 0.999)
         addDigiParticleSelection(
             s,
             ParticleSelectorConfig(
                 rho=(0.0, 24 * u.mm),
                 absZ=(0.0, 1.0 * u.m),
                 eta=(-3.0, 3.0),
-                pt=(0.999 * u.GeV, None),
+                pt=(digi_pt_min * u.GeV, None),
                 measurements=(6, None),
                 removeNeutral=True,
                 removeSecondaries=False,
