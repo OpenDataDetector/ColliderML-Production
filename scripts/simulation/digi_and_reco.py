@@ -486,7 +486,13 @@ def setup_acts_reconstruction(input_path, output_dir, config, rnd, logger=None):
                 initial_sigma_ptrel=0.1,
                 initial_var_inflation=[1e0, 1e0, 1e0, 1e0, 1e0, 1e0],
                 particle_hypothesis=acts.ParticleHypothesis.pion,
-                delta_r=tuple(getattr(config, "truth_tracking_delta_r", (10.0, None))),
+                # Seed window: unbounded by default so the bottom space point is
+                # the innermost hit (see _truth_tracking for the measured loss
+                # with ACTS' 200/500 mm defaults). Override per config if needed.
+                delta_r=tuple(getattr(config, "truth_tracking_delta_r", (10.0, 1.0e6))),
+                abs_delta_z=tuple(
+                    getattr(config, "truth_tracking_abs_delta_z", (0.0, 1.0e6))
+                ),
                 fitter=getattr(config, "truth_tracking_fitter", "kf"),
                 # Default ON: a GX2F pre-fit over the full hit list seeds the KF
                 # instead of the three-point helix estimate. Set the key to null
@@ -497,6 +503,24 @@ def setup_acts_reconstruction(input_path, output_dir, config, rnd, logger=None):
                 ),
                 log_level=LOG_LEVEL,
             )
+
+            # Optional ROOT track summary for the truth-found tracks, WITH the
+            # fitted covariance (the parquet track table carries none). Debug
+            # aid for pull studies; off in production.
+            if getattr(config, "truth_tracking_root_summary", False):
+                _tt = _truth_primary(truth_track_outputs, "tracks")
+                _tm = _truth_primary(truth_track_outputs, "matching")
+                s.addWriter(
+                    acts.examples.root.RootTrackSummaryWriter(
+                        level=LOG_LEVEL,
+                        inputTracks=_tt,
+                        inputParticles="particles_selected",
+                        inputTrackParticleMatching=_tm,
+                        filePath=str(output_dir / "tracksummary_truth.root"),
+                        treeName="tracksummary",
+                        writeCovMat=True,
+                    )
+                )
 
         # Optional ROOT output & performance writers for CKF stage
         if ckf_root_output or ckf_finding_performance or ckf_fitting_performance:

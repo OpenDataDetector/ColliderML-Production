@@ -1,0 +1,54 @@
+# DEBUG RUN (2026-09-07): truth-seed window fix + truth-track covariances.
+# Interactive, login node, writes ONLY to a scratch dir outside the data tree.
+# Input: symlink to runs/0/edm4hep.root (read-only), first 10000 events.
+#
+# Body is digitization_config_full.yaml. Deviations, all deliberate:
+#   job_config.execution_mode : interactive (no SLURM)
+#   debug_output_dir          : /global/cfs/cdirs/m4958/usr/danieltm/ColliderML/debug/truthseed_2026-09-07
+#   events                    : 100000 -> 10000 (about 1700 tracks with |eta|>2.5)
+#   truth_tracking_delta_r / _abs_delta_z : explicit unbounded window (the new code default;
+#                               written out here so the intent is visible)
+#   truth_tracking_root_summary: true (tracksummary_truth.root WITH covariances, for pulls)
+#   ambi/CKF ROOT + performance writers: off (not needed for this test)
+campaign: "drift_beamspot"
+dataset: "single_muon_uniform"
+version: "v1"
+stage: "digitization"
+
+common:
+  container: "ghcr.io/opendatadetector/sw:pr-8"
+  container_tarball: "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/stress_mu200/sw_pr8_image.tar"
+  cache_dir: "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-prod-container/.cache"
+
+job_config:
+  execution_mode: "interactive"
+
+debug_output_dir: "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/debug/truthseed_2026-09-07"
+
+events: 10000
+threads: 8
+
+odd_geo_dir: /opt/odd
+digi_config: /opt/odd/config/odd-digi-smearing-config.json
+
+output_parquet_arrow: True
+digi: True
+reco: True
+num_seeds_per_spm: 40
+
+truth_tracking: true
+truth_tracking_fitter: kf
+truth_tracking_prefit: gx2f
+truth_tracking_delta_r: [10.0, 1.0e6]
+truth_tracking_abs_delta_z: [0.0, 1.0e6]
+truth_tracking_root_summary: true
+
+parquet_events_per_shard: 100000
+parquet_events_per_row_group: 1000
+
+output_particles_root: False
+output_measurements_root: False
+ambi_root_output: False
+ambi_finding_performance: False
+ambi_fitting_performance: False
+write_helix_parameters: True

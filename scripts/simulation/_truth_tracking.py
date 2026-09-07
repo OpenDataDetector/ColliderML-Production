@@ -212,7 +212,8 @@ def add_truth_tracking(
     initial_sigma_ptrel: Optional[float] = None,
     initial_var_inflation: Optional[Sequence[float]] = None,
     particle_hypothesis: Any = None,
-    delta_r: tuple = (10.0, None),
+    delta_r: tuple = (10.0, 1.0e6),
+    abs_delta_z: tuple = (0.0, 1.0e6),
     fitter: str = "kf",
     prefit: Optional[str] = "gx2f",
     prefit_var_inflation: Optional[Sequence[float]] = None,
@@ -262,11 +263,27 @@ def add_truth_tracking(
         # PID, which would put truth back into the fit.
         particleHypothesis=particle_hypothesis,
     )
+    # Seed window. The seed scores triplets by dR_bm * dR_mt, so with NO upper
+    # bounds the bottom space point is always the innermost one and the top the
+    # outermost. ACTS' own defaults (deltaRMax 200 mm, absDeltaZMax 500 mm) are
+    # NOT harmless here: the fit starts at the bottom space point's surface and
+    # only propagates outward, so every hit inside the bottom is silently
+    # dropped. For forward tracks from a wide-z beamspot the layer-2 hit sits at
+    # small |z| while the next space points are >500 mm away, and the max-score
+    # seed then starts at layer 4 or a disc. Measured on drift_beamspot
+    # single_muon_uniform v1: 1.2% of truth tracks lost their innermost hit,
+    # ~10% in 2.5<|eta|<2.75 (d0 RMS +6.5% there). Hence unbounded defaults;
+    # deltaRMin stays at 10 mm so overlap-module hit pairs cannot form a seed.
     if delta_r is not None:
         if delta_r[0] is not None:
-            truth_seeding_kwargs["deltaRMin"] = delta_r[0]
+            truth_seeding_kwargs["deltaRMin"] = float(delta_r[0])
         if delta_r[1] is not None:
-            truth_seeding_kwargs["deltaRMax"] = delta_r[1]
+            truth_seeding_kwargs["deltaRMax"] = float(delta_r[1])
+    if abs_delta_z is not None:
+        if abs_delta_z[0] is not None:
+            truth_seeding_kwargs["absDeltaZMin"] = float(abs_delta_z[0])
+        if abs_delta_z[1] is not None:
+            truth_seeding_kwargs["absDeltaZMax"] = float(abs_delta_z[1])
     s.addAlgorithm(acts.examples.TruthSeedingAlgorithm(**truth_seeding_kwargs))
 
     # --- Step 2: starting parameters from real space points, no truth ---
