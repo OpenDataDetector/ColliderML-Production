@@ -53,6 +53,20 @@ files in public view).
   `truth_tracking_prefit: gx2f`), `parquet_events_per_shard: 100000`,
   `parquet_events_per_row_group: 1000` (row group bounds write memory — never
   let it follow a large shard).
+- Truth-seed window: `truth_tracking_delta_r: [10.0, 1.0e6]` and
+  `truth_tracking_abs_delta_z: [0.0, 1.0e6]` (code default since 74a9b94,
+  2026-09-07; write them out so the intent is visible). ACTS' own defaults
+  (200 mm / 500 mm) made the seed start at layer 4 or a disc for forward tracks
+  from the wide-z beamspot, and the fit never visits hits inside the bottom
+  space point: v1 truth_tracks of every dataset digitized before 2026-09-07
+  (uniform, loguniform, ttbar) lack the innermost pixel hit on 1.2% of tracks,
+  ~10% in 2.5<|eta|<2.75. The four discrete muon bins (2/10/50/100 GeV) were
+  re-digitized with the fix. Audit after any digitization: innermost hit on
+  track must be 100% (per-track hit accounting, not job status).
+- `run_stage.py` needs the `collider-env` conda python
+  (`~/.conda/envs/collider-env/bin/python`): the system python3 has a
+  simple_slurm without `Slurm.add_cmd` and every submission fails with an
+  AttributeError. `verify_packaged_parquet.py` needs python >= 3.10 (same env).
 
 ## MadGraph layout facts
 
