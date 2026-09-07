@@ -1,0 +1,61 @@
+# v3 (2026-09-07): RE-DIGITIZATION with the truth-seed window fix (commit 74a9b94).
+# Body is digitization_config_v2.yaml verbatim (the proven 1-run debug-qos shape).
+# Only deviations:
+#   truth_tracking_delta_r / truth_tracking_abs_delta_z : explicit unbounded window
+#     (the new code default; written out so the intent is visible in the config).
+# Pre-step (manual, reversible): move runs/0/{particles,tracker_simhits,tracker_hits,
+#   tracks,truth_tracks} and parquet/ to staging/superseded_seedfix/<dataset>/
+#   so no old shard can coexist with or be silently overwritten by the new ones.
+# v2 re-digitization (single_muon_10GeV, 2026-08-19): the 10k pilot run 0 was moved to
+# staging and run 1 renumbered to 0, so this bin is one clean 100k-event run.
+# Old-format parquet moved to staging/superseded_single_muon_10GeV/. Body matches the
+# uniform sample's verified digitization_config_full.yaml recipe: G4 cache +
+# truth tracking (GX2F prefit) + 100k-event shards.
+campaign: "drift_beamspot"
+dataset: "single_muon_10GeV"
+version: "v1"
+stage: "digitization"
+
+common:
+  container: "ghcr.io/opendatadetector/sw:pr-8"
+  container_tarball: "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/stress_mu200/sw_pr8_image.tar"
+  cache_dir: "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-prod-container/.cache"
+
+job_config:
+  n_runs: 1
+  runs_per_node: 1
+  time_limit: "00:30:00"
+  qos: "debug"
+  execution_mode: "multi_node_slurm"
+
+events: 100000         # campaign final for this bin
+threads: 8
+
+# ACTS geometry/material/digi configs: /opt/odd in sw:pr-4 holds xml/ + config/ + data/
+# (material map) for ODD v6.0.2. Read by digi_and_reco (config.odd_geo_dir).
+odd_geo_dir: /opt/odd
+digi_config: /opt/odd/config/odd-digi-smearing-config.json
+
+output_parquet_arrow: True   # native ACTS parquet: tracker_simhits + tracker_hits + particles + tracks
+digi: True
+reco: True
+num_seeds_per_spm: 40
+
+# Output writers
+output_particles_root: True
+output_measurements_root: True
+ambi_root_output: True
+ambi_finding_performance: True
+ambi_fitting_performance: True
+write_helix_parameters: True
+
+
+truth_tracking: true
+truth_tracking_fitter: kf
+truth_tracking_prefit: gx2f
+parquet_events_per_shard: 100000
+parquet_events_per_row_group: 1000
+
+# Truth-seed window (see _truth_tracking.py): unbounded => bottom SP = innermost hit
+truth_tracking_delta_r: [10.0, 1.0e6]
+truth_tracking_abs_delta_z: [0.0, 1.0e6]
