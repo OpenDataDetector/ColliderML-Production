@@ -43,6 +43,7 @@ import sys
 import time
 from pathlib import Path
 
+import numpy as np
 import pyarrow as pa
 import pyarrow.compute as pc
 import pyarrow.parquet as pq
@@ -101,6 +102,90 @@ def _convert_times(table: pa.Table, obj: str) -> pa.Table:
     return table
 
 
+# --- Track covariance -------------------------------------------------------
+# The ACTS Arrow track writer emits only the five perigee parameters; the fitted
+# covariance lives in the ROOT track summary, which the digitization stage writes
+# when `performance_metrics` (CKF) / `truth_tracking_root_summary` (truth) are on.
+# We join it in here on (event, track_id): the ROOT writer stores
+# `track_nr = track.index()` and the Arrow writer stores the same value as
+# `track_id`, so this is a real key, not an ordering assumption (verified on the
+# 2026-09-12 pilot: d0/phi/t agree to 0.0 between the two).
+#
+# Only the 5x5 spatial+momentum block is published. The time row and column are
+# deliberately dropped: geometric digitisation produces no time measurement, so
+# they carry the seeding prior and nothing else (measured: err_t is a constant
+# 10 ns for every CKF track, 33 ps for every truth track).
+#
+# Units are ACTS native, matching the parameter columns already published:
+# mm^2, mm*rad, rad^2, rad/GeV, 1/GeV^2. No time terms, so no ns conversion.
+_COV_PARAMS = ("d0", "z0", "phi", "theta", "qop")
+_COV_ACTS = {"d0": "eLOC0", "z0": "eLOC1", "phi": "ePHI", "theta": "eTHETA", "qop": "eQOP"}
+COV_COLUMNS = [
+    (f"cov_{a}_{b}", f"cov_{_COV_ACTS[a]}_{_COV_ACTS[b]}")
+    for i, a in enumerate(_COV_PARAMS) for b in _COV_PARAMS[i:]
+]
+COV_SOURCE = {"tracks": "tracksummary_ambi.root", "truth_tracks": "tracksummary_truth.root"}
+
+
+def _attach_covariance(table: pa.Table, run_dir: Path, obj: str) -> pa.Table:
+    """Append the 15 upper-triangle covariance columns, joined on (event, track_id)."""
+    src = COV_SOURCE.get(obj)
+    if src is None or "track_id" not in table.schema.names:
+        return table
+    path = run_dir / src
+    if not path.exists():
+        logger.warning("%s: %s missing, packaging %s without covariance", run_dir.name, src, obj)
+        return table
+    import uproot  # available in the stage container via setup_container_env.sh
+
+    branches = ["event_nr", "track_nr"] + [b for _, b in COV_COLUMNS]
+    tree = uproot.open(path)["tracksummary"]
+    have = set(tree.keys())
+    missing = [b for b in branches if b not in have]
+    if missing:
+        logger.warning("%s: %s lacks %s, packaging without covariance", run_dir.name, src, missing[:3])
+        return table
+    arr = tree.arrays(branches, library="np")
+
+    def cat(key):
+        v = arr[key]
+        return np.concatenate([np.asarray(x) for x in v]) if v.dtype == object else np.asarray(v)
+
+    n_per_event = np.array([len(x) for x in arr["track_nr"]])
+    r_event = np.repeat(np.asarray(arr["event_nr"], dtype=np.int64), n_per_event)
+    r_track = cat("track_nr").astype(np.int64)
+    r_key = r_event * _TRACK_KEY_STRIDE + r_track
+
+    tid = table.column("track_id").combine_chunks()
+    offsets = tid.offsets.to_numpy()
+    p_track = tid.values.to_numpy(zero_copy_only=False).astype(np.int64)
+    p_event = np.repeat(table.column("event_id").to_numpy().astype(np.int64), np.diff(offsets))
+    p_key = p_event * _TRACK_KEY_STRIDE + p_track
+
+    order = np.argsort(r_key)
+    pos = np.searchsorted(r_key[order], p_key)
+    pos = np.clip(pos, 0, len(order) - 1)
+    idx = order[pos]
+    ok = r_key[idx] == p_key
+    if not ok.all():
+        logger.warning(
+            "%s/%s: %d of %d tracks have no covariance entry, filled with NaN",
+            run_dir.name, obj, int((~ok).sum()), len(p_key),
+        )
+
+    off = pa.array(offsets, type=pa.int32())
+    for name, branch in COV_COLUMNS:
+        vals = cat(branch).astype(np.float32)[idx]
+        vals[~ok] = np.nan
+        table = table.append_column(
+            name, pa.ListArray.from_arrays(off, pa.array(vals, type=pa.float32()))
+        )
+    return table
+
+
+_TRACK_KEY_STRIDE = 1 << 20  # track_id is uint16, so 2^20 is a safe stride
+
+
 def _read_run_table(run_dir: Path, obj: str) -> pa.Table | None:
     """Read a run's single native parquet file for one object."""
     files = sorted((run_dir / obj).glob("*.parquet"))
@@ -140,6 +225,7 @@ def package_chunk(
     dataset_name_dot: str,
     row_group_size: int | None,
     compression: str,
+    track_covariance: bool = False,
 ) -> None:
     """Write one output file per object for the event window [start_event, end_event]."""
     t0 = time.time()
@@ -175,6 +261,10 @@ def package_chunk(
                 if table is None:
                     logger.warning("run %d: no %s parquet, skipping", abs_run, obj)
                     continue
+                if track_covariance:
+                    # Join BEFORE the event_id shift, while event_id is still the
+                    # run-local number the ROOT summary uses.
+                    table = _attach_covariance(table, run_dir, obj)
                 table = _slice_and_offset(table, local_start, local_stop, abs_run * run_size)
                 if table.num_rows == 0:
                     continue
@@ -267,6 +357,8 @@ def main() -> None:
     logger.info("input : %s", runs_dir)
     logger.info("output: %s", out_base)
 
+    track_covariance = bool(config.get("track_covariance", False))
+
     def process(start_event, end_event, start_run, start_local, end_run, end_local):
         package_chunk(
             start_event=start_event, end_event=end_event,
@@ -275,6 +367,7 @@ def main() -> None:
             run_dirs=run_dirs, run_size=run_size, objects=objects,
             out_base=out_base, dataset_name_dot=dataset_name_dot,
             row_group_size=row_group_size, compression=compression,
+            track_covariance=track_covariance,
         )
 
     iterate_and_process_chunks(

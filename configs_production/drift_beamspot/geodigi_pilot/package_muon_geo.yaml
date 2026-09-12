@@ -35,3 +35,6 @@ objects:
   - truth_tracks
 compression: "snappy"
 row_group_size: 100000
+
+# Join the fitted 5x5 covariance from the ROOT track summaries (2026-09-12).
+track_covariance: true
