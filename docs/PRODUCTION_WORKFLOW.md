@@ -207,3 +207,45 @@ covariance reaches the published tables through the packaging stage:
   2/10/50/100 GeV bins, rho(d0,phi) -0.977 -> -0.847 as tracks straighten.
   About 0.5% of CKF covariances are not positive definite as ACTS produces them;
   truth-track covariances are all positive definite.
+
+## Fit quality in the parquet, and the known caveats
+
+The packager also joins fit quality from the ROOT summaries, same key as the
+covariance: `chi2`, `ndf`, `n_measurements`, `n_outliers`, `n_holes`,
+`n_shared_hits`. Nothing is filtered at production time - every track is
+published and the consumer decides. Without these columns a user has no way to
+see the defects below.
+
+Caveats that belong in the dataset documentation:
+
+- **The covariance undercovers.** Pull widths are 1.2 to 1.6, not 1, because the
+  geometric cluster variance ACTS computes (a charge-weighted pitch^2/12
+  propagation) is too optimistic in the pixel barrel. Pull MEANS are zero to
+  within 0.01, so parameters, covariance and truth are mutually consistent; only
+  the scale is off.
+- **Some CKF covariances are invalid.** About 0.5% at high pT are not positive
+  definite and some have negative diagonals (e.g. `cov_z0_z0 < 0`). The rate is
+  momentum dependent: 0% at 2 GeV, 0.84% at 100 GeV. Truth-track covariances are
+  all positive definite.
+- **`truth_tracks` have a catastrophic-fit tail.** 1.4% (2 GeV) to 4.0%
+  (100 GeV) of tracks have a parameter pull beyond 10 sigma, and up to 0.26%
+  have the wrong charge sign, with fully truth-pure hits and no outlier flags.
+  `chi2/ndf` exposes them: median 0.77, but p99 is 98-148 for truth tracks
+  against ~2 for CKF tracks. Investigated 2026-09-12: the cause is NOT a bad hit
+  (a catastrophic track has a median 6 of 13 hits with chi2 > 9, i.e. a wrong
+  trajectory), so outlier rejection would not fix it; and raising the GX2F
+  prefit iteration limit from 5 to 10 was tested and changed nothing
+  (4.027% -> 4.009%). Disabling the prefit costs 15% in d0 resolution and using
+  GX2F as the main fitter doubles the tail, so the current chain is the best of
+  the four tested. Leading remaining hypothesis, untested: the three-point seed
+  estimate landing on the wrong side for nearly straight high-pT tracks.
+- **Eight `tracker_hits` columns are all zero** across the whole release:
+  `time`, `var_time`, `local_eta`, `local_phi`, `global_eta`, `global_phi`,
+  `eta_angle`, `phi_angle`. Time is zero by design (no reco time); the other six
+  are placeholders ACTS never fills outside the Athena dump reader.
+- **Strip `x,y,z` is a nominal point.** For `subspace=1` hits the unmeasured
+  coordinate is filled with zero, so the published position sits a median 31 mm
+  (95th percentile 70 mm) from the true crossing. Fine for pixels (99th
+  percentile 0.29 mm).
+- **`event_id` is a mandatory join key.** Row order is not consistent between
+  tables: only ~94% of row positions carry the same event as `truth/particles`.
