@@ -132,7 +132,14 @@ COV_SOURCE = {"tracks": "tracksummary_ambi.root", "truth_tracks": "tracksummary_
 # with fully truth-pure hits and (for truth tracks) no outlier flags. chi2/ndf
 # separates them cleanly - good tracks median 0.75, catastrophic median 33.0, and
 # a chi2/ndf < 3 cut removes 92% of them for 4% of the good ones.
-QUALITY_COLUMNS = [("chi2", "chi2Sum", "f4"), ("ndf", "NDF", "i4"), ("n_holes", "nHoles", "i4")]
+QUALITY_COLUMNS = [
+    ("chi2", "chi2Sum", "f4"),
+    ("ndf", "NDF", "i4"),
+    ("n_measurements", "nMeasurements", "i4"),
+    ("n_outliers", "nOutliers", "i4"),
+    ("n_holes", "nHoles", "i4"),
+    ("n_shared_hits", "nSharedHits", "i4"),
+]
 
 
 def _attach_covariance(table: pa.Table, run_dir: Path, obj: str) -> pa.Table:
