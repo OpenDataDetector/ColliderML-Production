@@ -432,7 +432,15 @@ def setup_acts_reconstruction(input_path, output_dir, config, rnd, logger=None):
                 sigmaScattering=5,
                 radLengthPerSeed=0.1,
                 minPt=0.5 * u.GeV,
-                impactMax=3 * u.mm,
+                # Seed acceptance in transverse impact parameter. 3 mm is the
+                # benchmark value used by hard_scatter and full_pileup and must
+                # stay that way for them. The drift_beamspot gun spreads vertices
+                # uniformly over +-5 mm in x and y, so |d0| reaches 7.1 mm at the
+                # box corners: at 3 mm the CKF efficiency there is 0.97 inside
+                # 2 mm, 0.65 at 3 mm and 0.09 at 5 mm, i.e. ~40% of particles are
+                # outside seed acceptance by construction. Config-driven so that
+                # campaign can widen it without touching the benchmark.
+                impactMax=getattr(config, "seed_impact_max", 3.0) * u.mm,
                 zBinEdges=[-1600, -1000, -600, 0, 600, 1000, 1600],
             ),
             initialSigmas=[

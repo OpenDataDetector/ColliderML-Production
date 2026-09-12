@@ -1,0 +1,50 @@
+# GEOMETRIC-vs-SMEARED DIGITISATION PILOT (2026-09-11).
+# Same edm4hep input (symlinked from the production tree), same code, same seed-fix
+# truth-seed window. The ONLY difference between the two arms is digi_config.
+# Writes into a scratch tree, NOT into data/ColliderML. Nothing published is touched.
+campaign: "drift_beamspot"
+dataset: "ttbar"
+version: "geo_ip8"
+stage: "digitization"
+
+common:
+  container: "ghcr.io/opendatadetector/sw:pr-8"
+  container_tarball: "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/stress_mu200/sw_pr8_image.tar"
+  cache_dir: "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-prod-container/.cache"
+  output_base_dir: "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/debug/geodigi_pilot_2026-09-11"
+
+job_config:
+  n_runs: 8
+  runs_per_node: 8
+  time_limit: "00:30:00"
+  qos: "debug"
+  execution_mode: "multi_node_slurm"
+
+events: 1280
+threads: 8
+
+odd_geo_dir: /opt/odd
+digi_config: /opt/odd/config/odd-digi-geometric-config.json
+seed_impact_max: 8.0   # mm; benchmark default is 3.0 (hard_scatter, full_pileup)
+
+output_parquet_arrow: True
+digi: True
+reco: True
+num_seeds_per_spm: 40
+
+truth_tracking: true
+truth_tracking_fitter: kf
+truth_tracking_prefit: gx2f
+truth_tracking_root_summary: true    # tracksummary_truth.root WITH covariances (pulls)
+
+parquet_events_per_shard: 100000
+parquet_events_per_row_group: 1000
+
+# ROOT + performance writers for the CKF/ambi side, with covariances
+output_particles_root: False
+output_measurements_root: False
+ambi_root_output: True
+ambi_finding_performance: True
+ambi_fitting_performance: True
+performance_metrics: True
+write_helix_parameters: True
