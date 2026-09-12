@@ -157,3 +157,28 @@ deterministic); note the mapping in the dataset README if regeneration matters.
 3. After packaging: `verify_packaged_parquet.py` over all chunks.
 4. Physics spot-checks: truth-track validation harness
    (`tests/regression/validate_truth_tracks.py`), time medians ~ns scale.
+
+## Digitisation: GEOMETRIC, always
+
+Every ColliderML dataset uses `digi_config: /opt/odd/config/odd-digi-geometric-config.json`
+(real segmentation, charge deposition, clustering). The Gaussian-smearing alternative is a
+gross simplification and must never reach published data. The code default in
+`digi_and_reco.py` was smearing until 2026-09-11, which silently smeared any config that
+omitted the key; the whole drift_beamspot campaign was digitised that way and re-run on
+2026-09-12. Audit any new digitisation: `size_loc0`/`size_loc1`/`n_channels`/
+`sum_activation` must be non-zero. `local_eta`, `local_phi`, `eta_angle`, `phi_angle` stay
+zero either way (Athena-dump-only fields).
+
+Geometric emits NO reco-level time, by design: ColliderML has no calibrated time baseline,
+so truth time is published in `tracker_simhits.true_time` and users smear it themselves.
+The stored hit variance under geometric is a charge-weighted pitch^2/12 propagation, not the
+truth covariance it was under smearing: measured actual/stored is 1.35 in the pixel barrel
+r-phi, 0.75 in the short-strip barrel, giving truth-KF pull widths of 1.2 to 1.6.
+
+## Seed acceptance vs the beamspot
+
+`seed_impact_max` defaults to 3.0 mm, the benchmark value for hard_scatter and full_pileup.
+drift_beamspot spreads vertices uniformly over +-5 mm transverse, so |d0| reaches 7.1 mm and
+at 3 mm the CKF loses ~40% of particles by construction (efficiency 0.97 within 2 mm, 0.09 at
+5 mm). That campaign runs at 8.0 mm: efficiency flat at ~0.96 across the whole beamspot, no
+rise in fakes, +2.5% CPU. Never widen it for the benchmark campaigns.
