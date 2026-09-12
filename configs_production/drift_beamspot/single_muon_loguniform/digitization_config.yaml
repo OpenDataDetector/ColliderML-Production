@@ -14,7 +14,7 @@ common:
 job_config:
   n_runs: 2000
   runs_per_node: 32
-  time_limit: "01:00:00"
+  time_limit: "01:30:00"
   qos: "regular"
   execution_mode: "multi_node_slurm"
 
@@ -56,3 +56,10 @@ write_helix_parameters: True
 # Reconstruction eligibility floor lowered below the 0.9 GeV gun floor
 # (user-approved). Seed floor 0.5 and track cut 0.7 are already below it.
 digi_particle_pt_min: 0.85
+
+# Seed acceptance widened for this campaign: the gun spreads vertices uniformly
+# over +-5 mm transverse, so |d0| reaches 7.1 mm. At the benchmark 3 mm the CKF
+# efficiency is 0.97 within 2 mm but 0.09 at 5 mm; at 8 mm it is flat at ~0.96
+# with no rise in fakes (pilot 2026-09-12). hard_scatter/full_pileup keep 3 mm
+# via the code default.
+seed_impact_max: 8.0

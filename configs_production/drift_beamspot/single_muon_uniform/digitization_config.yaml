@@ -40,3 +40,10 @@ ambi_fitting_performance: True
 write_helix_parameters: True
 
 debug_output_dir: "/global/cfs/cdirs/m4958/data/ColliderML/simulation/drift_beamspot/single_muon_uniform/v1/runs/0"
+
+# Seed acceptance widened for this campaign: the gun spreads vertices uniformly
+# over +-5 mm transverse, so |d0| reaches 7.1 mm. At the benchmark 3 mm the CKF
+# efficiency is 0.97 within 2 mm but 0.09 at 5 mm; at 8 mm it is flat at ~0.96
+# with no rise in fakes (pilot 2026-09-12). hard_scatter/full_pileup keep 3 mm
+# via the code default.
+seed_impact_max: 8.0
