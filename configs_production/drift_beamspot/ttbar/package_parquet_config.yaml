@@ -44,10 +44,10 @@ output_base_dir: "/global/cfs/cdirs/m4958/data/ColliderML/simulation"
 run_size: 1280      # events per ttbar run directory
 chunk_size: 1000    # hard_scatter/ttbar convention (~200MB tracker_hits files)
 
+# QUALITY-PASS 2026-09-12: only the two track tables are rewritten, to add the
+# fit-quality columns. particles / tracker_simhits / tracker_hits are already
+# published and are deliberately NOT re-emitted.
 objects:
-  - particles
-  - tracker_simhits
-  - tracker_hits
   - tracks
   - truth_tracks
 
