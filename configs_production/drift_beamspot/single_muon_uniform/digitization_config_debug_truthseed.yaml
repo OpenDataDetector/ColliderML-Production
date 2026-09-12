@@ -29,7 +29,7 @@ events: 10000
 threads: 8
 
 odd_geo_dir: /opt/odd
-digi_config: /opt/odd/config/odd-digi-smearing-config.json
+digi_config: /opt/odd/config/odd-digi-geometric-config.json
 
 output_parquet_arrow: True
 digi: True

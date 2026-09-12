@@ -23,3 +23,8 @@ common:
   output_base_dir: "/global/cfs/cdirs/m3443/usr/dtmurnane/Side_Work/ACTS/outputs/python_submission_tests/"
   account: "atlas"
   container: "registry.cern.ch/atlasadc/atlas-grid-almalinux9"
+
+# Tracker digitisation: GEOMETRIC is mandatory for every ColliderML dataset
+# (real segmentation + clustering). The code default used to be smearing, which
+# is a gross simplification: no clusters, no angle dependence, no merged hits.
+digi_config: /opt/odd/config/odd-digi-geometric-config.json

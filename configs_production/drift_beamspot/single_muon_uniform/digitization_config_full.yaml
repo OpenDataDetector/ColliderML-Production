@@ -44,7 +44,7 @@ threads: 8
 # ACTS geometry/material/digi configs: /opt/odd in sw:pr-4 holds xml/ + config/ + data/
 # (material map) for ODD v6.0.2. Read by digi_and_reco (config.odd_geo_dir).
 odd_geo_dir: /opt/odd
-digi_config: /opt/odd/config/odd-digi-smearing-config.json
+digi_config: /opt/odd/config/odd-digi-geometric-config.json
 
 output_parquet_arrow: True   # native ACTS parquet: tracker_simhits + tracker_hits + particles + tracks
 digi: True

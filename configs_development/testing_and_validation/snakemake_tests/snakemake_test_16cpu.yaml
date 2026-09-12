@@ -19,5 +19,5 @@ g4_post_eta: [-4.0, 4.0]
 digi: True
 reco: False
 
-digi_config: "odd-digi-smearing-config.json"      # For digitization
+digi_config: "odd-digi-geometric-config.json"      # For digitization
 ambi_solver: "greedy"                            # For ambiguity resolution 

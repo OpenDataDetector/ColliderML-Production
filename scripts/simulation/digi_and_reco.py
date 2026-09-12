@@ -167,12 +167,35 @@ def setup_acts_reconstruction(input_path, output_dir, config, rnd, logger=None):
         else geoDir / "data/odd-material-maps.root"
     )
 
+    # Tracker digitisation. GEOMETRIC is mandatory for every ColliderML dataset:
+    # real segmentation + charge deposition + clustering, so hits carry cluster
+    # size, channel count, charge and incidence angles, and their resolution
+    # follows pitch and incidence angle. The Gaussian-smearing alternative is a
+    # gross simplification (fixed per-volume sigma, no clusters, no merged hits)
+    # and must not be used for published data.
+    #
+    # The default below WAS smearing until 2026-09-11, which silently applied it
+    # to any config that omitted the key. The whole drift_beamspot campaign
+    # (402M muon events + 1M ttbar) and full_pileup_mini_pilot/ttbar were
+    # digitised that way; every other campaign set the geometric file explicitly.
     digi_config = getattr(config, 'digi_config', None)
     if digi_config:
         dc_path = Path(digi_config)
         oddDigiConfig = dc_path if dc_path.is_file() else (geoDir / f"config/{digi_config}")
     else:
-        oddDigiConfig = geoDir / "config/odd-digi-smearing-config.json"
+        oddDigiConfig = geoDir / "config/odd-digi-geometric-config.json"
+        logger.warning(
+            "digi_config not set; defaulting to the GEOMETRIC config %s. Set it "
+            "explicitly in the config so the choice is recorded with the dataset.",
+            oddDigiConfig,
+        )
+    if "smearing" in str(oddDigiConfig):
+        logger.warning(
+            "digi_config is a SMEARING config (%s): no clusters, fixed per-volume "
+            "resolution. This is not acceptable for published ColliderML data.",
+            oddDigiConfig,
+        )
+    logger.info("Tracker digitisation config: %s", oddDigiConfig)
 
     oddSeedingSel = geoDir / "config/odd-seeding-config.json"
     oddMaterialDeco = acts.IMaterialDecorator.fromFile(oddMaterialMap)

@@ -1,0 +1,37 @@
+# GEOMETRIC-vs-SMEARED DIGITISATION PILOT (2026-09-11).
+# Same edm4hep input (symlinked from the production tree), same code, same seed-fix
+# truth-seed window. The ONLY difference between the two arms is digi_config.
+# Writes into a scratch tree, NOT into data/ColliderML. Nothing published is touched.
+campaign: "drift_beamspot"
+dataset: "single_muon_uniform"
+version: "geo"
+stage: "package_parquet"
+
+stage_script_map:
+  package_parquet: "postprocessing/package_native_parquet.py"
+
+common:
+  container: "ghcr.io/opendatadetector/sw:pr-8"
+  container_tarball: "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/stress_mu200/sw_pr8_image.tar"
+  cache_dir: "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-prod-container/.cache"
+  output_base_dir: "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/debug/geodigi_pilot_2026-09-11"
+
+job_config:
+  n_runs: 1
+  runs_per_node: 32
+  time_limit: "00:30:00"
+  qos: "debug"
+  execution_mode: "multi_node_slurm"
+
+input_base_dir: "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/debug/geodigi_pilot_2026-09-11"
+output_base_dir: "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/debug/geodigi_pilot_2026-09-11"
+run_size: 100000
+chunk_size: 1000000
+objects:
+  - particles
+  - tracker_simhits
+  - tracker_hits
+  - tracks
+  - truth_tracks
+compression: "snappy"
+row_group_size: 100000
