@@ -182,3 +182,28 @@ drift_beamspot spreads vertices uniformly over +-5 mm transverse, so |d0| reache
 at 3 mm the CKF loses ~40% of particles by construction (efficiency 0.97 within 2 mm, 0.09 at
 5 mm). That campaign runs at 8.0 mm: efficiency flat at ~0.96 across the whole beamspot, no
 rise in fakes, +2.5% CPU. Never widen it for the benchmark campaigns.
+
+## Track covariance in the parquet
+
+The ACTS Arrow track writer emits only the five perigee parameters. The fitted
+covariance reaches the published tables through the packaging stage:
+
+- Digitization must set `performance_metrics: true` (CKF/ambi summary) and
+  `truth_tracking_root_summary: true` (truth-track summary). Without them the
+  ROOT summaries carry only the diagonal `err_*`, and the covariance is
+  unrecoverable without re-digitizing. This was missed on the 2026-09-12
+  geometric re-run and cost a second 195 node-hour pass: if a re-digitization is
+  running, these two keys cost nothing and preserve every option.
+- Packaging must set `track_covariance: true`. The packager joins on
+  (event, track_id): the ROOT writer stores `track_nr = track.index()` and the
+  Arrow writer stores the same value as `track_id`, so it is a key, not an
+  ordering assumption (verified: d0/phi/t agree to exactly 0.0, 0 unmatched).
+- Published as 15 columns `cov_d0_d0` ... `cov_qop_qop`, the upper triangle of
+  the 5x5, in ACTS native units (mm^2, mm*rad, rad^2, rad/GeV, 1/GeV^2).
+- The time row and column are dropped on purpose: geometric digitization makes no
+  time measurement, so they carry only the seeding prior (`err_t` is a constant
+  10 ns for every CKF track, 33 ps for every truth track).
+- Sanity values (2026-09-12): sigma(d0) 32.50 / 11.88 / 7.31 / 6.92 um for the
+  2/10/50/100 GeV bins, rho(d0,phi) -0.977 -> -0.847 as tracks straighten.
+  About 0.5% of CKF covariances are not positive definite as ACTS produces them;
+  truth-track covariances are all positive definite.
