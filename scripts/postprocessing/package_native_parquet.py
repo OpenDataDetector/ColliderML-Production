@@ -126,6 +126,14 @@ COV_COLUMNS = [
 ]
 COV_SOURCE = {"tracks": "tracksummary_ambi.root", "truth_tracks": "tracksummary_truth.root"}
 
+# Fit quality, joined from the same ROOT summary. Without these a consumer has NO
+# way to reject a bad fit: measured on single_muon_100GeV, 4.0% of truth tracks
+# have a parameter pull beyond 10 sigma and 0.26% have the wrong charge sign,
+# with fully truth-pure hits and (for truth tracks) no outlier flags. chi2/ndf
+# separates them cleanly - good tracks median 0.75, catastrophic median 33.0, and
+# a chi2/ndf < 3 cut removes 92% of them for 4% of the good ones.
+QUALITY_COLUMNS = [("chi2", "chi2Sum", "f4"), ("ndf", "NDF", "i4"), ("n_holes", "nHoles", "i4")]
+
 
 def _attach_covariance(table: pa.Table, run_dir: Path, obj: str) -> pa.Table:
     """Append the 15 upper-triangle covariance columns, joined on (event, track_id)."""
@@ -138,7 +146,8 @@ def _attach_covariance(table: pa.Table, run_dir: Path, obj: str) -> pa.Table:
         return table
     import uproot  # available in the stage container via setup_container_env.sh
 
-    branches = ["event_nr", "track_nr"] + [b for _, b in COV_COLUMNS]
+    branches = (["event_nr", "track_nr"] + [b for _, b in COV_COLUMNS]
+                + [b for _, b, _ in QUALITY_COLUMNS])
     tree = uproot.open(path)["tracksummary"]
     have = set(tree.keys())
     missing = [b for b in branches if b not in have]
@@ -179,6 +188,17 @@ def _attach_covariance(table: pa.Table, run_dir: Path, obj: str) -> pa.Table:
         vals[~ok] = np.nan
         table = table.append_column(
             name, pa.ListArray.from_arrays(off, pa.array(vals, type=pa.float32()))
+        )
+    for name, branch, dt in QUALITY_COLUMNS:
+        raw = cat(branch)[idx]
+        if dt == "f4":
+            vals = raw.astype(np.float32); vals[~ok] = np.nan
+            typ = pa.float32()
+        else:
+            vals = raw.astype(np.int32); vals[~ok] = -1
+            typ = pa.int32()
+        table = table.append_column(
+            name, pa.ListArray.from_arrays(off, pa.array(vals, type=typ))
         )
     return table
 

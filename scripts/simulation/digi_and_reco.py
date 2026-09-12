@@ -532,6 +532,12 @@ def setup_acts_reconstruction(input_path, output_dir, config, rnd, logger=None):
                 prefit_var_inflation=getattr(
                     config, "truth_tracking_prefit_var_inflation", None
                 ),
+                # GX2F prefit iteration limit. 5 is the ACTS example default and
+                # is exactly the value at which a non-converged fit is returned
+                # silently; see _truth_tracking for the measured damage.
+                prefit_n_update_max=int(
+                    getattr(config, "truth_tracking_prefit_updates", 5)
+                ),
                 log_level=LOG_LEVEL,
             )
 

@@ -56,6 +56,7 @@ def _make_fit_function(
     log_level: Any,
     gx2f_multiple_scattering: bool = False,
     gx2f_energy_loss: bool = False,
+    gx2f_n_update_max: int = 5,
 ):
     """Build an ACTS fitter function. Neither fitter sees truth.
 
@@ -86,7 +87,17 @@ def _make_fit_function(
             multipleScattering=gx2f_multiple_scattering,
             energyLoss=gx2f_energy_loss,
             freeToBoundCorrection=acts.examples.FreeToBoundCorrection(False),
-            nUpdateMax=5,
+            # NOT 5. ACTS returns DidNotConverge only when nUpdateMax > 5; at
+            # exactly 5 it breaks out of the loop and returns the UNCONVERGED
+            # parameters with no error, which then seed the KF. ACTS' own comment
+            # in GlobalChiSquareFitter.hpp says most tracks converge in 4-5
+            # updates so the limit should be set higher "to guarantee convergence
+            # for most tracks", and that a smaller value is for studying the
+            # fitter before it converges. Measured consequence of 5 on
+            # single_muon_100GeV: 4.0% of truth tracks have a parameter pull
+            # beyond 10 sigma with a wrong trajectory (median 6 of 13 hits with
+            # chi2 > 9), and 0.26% have the wrong charge sign.
+            nUpdateMax=gx2f_n_update_max,
             relChi2changeCutOff=1e-7,
             level=log_level,
         )
@@ -104,6 +115,7 @@ def _add_fit_and_match(
     log_level: Any,
     prefit: Optional[str] = None,
     prefit_var_inflation: Optional[Sequence[float]] = None,
+    prefit_n_update_max: int = 5,
 ) -> tuple[str, str]:
     """Fit the truth proto tracks, select, and truth-match. Returns (tracks, matching).
 
@@ -142,6 +154,7 @@ def _add_fit_and_match(
                     # ON for pre-fit use: a scattering-blind pre-fit degrades
                     # low-pT tracks badly (see _make_fit_function docstring).
                     gx2f_multiple_scattering=True, gx2f_energy_loss=True,
+                    gx2f_n_update_max=prefit_n_update_max,
                 ),
                 calibrator=acts.examples.makePassThroughCalibrator(),
             )
@@ -217,6 +230,7 @@ def add_truth_tracking(
     fitter: str = "kf",
     prefit: Optional[str] = "gx2f",
     prefit_var_inflation: Optional[Sequence[float]] = None,
+    prefit_n_update_max: int = 5,
     log_level: Any = None,
 ) -> dict[str, str]:
     """Wire truth finding -> geometric seed estimate -> fit -> truth match.
@@ -325,6 +339,7 @@ def add_truth_tracking(
             log_level=log_level,
             prefit=prefit,
             prefit_var_inflation=prefit_var_inflation,
+            prefit_n_update_max=prefit_n_update_max,
         )
         outputs[f"{kind}_tracks"] = tracks
         outputs[f"{kind}_matching"] = matching
