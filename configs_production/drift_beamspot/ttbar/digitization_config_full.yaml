@@ -56,3 +56,8 @@ parquet_events_per_row_group: 1000
 # with no rise in fakes (pilot 2026-09-12). hard_scatter/full_pileup keep 3 mm
 # via the code default.
 seed_impact_max: 8.0
+
+# Covariance: write the ROOT track summaries WITH the fitted covariance so the
+# packaging stage can join the 5x5 into the parquet track tables (2026-09-12).
+performance_metrics: true          # CKF/ambi summary with cov_* branches
+truth_tracking_root_summary: true  # truth-track summary with cov_* branches

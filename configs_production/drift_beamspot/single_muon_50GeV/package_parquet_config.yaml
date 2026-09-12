@@ -56,3 +56,6 @@ objects:
 
 compression: "snappy"
 row_group_size: 100000   # rows per row group within an output file
+
+# Join the fitted 5x5 track covariance from the ROOT summaries (2026-09-12).
+track_covariance: true
