@@ -52,6 +52,11 @@ ambi_finding_performance: true
 ambi_fitting_performance: true
 write_helix_parameters: true
 performance_metrics: true
+
+# Truth tracking (truth_tracks table), same recipe as drift_beamspot: KF fit with a GX2F prefit
+truth_tracking: true
+truth_tracking_fitter: kf
+truth_tracking_prefit: gx2f
 truth_tracking_root_summary: true
 
 # seed_impact_max stays at the code default 3.0 mm (benchmark campaigns)

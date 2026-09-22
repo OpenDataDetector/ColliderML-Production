@@ -21,7 +21,19 @@ run_stage () {
   return $rc
 }
 
-run_stage digitization "$CFG/digitization_config.yaml" || { echo "digitization failed, stopping"; exit 1; }
+# Batch jobs load the image tarball on the node (job_submission.py); interactive
+# run_stage does not, so do it here for the reco image before the reco stages.
+load_image () {
+  local image=$1 tar=$2
+  podman-hpc image exists "$image" && { echo "image $image present"; return 0; }
+  echo "=== $(date '+%F %T') loading $image from $tar"
+  podman-hpc load -i "$tar" && podman-hpc image exists "$image"
+}
+
+if [ -z "${SKIP_DIGI:-}" ]; then
+  run_stage digitization "$CFG/digitization_config.yaml" || { echo "digitization failed, stopping"; exit 1; }
+fi
+load_image localhost/colliderml/reco:20260618 /global/cfs/cdirs/m4958/usr/danieltm/ColliderML/stress_mu200/reco_image.tar || { echo "reco image load failed"; exit 4; }
 run_stage pandora_reco "$CFG/pandora_reco_config.yaml" || { echo "pandora_reco failed, stopping"; exit 2; }
 run_stage reco_tables "$CFG/reco_tables_config.yaml" || { echo "reco_tables failed"; exit 3; }
 echo "=== pilot complete"

@@ -495,7 +495,11 @@ def get_git_root(start_path):
     """
     current_path = Path(start_path).resolve()
     while current_path != current_path.parent:
-        if (current_path / ".git").is_dir():
+        # A git worktree has a `.git` FILE (pointing at the main repo's gitdir), not a
+        # directory. Accepting both keeps run_stage inside the checkout it was launched
+        # from; with is_dir() only, a worktree silently resolved to the main checkout
+        # and ran ITS stage scripts (2026-09-22 pilot).
+        if (current_path / ".git").exists():
             return current_path
         current_path = current_path.parent
     
