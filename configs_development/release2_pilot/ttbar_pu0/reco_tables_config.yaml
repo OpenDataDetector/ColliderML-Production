@@ -28,3 +28,6 @@ debug_output_dir: "/global/cfs/cdirs/m4958/data/ColliderML/staging/release2_pilo
 
 events: 256
 objects: [calo_cells, calo_clusters, pfos]
+# the ddsim file is not in the staging run dir (read-only input elsewhere): needed for the
+# EventHeader.eventNumber -> ddsim position map that keys event_id.
+sim_input_file: /global/cfs/cdirs/m4958/data/ColliderML/simulation/hard_scatter/ttbar/v1/runs/0/edm4hep.root

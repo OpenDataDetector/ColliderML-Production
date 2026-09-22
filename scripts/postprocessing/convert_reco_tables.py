@@ -23,13 +23,23 @@ Inputs (all in the run directory):
 Stage config keys (all optional):
   objects          subset of [calo_cells, calo_clusters, pfos]; default all three
   reco_input_name  default reco_edm4hep.root
+  sim_input_name   default edm4hep.root (the ddsim file, for the event-number map)
+  sim_input_file   absolute path override for the ddsim file
   calo_input_name  default: reco_edm4hep.root if present, else edm4hep_digitized.root
   events           max events to convert (-1 = all)
 
+Event numbering (the pilot of 2026-09-22 caught this): multithreaded stages write
+events in completion order. ddsim already stores its events shuffled relative to
+EventHeader.eventNumber, and the ACTS PodioWriter that produces sim_with_tracks.root
+shuffles them again, while the ACTS-native parquet tables use the ddsim FILE POSITION
+as event_id. So every reco entry is mapped back to its ddsim position through
+EventHeader.eventNumber (unique within a run) and that position is written as
+event_id. The sim file is ``sim_input_name`` (default edm4hep.root in the run dir)
+or ``sim_input_file`` (absolute override, used when the run dir holds no copy).
+
 Alignment guard: if the run already has an ACTS-native ``particles`` table, the
-number of converted events must equal its row count. The reco file and the
-tracker tables both descend from the same edm4hep.root in file order, so a
-mismatch means a truncated k4run, and it must not pass silently.
+number of converted events must equal its row count (a truncated k4run must not
+pass silently).
 
 This is a "simulation-shaped" stage in cli_utils terms (it receives --output
 <runs dir> --output-subdir <run>), and it runs in the reco image via
@@ -46,6 +56,7 @@ import sys
 import traceback
 from pathlib import Path
 
+import numpy as np
 import pyarrow.parquet as pq
 import uproot
 import yaml
@@ -57,6 +68,7 @@ from convert_pfos import convert_file as convert_pfos_and_clusters  # noqa: E402
 ALL_OBJECTS = ("calo_cells", "calo_clusters", "pfos")
 DEFAULT_RECO_INPUT = "reco_edm4hep.root"
 DEFAULT_CALO_DIGI_INPUT = "edm4hep_digitized.root"
+DEFAULT_SIM_INPUT = "edm4hep.root"
 # A branch that only exists if the corresponding producer ran.
 REQUIRED_KEY = {
     "calo_cells": "digiECalBarrelCollection",
@@ -86,6 +98,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--objects", nargs="+", choices=ALL_OBJECTS, default=None)
     p.add_argument("--reco-input-name", default=None)
     p.add_argument("--calo-input-name", default=None)
+    p.add_argument("--sim-input-name", default=None)
+    p.add_argument("--sim-input-file", default=None, help="absolute path to the ddsim file")
     # accepted for run_stage compatibility, unused
     p.add_argument("--seed", default=None)
     p.add_argument("--performance-metrics", action="store_true", default=None)
@@ -105,7 +119,33 @@ def load_config(args: argparse.Namespace) -> argparse.Namespace:
         args.objects = list(ALL_OBJECTS)
     if args.reco_input_name is None:
         args.reco_input_name = DEFAULT_RECO_INPUT
+    if args.sim_input_name is None:
+        args.sim_input_name = DEFAULT_SIM_INPUT
     return args
+
+
+def _event_numbers(path: Path, max_events: int = -1):
+    tree = uproot.open(path)["events"]
+    stop = None if max_events is None or max_events < 0 else max_events
+    arr = tree["EventHeader/EventHeader.eventNumber"].array(entry_stop=stop, library="np")
+    return np.asarray([int(x[0]) for x in arr])
+
+
+def ddsim_positions(reco_file: Path, sim_file: Path, max_events: int = -1) -> np.ndarray:
+    """event_id for each reco entry = position of the same EventHeader.eventNumber
+    in the ddsim file (what the ACTS-native tables use)."""
+    sim_en = _event_numbers(sim_file)
+    if len(set(sim_en.tolist())) != len(sim_en):
+        raise RuntimeError(f"{sim_file}: EventHeader.eventNumber is not unique; cannot map events")
+    pos_of = {int(e): i for i, e in enumerate(sim_en)}
+    reco_en = _event_numbers(reco_file, max_events)
+    missing = [int(e) for e in reco_en if int(e) not in pos_of]
+    if missing:
+        raise RuntimeError(f"{reco_file}: {len(missing)} event numbers absent from {sim_file} (first {missing[:5]})")
+    ids = np.asarray([pos_of[int(e)] for e in reco_en], dtype=np.int64)
+    if len(set(ids.tolist())) != len(ids):
+        raise RuntimeError(f"{reco_file}: duplicate event numbers")
+    return ids
 
 
 def event_count_of_native_table(run_dir: Path, table: str = "particles") -> int | None:
@@ -164,9 +204,16 @@ def convert_run(run_dir: Path, args: argparse.Namespace) -> dict[str, tuple[Path
     max_events = int(args.events) if args.events is not None else -1
     written: dict[str, tuple[Path, int]] = {}
 
+    sim_file = Path(args.sim_input_file) if args.sim_input_file else run_dir / args.sim_input_name
+    if not sim_file.exists():
+        raise FileNotFoundError(f"ddsim file {sim_file} not found; needed to map reco entries to event_id")
+    ids_by_src = {src: ddsim_positions(src, sim_file, max_events) for src in set(inputs.values())}
+    for src, ids in ids_by_src.items():
+        logger.info("%s: %d entries mapped to ddsim positions (first %s)", src.name, len(ids), ids[:6].tolist())
+
     if "calo_cells" in inputs:
         out_dir, tmp = _atomic_target(run_dir, "calo_cells")
-        n = convert_calo_cells(inputs["calo_cells"], tmp, max_events, 0)
+        n = convert_calo_cells(inputs["calo_cells"], tmp, max_events, 0, event_ids=ids_by_src[inputs["calo_cells"]])
         written["calo_cells"] = (_finalise(out_dir, tmp, "calo_cells", n), n)
 
     want_pfos = "pfos" in inputs
@@ -176,7 +223,7 @@ def convert_run(run_dir: Path, args: argparse.Namespace) -> dict[str, tuple[Path
         src = inputs.get("pfos") or inputs["calo_clusters"]
         pfo_dir, pfo_tmp = _atomic_target(run_dir, "pfos")
         clu_dir, clu_tmp = _atomic_target(run_dir, "calo_clusters")
-        n = convert_pfos_and_clusters(src, pfo_tmp, clu_tmp, max_events, 0)
+        n = convert_pfos_and_clusters(src, pfo_tmp, clu_tmp, max_events, 0, event_ids=ids_by_src[src])
         if want_pfos:
             written["pfos"] = (_finalise(pfo_dir, pfo_tmp, "pfos", n), n)
         else:

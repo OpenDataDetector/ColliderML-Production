@@ -139,7 +139,9 @@ def process_chunk(tree, entry_start, entry_stop, coll_ids_cache):
 
 
 def convert_file(input_path: Path, out_pfos: Path, out_clusters: Path,
-                 max_events: int = -1, event_id_offset: int = 0, chunk: int = 200):
+                 max_events: int = -1, event_id_offset: int = 0, chunk: int = 200, event_ids=None):
+    """event_ids: optional per-entry event ids (ddsim position via EventHeader.eventNumber);
+    replaces the positional numbering when given (see convert_reco_tables.py)."""
     tree = uproot.open(input_path)["events"]
     n = tree.num_entries if max_events < 0 else min(max_events, tree.num_entries)
     pfo_schema = pa.schema(PFOS_PARQUET_TYPES)
@@ -155,7 +157,7 @@ def convert_file(input_path: Path, out_pfos: Path, out_clusters: Path,
                                             (clu_rows, clu_schema, w_clu, CALO_CLUSTERS_PARQUET_TYPES)):
             table = {k: [] for k in types}
             for i, r in enumerate(rows):
-                table["event_id"].append(np.uint32(event_id_offset + start + i))
+                table["event_id"].append(np.uint32(event_ids[start + i] if event_ids is not None else event_id_offset + start + i))
                 for k, v in r.items():
                     table[k].append(v.tolist() if isinstance(v, np.ndarray) else v)
             writer.write_table(pa.table(table, schema=schema))

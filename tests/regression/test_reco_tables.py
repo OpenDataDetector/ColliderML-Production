@@ -33,23 +33,43 @@ def test_same_event_set_as_particles(acts_particles, acts_calo_cells, acts_calo_
 
 
 def test_cell_contrib_particle_ids_resolve(acts_calo_cells, acts_particles):
-    """Every truth contribution on a cell points at a row of the same event's
-    particles table (particle_id = MCParticle row index convention)."""
-    n_part = {int(r["event_id"]): len(r["particle_id"]) for r in _rows(acts_particles)}
-    bad = 0
+    """Truth contributions carry the MCParticle row index. The particles table is
+    SPARSE (the ACTS writer keeps generator particles and those with tracker hits,
+    not every Geant4 secondary), so a contribution may legitimately point outside
+    it. What must hold: no negative ids, and most of the deposited energy resolves
+    to a published particle (pilot 2026-09-22, hard-scatter ttbar: 72% by energy,
+    70% by count). The bound below is deliberately loose; it guards against a
+    broken index convention, not against physics."""
+    pid_sets = {int(r["event_id"]): set(r["particle_id"]) for r in _rows(acts_particles)}
+    tot_e = res_e = 0.0
+    neg = 0
     for r in _rows(acts_calo_cells):
-        n = n_part[int(r["event_id"])]
-        for contribs in r["contrib_particle_ids"]:
-            for pid in contribs:
-                if not (0 <= pid < n):
-                    bad += 1
-    assert bad == 0, f"{bad} cell contributions point outside the particles table"
+        s = pid_sets[int(r["event_id"])]
+        for pids, es in zip(r["contrib_particle_ids"], r["contrib_energies"]):
+            for pid, e in zip(pids, es):
+                tot_e += e
+                if pid < 0:
+                    neg += 1
+                elif pid in s:
+                    res_e += e
+    assert neg == 0, f"{neg} negative contribution particle ids"
+    assert tot_e > 0
+    frac = res_e / tot_e
+    assert frac > 0.5, f"only {frac:.3f} of contribution energy resolves into the particles table"
 
 
-def test_cell_energies_positive_finite(acts_calo_cells):
+def test_cell_energies_nonnegative_finite(acts_calo_cells):
+    """Digitised cell energies are finite and not negative. Exactly-zero cells DO
+    occur (about 1% in the pilot: realistic ECAL digitisation can round a
+    sub-threshold deposit to zero and DDCaloDigi still writes the cell); they are
+    reported, not failed."""
+    zero = total = 0
     for r in _rows(acts_calo_cells):
         for e in r["energy"]:
-            assert math.isfinite(e) and e > 0, f"event {r['event_id']}: cell energy {e}"
+            assert math.isfinite(e) and e >= 0, f"event {r['event_id']}: cell energy {e}"
+            total += 1
+            zero += e == 0
+    print(f"zero-energy cells: {zero} of {total} ({zero / max(total, 1):.4f})")
 
 
 def test_cluster_cell_ids_resolve(acts_calo_clusters, acts_calo_cells):

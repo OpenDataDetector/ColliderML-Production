@@ -124,7 +124,10 @@ def process_events(tree, entry_start, entry_stop):
 
 
 def convert_file(input_path: Path, output_path: Path, max_events: int = -1,
-                 event_id_offset: int = 0, chunk: int = 200) -> int:
+                 event_id_offset: int = 0, chunk: int = 200, event_ids=None) -> int:
+    """event_ids: optional per-entry event ids (e.g. the ddsim file position recovered
+    through EventHeader.eventNumber, see convert_reco_tables.py); when given it replaces
+    the positional event_id_offset + entry numbering."""
     tree = uproot.open(input_path)["events"]
     n = tree.num_entries if max_events < 0 else min(max_events, tree.num_entries)
     schema = pa.schema(CALO_CELLS_PARQUET_TYPES)
@@ -135,7 +138,7 @@ def convert_file(input_path: Path, output_path: Path, max_events: int = -1,
         rows = process_events(tree, start, stop)
         table = {k: [] for k in CALO_CELLS_PARQUET_TYPES}
         for i, r in enumerate(rows):
-            table["event_id"].append(np.uint32(event_id_offset + start + i))
+            table["event_id"].append(np.uint32(event_ids[start + i] if event_ids is not None else event_id_offset + start + i))
             for k, v in r.items():
                 table[k].append(v.tolist() if isinstance(v, np.ndarray) else v)
         writer.write_table(pa.table(table, schema=schema))
