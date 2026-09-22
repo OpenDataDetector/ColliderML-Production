@@ -12,6 +12,9 @@ always produced:
                                                 /reco/tracker_hits/
                                                 /reco/tracks/
                                                 /reco/truth_tracks/
+                                                /reco/calo_cells/      (Release 2, from reco_tables)
+                                                /reco/calo_clusters/   (Release 2, from reco_tables)
+                                                /reco/pfos/            (Release 2, from reco_tables)
         <campaign>.<dataset>.<version>.<group>.<object>.events<START>-<END>.parquet
 
 Two conventions are inherited from convert_all.py deliberately, so the native
@@ -64,6 +67,11 @@ OBJECT_LAYOUT: dict[str, tuple[str, str]] = {
     "tracker_hits": ("reco", "tracker_hits"),
     "tracks": ("reco", "tracks"),
     "truth_tracks": ("reco", "truth_tracks"),
+    # Release-2 reco tables written per run by reco_tables (convert_reco_tables.py)
+    # from the k4ODD output; same per-run layout, event_id restarting at 0.
+    "calo_cells": ("reco", "calo_cells"),
+    "calo_clusters": ("reco", "calo_clusters"),
+    "pfos": ("reco", "pfos"),
 }
 
 # The ACTS-native writer emits time-like quantities in ACTS native units
@@ -72,7 +80,8 @@ OBJECT_LAYOUT: dict[str, tuple[str, str]] = {
 # downstream user caught (pixel hit "271 ns" that was really 271 mm = 0.91 ns).
 # Convert at packaging time so the published tables are in ns; per-run native
 # intermediates stay untouched. Value is the unit power: 1 for times (/c),
-# 2 for variances (/c^2).
+# 2 for variances (/c^2). The k4ODD-derived tables (calo_cells etc.) are
+# already in ns (edm4hep convention) and are deliberately absent here.
 _MM_PER_NS = 299.792458
 TIME_COLUMNS: dict[str, dict[str, int]] = {
     "tracker_hits": {"time": 1, "var_time": 2},

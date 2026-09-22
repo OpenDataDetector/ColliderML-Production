@@ -20,7 +20,9 @@ GIT_COMMIT_SUCCESS_FILE = ".git_commit_success"
 
 # Define stage categories
 MADGRAPH_STAGES = ["madgraph_init", "madgraph_generation"]
-SIMULATION_STAGES = MADGRAPH_STAGES + ["pythia_generation", "particlegun_generation", "merge_smear", "simulation", "digitization", "calo_digitization", "pandora_reco"]
+# reco_tables is per-run (it gets --output <runs> --output-subdir <run> like the
+# simulation stages) even though its script lives under postprocessing/.
+SIMULATION_STAGES = MADGRAPH_STAGES + ["pythia_generation", "particlegun_generation", "merge_smear", "simulation", "digitization", "calo_digitization", "pandora_reco", "reco_tables"]
 POSTPROCESSING_STAGES = [
     "build_tracks",
     "build_tracker_hits",
@@ -35,7 +37,7 @@ VALID_STAGES = SIMULATION_STAGES + POSTPROCESSING_STAGES
 
 # Define which stages need shifter container (subset of simulation stages)
 # madgraph_init, madgraph_generation, and particlegun_generation run on host environment and don't need shifter
-SHIFTER_STAGES = ["pythia_generation", "particlegun_generation", "merge_smear", "simulation", "digitization", "calo_digitization", "pandora_reco"]
+SHIFTER_STAGES = ["pythia_generation", "particlegun_generation", "merge_smear", "simulation", "digitization", "calo_digitization", "pandora_reco", "reco_tables"]
 
 # Stage to script mappings
 STAGE_SCRIPT_MAP = {
@@ -49,6 +51,8 @@ STAGE_SCRIPT_MAP = {
     "digitization": "simulation/digi_and_reco.py",
     "calo_digitization": "simulation/calo_digitization.py",
     "pandora_reco": "simulation/pandora_reco.py",
+    # Release-2 calo_cells / calo_clusters / pfos per-run parquet (reco image)
+    "reco_tables": "postprocessing/convert_reco_tables.py",
     
     # Postprocessing scripts
     "build_tracks": "postprocessing/convert_tracks.py",
@@ -158,7 +162,7 @@ def resolve_stage_container(config, stage):
     """Resolve (container, tarball) for a stage in the two-container model.
 
     A per-stage override in common.stage_containers[<stage>] (the key4hep reco image
-    for calo_digitization/pandora_reco + the reco-side converters) wins; otherwise the
+    for calo_digitization/pandora_reco/reco_tables) wins; otherwise the
     common default (the sw-based sim image). Returns (container_tag, tarball_path)."""
     common_cfg = config.get("common", {})
     override = (common_cfg.get("stage_containers") or {}).get(stage) or {}

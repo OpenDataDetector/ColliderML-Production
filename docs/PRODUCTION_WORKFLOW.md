@@ -16,7 +16,18 @@ workload-specific: a packing proven on muons is not proven on ttbar
 gun datasets  : particlegun_generation -> simulation -> digitization -> package_parquet
 madgraph      : madgraph_init -> madgraph_generation -> merge_smear ->
                 [normalise_runs] -> simulation -> digitization -> package_parquet
+Release 2     : ... -> simulation -> digitization (output_sim_with_tracks: true) ->
+                pandora_reco -> reco_tables -> package_parquet
 ```
+
+Release-2 notes. `pandora_reco` runs DDCaloDigi inline (ODDreconstruction.py), so
+`calo_digitization` is only needed for cells without particle flow. `reco_tables`
+converts each run's `reco_edm4hep.root` into per-run `calo_cells/`, `calo_clusters/`
+and `pfos/` parquet (same layout as the ACTS-native tracker tables, event_id from 0),
+refusing to write if the event count differs from the run's `particles` table. Both
+stages run in the reco image: set `common.stage_containers.pandora_reco` and
+`common.stage_containers.reco_tables`. Packaging then lists the three objects in
+`objects:`; nothing else changes.
 
 All driven by `scripts/cli/run_stage.py <config> [--run-range A B | --run-list ...]`.
 Gate every generated/edited config with `scripts/cli/verify_config_intent.py`

@@ -105,6 +105,23 @@ def acts_calo_hits(acts_parquet_root):
     return _read_acts_object(acts_parquet_root, "calo_hits")
 
 
+# Release-2 reco tables (per-run parquet written by reco_tables from the k4ODD
+# output; same layout as the ACTS-native tables, so the same reader applies).
+@pytest.fixture(scope="session")
+def acts_calo_cells(acts_parquet_root):
+    return _read_acts_object(acts_parquet_root, "calo_cells")
+
+
+@pytest.fixture(scope="session")
+def acts_calo_clusters(acts_parquet_root):
+    return _read_acts_object(acts_parquet_root, "calo_clusters")
+
+
+@pytest.fixture(scope="session")
+def acts_pfos(acts_parquet_root):
+    return _read_acts_object(acts_parquet_root, "pfos")
+
+
 @pytest.fixture(scope="session")
 def pid_bijection(acts_particles, v1_particles):
     """Per-event {native_particle_id -> v1_particle_id} map.

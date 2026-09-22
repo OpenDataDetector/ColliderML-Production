@@ -84,6 +84,26 @@ stages:
         median_threshold_pct: 0.8
         required: true
 
+  # Stage 5b: Release-2 reco tables (calo cells + Pandora clusters/PFOs -> per-run parquet)
+  reco_tables:
+    description: "Validate per-run Release-2 calorimeter / particle-flow parquet"
+    file_patterns:
+      - pattern: "calo_cells/*.parquet"
+        description: "Digitised calorimeter cells"
+        min_size_mb: 0.01
+        median_threshold_pct: 0.6
+        required: true
+      - pattern: "calo_clusters/*.parquet"
+        description: "Pandora calorimeter clusters"
+        min_size_mb: 0.001
+        median_threshold_pct: 0.6
+        required: true
+      - pattern: "pfos/*.parquet"
+        description: "Pandora particle-flow objects"
+        min_size_mb: 0.001
+        median_threshold_pct: 0.6
+        required: true
+
   # Stage 6: Tracker Digitization + Track Reconstruction (ACTS)
   digitization:
     description: "Validate tracker digitization and tracking outputs"
@@ -192,6 +212,25 @@ stages:
         min_size_mb: 0.1
         median_threshold_pct: 0.8
         required: true
+
+      # Release-2 tables: only present when the packaging config lists them.
+      - pattern: "reco/calo_cells/*.parquet"
+        description: "Calorimeter cells parquet files (Release 2)"
+        min_size_mb: 0.1
+        median_threshold_pct: 0.8
+        required: false
+
+      - pattern: "reco/calo_clusters/*.parquet"
+        description: "Calorimeter clusters parquet files (Release 2)"
+        min_size_mb: 0.01
+        median_threshold_pct: 0.8
+        required: false
+
+      - pattern: "reco/pfos/*.parquet"
+        description: "Particle-flow objects parquet files (Release 2)"
+        min_size_mb: 0.01
+        median_threshold_pct: 0.8
+        required: false
 
 # Global defaults (can be overridden per pattern)
 defaults:
