@@ -1,0 +1,56 @@
+# Release-2 pilot, step 1 of 3: tracker digitisation + tracking on an EXISTING
+# Release-1 hard-scatter ttbar sim (pileup 0), writing the ACTS-native parquet
+# tables AND the edm4hep sim+tracks handoff that pandora_reco consumes.
+#
+# Input is READ-ONLY from the production tree; every output goes to the staging
+# tree via debug_output_dir (validation is skipped for debug runs by design).
+campaign: "release2_pilot"
+dataset: "ttbar_pu0"
+version: "v1"
+stage: "digitization"
+
+common:
+  container: "ghcr.io/opendatadetector/sw:pr-8"
+  container_tarball: "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/stress_mu200/sw_pr8_image.tar"
+  cache_dir: "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-prod-container/.cache"
+  output_base_dir: "/global/cfs/cdirs/m4958/data/ColliderML/staging"
+
+job_config:
+  n_runs: 1
+  runs_per_node: 1
+  time_limit: "02:00:00"
+  qos: "interactive"
+  execution_mode: "interactive"
+
+debug_output_dir: "/global/cfs/cdirs/m4958/data/ColliderML/staging/release2_pilot/ttbar_pu0/v1/runs/0"
+input_file: "/global/cfs/cdirs/m4958/data/ColliderML/simulation/hard_scatter/ttbar/v1/runs/0/edm4hep.root"
+
+events: 1280      # the whole run 0 (Release-1 run size)
+threads: 32       # single exclusive interactive node; production shape is 16 runs x 8 threads
+
+# GEOMETRY DECISION: the Release-1 sims were made with ODD v4.0.4 (atlas-grid LCG
+# container). The sw:pr-8 image ships ODD v6.0.2 under /opt/odd. To digitise v4
+# sim hits we use the cached v4 source tree so the tracking geometry matches the
+# hits' surface identifiers. Geometric digitisation per the runbook.
+odd_geo_dir: /global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-prod-container/.cache/odd-v4
+digi_config: /global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-prod-container/.cache/odd-v4/config/odd-digi-geometric-config.json
+
+output_parquet_arrow: true   # tracker_simhits + tracker_hits + particles + tracks + truth_tracks
+digi: true
+reco: true
+num_seeds_per_spm: 40
+
+# Pandora handoff: edm4hep file with calo SimHits + MCParticles + ActsTracks
+output_sim_with_tracks: true
+
+# ROOT writers (covariance + fit quality need the two summaries)
+output_particles_root: true
+output_measurements_root: true
+ambi_root_output: true
+ambi_finding_performance: true
+ambi_fitting_performance: true
+write_helix_parameters: true
+performance_metrics: true
+truth_tracking_root_summary: true
+
+# seed_impact_max stays at the code default 3.0 mm (benchmark campaigns)

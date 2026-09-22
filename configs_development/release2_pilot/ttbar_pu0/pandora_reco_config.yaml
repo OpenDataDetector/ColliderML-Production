@@ -1,0 +1,35 @@
+# Release-2 pilot, step 2 of 3: Pandora charged particle flow (k4ODD
+# ODDreconstruction.py: DDCaloDigi inline + DDPandoraPFANew) on the sim+tracks
+# file from step 1. Runs in the reco image. events is capped so the timing
+# measurement is bounded; raise to -1 for the full run once the rate is known.
+campaign: "release2_pilot"
+dataset: "ttbar_pu0"
+version: "v1"
+stage: "pandora_reco"
+
+common:
+  container: "ghcr.io/opendatadetector/sw:pr-8"
+  container_tarball: "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/stress_mu200/sw_pr8_image.tar"
+  cache_dir: "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-prod-container/.cache"
+  output_base_dir: "/global/cfs/cdirs/m4958/data/ColliderML/staging"
+  stage_containers:
+    pandora_reco:
+      container: "localhost/colliderml/reco:20260618"
+      container_tarball: "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/stress_mu200/reco_image.tar"
+
+job_config:
+  n_runs: 1
+  runs_per_node: 1
+  time_limit: "02:00:00"
+  qos: "interactive"
+  execution_mode: "interactive"
+
+debug_output_dir: "/global/cfs/cdirs/m4958/data/ColliderML/staging/release2_pilot/ttbar_pu0/v1/runs/0"
+
+events: 256                    # timing sample; -1 = all 1280
+input_name: sim_with_tracks.root
+track_collection: ActsTracks   # charged PF (the required production mode)
+max_track_sigma_pop: 999       # masks the inflated ACTS omega covariance (k4ODD #25)
+# pandora_settings: default -> $K4ODD_PATH/k4ODD/options/PandoraSettingsCLD.xml
+# Calo digi + calibration: the reco image defaults ARE the final calibrated
+# constants (realistic digi ECAL=1/HCAL=1, EM 1.031, ECAL->Had 1.10, HCAL->Had 1.90).

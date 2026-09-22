@@ -91,6 +91,17 @@ pandora_reco:
   - 'export ODD_INSTALL_DIR={ODD_INSTALL}'
   - 'export LD_LIBRARY_PATH={K4ODD_INSTALL}/lib:{K4ODD_INSTALL}/lib64:$LD_LIBRARY_PATH'
 
+# Release-2 reco tables (calo_cells / calo_clusters / pfos): reads the k4ODD output
+# with the uproot/pyarrow baked into the reco image; same environment as pandora_reco.
+reco_tables:
+  - 'source {CONTAINER_SETUP}'
+  - 'source {KEY4HEP_SHIM}'
+  - 'source {PANDORA_STACK_SETUP}'
+  - 'source {ODD_THIS_SCRIPT}'
+  - 'export K4ODD_PATH={K4ODD_PATH}'
+  - 'export ODD_INSTALL_DIR={ODD_INSTALL}'
+  - 'export LD_LIBRARY_PATH={K4ODD_INSTALL}/lib:{K4ODD_INSTALL}/lib64:$LD_LIBRARY_PATH'
+
 # Postprocessing/convert_*: python libs (polars/pyarrow/uproot/pyedm4hep) baked into the
 # image's python and put on PYTHONPATH by the assembler. No conda.
 postprocessing:

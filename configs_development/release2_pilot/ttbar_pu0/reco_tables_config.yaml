@@ -1,0 +1,30 @@
+# Release-2 pilot, step 3 of 3: per-run parquet for calo_cells / calo_clusters /
+# pfos from reco_edm4hep.root (reco image; uproot + pyarrow). events must match
+# the Pandora cap above, otherwise the event-count guard against the particles
+# table fires (by design).
+campaign: "release2_pilot"
+dataset: "ttbar_pu0"
+version: "v1"
+stage: "reco_tables"
+
+common:
+  container: "ghcr.io/opendatadetector/sw:pr-8"
+  container_tarball: "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/stress_mu200/sw_pr8_image.tar"
+  cache_dir: "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-prod-container/.cache"
+  output_base_dir: "/global/cfs/cdirs/m4958/data/ColliderML/staging"
+  stage_containers:
+    reco_tables:
+      container: "localhost/colliderml/reco:20260618"
+      container_tarball: "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/stress_mu200/reco_image.tar"
+
+job_config:
+  n_runs: 1
+  runs_per_node: 1
+  time_limit: "00:30:00"
+  qos: "interactive"
+  execution_mode: "interactive"
+
+debug_output_dir: "/global/cfs/cdirs/m4958/data/ColliderML/staging/release2_pilot/ttbar_pu0/v1/runs/0"
+
+events: 256
+objects: [calo_cells, calo_clusters, pfos]
