@@ -28,12 +28,13 @@ input_file: "/global/cfs/cdirs/m4958/data/ColliderML/simulation/hard_scatter/ttb
 events: 1280      # the whole run 0 (Release-1 run size)
 threads: 32       # single exclusive interactive node; production shape is 16 runs x 8 threads
 
-# GEOMETRY DECISION: the Release-1 sims were made with ODD v4.0.4 (atlas-grid LCG
-# container). The sw:pr-8 image ships ODD v6.0.2 under /opt/odd. To digitise v4
-# sim hits we use the cached v4 source tree so the tracking geometry matches the
-# hits' surface identifiers. Geometric digitisation per the runbook.
-odd_geo_dir: /global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-prod-container/.cache/odd-v4
-digi_config: /global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-prod-container/.cache/odd-v4/config/odd-digi-geometric-config.json
+# GEOMETRY: the sw:pr-8 image ships ODD v6.0.2 under /opt/odd (runbook default). The
+# Release-1 sims used v4.0.4; the tracker is expected to be identical (v6 adds the muon
+# system and the calo factory), so the tracking geometry should match the sim hits'
+# surface identifiers. This pilot is the test of that. Fallback if it does not:
+# odd_geo_dir: <repo>/.cache/odd-v4 with its config/odd-digi-geometric-config.json.
+odd_geo_dir: /opt/odd
+digi_config: /opt/odd/config/odd-digi-geometric-config.json
 
 output_parquet_arrow: true   # tracker_simhits + tracker_hits + particles + tracks + truth_tracks
 digi: true
