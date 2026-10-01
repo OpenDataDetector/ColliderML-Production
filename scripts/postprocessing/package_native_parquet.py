@@ -283,7 +283,10 @@ def package_chunk(
 
     def particle_map(run_dir: Path) -> RunParticleMap:
         if run_dir not in particle_maps:
-            particle_maps.clear()  # one run at a time keeps memory flat
+            # Objects are the outer loop, so keep every run of this chunk: rebuilding per
+            # object re-read ~13M PU200 MCParticles 7x per run. A map is ~8 bytes/particle.
+            if len(particle_maps) >= 8:
+                particle_maps.clear()
             native = _read_run_table(run_dir, "particles")
             if native is None:
                 raise RuntimeError(f"{run_dir}: no native particles table; cannot remap particle ids")
