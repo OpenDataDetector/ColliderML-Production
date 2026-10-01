@@ -35,6 +35,7 @@ run_size: 1280
 chunk_size: 1000               # same file boundaries as Release 1 hard_scatter/ttbar/v1
 
 objects:
+  - tracker_simhits            # Geant4 tracker hits (Daniel 2026-10-01: publish)
   - tracker_hits
   - tracks
   - truth_tracks
