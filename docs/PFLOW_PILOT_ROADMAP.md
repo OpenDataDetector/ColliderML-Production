@@ -77,20 +77,22 @@ Cycle: produce pilot, share, collect feedback (about 2 weeks), apply changes, pr
 
 - [x] C1. ACTS re-run: PU0 runs 0 to 7 (15 min, 1 node, 860 s/run at 16 threads), PU200 runs 0 to 15 (803 s/run at
       8 threads; handoff 9.3 GB per 64-event run).
-- [ ] C2. Pandora: PU0 done (8 runs in 13 min on 1 node, ~47k ev/node-h). PU200: 8 slices x 8 events did not finish
-      a run in 20 min; now 64 single-event slices per run, one run per node (measuring on run 0).
-- [ ] C3. reco_tables (PU0 done, 6 min), plus `tests/regression/test_reco_tables.py` on each run.
+- [x] C2. Pandora: PU0 done (8 runs in 13 min on 1 node, ~47k ev/node-h). PU200: 8 slices x 8 events did not finish
+      a run in 20 min; with 64 single-event slices per run, one run per node: 16-27 min per run (~150-240 ev/node-h),
+      slices kept unmerged (`merge_slices: false`; podio-merge-files was slower than the reco).
+- [x] C3. reco_tables (PU0 6 min; PU200 8 min per 3 runs/node), plus `tests/regression/test_reco_tables.py` on each run.
 - [ ] C4. Physics check: jet and event-level energy response vs Pilot 0 numbers in the September brief.
 - [x] C0. (approved 2026-10-01, plus tracker_simhits) Review the v20 configs with Daniel (`configs_production/{hard_scatter,full_pileup}/ttbar/v20/`).
 - [x] C0b. Create v20 symlinks to v1 (`scripts/cli/link_version_objects.py`, dry run checked: PU0 19 links,
       PU200 27 links).
 - [ ] C5. PU0 published 2026-10-01: `hard_scatter/ttbar/v20/parquet`, 8 objects x 11 files, all 10,240 events;
       ids join Release 1 particles 100% (events 0-63, 9000-9063); calo_cells 17.6 GB (1.7 MB/event, the size driver).
-      PU200 pending. Write outputs to `v20` (see Decisions) with a data card; symlink unchanged v1 objects.
+      PU200 published 2026-10-01: `full_pileup/ttbar/v20/parquet`, 8 objects x 11 files, 1,024 events; ids join
+      100% (events 0-7, 960-967); calo_cells 40 GB (39 MB/event). Data cards: `v20/README.md`. Write outputs to `v20` (see Decisions) with a data card; symlink unchanged v1 objects.
 
 ### D. Documentation
 
-- [ ] D1. Data card for each pilot: events, configs, git SHA, image digest, schema, known issues.
+- [x] D1. (v20 README.md written) Data card for each pilot: events, configs, git SHA, image digest, schema, known issues.
 - [ ] D2. Correct the September brief: the "72% of calorimeter energy resolves to particles" statement was an
       id-space mismatch in the re-run particles table, not missing truth.
 - [ ] D3. Keep `docs/PRODUCTION_WORKFLOW.md` in step with the chain actually used.
@@ -101,6 +103,9 @@ Cycle: produce pilot, share, collect feedback (about 2 weeks), apply changes, pr
 - [ ] E2. Scale to 1M PU0 and 100k PU200 (estimates: about 150 node-hours PU0, about 1,100 PU200).
 
 ## Open questions
+
+0. Delete the incomplete 10.5 GB `full_pileup/ttbar/v20/runs/0/reco_edm4hep.root` (killed merge)? Asked 2026-10-01.
+0b. calo_cells is the size driver (1.7 MB/event PU0, 39 MB/event PU200): format/threshold choice before scaling.
 
 Tracked here until answered; answered ones move to Decisions.
 
