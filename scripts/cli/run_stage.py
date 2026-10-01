@@ -199,8 +199,14 @@ def run_guardian(validation_result, config, runs_dir):
         logger.exception("Full traceback:")
         return {'action': 'FAIL', 'exit_code': 1, 'reason': f'Guardian error: {e}'}
 
-def run_interactive(config, config_path_arg, stage_script_path):
-    """Runs the stage script interactively with integrated validation + guardian."""
+def run_interactive(config, config_path_arg, stage_script_path, run_id=None):
+    """Runs the stage script interactively with integrated validation + guardian.
+
+    run_id: run ONE numbered run of the version directory (runs/<run_id>) with
+    exactly the arguments a batch task gets (--output <runs> --output-subdir N
+    --seed <dataset>_<version>_runN). Lets an interactive allocation drive
+    several runs in parallel, one run_stage per run, without debug_output_dir.
+    """
     
     # Check if validation is enabled (default: true). Skip for interactive debug runs
     # (debug_output_dir): the production validator expects numbered run subdirs
@@ -224,7 +230,7 @@ def run_interactive(config, config_path_arg, stage_script_path):
         logger.info("Creating output directories for interactive run...")
         directories = cli_utils.create_necessary_directories(config)
         run_dir = directories["run_dir"]
-        output_subdir = "all"
+        output_subdir = "all" if run_id is None else str(run_id)
 
     # ===== PHASE 1: Execute Stage =====
     logger.info("")
@@ -487,7 +493,13 @@ def main():
             stage_script_path = cli_utils.get_stage_script_path(config, git_repo_path)
             # Use processed config if available, otherwise fall back to original
             config_to_use = processed_config_paths[0] if processed_config_paths else args.configs[0]
-            run_interactive(config, config_to_use, stage_script_path)
+            run_id = None
+            if args.run_list:
+                if len(args.run_list) != 1 or config.get("debug_output_dir"):
+                    logger.error("interactive mode takes exactly one --run-list id and no debug_output_dir")
+                    sys.exit(1)
+                run_id = args.run_list[0]
+            run_interactive(config, config_to_use, stage_script_path, run_id=run_id)
         except (ValueError, FileNotFoundError) as e:
             logger.error(f"Failed to locate script for interactive execution: {e}")
             sys.exit(1)
