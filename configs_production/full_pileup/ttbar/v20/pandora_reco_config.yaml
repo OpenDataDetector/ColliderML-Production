@@ -14,8 +14,8 @@ common:
   output_base_dir: "/global/cfs/cdirs/m4958/data/ColliderML/simulation"
   stage_containers:
     pandora_reco:
-      container: "localhost/colliderml/reco:20261001b"
-      container_tarball: "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/images/colliderml_reco_20261001b.tar"
+      container: "localhost/colliderml/reco:20261001c"
+      container_tarball: "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/images/colliderml_reco_20261001c.tar"
 
 job_config:
   n_runs: 16
