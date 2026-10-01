@@ -30,6 +30,7 @@ validation_config:
 events: -1                     # all 64
 processes: 64                  # one event per k4run, one run per node at a time. With 8
                                # processes x 8 events a run did not finish in 20 min (2026-10-01).
+merge_slices: false            # podio-merge-files of 64 PU200 events outlasted the reco; keep slices
 input_name: sim_with_tracks.root
 track_collection: ActsTracks   # charged PF
 max_track_sigma_pop: 999       # masks the inflated ACTS omega covariance (roadmap A7)

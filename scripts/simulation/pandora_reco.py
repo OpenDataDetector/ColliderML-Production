@@ -33,6 +33,8 @@ no env knobs needed. Config keys (yaml):
                           single-threaded, so a run is split into contiguous entry slices
                           (IOSvc.FirstEventEntry + --events), one process each, and the
                           parts are merged in entry order with podio-merge-files.
+  merge_slices            default true. false: keep the slices as <run>/reco_parts/
+                          reco_part_NNN.root (reco_tables reads them directly).
 
 Isolation: every k4run gets its own K4ODD_OUTPUT_DIR (<run>/pandora_work/slice_NNN) for
 ddcalodigi_hist.root and its log. Sharing one histogram file killed 18 of 64 processes at
@@ -159,12 +161,29 @@ def run_pandora_reco(input_file, output_dir, config, logger):
     if failed:
         raise RuntimeError(f"Pandora reconstruction failed in {len(failed)} of {n_proc} slices: {failed}")
 
+    merge = bool(getattr(config, "merge_slices", True))
+    if n_proc > 1 and not merge:
+        # Keep the slices as <run>/reco_parts/reco_part_NNN.root (entry order = slice order);
+        # reco_tables reads them directly. At PU200 podio-merge-files (a python frame copy)
+        # took longer than the reconstruction itself.
+        parts_dir = output_dir / "reco_parts"
+        parts_dir.mkdir(exist_ok=True)
+        n_out = 0
+        for i, _, count, part, _, _ in procs:
+            dst = parts_dir / f"reco_part_{i:03d}.root"
+            os.replace(part, dst)
+            n = _count_entries(dst)
+            if n != count:
+                raise RuntimeError(f"slice {i}: {n} events written, expected {count}")
+            n_out += n
+        logger.info(f"✓ {n_proc} slice files ({n_out} events) in {parts_dir} (merge_slices: false)")
+        return parts_dir
     if n_proc > 1:
         parts = [str(part) for _, _, _, part, _, _ in procs]
-        merge = subprocess.run(["podio-merge-files", "--output-file", str(output_file)] + parts,
-                               capture_output=True, text=True, env=env)
-        if merge.returncode != 0:
-            logger.error(f"podio-merge-files failed: {merge.stderr[-2000:]}")
+        merged = subprocess.run(["podio-merge-files", "--output-file", str(output_file)] + parts,
+                                capture_output=True, text=True, env=env)
+        if merged.returncode != 0:
+            logger.error(f"podio-merge-files failed: {merged.stderr[-2000:]}")
             raise RuntimeError("merging the Pandora slices failed")
         n_out = _count_entries(output_file)
         if n_out != n_events:

@@ -37,6 +37,10 @@ EventHeader.eventNumber (unique within a run) and that position is written as
 event_id. The sim file is ``sim_input_name`` (default edm4hep.root in the run dir)
 or ``sim_input_file`` (absolute override, used when the run dir holds no copy).
 
+Pandora slices: if <run>/reco_parts/reco_part_*.root exist (pandora_reco with
+merge_slices: false), every object is read from those files instead, each part mapped
+to ddsim positions on its own; output rows are sorted by event_id.
+
 Alignment guard: if the run already has an ACTS-native ``particles`` table, the
 number of converted events must equal its row count (a truncated k4run must not
 pass silently).
@@ -199,39 +203,72 @@ def _finalise(out_dir: Path, tmp: Path, obj: str, n_events: int) -> Path:
     return final
 
 
-def convert_run(run_dir: Path, args: argparse.Namespace) -> dict[str, tuple[Path, int]]:
-    inputs = resolve_inputs(run_dir, args)
-    max_events = int(args.events) if args.events is not None else -1
-    written: dict[str, tuple[Path, int]] = {}
+def reco_parts(run_dir: Path) -> list[Path]:
+    """Slice files written by pandora_reco with merge_slices: false, in slice order."""
+    return sorted((run_dir / "reco_parts").glob("reco_part_*.root"))
 
+
+def _convert_sources(srcs: list[Path], sim_file: Path, max_events: int, run_dir: Path,
+                     want: set[str]) -> dict[str, tuple[Path, int]]:
+    """Convert one or more reco files (each mapped to ddsim positions through
+    EventHeader.eventNumber) and write one parquet file per object, rows sorted by event_id."""
+    import pyarrow as pa
+
+    pieces: dict[str, list[Path]] = {o: [] for o in want}
+    total = 0
+    for k, src in enumerate(srcs):
+        ids = ddsim_positions(src, sim_file, max_events if len(srcs) == 1 else -1)
+        logger.info("%s: %d entries mapped to ddsim positions (first %s)", src.name, len(ids), ids[:6].tolist())
+        if "calo_cells" in want:
+            _, tmp = _atomic_target(run_dir, "calo_cells")
+            part = tmp.with_name(f".calo_cells.part{k:03d}.parquet")
+            convert_calo_cells(src, part, max_events if len(srcs) == 1 else -1, 0, event_ids=ids)
+            pieces["calo_cells"].append(part)
+        if want & {"pfos", "calo_clusters"}:
+            _, ptmp = _atomic_target(run_dir, "pfos")
+            _, ctmp = _atomic_target(run_dir, "calo_clusters")
+            pp, cp = ptmp.with_name(f".pfos.part{k:03d}.parquet"), ctmp.with_name(f".calo_clusters.part{k:03d}.parquet")
+            convert_pfos_and_clusters(src, pp, cp, max_events if len(srcs) == 1 else -1, 0, event_ids=ids)
+            for obj, f in (("pfos", pp), ("calo_clusters", cp)):
+                if obj in want:
+                    pieces[obj].append(f)
+                else:
+                    f.unlink()
+        total += len(ids)
+
+    written: dict[str, tuple[Path, int]] = {}
+    for obj, files in pieces.items():
+        out_dir, tmp = _atomic_target(run_dir, obj)
+        table = pa.concat_tables([pq.read_table(f) for f in files])
+        table = table.sort_by("event_id")
+        pq.write_table(table, tmp)
+        for f in files:
+            f.unlink()
+        written[obj] = (_finalise(out_dir, tmp, obj, table.num_rows), table.num_rows)
+    return written
+
+
+def convert_run(run_dir: Path, args: argparse.Namespace) -> dict[str, tuple[Path, int]]:
+    max_events = int(args.events) if args.events is not None else -1
     sim_file = Path(args.sim_input_file) if args.sim_input_file else run_dir / args.sim_input_name
     if not sim_file.exists():
         raise FileNotFoundError(f"ddsim file {sim_file} not found; needed to map reco entries to event_id")
-    ids_by_src = {src: ddsim_positions(src, sim_file, max_events) for src in set(inputs.values())}
-    for src, ids in ids_by_src.items():
-        logger.info("%s: %d entries mapped to ddsim positions (first %s)", src.name, len(ids), ids[:6].tolist())
 
-    if "calo_cells" in inputs:
-        out_dir, tmp = _atomic_target(run_dir, "calo_cells")
-        n = convert_calo_cells(inputs["calo_cells"], tmp, max_events, 0, event_ids=ids_by_src[inputs["calo_cells"]])
-        written["calo_cells"] = (_finalise(out_dir, tmp, "calo_cells", n), n)
-
-    want_pfos = "pfos" in inputs
-    want_clu = "calo_clusters" in inputs
-    if want_pfos or want_clu:
-        # convert_pfos always writes both; drop the one that was not requested.
-        src = inputs.get("pfos") or inputs["calo_clusters"]
-        pfo_dir, pfo_tmp = _atomic_target(run_dir, "pfos")
-        clu_dir, clu_tmp = _atomic_target(run_dir, "calo_clusters")
-        n = convert_pfos_and_clusters(src, pfo_tmp, clu_tmp, max_events, 0, event_ids=ids_by_src[src])
-        if want_pfos:
-            written["pfos"] = (_finalise(pfo_dir, pfo_tmp, "pfos", n), n)
-        else:
-            pfo_tmp.unlink()
-        if want_clu:
-            written["calo_clusters"] = (_finalise(clu_dir, clu_tmp, "calo_clusters", n), n)
-        else:
-            clu_tmp.unlink()
+    parts = reco_parts(run_dir)
+    if parts:
+        # pandora_reco merge_slices: false. Every object comes from the slices.
+        logger.info("reading %d Pandora slice files from %s", len(parts), run_dir / "reco_parts")
+        keys = set(k.split(";")[0] for k in uproot.open(parts[0])["events"].keys())
+        for obj in args.objects:
+            if REQUIRED_KEY[obj] not in keys:
+                raise RuntimeError(f"{obj}: {parts[0].name} has no '{REQUIRED_KEY[obj]}' branch")
+        written = _convert_sources(parts, sim_file, max_events, run_dir, set(args.objects))
+    else:
+        inputs = resolve_inputs(run_dir, args)
+        written = {}
+        for src in sorted(set(inputs.values())):
+            want = {o for o, p in inputs.items() if p == src}
+            written.update(_convert_sources([src], sim_file, max_events, run_dir, want))
 
     counts = {n for _, n in written.values()}
     if len(counts) != 1:
