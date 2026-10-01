@@ -21,9 +21,12 @@ import sys, yaml
 c = yaml.safe_load(open(sys.argv[1]))
 stage = c["stage"]
 base = c.get("common", {}).get("output_base_dir") or c.get("output_base_dir")
-sc = c.get("common", {}).get("stage_containers", {}).get(stage, {})
-print(stage, f"{base}/{c['campaign']}/{c['dataset']}/{c['version']}",
-      sc.get("container", "-"), sc.get("container_tarball", "-"))
+common = c.get("common", {})
+sc = common.get("stage_containers", {}).get(stage, {})
+# Stage override first, else the config's default container (as run_stage resolves it).
+image = sc.get("container") or common.get("container") or "-"
+tarball = sc.get("container_tarball") if sc.get("container") else common.get("container_tarball")
+print(stage, f"{base}/{c['campaign']}/{c['dataset']}/{c['version']}", image, tarball or "-")
 EOF
 )
 LOGDIR="$VERSION_DIR/logs/interactive"; mkdir -p "$LOGDIR"

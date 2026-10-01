@@ -279,6 +279,7 @@ def package_chunk(
         start_event, end_event, start_run, end_run, len(objects),
     )
 
+    incomplete: list[str] = []
     particle_maps: dict[Path, RunParticleMap] = {}
 
     def particle_map(run_dir: Path) -> RunParticleMap:
@@ -335,13 +336,16 @@ def package_chunk(
                 # Stream run by run: peak memory is one run, not one chunk.
                 writer.write_table(table, row_group_size=row_group_size)
                 rows += table.num_rows
-                events_seen += local_stop - local_start
+                # Count the events actually present, not the requested window (Codex audit
+                # 2026-10-01, finding 4: a truncated run used to pass as complete).
+                events_seen += len(np.unique(table.column("event_id").to_numpy()))
         finally:
             if writer is not None:
                 writer.close()
 
         if writer is None:
-            logger.warning("%s: no data in this chunk, no file written", obj)
+            logger.error("%s: no data in this chunk, no file written", obj)
+            incomplete.append(obj)
             continue
         # The event count is the load-bearing check: a short file here means a
         # run was missing or partially digitized, which must not pass silently.
@@ -350,8 +354,11 @@ def package_chunk(
                 "%s: expected %d events in chunk, wrote %d - INCOMPLETE (%s)",
                 obj, expected, events_seen, out_file.name,
             )
+            incomplete.append(obj)
         logger.info("wrote %s (rows=%d, events=%d)", out_file.name, rows, events_seen)
 
+    if incomplete:
+        raise RuntimeError(f"chunk {start_event}-{end_event}: incomplete objects {incomplete}")
     logger.info("chunk %d-%d done in %.1fs", start_event, end_event, time.time() - t0)
 
 

@@ -66,6 +66,25 @@ def _count_entries(path):
         return n
 
 
+def _remove_stale_outputs(output_dir, keep, n_parts, logger):
+    """reco_tables prefers reco_parts/ over reco_edm4hep.root, so after a successful run remove
+    the other output form and any slice files beyond this run's slice count; otherwise an older
+    run's output could be published (Codex audit 2026-10-01, finding 2). Only files this stage
+    writes are touched."""
+    parts_dir = Path(output_dir) / "reco_parts"
+    stale = []
+    if keep == "merged":
+        stale += sorted(parts_dir.glob("reco_part_*.root"))
+    else:
+        merged = Path(output_dir) / "reco_edm4hep.root"
+        if merged.exists():
+            stale.append(merged)
+        stale += [p for p in sorted(parts_dir.glob("reco_part_*.root")) if int(p.stem.split("_")[-1]) >= n_parts]
+    for p in stale:
+        logger.info(f"removing stale Pandora output {p}")
+        p.unlink()
+
+
 def run_pandora_reco(input_file, output_dir, config, logger):
     k4odd_base = os.environ.get("K4ODD_PATH")
     if not k4odd_base:
@@ -177,6 +196,7 @@ def run_pandora_reco(input_file, output_dir, config, logger):
                 raise RuntimeError(f"slice {i}: {n} events written, expected {count}")
             n_out += n
         logger.info(f"✓ {n_proc} slice files ({n_out} events) in {parts_dir} (merge_slices: false)")
+        _remove_stale_outputs(output_dir, keep="parts", n_parts=n_proc, logger=logger)
         return parts_dir
     if n_proc > 1:
         parts = [str(part) for _, _, _, part, _, _ in procs]
@@ -199,6 +219,7 @@ def run_pandora_reco(input_file, output_dir, config, logger):
         if coll not in check.stdout:
             raise RuntimeError(f"Output missing collection {coll} - reco silently failed")
 
+    _remove_stale_outputs(output_dir, keep="merged", n_parts=0, logger=logger)
     out_mb = output_file.stat().st_size / 1024**2
     logger.info(f"✓ Pandora reco complete ({out_mb:.1f} MB)")
     return output_file

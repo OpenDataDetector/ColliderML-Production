@@ -44,6 +44,7 @@ ID_COLUMNS: dict[str, tuple[str, ...]] = {
 NO_PARTICLE = np.iinfo(np.uint64).max
 
 _KEY_FIELDS = ("pdg_id", "px", "py", "pz", "vx", "vy", "vz")
+_MC_STATUS_BRANCH = "MCParticles/MCParticles.generatorStatus"
 _MC_BRANCHES = {
     "pdg_id": "MCParticles/MCParticles.PDG",
     "px": "MCParticles/MCParticles.momentum.x",
@@ -78,8 +79,13 @@ def match_event(native: dict[str, np.ndarray], mc: dict[str, np.ndarray]) -> tup
 
     # Pair the k-th native particle with key c to the k-th MCParticle with key c
     # (both in index order), so duplicates are assigned deterministically.
-    def rank_within(codes):
-        order = np.lexsort((np.arange(len(codes)), codes))
+    def rank_within(codes, penalty=None):
+        # Ties are paired in index order; MC candidates with penalty 0 (generatorStatus 0 or 1,
+        # i.e. particles ACTS can hold) come before generator-internal copies with the same
+        # kinematics (Codex audit 2026-10-01, finding 3: native 300 had paired with a status-23
+        # ancestor instead of its identical status-1 descendant).
+        penalty = np.zeros(len(codes), dtype=np.int8) if penalty is None else penalty
+        order = np.lexsort((np.arange(len(codes)), penalty, codes))
         sc = codes[order]
         start = np.r_[0, np.flatnonzero(np.diff(sc)) + 1]
         rank_sorted = np.arange(len(sc)) - np.repeat(start, np.diff(np.r_[start, len(sc)]))
@@ -87,7 +93,9 @@ def match_event(native: dict[str, np.ndarray], mc: dict[str, np.ndarray]) -> tup
         rank[order] = rank_sorted
         return rank
 
-    ra, rb = rank_within(code_a), rank_within(code_b)
+    status = mc.get("generator_status")
+    pen_b = None if status is None else (~np.isin(np.asarray(status), (0, 1))).astype(np.int8)
+    ra, rb = rank_within(code_a), rank_within(code_b, pen_b)
     stride = max(len(a), len(b)) + 1
     kb = code_b.astype(np.int64) * stride + rb
     ka = code_a.astype(np.int64) * stride + ra
@@ -96,7 +104,7 @@ def match_event(native: dict[str, np.ndarray], mc: dict[str, np.ndarray]) -> tup
     hit = kb[order][pos] == ka
     result = order[pos].astype(np.uint64)
     if not hit.all():
-        result = _nearest_fallback(a, b, result, hit)
+        result = _nearest_fallback(a, b, result, hit, pen_b)
     n_b_per_code = np.bincount(code_b, minlength=code.max() + 1)
     ambiguous = int((n_b_per_code[code_a] > 1).sum())
     return result, ambiguous
@@ -109,7 +117,8 @@ _P_REL_TOL = 1e-4    # max |dp_i| / |p|
 _V_ABS_TOL = 1e-3    # max |dv_i| in mm
 
 
-def _nearest_fallback(a: np.ndarray, b: np.ndarray, result: np.ndarray, hit: np.ndarray) -> np.ndarray:
+def _nearest_fallback(a: np.ndarray, b: np.ndarray, result: np.ndarray, hit: np.ndarray,
+                      penalty: np.ndarray | None = None) -> np.ndarray:
     used = set(result[hit].tolist())
     pdg_a = a[:, 0].view(np.int32)
     pdg_b = b[:, 0].view(np.int32)
@@ -122,10 +131,16 @@ def _nearest_fallback(a: np.ndarray, b: np.ndarray, result: np.ndarray, hit: np.
         pnorm = max(float(np.linalg.norm(pa)), 1e-9)
         dp = np.abs(b[cand, 1:4] - pa).max(axis=1) / pnorm
         dv = np.abs(b[cand, 4:7] - a[i, 4:7]).max(axis=1)
-        k = int(np.argmin(dp + dv))
-        if dp[k] > _P_REL_TOL or dv[k] > _V_ABS_TOL:
+        ok = (dp <= _P_REL_TOL) & (dv <= _V_ABS_TOL)
+        if not ok.any():
+            j = int(np.argmin(dp / _P_REL_TOL + dv / _V_ABS_TOL))
             raise RuntimeError(f"native particle {i} (pdg {pdg_a[i]}) has no MCParticle within tolerance "
-                               f"(closest: dp/p {dp[k]:.2e}, dv {dv[k]:.2e} mm)")
+                               f"(closest: dp/p {dp[j]:.2e}, dv {dv[j]:.2e} mm)")
+        # Among candidates inside BOTH tolerances (finding 6: ranking dp+dv first could reject a
+        # valid match), prefer status 0/1, then the smallest normalised distance.
+        score = dp / _P_REL_TOL + dv / _V_ABS_TOL + (0.0 if penalty is None else 10.0 * penalty[cand])
+        score[~ok] = np.inf
+        k = int(np.argmin(score))
         logger.warning("native particle %d (pdg %d): no exact key, matched MCParticle %d within tolerance "
                        "(dp/p %.1e, dv %.1e mm)", i, pdg_a[i], cand[k], dp[k], dv[k])
         result[i] = cand[k]
@@ -142,7 +157,8 @@ class RunParticleMap:
 
         ev = particles.column("event_id").to_numpy().astype(np.int64)
         n_entries = int(ev.max()) + 1 if len(ev) else 0
-        mc = uproot.open(sim_file)["events"].arrays(list(_MC_BRANCHES.values()), entry_stop=n_entries, library="np")
+        mc = uproot.open(sim_file)["events"].arrays(list(_MC_BRANCHES.values()) + [_MC_STATUS_BRANCH],
+                                                    entry_stop=n_entries, library="np")
         self.maps: dict[int, np.ndarray] = {}
         ambiguous = total = 0
         cols = {f: particles.column(f) for f in ("particle_id",) + _KEY_FIELDS}
@@ -153,6 +169,7 @@ class RunParticleMap:
                 # The map is indexed by native id; it must be the dense 0..N-1 index.
                 raise RuntimeError(f"event {e}: native particle_id is not 0..N-1")
             mce = {f: mc[b][e] for f, b in _MC_BRANCHES.items()}
+            mce["generator_status"] = mc[_MC_STATUS_BRANCH][e]
             self.maps[int(e)], amb = match_event(nat, mce)
             ambiguous += amb
             total += len(pid)

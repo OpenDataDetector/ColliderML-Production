@@ -87,3 +87,20 @@ def test_remap_out_of_range_raises():
                   "majority_particle_id": pa.array([[3]], type=pa.list_(pa.uint64()))})
     with pytest.raises(RuntimeError, match="out of range"):
         m.remap_table(t, "tracks")
+
+
+def test_duplicate_prefers_final_state_status():
+    # MC 0 is a generator-internal copy (status 23) with the same key as MC 1 (status 1).
+    mc = _cols([211, 211], [[1, 2, 3], [1, 2, 3]], [[0, 0, 0], [0, 0, 0]])
+    mc["generator_status"] = np.array([23, 1])
+    nat = _cols([211], [[1, 2, 3]], [[0, 0, 0]])
+    idx, _ = match_event(nat, mc)
+    assert idx.tolist() == [1]
+
+
+def test_fallback_takes_candidate_inside_both_tolerances():
+    # candidate 0: dp/p 2e-4 (outside), dv 0; candidate 1: dp/p 1e-5, dv 5e-4 mm (inside both)
+    mc = _cols([13, 13], [[1.0002, 0, 0], [1.00001, 0, 0]], [[0, 0, 0], [0.0005, 0, 0]])
+    nat = _cols([13], [[1, 0, 0]], [[0, 0, 0]])
+    idx, _ = match_event(nat, mc)
+    assert idx.tolist() == [1]

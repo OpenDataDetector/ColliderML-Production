@@ -241,9 +241,15 @@ def _convert_sources(srcs: list[Path], sim_file: Path, max_events: int, run_dir:
         out_dir, tmp = _atomic_target(run_dir, obj)
         table = pa.concat_tables([pq.read_table(f) for f in files])
         table = table.sort_by("event_id")
-        pq.write_table(table, tmp)
         for f in files:
             f.unlink()
+        ev = table.column("event_id").to_numpy()
+        if len(np.unique(ev)) != len(ev):
+            # Two slices holding the same event would otherwise pass the row-count guard
+            # while another event is missing (Codex audit 2026-10-01, finding 1).
+            dup = np.unique(ev[np.r_[False, np.diff(ev) == 0]])[:5].tolist()
+            raise RuntimeError(f"{obj}: duplicate event_id across reco sources (first {dup})")
+        pq.write_table(table, tmp)
         written[obj] = (_finalise(out_dir, tmp, obj, table.num_rows), table.num_rows)
     return written
 
@@ -257,6 +263,9 @@ def convert_run(run_dir: Path, args: argparse.Namespace) -> dict[str, tuple[Path
     parts = reco_parts(run_dir)
     if parts:
         # pandora_reco merge_slices: false. Every object comes from the slices.
+        if max_events >= 0:
+            raise RuntimeError("an event cap (events >= 0) is not supported with Pandora slice files; "
+                               "slices already hold exactly the reconstructed events")
         logger.info("reading %d Pandora slice files from %s", len(parts), run_dir / "reco_parts")
         keys = set(k.split(";")[0] for k in uproot.open(parts[0])["events"].keys())
         for obj in args.objects:
@@ -278,10 +287,15 @@ def convert_run(run_dir: Path, args: argparse.Namespace) -> dict[str, tuple[Path
         raise RuntimeError("zero events converted")
 
     native = event_count_of_native_table(run_dir)
-    if native is not None and max_events < 0 and native != n_events:
-        raise RuntimeError(
-            f"event-count mismatch: reco file has {n_events} events but the ACTS-native "
-            f"particles table has {native}; the tables would not align after packaging")
+    if native is not None and max_events < 0:
+        if native != n_events:
+            raise RuntimeError(
+                f"event-count mismatch: reco file has {n_events} events but the ACTS-native "
+                f"particles table has {native}; the tables would not align after packaging")
+        for obj, (path, _) in written.items():
+            ev = np.sort(pq.read_table(path, columns=["event_id"]).column("event_id").to_numpy())
+            if not np.array_equal(ev, np.arange(native)):
+                raise RuntimeError(f"{obj}: event_ids are not exactly 0..{native - 1}")
     return written
 
 
