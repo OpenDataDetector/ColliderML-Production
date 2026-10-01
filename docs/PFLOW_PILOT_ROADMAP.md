@@ -27,6 +27,10 @@ Cycle: produce pilot, share, collect feedback (about 2 weeks), apply changes, pr
   and Pandora needs states at the IP, first hit and last hit). Fold a track-parameter validation into it:
   the Release 1 track parameter resolutions (for example vs d0 and z0) look different in shape from ATLAS.
 - 2026-10-01: pilot events are exactly the first runs listed in the Goal table.
+- 2026-10-02: the ACTS re-run uses the current stack (sw image, ODD v6, geometric digitization). The pilot
+  therefore ships new tracker_hits and tracks tables. This structure will later become an update to
+  Release 1 or a separate Release 2.
+- 2026-10-02: track validation (group B) is not a blocker; return to it once the Pandora production runs.
 
 ## Todo
 
@@ -49,7 +53,7 @@ Cycle: produce pilot, share, collect feedback (about 2 weeks), apply changes, pr
 - [ ] A7. Track converter covariance: `MaxTrackSigmaPOverP` is set to 999 because the ACTS to edm4hep
       conversion inflates the omega covariance. Find the cause or record it as a known issue.
 
-### B. Track validation (with the ACTS re-run)
+### B. Track validation (after Pilot 1 production starts)
 
 - [ ] B1. Residuals and pulls of d0, z0, phi, theta, q/p vs pT, eta, and truth d0/z0, from
       `tracksummary_ambi.root`: Release 1 run 0 vs the re-run, PU0 and PU200.
@@ -82,9 +86,18 @@ Cycle: produce pilot, share, collect feedback (about 2 weeks), apply changes, pr
 
 Tracked here until answered; answered ones move to Decisions.
 
-1. ACTS configuration for the re-run: the current stack (sw image, ODD v6, geometric digitization, as in
-   Pilot 0) or the Release 1 configuration (ODD v4, Release 1 digitization). The current stack produces a
-   new tracker_hits table as well as new tracks.
-2. Public path: a separate pilot directory such as `public/hard_scatter/ttbar/pflow_pilot_v1/`, rather than
-   adding objects inside the Release 1 `v1` tree.
-3. Track validation: is there a specific plot from the team showing the odd shape, to reproduce first?
+1. Output path: proposed `simulation/pflow_pilot/{ttbar_pu0,ttbar_pu200}/v1/` (served by the portal; one
+   version per pilot round; Release 1 directories untouched). Particles: point to the Release 1 files, or
+   symlink them into the pilot directory.
+2. Track validation: is there a specific plot from the team showing the odd shape, to reproduce first?
+
+## Data locations (checked 2026-10-02)
+
+- Web portal: `/global/cfs/cdirs/m4958/www/ColliderML` is a symlink to
+  `/global/cfs/cdirs/m4958/data/ColliderML/simulation`, so the portal serves the `simulation` tree.
+- Release 1 PU0 ttbar: `simulation/hard_scatter/ttbar/v1/` (`runs/<n>/` ROOT files, `parquet/{reco,truth}/`,
+  1000 files of 1000 events).
+- Release 1 PU200 ttbar: `simulation/full_pileup/ttbar/v1/` (`runs/<n>/edm4hep.root` only, `parquet/` with
+  files of 100 events).
+- `data/ColliderML/public/`: older pilot and taster sets plus `manifest.json`; it has no Release 1 PU200 parquet.
+- September Pilot 0 output: `data/ColliderML/staging/release2_pilot/ttbar_pu0/v1/` (not served by the portal).
