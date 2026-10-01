@@ -1,0 +1,31 @@
+# Pflow Pilot 1 (v20), PU200, step 3 of 4: per-run parquet for calo_cells / calo_clusters /
+# pfos from reco_edm4hep.root. event_id = ddsim file position (via EventHeader.eventNumber
+# and the run's edm4hep.root symlink); particle ids are already the MCParticle index.
+campaign: "full_pileup"
+dataset: "ttbar"
+version: "v20"
+stage: "reco_tables"
+
+common:
+  container: "ghcr.io/opendatadetector/sw:pr-8"
+  container_tarball: "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/stress_mu200/sw_pr8_image.tar"
+  cache_dir: "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-prod-container/.cache"
+  output_base_dir: "/global/cfs/cdirs/m4958/data/ColliderML/simulation"
+  stage_containers:
+    reco_tables:
+      container: "localhost/colliderml/reco:20261001"
+      container_tarball: "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/images/colliderml_reco_20261001.tar"
+
+job_config:
+  n_runs: 16
+  runs_per_node: 16
+  time_limit: "00:30:00"
+  qos: "interactive"
+  execution_mode: "interactive"
+
+validation_config:
+  enabled: false
+
+events: -1
+objects: [calo_cells, calo_clusters, pfos]
+sim_input_name: edm4hep.root

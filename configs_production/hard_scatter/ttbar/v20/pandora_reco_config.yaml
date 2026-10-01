@@ -1,0 +1,34 @@
+# Pflow Pilot 1 (v20), PU0, step 2 of 4: Pandora charged particle flow (k4ODD
+# ODDreconstruction.py: DDCaloDigi inline + DDPandoraPFANew, CLD settings) on each run's
+# sim_with_tracks.root -> reco_edm4hep.root. Physics constants = ODDreconstruction.py
+# defaults (the calibrated values in the September brief), no overrides.
+campaign: "hard_scatter"
+dataset: "ttbar"
+version: "v20"
+stage: "pandora_reco"
+
+common:
+  container: "ghcr.io/opendatadetector/sw:pr-8"
+  container_tarball: "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/stress_mu200/sw_pr8_image.tar"
+  cache_dir: "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-prod-container/.cache"
+  output_base_dir: "/global/cfs/cdirs/m4958/data/ColliderML/simulation"
+  stage_containers:
+    pandora_reco:
+      container: "localhost/colliderml/reco:20261001"
+      container_tarball: "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/images/colliderml_reco_20261001.tar"
+
+job_config:
+  n_runs: 8
+  runs_per_node: 8
+  time_limit: "01:00:00"
+  qos: "interactive"
+  execution_mode: "interactive"
+
+validation_config:
+  enabled: false
+
+events: -1                     # all 1280
+processes: 16                  # k4run slices per run; 8 runs x 16 = 128 processes per node
+input_name: sim_with_tracks.root
+track_collection: ActsTracks   # charged PF
+max_track_sigma_pop: 999       # masks the inflated ACTS omega covariance (roadmap A7)

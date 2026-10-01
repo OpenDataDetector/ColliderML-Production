@@ -1,0 +1,49 @@
+# Pflow Pilot 1 (v20), PU200, step 4 of 4: package the per-run tables into
+#   simulation/full_pileup/ttbar/v20/parquet/<group>/<object>/
+#       full_pileup.ttbar.v20.<group>.<object>.events<A>-<B>.parquet
+# Global event_id = run * 64 + ddsim position, identical to Release 1, so v20 rows join
+# v1 rows on event_id. Particle ids are remapped to the edm4hep MCParticle index (the
+# Release 1 id). truth/particles is NOT packaged: it is symlinked from v1 (decision
+# 2026-10-02), which the remap makes consistent.
+campaign: "full_pileup"
+dataset: "ttbar"
+version: "v20"
+stage: "package_parquet"
+
+stage_script_map:
+  package_parquet: "postprocessing/package_native_parquet.py"
+
+common:
+  container: "ghcr.io/opendatadetector/sw:pr-8"
+  container_tarball: "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/stress_mu200/sw_pr8_image.tar"
+  cache_dir: "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-prod-container/.cache"
+
+job_config:
+  n_runs: 11                   # chunks: events 0-99 ... 1000-1023
+  runs_per_node: 11
+  time_limit: "00:30:00"
+  qos: "interactive"
+  execution_mode: "interactive"
+
+validation_config:
+  enabled: false
+
+input_base_dir: "/global/cfs/cdirs/m4958/data/ColliderML/simulation"
+output_base_dir: "/global/cfs/cdirs/m4958/data/ColliderML/simulation"
+
+run_size: 64
+chunk_size: 100                # same file boundaries as Release 1 full_pileup/ttbar/v1
+
+objects:
+  - tracker_hits
+  - tracks
+  - truth_tracks
+  - calo_cells
+  - calo_clusters
+  - pfos
+
+remap_particle_ids: true       # ACTS 0..N-1 ids -> MCParticle index (Release 1 id)
+sim_input_name: edm4hep.root   # per-run symlink to v1, used to build the id map
+track_covariance: true         # 5x5 covariance + fit quality from the ROOT summaries
+compression: "snappy"
+row_group_size: 100000

@@ -1,0 +1,56 @@
+# Pflow Pilot 1 (v20), PU200, step 1 of 4: ACTS digitization + tracking on the Release 1
+# ttbar sim (runs 0-15, 1,024 events). Each v20 run dir holds edm4hep.root as a symlink
+# to v1; this stage writes the new tracker tables (ACTS-native parquet), the ROOT track
+# summaries (covariance + fit quality) and the sim_with_tracks.root handoff for Pandora.
+# Stack: sw:pr-8, ODD v6 (/opt/odd), geometric digitization (roadmap decision 2026-10-02).
+campaign: "full_pileup"
+dataset: "ttbar"
+version: "v20"
+stage: "digitization"
+
+common:
+  container: "ghcr.io/opendatadetector/sw:pr-8"
+  container_tarball: "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/stress_mu200/sw_pr8_image.tar"
+  cache_dir: "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-prod-container/.cache"
+  output_base_dir: "/global/cfs/cdirs/m4958/data/ColliderML/simulation"
+
+# Pilot: one interactive node, driven by run_v20.sh (16 runs in parallel, 8 threads each).
+# Time and memory per PU200 run are unmeasured: run_v20.sh measure does run 0 alone first.
+job_config:
+  n_runs: 16
+  runs_per_node: 16
+  time_limit: "04:00:00"
+  qos: "interactive"
+  execution_mode: "interactive"
+
+# The validator expects a whole version dir; run_v20.sh runs check_run.py per run instead.
+validation_config:
+  enabled: false
+
+events: 64                    # whole Release 1 run
+threads: 8
+parquet_events_per_shard: 64   # one parquet shard per run
+
+odd_geo_dir: /opt/odd
+digi_config: /opt/odd/config/odd-digi-geometric-config.json
+
+output_parquet_arrow: true    # tracker_simhits, tracker_hits, particles, tracks, truth_tracks
+digi: true
+reco: true
+num_seeds_per_spm: 40
+# seed_impact_max: code default 3.0 mm (hard_scatter / full_pileup convention)
+
+output_sim_with_tracks: true  # Pandora handoff (calo SimHits + MCParticles + ActsTracks)
+
+output_particles_root: true
+output_measurements_root: true
+ambi_root_output: true
+ambi_finding_performance: true
+ambi_fitting_performance: true
+write_helix_parameters: true
+performance_metrics: true     # CKF summary with cov_* branches (packaging joins them)
+
+truth_tracking: true
+truth_tracking_fitter: kf
+truth_tracking_prefit: gx2f
+truth_tracking_root_summary: true
