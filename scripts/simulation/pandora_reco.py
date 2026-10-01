@@ -29,6 +29,14 @@ no env knobs needed. Config keys (yaml):
                           inflated ACTS omega covariance, issue #25)
   input_name              input file name in the run dir (default: sim_with_tracks.root
                           if present, else edm4hep.root)
+  processes               concurrent k4run processes for this run (default 1). k4run is
+                          single-threaded, so a run is split into contiguous entry slices
+                          (IOSvc.FirstEventEntry + --events), one process each, and the
+                          parts are merged in entry order with podio-merge-files.
+
+Isolation: every k4run gets its own K4ODD_OUTPUT_DIR (<run>/pandora_work/slice_NNN) for
+ddcalodigi_hist.root and its log. Sharing one histogram file killed 18 of 64 processes at
+finalize in the 2026-09-22 pilot. The cwd stays the k4ODD root (relative resources).
 """
 
 import os
@@ -41,6 +49,19 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from utils.app_logging import setup_logging, TimingRecorder
 from utils.config import create_base_parser, load_config
+
+
+def _count_entries(path):
+    """Number of events in a podio ROOT file."""
+    try:
+        import uproot
+        return int(uproot.open(path)["events"].num_entries)
+    except ImportError:
+        import ROOT
+        f = ROOT.TFile.Open(str(path))
+        n = int(f.Get("events").GetEntries())
+        f.Close()
+        return n
 
 
 def run_pandora_reco(input_file, output_dir, config, logger):
@@ -100,20 +121,56 @@ def run_pandora_reco(input_file, output_dir, config, logger):
         logger.warning("PANDORA_STACK_PREFIX not set: running on the STOCK cvmfs Pandora "
                        "(correct physics, but ~5.7x slower at mu=200 than the pinned stack)")
 
-    cmd = ["k4run", str(k4odd_script),
-           f"--inputFile={input_file}",
-           f"--outputFile={output_file}",
-           f"--events={events if events and int(events) > 0 else -1}"]
-    logger.info(f"Running: {' '.join(cmd)}")
+    n_input = _count_entries(input_file)
+    n_events = n_input if not events or int(events) < 0 else min(int(events), n_input)
+    n_proc = max(1, min(int(getattr(config, "processes", 1) or 1), n_events))
+    bounds = [round(i * n_events / n_proc) for i in range(n_proc + 1)]
+    work_root = output_dir / "pandora_work"
+    logger.info(f"  Slices:   {n_proc} process(es) over {n_events} of {n_input} entries")
 
-    # ODDreconstruction.py and the Pandora settings XMLs resolve some resources
-    # (photon-likelihood XML etc.) relative to the k4ODD repo root - run from there.
-    result = subprocess.run(cmd, capture_output=True, text=True, env=env, cwd=k4odd_base)
-    if result.returncode != 0:
-        logger.error(f"k4run failed with return code {result.returncode}")
-        logger.error(f"STDOUT (last 2000 chars): {result.stdout[-2000:]}")
-        logger.error(f"STDERR (last 2000 chars): {result.stderr[-2000:]}")
-        raise RuntimeError("Pandora reconstruction failed")
+    procs = []
+    for i in range(n_proc):
+        first, count = bounds[i], bounds[i + 1] - bounds[i]
+        work = work_root / f"slice_{i:03d}"
+        work.mkdir(parents=True, exist_ok=True)
+        part = (work / "reco_part.root") if n_proc > 1 else output_file
+        cmd = ["k4run", str(k4odd_script),
+               f"--inputFile={input_file}",
+               f"--outputFile={part}",
+               f"--events={count}",
+               f"--IOSvc.FirstEventEntry={first}"]
+        penv = dict(env, K4ODD_OUTPUT_DIR=str(work))
+        log = open(work / "k4run.log", "w")
+        if i == 0:
+            logger.info(f"Running (slice 0 of {n_proc}): {' '.join(cmd)}")
+        # ODDreconstruction.py and the Pandora settings XMLs resolve some resources
+        # (photon-likelihood XML etc.) relative to the k4ODD repo root - run from there.
+        procs.append((i, first, count, part, log,
+                      subprocess.Popen(cmd, stdout=log, stderr=subprocess.STDOUT, env=penv, cwd=k4odd_base)))
+
+    failed = []
+    for i, first, count, part, log, proc in procs:
+        rc = proc.wait()
+        log.close()
+        if rc != 0 or not part.exists():
+            failed.append(i)
+            tail = (work_root / f"slice_{i:03d}" / "k4run.log").read_text()[-2000:]
+            logger.error(f"slice {i} (entries {first}..{first + count - 1}) failed rc={rc}:\n{tail}")
+    if failed:
+        raise RuntimeError(f"Pandora reconstruction failed in {len(failed)} of {n_proc} slices: {failed}")
+
+    if n_proc > 1:
+        parts = [str(part) for _, _, _, part, _, _ in procs]
+        merge = subprocess.run(["podio-merge-files", "--output-file", str(output_file)] + parts,
+                               capture_output=True, text=True, env=env)
+        if merge.returncode != 0:
+            logger.error(f"podio-merge-files failed: {merge.stderr[-2000:]}")
+            raise RuntimeError("merging the Pandora slices failed")
+        n_out = _count_entries(output_file)
+        if n_out != n_events:
+            raise RuntimeError(f"merged file has {n_out} events, expected {n_events}")
+        for p in parts:
+            Path(p).unlink()
     if not output_file.exists():
         raise RuntimeError(f"Output file not created: {output_file}")
 
