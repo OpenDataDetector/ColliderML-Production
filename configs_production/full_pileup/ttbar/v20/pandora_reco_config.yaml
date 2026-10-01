@@ -19,7 +19,7 @@ common:
 
 job_config:
   n_runs: 16
-  runs_per_node: 16
+  runs_per_node: 1
   time_limit: "04:00:00"
   qos: "interactive"
   execution_mode: "interactive"
@@ -28,8 +28,8 @@ validation_config:
   enabled: false
 
 events: -1                     # all 64
-processes: 8                   # 16 runs x 8 = 128 processes; ~8 events each. September rate
-                               # 156 ev/node-h -> ~6.6 node-h total: needs 2 nodes in 4 h
+processes: 64                  # one event per k4run, one run per node at a time. With 8
+                               # processes x 8 events a run did not finish in 20 min (2026-10-01).
 input_name: sim_with_tracks.root
 track_collection: ActsTracks   # charged PF
 max_track_sigma_pop: 999       # masks the inflated ACTS omega covariance (roadmap A7)
