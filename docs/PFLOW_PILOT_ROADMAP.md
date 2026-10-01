@@ -37,6 +37,14 @@ Cycle: produce pilot, share, collect feedback (about 2 weeks), apply changes, pr
   `v21`. Unchanged v1 objects (edm4hep, Release 1 particles) are symlinked from v1, not copied. Existing
   v2, v3, v5 directories stay as they are (internal test passes, not releases). Release 1 stays `v1`.
 
+- 2026-10-01: k4GaudiPandora hit-key bug found while making the data document: exported cluster->cell
+  links, positions and sub-detector energies were scrambled (in-job digi collections had no collection ID,
+  so collectionID<<32|index keys collided). Patched in the image build (`docker/colliderml-reco/steps/
+  patches/k4gaudipandora_hitkeys.patch`, image `colliderml/reco:20261001c`); calo_cells, calo_clusters and
+  pfos republished for both samples. PFOs identical to the unpatched image with the same slicing.
+- 2026-10-01: Codex (gpt-6-astra) audit: seven code defects, none affecting published data; all fixed (f3524b1).
+- 2026-10-01: data document `testbed/data_doc_v20/v20_data.pdf` (colliderml-release-2) sent to Daniel.
+
 ## Todo
 
 ### A. Pipeline fixes before Pilot 1
@@ -103,6 +111,11 @@ Cycle: produce pilot, share, collect feedback (about 2 weeks), apply changes, pr
 - [ ] E2. Scale to 1M PU0 and 100k PU200 (estimates: about 150 node-hours PU0, about 1,100 PU200).
 
 ## Open questions
+
+- Pandora output depends on event slicing (4 of 16 events changed by <1% in summed PFO energy with a
+  different process split). Find the per-process state.
+- PU200 has 397 electron PFOs per event (56x PU0; photons 15x). Investigate before ML use of PFO type.
+- Calorimeter-entry boundary for neutral truth (r = 1150 mm, |z| = 3000 mm) is provisional; check vs ODD.
 
 0. Delete the incomplete 10.5 GB `full_pileup/ttbar/v20/runs/0/reco_edm4hep.root` (killed merge)? Asked 2026-10-01.
 0b. calo_cells is the size driver (1.7 MB/event PU0, 39 MB/event PU200): format/threshold choice before scaling.
