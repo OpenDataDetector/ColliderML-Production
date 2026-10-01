@@ -13,6 +13,14 @@ cd /opt/k4ODD
 sed -i 's#-DCMAKE_BUILD_TYPE=RelWithDebInfo \\#-DCMAKE_BUILD_TYPE=RelWithDebInfo -DBUILD_TESTING=OFF \\#' ci/build_pandora_stack.sh
 grep -q "BUILD_TESTING=OFF" ci/build_pandora_stack.sh && echo "patched build_pandora_stack.sh: tests off"
 
+# k4GaudiPandora hit keys (ColliderML v20 finding, 2026-10-01): Pandora's calo-hit parent
+# addresses were collectionID<<32|index, but the in-job digi collections have no collection ID
+# yet, so hits of different collections collided and exported cluster->hit links (and cluster
+# positions) pointed at the wrong cells. The patch keys hits by object instead; it also fixes the
+# MC-truth energy map keyed by a temporary's address. Applied right after the pinned checkout.
+sed -i '/^checkout k4GaudiPandora /a patch -d "$srcdir/k4GaudiPandora" -p1 --forward < /opt/steps/patches/k4gaudipandora_hitkeys.patch \|\| { echo "[stack] k4GaudiPandora hit-key patch FAILED"; exit 1; }' ci/build_pandora_stack.sh
+grep -q "k4gaudipandora_hitkeys.patch" ci/build_pandora_stack.sh && echo "hooked k4GaudiPandora hit-key patch"
+
 export KEY4HEP_SETUP=/opt/key4hep-shim.sh
 export PANDORA_STACK_DIR=/opt/pandora-stack
 export PANDORA_STACK_BUILD=/tmp/pandora-build

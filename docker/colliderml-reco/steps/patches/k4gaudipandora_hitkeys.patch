@@ -1,0 +1,112 @@
+diff -ru a/k4GaudiPandora/src/DDCaloHitCreator.cc b/k4GaudiPandora/src/DDCaloHitCreator.cc
+--- a/k4GaudiPandora/src/DDCaloHitCreator.cc	2026-10-01 14:15:16.533466000 -0700
++++ b/k4GaudiPandora/src/DDCaloHitCreator.cc	2026-10-01 14:15:47.352517000 -0700
+@@ -42,16 +42,6 @@
+ // dd4hep::rec::LayeredCalorimeterData * getExtension(std::string detectorName);
+ dd4hep::rec::LayeredCalorimeterData* getExtension(unsigned int includeFlag, unsigned int excludeFlag = 0);
+ 
+-namespace {
+-uint64_t getObjectKey(const podio::ObjectID& objectID) {
+-  return (static_cast<uint64_t>(objectID.collectionID) << 32) | static_cast<uint32_t>(objectID.index);
+-}
+-
+-const void* getObjectAddress(const podio::ObjectID& objectID) {
+-  return reinterpret_cast<const void*>(getObjectKey(objectID));
+-}
+-} // namespace
+-
+ // double getCoilOuterR();
+ 
+ /// FIXME: HANDLE PROBLEM WHEN EXTENSION IS MISSING
+@@ -462,13 +452,18 @@
+                                                   PandoraApi::CaloHit::Parameters& caloHitParameters) const {
+   const auto position = hit.getPosition();
+   const pandora::CartesianVector positionVector(position.x, position.y, position.z);
+-  const auto hitKey = getObjectKey(hit.getObjectID());
++  // Parent address = the address of this hit handle inside the event-local input vectors that
++  // DDPandoraPFANewAlgorithm builds and passes (by const reference) to both this creator and
++  // DDMCParticleCreator; they live until the PFOs are exported. A collectionID/index key is NOT
++  // unique here: the digi collections are produced in the same job and carry no collection ID
++  // yet, so the key reduced to the index and hits of different collections overwrote each other
++  // (cluster->hit links and positions pointed at the wrong cells; found in ColliderML v20).
++  const auto hitKey = reinterpret_cast<uint64_t>(&hit);
+ 
+   caloHitParameters.m_cellGeometry = pandora::RECTANGULAR;
+   caloHitParameters.m_positionVector = positionVector;
+   caloHitParameters.m_expectedDirection = positionVector.GetUnitVector();
+-  // Pandora uses stable collectionID/index keys for truth links; EDM export resolves them via m_caloHitLookup.
+-  caloHitParameters.m_pParentAddress = getObjectAddress(hit.getObjectID());
++  caloHitParameters.m_pParentAddress = &hit;
+   caloHitParameters.m_inputEnergy = hit.getEnergy();
+   caloHitParameters.m_time = hit.getTime();
+   m_caloHitLookup[hitKey] = &hit;
+diff -ru a/k4GaudiPandora/src/DDMCParticleCreator.cc b/k4GaudiPandora/src/DDMCParticleCreator.cc
+--- a/k4GaudiPandora/src/DDMCParticleCreator.cc	2026-10-01 14:15:16.559406000 -0700
++++ b/k4GaudiPandora/src/DDMCParticleCreator.cc	2026-10-01 14:16:23.172849162 -0700
+@@ -33,6 +33,7 @@
+ #include <cmath>
+ #include <limits>
+ #include <map>
++#include <unordered_map>
+ #include <unordered_set>
+ #include <utility>
+ #include <vector>
+@@ -161,7 +162,10 @@
+     const CaloHitSimCaloHitLinkCollectionVector& caloRelCollections,
+     const std::map<std::string, std::vector<edm4hep::CalorimeterHit>>& eCalHitsMap, const HitVector& hCalHits,
+     const HitVector& muonHits, const HitVector& lCalHits, const HitVector& lhCalHits) const {
+-  using MCParticleToEnergyWeightMap = std::map<const edm4hep::MCParticle*, float>;
++  // Keyed by the MCParticle handle (podio orders handles by object). Keying by `&ipa` took the
++  // address of a per-iteration temporary, so different particles shared a key and the stored
++  // pointer dangled.
++  using MCParticleToEnergyWeightMap = std::map<edm4hep::MCParticle, float>;
+   MCParticleToEnergyWeightMap mcParticleToEnergyWeightMap;
+   std::vector<const edm4hep::CalorimeterHit*> calorimeterHitVector;
+ 
+@@ -188,35 +192,35 @@
+   // single dominant cost — >1.5 h/event, killing the reco before Pandora even ran. Instead build an
+   // O(1) set of the selected hit keys once, then iterate each link collection ONCE and test membership.
+   // (The CaloHit<->SimCaloHit digi link is 1:1 per hit, so iterating links covers every selected hit.)
+-  std::unordered_set<uint64_t> validHitKeys;
+-  validHitKeys.reserve(calorimeterHitVector.size() * 2);
++  // Hits are identified by object (std::hash<CalorimeterHit> hashes the underlying object), and the
++  // Pandora parent address is the address of the hit handle in the shared input vectors, exactly as
++  // DDCaloHitCreator sets it. collectionID/index keys are not unique for the in-job digi collections.
++  std::unordered_map<edm4hep::CalorimeterHit, const void*> hitParentAddress;
++  hitParentAddress.reserve(calorimeterHitVector.size() * 2);
+   for (const auto* caloHit : calorimeterHitVector) {
+-    validHitKeys.insert((static_cast<uint64_t>(caloHit->getObjectID().collectionID) << 32) |
+-                        static_cast<uint32_t>(caloHit->getObjectID().index));
++    hitParentAddress.emplace(*caloHit, static_cast<const void*>(caloHit));
+   }
+ 
+   for (const auto& hitRelCollection : caloRelCollections) {
+     for (const auto&& caloHitLink : *hitRelCollection) {
+       try {
+         const auto& linkedCaloHit = caloHitLink.get<edm4hep::CalorimeterHit>();
+-        const uint64_t key = (static_cast<uint64_t>(linkedCaloHit.getObjectID().collectionID) << 32) |
+-                             static_cast<uint32_t>(linkedCaloHit.getObjectID().index);
+-        if (validHitKeys.find(key) == validHitKeys.end())
++        const auto found = hitParentAddress.find(linkedCaloHit);
++        if (found == hitParentAddress.end())
+           continue;
+ 
+         mcParticleToEnergyWeightMap.clear();
+         const auto& simHit = caloHitLink.get<edm4hep::SimCalorimeterHit>();
+         for (const auto& conb : simHit.getContributions()) {
+-          const auto& ipa = conb.getParticle();
+-          mcParticleToEnergyWeightMap[&ipa] += conb.getEnergy();
++          mcParticleToEnergyWeightMap[conb.getParticle()] += conb.getEnergy();
+         }
+ 
+         for (const auto& mcPToE : mcParticleToEnergyWeightMap) {
+           PANDORA_THROW_RESULT_IF(
+               pandora::STATUS_CODE_SUCCESS, !=,
+               PandoraApi::SetCaloHitToMCParticleRelationship(
+-                  m_pandora, reinterpret_cast<const void*>(key),
+-                  getObjectAddress(mcPToE.first->getObjectID()), mcPToE.second))
++                  m_pandora, found->second,
++                  getObjectAddress(mcPToE.first.getObjectID()), mcPToE.second))
+         }
+       } catch (const std::exception& exception) {
+         m_algorithm.debug() << "Failed to extract calo hit to mc particle relationships collection: "

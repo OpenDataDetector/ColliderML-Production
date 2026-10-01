@@ -40,6 +40,7 @@ COPY steps/build_k4reco.sh /opt/steps/build_k4reco.sh
 RUN bash /opt/steps/build_k4reco.sh
 
 # --- Calibrated Pandora stack (PandoraSDK/LCContent/k4GaudiPandora/k4DetPerf) -
+COPY steps/patches /opt/steps/patches
 COPY steps/build_pandora.sh /opt/steps/build_pandora.sh
 RUN bash /opt/steps/build_pandora.sh
 
