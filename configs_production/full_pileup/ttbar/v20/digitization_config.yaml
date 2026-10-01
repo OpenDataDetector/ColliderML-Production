@@ -30,6 +30,7 @@ validation_config:
 events: 64                    # whole Release 1 run
 threads: 8
 parquet_events_per_shard: 64   # one parquet shard per run
+parquet_events_per_row_group: 64   # must not exceed the shard (writer check)
 
 odd_geo_dir: /opt/odd
 digi_config: /opt/odd/config/odd-digi-geometric-config.json
