@@ -54,6 +54,7 @@ import yaml
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from utils.driver import iterate_and_process_chunks, local_events_for_run  # noqa: E402
+from utils.particle_id_map import ID_COLUMNS, RunParticleMap  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
@@ -262,14 +263,32 @@ def package_chunk(
     row_group_size: int | None,
     compression: str,
     track_covariance: bool = False,
+    remap_particle_ids: bool = False,
+    sim_input_name: str = "edm4hep.root",
 ) -> None:
-    """Write one output file per object for the event window [start_event, end_event]."""
+    """Write one output file per object for the event window [start_event, end_event].
+
+    With ``remap_particle_ids`` the ACTS-native particle ids (0..N-1 per event) are
+    rewritten to the edm4hep MCParticle index, the id every other ColliderML table
+    uses (see utils/particle_id_map.py). The map is built per run from the run's
+    native particles table and ``<run>/<sim_input_name>``."""
     t0 = time.time()
     expected = end_event - start_event + 1
     logger.info(
         "chunk events %d-%d (runs %d..%d), %d objects",
         start_event, end_event, start_run, end_run, len(objects),
     )
+
+    particle_maps: dict[Path, RunParticleMap] = {}
+
+    def particle_map(run_dir: Path) -> RunParticleMap:
+        if run_dir not in particle_maps:
+            particle_maps.clear()  # one run at a time keeps memory flat
+            native = _read_run_table(run_dir, "particles")
+            if native is None:
+                raise RuntimeError(f"{run_dir}: no native particles table; cannot remap particle ids")
+            particle_maps[run_dir] = RunParticleMap(native, run_dir / sim_input_name)
+        return particle_maps[run_dir]
 
     for obj in objects:
         if obj not in OBJECT_LAYOUT:
@@ -301,6 +320,9 @@ def package_chunk(
                     # Join BEFORE the event_id shift, while event_id is still the
                     # run-local number the ROOT summary uses.
                     table = _attach_covariance(table, run_dir, obj)
+                if remap_particle_ids and obj in ID_COLUMNS:
+                    # Also before the shift: the map is keyed by run-local event.
+                    table = particle_map(run_dir).remap_table(table, obj)
                 table = _slice_and_offset(table, local_start, local_stop, abs_run * run_size)
                 if table.num_rows == 0:
                     continue
@@ -394,6 +416,8 @@ def main() -> None:
     logger.info("output: %s", out_base)
 
     track_covariance = bool(config.get("track_covariance", False))
+    remap_particle_ids = bool(config.get("remap_particle_ids", False))
+    sim_input_name = config.get("sim_input_name", "edm4hep.root")
 
     def process(start_event, end_event, start_run, start_local, end_run, end_local):
         package_chunk(
@@ -404,6 +428,8 @@ def main() -> None:
             out_base=out_base, dataset_name_dot=dataset_name_dot,
             row_group_size=row_group_size, compression=compression,
             track_covariance=track_covariance,
+            remap_particle_ids=remap_particle_ids,
+            sim_input_name=sim_input_name,
         )
 
     iterate_and_process_chunks(
