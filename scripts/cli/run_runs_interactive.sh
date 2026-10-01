@@ -29,7 +29,9 @@ EOF
 LOGDIR="$VERSION_DIR/logs/interactive"; mkdir -p "$LOGDIR"
 echo "=== $(date '+%F %T') $STAGE runs $FIRST..$LAST on $(hostname) ($(nproc) cpus)"
 
-if [ "$IMAGE" != "-" ] && ! podman-hpc image exists "$IMAGE"; then
+# `podman-hpc image exists` does not see migrated (squashed, read-only) images on compute
+# nodes, so test by running the image instead.
+if [ "$IMAGE" != "-" ] && ! podman-hpc run --rm --entrypoint /bin/true "$IMAGE" 2>/dev/null; then
   echo "=== loading $IMAGE from $TARBALL"
   podman-hpc load -i "$TARBALL" && podman-hpc image exists "$IMAGE" || { echo "image load failed"; exit 99; }
 fi
