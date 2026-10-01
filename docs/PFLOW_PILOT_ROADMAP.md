@@ -41,19 +41,23 @@ Cycle: produce pilot, share, collect feedback (about 2 weeks), apply changes, pr
 
 ### A. Pipeline fixes before Pilot 1
 
-- [ ] A1. Particle ids in the re-run tracker tables. The `digi_and_reco` parquet writer numbers particles
+- [x] A1. (2026-10-01, 23ca725) Particle ids in the re-run tracker tables. The `digi_and_reco` parquet writer numbers particles
       0 to N-1 (ACTS index), and unmatched tracks carry the uint64 maximum. Release 1 uses the edm4hep
       MCParticle index. Map the re-run tracker_hits/tracks particle ids onto the Release 1 ids, so the new
       tables join with Release 1 `truth/particles`. Do not ship the re-run particles table.
-- [ ] A2. Event-number map for every re-run table (done for calo_cells/calo_clusters/pfos in
-      `convert_reco_tables.py`; check tracks and tracker_hits use the ddsim file position).
-- [ ] A3. Global event_ids: re-run tables must use `run * run_size + ddsim position`
+      Done in `package_native_parquet.py` (`remap_particle_ids`): exact (PDG, momentum, vertex) match to
+      edm4hep; 100% of remapped ids found in Release 1 particles on 64 pilot events. Release 1 PU200
+      particles checked to use the same convention (4 events, 3 runs).
+- [x] A2. Event-number map for every re-run table (done for calo_cells/calo_clusters/pfos in
+      `convert_reco_tables.py`; the ACTS tables already use the ddsim file position: pilot and
+      Release 1 particle counts agree event by event).
+- [x] A3. Global event_ids (done by the packager): re-run tables must use `run * run_size + ddsim position`
       (run_size 1280 for PU0, 64 for PU200), the Release 1 convention.
-- [ ] A4. Pandora: one working directory per process (shared `ddcalodigi_hist.root` killed 18 of 64
-      processes in the pilot wave).
-- [ ] A5. Rebuild the reco container image from `docker/colliderml-reco/Dockerfile` (the saved tarball is gone).
+- [x] A4. (45451f9) Pandora: one working directory per process, and `processes: N` slices a run (shared `ddcalodigi_hist.root` killed 18 of 64
+      processes in the pilot wave). Tested: 4 slices x 2 events, merged order identical to input.
+- [ ] A5. (build running 2026-10-01, tag colliderml/reco:20261001) Rebuild the reco container image from `docker/colliderml-reco/Dockerfile` (the saved tarball is gone).
       Pilot 1 can use `pandora_shifter.sh` meanwhile.
-- [ ] A6. PU200 configs for digitization, Pandora and reco_tables (none exist yet), and a measurement of
+- [ ] A6. PU200 configs drafted (`configs_production/full_pileup/ttbar/v20/`); still to do: a measurement of
       ACTS time, handoff file size and Pandora memory at PU200 on one run before the 16-run job.
 - [ ] A7. Track converter covariance: `MaxTrackSigmaPOverP` is set to 999 because the ACTS to edm4hep
       conversion inflates the omega covariance. Find the cause or record it as a known issue.
@@ -73,6 +77,9 @@ Cycle: produce pilot, share, collect feedback (about 2 weeks), apply changes, pr
 - [ ] C2. Pandora on the same runs.
 - [ ] C3. reco_tables, plus `tests/regression/test_reco_tables.py` on each run.
 - [ ] C4. Physics check: jet and event-level energy response vs Pilot 0 numbers in the September brief.
+- [ ] C0. Review the v20 configs with Daniel (`configs_production/{hard_scatter,full_pileup}/ttbar/v20/`).
+- [ ] C0b. Create v20 symlinks to v1 (`scripts/cli/link_version_objects.py`, dry run checked: PU0 19 links,
+      PU200 27 links).
 - [ ] C5. Write outputs to `v20` (see Decisions) with a data card; symlink unchanged v1 objects.
 
 ### D. Documentation
