@@ -94,11 +94,43 @@ def match_event(native: dict[str, np.ndarray], mc: dict[str, np.ndarray]) -> tup
     order = np.argsort(kb)
     pos = np.clip(np.searchsorted(kb[order], ka), 0, len(kb) - 1)
     hit = kb[order][pos] == ka
+    result = order[pos].astype(np.uint64)
     if not hit.all():
-        raise RuntimeError(f"{int((~hit).sum())} of {len(a)} native particles have no matching MCParticle")
+        result = _nearest_fallback(a, b, result, hit)
     n_b_per_code = np.bincount(code_b, minlength=code.max() + 1)
     ambiguous = int((n_b_per_code[code_a] > 1).sum())
-    return order[pos].astype(np.uint64), ambiguous
+    return result, ambiguous
+
+
+# Fallback for native particles without a bit-exact key (seen once in 7102 particles
+# of one hard_scatter/ttbar v20 event; each use is logged with its distance): the
+# closest unused MCParticle with the same PDG, accepted only within these tolerances.
+_P_REL_TOL = 1e-4    # max |dp_i| / |p|
+_V_ABS_TOL = 1e-3    # max |dv_i| in mm
+
+
+def _nearest_fallback(a: np.ndarray, b: np.ndarray, result: np.ndarray, hit: np.ndarray) -> np.ndarray:
+    used = set(result[hit].tolist())
+    pdg_a = a[:, 0].view(np.int32)
+    pdg_b = b[:, 0].view(np.int32)
+    for i in np.flatnonzero(~hit):
+        cand = np.flatnonzero(pdg_b == pdg_a[i])
+        cand = np.array([c for c in cand if int(c) not in used], dtype=np.int64)
+        if len(cand) == 0:
+            raise RuntimeError(f"native particle {i} (pdg {pdg_a[i]}): no unused MCParticle with that PDG")
+        pa = a[i, 1:4].astype(np.float64)
+        pnorm = max(float(np.linalg.norm(pa)), 1e-9)
+        dp = np.abs(b[cand, 1:4] - pa).max(axis=1) / pnorm
+        dv = np.abs(b[cand, 4:7] - a[i, 4:7]).max(axis=1)
+        k = int(np.argmin(dp + dv))
+        if dp[k] > _P_REL_TOL or dv[k] > _V_ABS_TOL:
+            raise RuntimeError(f"native particle {i} (pdg {pdg_a[i]}) has no MCParticle within tolerance "
+                               f"(closest: dp/p {dp[k]:.2e}, dv {dv[k]:.2e} mm)")
+        logger.warning("native particle %d (pdg %d): no exact key, matched MCParticle %d within tolerance "
+                       "(dp/p %.1e, dv %.1e mm)", i, pdg_a[i], cand[k], dp[k], dv[k])
+        result[i] = cand[k]
+        used.add(int(cand[k]))
+    return result
 
 
 class RunParticleMap:

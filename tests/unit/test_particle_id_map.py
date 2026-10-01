@@ -31,8 +31,19 @@ def test_match_event_with_duplicates_and_skipped_mc():
 def test_match_event_unmatched_raises():
     mc = _cols([11], [[1, 0, 0]], [[0, 0, 0]])
     nat = _cols([13], [[1, 0, 0]], [[0, 0, 0]])
-    with pytest.raises(RuntimeError, match="no matching MCParticle"):
+    with pytest.raises(RuntimeError, match="no unused MCParticle"):
         match_event(nat, mc)
+    far = _cols([11], [[1.1, 0, 0]], [[0, 0, 0]])
+    with pytest.raises(RuntimeError, match="within tolerance"):
+        match_event(far, mc)
+
+
+def test_match_event_last_bit_fallback():
+    mc = _cols([211, 22], [[2, 3, 4], [1, 1, 1]], [[0, 0, 0], [0, 0, 0]])
+    p = np.nextafter(np.float32(3), np.float32(4))
+    nat = _cols([22, 211], [[1, 1, 1], [2, p, 4]], [[0, 0, 0], [0, 0, 0]])
+    idx, _ = match_event(nat, mc)
+    assert idx.tolist() == [1, 0]
 
 
 def test_remap_nested_sentinel_and_parent():
