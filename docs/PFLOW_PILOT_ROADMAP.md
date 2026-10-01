@@ -31,6 +31,11 @@ Cycle: produce pilot, share, collect feedback (about 2 weeks), apply changes, pr
   therefore ships new tracker_hits and tracks tables. This structure will later become an update to
   Release 1 or a separate Release 2.
 - 2026-10-02: track validation (group B) is not a blocker; return to it once the Pandora production runs.
+- 2026-10-02: versions are two digits, `v<release><minor>`: the first digit is the release, the second a
+  test or pilot round. Pilot 1 is `v20` in the same campaigns as Release 1:
+  `simulation/hard_scatter/ttbar/v20/` (PU0) and `simulation/full_pileup/ttbar/v20/` (PU200); Pilot 2 is
+  `v21`. Unchanged v1 objects (edm4hep, Release 1 particles) are symlinked from v1, not copied. Existing
+  v2, v3, v5 directories stay as they are (internal test passes, not releases). Release 1 stays `v1`.
 
 ## Todo
 
@@ -68,7 +73,7 @@ Cycle: produce pilot, share, collect feedback (about 2 weeks), apply changes, pr
 - [ ] C2. Pandora on the same runs.
 - [ ] C3. reco_tables, plus `tests/regression/test_reco_tables.py` on each run.
 - [ ] C4. Physics check: jet and event-level energy response vs Pilot 0 numbers in the September brief.
-- [ ] C5. Publish to the public directory (path to be agreed) with a data card.
+- [ ] C5. Write outputs to `v20` (see Decisions) with a data card; symlink unchanged v1 objects.
 
 ### D. Documentation
 
@@ -86,10 +91,7 @@ Cycle: produce pilot, share, collect feedback (about 2 weeks), apply changes, pr
 
 Tracked here until answered; answered ones move to Decisions.
 
-1. Output path: proposed `simulation/pflow_pilot/{ttbar_pu0,ttbar_pu200}/v1/` (served by the portal; one
-   version per pilot round; Release 1 directories untouched). Particles: point to the Release 1 files, or
-   symlink them into the pilot directory.
-2. Track validation: is there a specific plot from the team showing the odd shape, to reproduce first?
+1. Track validation: is there a specific plot from the team showing the odd shape, to reproduce first?
 
 ## Data locations (checked 2026-10-02)
 
