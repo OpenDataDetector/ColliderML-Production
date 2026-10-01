@@ -753,6 +753,8 @@ class JobSubmitter:
         env_cmds = cli_utils.get_env_setup_cmds(self.config)
         py = (f"python {validation_script_full_path} "
               f"--stage {self.config['stage']} --runs-dir {self.run_dir}")
+        if container:
+            env_cmds = [cli_utils.escape_for_container(c) for c in env_cmds]
         inner = " && ".join(env_cmds + [py]) if env_cmds else py
         if container:
             prefix = cli_utils.build_podman_run_prefix(container)  # ends with: bash -c \"

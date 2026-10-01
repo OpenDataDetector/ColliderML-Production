@@ -6,6 +6,7 @@ Contains functionality shared between run_stage.py and job_submission.py.
 """
 
 import os
+import re
 import yaml
 import logging
 import subprocess
@@ -130,6 +131,15 @@ CONTAINER_BIND_PATHS = [
     "/global/cfs/cdirs/m4958",
     "/pscratch/sd/d/danieltm",
 ]
+
+def escape_for_container(cmd):
+    """Escape `$` so a command placed inside the double-quoted `bash -c "..."` of the
+    podman prefix is expanded by the CONTAINER shell, not the host shell. Without this,
+    `export PYTHONPATH=/x:$PYTHONPATH` took the host's PYTHONPATH and dropped the
+    image's key4hep python path (reco image: `No module named 'yaml'`, 2026-10-01).
+    Already-escaped `\$` (e.g. per-task `\$((...))` arithmetic) is left alone."""
+    return re.sub(r"(?<!\\)\$", r"\\$", cmd)
+
 
 def build_podman_run_prefix(container, srun_options=None, cache_dir=None):
     """Return the `[srun ...] podman-hpc run ... bash -c "` prefix (opening quote, no
@@ -282,6 +292,7 @@ def build_stage_command(config, config_path, stage_script_path, output_dir, outp
             shifter_cmd = build_podman_run_prefix(container, cache_dir=cache_dir)
 
             # Combine env setup and python command inside the container
+            env_setup_cmds = [escape_for_container(c) for c in env_setup_cmds]
             inner_commands = env_setup_cmds + [python_command]
             inner_command_str = " && ".join(inner_commands)
             
@@ -319,6 +330,7 @@ def build_stage_command(config, config_path, stage_script_path, output_dir, outp
             # SLURM preamble (no SBATCH --image directive — that was shifter-only).
             cache_dir = config.get("common", {}).get("cache_dir")
             shifter_cmd = build_podman_run_prefix(container, srun_options=srun_options, cache_dir=cache_dir)
+            env_setup_cmds = [escape_for_container(c) for c in env_setup_cmds]
 
             # Environment setup commands + python command run inside the container.
             return {

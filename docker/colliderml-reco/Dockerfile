@@ -57,16 +57,19 @@ COPY steps/build_odd.sh /opt/steps/build_odd.sh
 RUN bash /opt/steps/build_odd.sh
 
 # --- reco-side postproc python libs (convert_pfos / convert_calo_digi) -------
-# Best-effort into the key4hep python; the converters are uproot/pyarrow based
-# and can also run in the sim image, but bake them so the reco image is
-# self-sufficient. --user keeps the read-only spack prefix untouched.
+# The key4hep python is a spack virtualenv: `pip --user` is refused there
+# ("User site-packages are not visible in this virtualenv"; the 20261001 build
+# silently shipped without pyarrow because of it). Install the packages the base
+# lacks into a fixed --target dir and put it on PYTHONPATH. yaml/uproot/pandas/
+# awkward already come with the base. NOT best-effort: reco_tables needs pyarrow.
 RUN bash -lc 'source /opt/key4hep-shim.sh && \
-      python3 -m pip install --no-cache-dir --user \
-        pyarrow uproot pandas awkward polars tqdm || \
-      echo "WARNING: reco python libs not baked (converters can run in sim image)"'
+      python3 -m pip install --no-cache-dir --target /opt/reco-pylibs \
+        pyarrow polars tqdm && \
+      PYTHONPATH=/opt/reco-pylibs:$PYTHONPATH python3 -c "import pyarrow, polars, yaml, uproot"'
 
 # Env for the calo_digitization / pandora_reco stages.
 ENV K4ODD_PATH=/opt/k4ODD
 ENV ODD_INSTALL_DIR=/opt/odd-install
+ENV PYTHONPATH=/opt/reco-pylibs
 
 CMD ["/bin/bash"]
