@@ -55,7 +55,9 @@ Cycle: produce pilot, share, collect feedback (about 2 weeks), apply changes, pr
       (run_size 1280 for PU0, 64 for PU200), the Release 1 convention.
 - [x] A4. (45451f9) Pandora: one working directory per process, and `processes: N` slices a run (shared `ddcalodigi_hist.root` killed 18 of 64
       processes in the pilot wave). Tested: 4 slices x 2 events, merged order identical to input.
-- [ ] A5. (build running 2026-10-01, tag colliderml/reco:20261001) Rebuild the reco container image from `docker/colliderml-reco/Dockerfile` (the saved tarball is gone).
+- [x] A5. (2026-10-01) Reco image rebuilt: `colliderml/reco:20261001b`, tarball `ColliderML/images/colliderml_reco_20261001b.tar`
+      (20261001 shipped without pyarrow: pip --user refused in the spack venv). Also fixed: container env quoting
+      (host $PYTHONPATH leaked into containers), reco_tables env sourcing the sim-image assembler. Old note: rebuild the reco container image from `docker/colliderml-reco/Dockerfile` (the saved tarball is gone).
       Pilot 1 can use `pandora_shifter.sh` meanwhile.
 - [ ] A6. PU200 configs drafted (`configs_production/full_pileup/ttbar/v20/`); still to do: a measurement of
       ACTS time, handoff file size and Pandora memory at PU200 on one run before the 16-run job.
@@ -73,14 +75,18 @@ Cycle: produce pilot, share, collect feedback (about 2 weeks), apply changes, pr
 
 ### C. Pilot 1 production
 
-- [ ] C1. ACTS re-run: PU0 runs 0 to 7, PU200 runs 0 to 15, with the `sim_with_tracks.root` handoff.
-- [ ] C2. Pandora on the same runs.
-- [ ] C3. reco_tables, plus `tests/regression/test_reco_tables.py` on each run.
+- [x] C1. ACTS re-run: PU0 runs 0 to 7 (15 min, 1 node, 860 s/run at 16 threads), PU200 runs 0 to 15 (803 s/run at
+      8 threads; handoff 9.3 GB per 64-event run).
+- [ ] C2. Pandora: PU0 done (8 runs in 13 min on 1 node, ~47k ev/node-h). PU200: 8 slices x 8 events did not finish
+      a run in 20 min; now 64 single-event slices per run, one run per node (measuring on run 0).
+- [ ] C3. reco_tables (PU0 done, 6 min), plus `tests/regression/test_reco_tables.py` on each run.
 - [ ] C4. Physics check: jet and event-level energy response vs Pilot 0 numbers in the September brief.
-- [ ] C0. Review the v20 configs with Daniel (`configs_production/{hard_scatter,full_pileup}/ttbar/v20/`).
-- [ ] C0b. Create v20 symlinks to v1 (`scripts/cli/link_version_objects.py`, dry run checked: PU0 19 links,
+- [x] C0. (approved 2026-10-01, plus tracker_simhits) Review the v20 configs with Daniel (`configs_production/{hard_scatter,full_pileup}/ttbar/v20/`).
+- [x] C0b. Create v20 symlinks to v1 (`scripts/cli/link_version_objects.py`, dry run checked: PU0 19 links,
       PU200 27 links).
-- [ ] C5. Write outputs to `v20` (see Decisions) with a data card; symlink unchanged v1 objects.
+- [ ] C5. PU0 published 2026-10-01: `hard_scatter/ttbar/v20/parquet`, 8 objects x 11 files, all 10,240 events;
+      ids join Release 1 particles 100% (events 0-63, 9000-9063); calo_cells 17.6 GB (1.7 MB/event, the size driver).
+      PU200 pending. Write outputs to `v20` (see Decisions) with a data card; symlink unchanged v1 objects.
 
 ### D. Documentation
 
