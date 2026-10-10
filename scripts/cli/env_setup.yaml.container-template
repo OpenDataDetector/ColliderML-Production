@@ -104,5 +104,9 @@ reco_tables:
 
 # Postprocessing/convert_*: python libs (polars/pyarrow/uproot/pyedm4hep) baked into the
 # image's python and put on PYTHONPATH by the assembler. No conda.
+# Complete truth-particle table from edm4hep (uproot + pyarrow, sim image).
+particles_full:
+  - 'source {CONTAINER_SETUP}'
+
 postprocessing:
   - 'source {CONTAINER_SETUP}'

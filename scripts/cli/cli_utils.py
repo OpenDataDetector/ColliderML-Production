@@ -23,7 +23,7 @@ GIT_COMMIT_SUCCESS_FILE = ".git_commit_success"
 MADGRAPH_STAGES = ["madgraph_init", "madgraph_generation"]
 # reco_tables is per-run (it gets --output <runs> --output-subdir <run> like the
 # simulation stages) even though its script lives under postprocessing/.
-SIMULATION_STAGES = MADGRAPH_STAGES + ["pythia_generation", "particlegun_generation", "merge_smear", "simulation", "digitization", "calo_digitization", "pandora_reco", "reco_tables"]
+SIMULATION_STAGES = MADGRAPH_STAGES + ["pythia_generation", "particlegun_generation", "merge_smear", "simulation", "digitization", "calo_digitization", "pandora_reco", "reco_tables", "particles_full"]
 POSTPROCESSING_STAGES = [
     "build_tracks",
     "build_tracker_hits",
@@ -38,7 +38,7 @@ VALID_STAGES = SIMULATION_STAGES + POSTPROCESSING_STAGES
 
 # Define which stages need shifter container (subset of simulation stages)
 # madgraph_init, madgraph_generation, and particlegun_generation run on host environment and don't need shifter
-SHIFTER_STAGES = ["pythia_generation", "particlegun_generation", "merge_smear", "simulation", "digitization", "calo_digitization", "pandora_reco", "reco_tables"]
+SHIFTER_STAGES = ["pythia_generation", "particlegun_generation", "merge_smear", "simulation", "digitization", "calo_digitization", "pandora_reco", "reco_tables", "particles_full"]
 
 # Stage to script mappings
 STAGE_SCRIPT_MAP = {
@@ -54,6 +54,7 @@ STAGE_SCRIPT_MAP = {
     "pandora_reco": "simulation/pandora_reco.py",
     # Release-2 calo_cells / calo_clusters / pfos per-run parquet (reco image)
     "reco_tables": "postprocessing/convert_reco_tables.py",
+    "particles_full": "postprocessing/convert_particles_full.py",
     
     # Postprocessing scripts
     "build_tracks": "postprocessing/convert_tracks.py",

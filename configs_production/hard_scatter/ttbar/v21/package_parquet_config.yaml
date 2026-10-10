@@ -1,0 +1,40 @@
+# v21 (PU0 ttbar), step 2 of 2: package the complete particles table as
+#   hard_scatter/ttbar/v21/parquet/truth/particles/hard_scatter.ttbar.v21.truth.particles.events<A>-<B>.parquet
+# All other v21 tables are the v20 files, symlinked (unchanged).
+campaign: "hard_scatter"
+dataset: "ttbar"
+version: "v21"
+stage: "package_parquet"
+
+stage_script_map:
+  package_parquet: "postprocessing/package_native_parquet.py"
+
+common:
+  container: "ghcr.io/opendatadetector/sw:pr-8"
+  container_tarball: "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/stress_mu200/sw_pr8_image.tar"
+  cache_dir: "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-prod-container/.cache"
+
+job_config:
+  n_runs: 11                   # chunks: events 0-999 ... 10000-10239
+  runs_per_node: 11
+  time_limit: "00:30:00"
+  qos: "interactive"
+  execution_mode: "interactive"
+
+validation_config:
+  enabled: false
+
+input_base_dir: "/global/cfs/cdirs/m4958/data/ColliderML/simulation"
+output_base_dir: "/global/cfs/cdirs/m4958/data/ColliderML/simulation"
+
+run_size: 1280
+chunk_size: 1000               # same file boundaries as Release 1 hard_scatter/ttbar/v1
+
+objects:
+  - particles_full   # published as truth/particles
+
+remap_particle_ids: false      # particles_full already uses the MCParticle index
+sim_input_name: edm4hep.root   # per-run symlink to v1, used to build the id map
+track_covariance: false        # no track tables in this packaging step
+compression: "snappy"
+row_group_size: 100000

@@ -73,6 +73,10 @@ OBJECT_LAYOUT: dict[str, tuple[str, str]] = {
     "calo_cells": ("reco", "calo_cells"),
     "calo_clusters": ("reco", "calo_clusters"),
     "pfos": ("reco", "pfos"),
+    # Complete truth-particle table (every MCParticle + raw status words), written per run by
+    # particles_full (convert_particles_full.py); published in place of the ACTS particle table.
+    # Times are already ns (edm4hep), ids already the MCParticle index: no conversion, no remap.
+    "particles_full": ("truth", "particles"),
 }
 
 # The ACTS-native writer emits time-like quantities in ACTS native units
