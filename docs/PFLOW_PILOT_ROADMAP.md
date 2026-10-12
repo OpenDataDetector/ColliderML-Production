@@ -105,6 +105,15 @@ Cycle: produce pilot, share, collect feedback (about 2 weeks), apply changes, pr
       id-space mismatch in the re-run particles table, not missing truth.
 - [ ] D3. Keep `docs/PRODUCTION_WORKFLOW.md` in step with the chain actually used.
 
+### F. ACTS image (next rebuild)
+
+- [ ] F1. Arrow particle perigee: port the truth-to-perigee block of RootParticleWriter.cpp (lines 185-260,
+      straight line for neutrals, SympyStepper helix for charged, reference point (0,0,0)) into
+      ArrowParticleOutputConverter.cpp (murnanedaniel/acts tracker-hits-v2, line 163 writes nulls); add
+      bField / referencePoint / writeHelixParameters to its Config and Python bindings; pass the field from
+      digi_and_reco.py. Check against particles.root. Approved by Daniel 2026-10-12 for the next rebuild;
+      until then particles_full reads perigee from particles.root.
+
 ### E. After Pilot 1
 
 - [ ] E1. Collect feedback (via Daniel), list changes here, produce Pilot 2.
