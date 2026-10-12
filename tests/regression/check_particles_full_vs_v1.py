@@ -8,6 +8,8 @@
   4. primary == not simulatorStatus bit 30; parent_id == first of parent_ids; links are symmetric.
 
 Usage: check_particles_full_vs_v1.py <particles_full.parquet> <v1 particles parquet> <edm4hep.root> <global event offset>
+       check_particles_full_vs_v1.py --published <v21 file> <v1 file> <runs dir with <run>/edm4hep.root> <run_size>
+       (published mode: global event_ids; MCParticle counts read from the run that holds each event)
 """
 import sys
 from collections import Counter
@@ -16,12 +18,26 @@ import numpy as np
 import pyarrow.parquet as pq
 import uproot
 
-full_f, v1_f, sim_f, offset = sys.argv[1], sys.argv[2], sys.argv[3], int(sys.argv[4])
-full = pq.read_table(full_f).to_pydict()
+if sys.argv[1] == "--published":
+    full_f, v1_f, runs_dir, run_size = sys.argv[2], sys.argv[3], sys.argv[4], int(sys.argv[5])
+    full = pq.read_table(full_f).to_pydict()
+    evs = full["event_id"]
+    offset = 0
+    v1 = pq.read_table(v1_f, filters=[("event_id", ">=", min(evs)), ("event_id", "<=", max(evs))]).to_pydict()
+    v1row = {e: i for i, e in enumerate(v1["event_id"])}
+    nmc = {}
+    for run in sorted({e // run_size for e in evs}):
+        counts = uproot.open(f"{runs_dir}/{run}/edm4hep.root")["events"]["MCParticles/MCParticles.PDG"].array(library="np")
+        for pos, x in enumerate(counts):
+            nmc[run * run_size + pos] = len(x)
+else:
+    full_f, v1_f, sim_f, offset = sys.argv[1], sys.argv[2], sys.argv[3], int(sys.argv[4])
+    full = pq.read_table(full_f).to_pydict()
+    nev = len(full["event_id"])
+    v1 = pq.read_table(v1_f, filters=[("event_id", ">=", offset), ("event_id", "<", offset + nev)]).to_pydict()
+    v1row = {e - offset: i for i, e in enumerate(v1["event_id"])}
+    nmc = [len(x) for x in uproot.open(sim_f)["events"]["MCParticles/MCParticles.PDG"].array(entry_stop=nev, library="np")]
 nev = len(full["event_id"])
-v1 = pq.read_table(v1_f, filters=[("event_id", ">=", offset), ("event_id", "<", offset + nev)]).to_pydict()
-v1row = {e - offset: i for i, e in enumerate(v1["event_id"])}
-nmc = [len(x) for x in uproot.open(sim_f)["events"]["MCParticles/MCParticles.PDG"].array(entry_stop=nev, library="np")]
 V1COLS = [c for c in v1 if c not in ("event_id", "particle_id")]
 bad = Counter(); extra_status = Counter(); n_v1 = n_full = 0
 for r, e in enumerate(full["event_id"]):
