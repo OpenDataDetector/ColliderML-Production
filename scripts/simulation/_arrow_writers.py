@@ -122,13 +122,23 @@ def add_arrow_writers(
         _ODD_TRACKER_VOLUME_MAP, 255
     )
 
-    # tracker-hits-v2: the particle converter is minimal (inputParticles +
-    # outputTable); the helix/perigee knobs of the old colliderml fork are gone
-    # (perigee_d0/z0 are nullable in the schema and emitted as nulls).
+    # Truth perigee (perigee_d0/z0): the tracker-hits-v2 fork wrote nulls; the
+    # ColliderML fork from 2026-10 adds RootParticleWriter's truth-to-perigee
+    # computation (writeHelixParameters + bField). Feature-detect so older images
+    # still run (and keep writing nulls; particles_full then reads particles.root).
+    _perigee = (
+        {"writeHelixParameters": True, "bField": field}
+        if hasattr(ArrowParticleOutputConverter.Config(), "writeHelixParameters")
+        else {}
+    )
+    if not _perigee:
+        logger.warning("ArrowParticleOutputConverter has no perigee support in this "
+                       "ACTS build: perigee_d0/z0 will be null")
     arr_particles = ArrowParticleOutputConverter(
         level=log_level,
         inputParticles="particles_simulated",
         outputTable="particles_arrow",
+        **_perigee,
     )
     s.addAlgorithm(arr_particles)
 
