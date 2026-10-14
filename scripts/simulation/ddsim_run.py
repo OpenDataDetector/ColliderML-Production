@@ -211,6 +211,53 @@ def configure_physics(ddsim, config, logger):
 
     return ddsim
 
+def configure_user_physics(ddsim, config, logger):
+    """Add user Geant4 physics constructors from DDG4 plugin libraries (e.g. QuirkDDG4).
+
+    Config (optional; absent = unchanged behaviour):
+
+        user_physics:
+          - type: QuirkPhysics/Quirks          # DDG4 factory/instance name
+            library: /path/to/libQuirkDDG4.so  # plugin library (its .components file sits next to it)
+            single_thread: true                # force threads = 1 (QuirkDDG4 shares string state)
+            properties:                        # DDG4 properties, set as given
+              Mass: 400000.0                   # MeV
+              Charge: 1.0
+              PdgId: 10000100
+              StringForce: 5067.73             # MeV/mm
+    """
+    entries = getattr(config, 'user_physics', None)
+    if not entries:
+        return ddsim
+    import ctypes
+    for entry in entries:
+        entry = dict(entry)
+        lib = Path(entry['library']).resolve()
+        if not lib.is_file():
+            raise FileNotFoundError(f"user_physics library not found: {lib}")
+        # DD4hep finds factories through the .components files on DD4HEP_LIBRARY_PATH; preloading
+        # the library by full path lets the later dlopen by name resolve without LD_LIBRARY_PATH.
+        os.environ['DD4HEP_LIBRARY_PATH'] = f"{lib.parent}:{os.environ.get('DD4HEP_LIBRARY_PATH', '')}"
+        ctypes.CDLL(str(lib), mode=ctypes.RTLD_GLOBAL)
+        if entry.get('single_thread') and ddsim.numberOfThreads != 1:
+            logger.warning(f"user_physics {entry['type']} needs one thread: threads {ddsim.numberOfThreads} -> 1")
+            ddsim.numberOfThreads = 1
+        logger.info(f"Adding user physics {entry['type']} from {lib} with {entry.get('properties', {})}")
+
+    def setup(kernel):
+        from DDG4 import PhysicsList
+        seq = kernel.physicsList()
+        for entry in entries:
+            entry = dict(entry)
+            phys = PhysicsList(kernel, entry['type'])
+            for key, value in dict(entry.get('properties', {})).items():
+                setattr(phys, key, value)
+            phys.enableUI()
+            seq.adopt(phys)
+
+    ddsim.physics.setupUserPhysics(setup)
+    return ddsim
+
 def configure_verbosity_and_ui(ddsim, config, logger):
     """Configure DDSim verbosity and Geant4 UI commands to reduce log volume
     
@@ -307,6 +354,9 @@ def run_ddsim(input_path, output_path, config, logger=None):
     
     # Configure physics
     ddsim = configure_physics(ddsim, config, logger)
+
+    # User physics plugins (e.g. quirks); no-op unless config sets user_physics
+    ddsim = configure_user_physics(ddsim, config, logger)
     
     # Configure verbosity and UI commands
     ddsim = configure_verbosity_and_ui(ddsim, config, logger)
