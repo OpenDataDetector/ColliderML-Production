@@ -124,7 +124,7 @@ def get_env_setup_cmds(config):
 # baked in the image.
 CONTAINER_BIND_PATHS = [
     "/global/cfs/cdirs/m4958",
-    "/pscratch/sd/d/danieltm",
+    os.environ.get("PSCRATCH", "/pscratch/sd/d/danieltm"),   # the user's own scratch
 ]
 
 def build_podman_run_prefix(container, srun_options=None, cache_dir=None):
