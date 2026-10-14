@@ -323,6 +323,7 @@ def run_ddsim(input_path, output_path, config, logger=None):
     
 
 def main():
+    exit_code = 0
     timer = None  # Initialize timer to None
     logger = setup_logging() # Setup logger early
     try:
@@ -358,6 +359,7 @@ def main():
     except Exception as e:
         logger.error(f"Fatal error in main: {str(e)}")
         logger.error(traceback.format_exc())
+        exit_code = 1
     finally:
         # Ensure the report is written even if errors occur
         if timer:
@@ -367,5 +369,8 @@ def main():
                 logger.error(f"Error writing timing report: {str(report_e)}")
                 logger.error(traceback.format_exc())
 
+    return exit_code
+
 if __name__ == "__main__":
-    main()
+    import sys
+    sys.exit(main())
