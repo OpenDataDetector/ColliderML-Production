@@ -315,6 +315,38 @@ def configure_verbosity_and_ui(ddsim, config, logger):
     
     return ddsim
 
+def configure_single_thread_output(ddsim, logger):
+    """Work around DDSim writing every event twice when numberOfThreads == 1.
+
+    DDSim adds the EDM4hep writer as a *shared* event action. With one thread DDSim uses
+    the sequential G4RunManager, and there the shared action commits each event twice
+    (checked 2026-10-14 in sw:pr-8: 1 simulated event -> 2 identical entries; 2 threads
+    -> 1 entry). Register the writer as a non-shared action instead, once.
+    Multi-threaded runs are left untouched.
+    """
+    if ddsim.numberOfThreads != 1 or not str(ddsim.outputFile).endswith(".root"):
+        return ddsim
+    state = {"added": False}
+
+    def edm4hep_output_once(dds):
+        if state["added"]:
+            return
+        state["added"] = True
+        from DDG4 import EventAction, Kernel
+        out = EventAction(Kernel(), "Geant4Output2EDM4hep/EDM4hepOutput", False)
+        out.Control = True
+        out.Output = dds.outputFile
+        out.RunHeader = dds.meta.addParametersToRunHeader(dds)
+        out.EventParametersString, out.EventParametersInt, out.EventParametersFloat = dds.meta.parseEventParameters()
+        out.RunNumberOffset = dds.meta.runNumberOffset if dds.meta.runNumberOffset > 0 else 0
+        out.EventNumberOffset = dds.meta.eventNumberOffset if dds.meta.eventNumberOffset > 0 else 0
+        out.enableUI()
+        Kernel().eventAction().add(out)
+
+    ddsim.outputConfig.userOutputPlugin = edm4hep_output_once
+    logger.info("Single-threaded run: EDM4hep output registered once (DDSim duplicate-event workaround)")
+    return ddsim
+
 def run_ddsim(input_path, output_path, config, logger=None):
     """Run DD4hep simulation
     
@@ -360,6 +392,9 @@ def run_ddsim(input_path, output_path, config, logger=None):
     
     # Configure verbosity and UI commands
     ddsim = configure_verbosity_and_ui(ddsim, config, logger)
+
+    # Single-thread runs: avoid the duplicated EDM4hep output (no-op when threads > 1)
+    ddsim = configure_single_thread_output(ddsim, logger)
     
     # Log configuration
     logger.info(f"Running DD4hep simulation with {ddsim.numberOfEvents} events")
@@ -373,6 +408,7 @@ def run_ddsim(input_path, output_path, config, logger=None):
     
 
 def main():
+    exit_code = 0
     timer = None  # Initialize timer to None
     logger = setup_logging() # Setup logger early
     try:
@@ -408,6 +444,7 @@ def main():
     except Exception as e:
         logger.error(f"Fatal error in main: {str(e)}")
         logger.error(traceback.format_exc())
+        exit_code = 1
     finally:
         # Ensure the report is written even if errors occur
         if timer:
@@ -417,5 +454,8 @@ def main():
                 logger.error(f"Error writing timing report: {str(report_e)}")
                 logger.error(traceback.format_exc())
 
+    return exit_code
+
 if __name__ == "__main__":
-    main()
+    import sys
+    sys.exit(main())
