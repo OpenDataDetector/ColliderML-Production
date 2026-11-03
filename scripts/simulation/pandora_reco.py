@@ -149,8 +149,7 @@ def run_pandora_reco(input_file, output_dir, config, logger):
     work_root = output_dir / "pandora_work"
     logger.info(f"  Slices:   {n_proc} process(es) over {n_events} of {n_input} entries")
 
-    procs = []
-    for i in range(n_proc):
+    def launch(i):
         first, count = bounds[i], bounds[i + 1] - bounds[i]
         work = work_root / f"slice_{i:03d}"
         work.mkdir(parents=True, exist_ok=True)
@@ -166,17 +165,27 @@ def run_pandora_reco(input_file, output_dir, config, logger):
             logger.info(f"Running (slice 0 of {n_proc}): {' '.join(cmd)}")
         # ODDreconstruction.py and the Pandora settings XMLs resolve some resources
         # (photon-likelihood XML etc.) relative to the k4ODD repo root - run from there.
-        procs.append((i, first, count, part, log,
-                      subprocess.Popen(cmd, stdout=log, stderr=subprocess.STDOUT, env=penv, cwd=k4odd_base)))
+        return (i, first, count, part, log,
+                subprocess.Popen(cmd, stdout=log, stderr=subprocess.STDOUT, env=penv, cwd=k4odd_base))
 
-    failed = []
-    for i, first, count, part, log, proc in procs:
-        rc = proc.wait()
-        log.close()
-        if rc != 0 or not part.exists():
-            failed.append(i)
-            tail = (work_root / f"slice_{i:03d}" / "k4run.log").read_text()[-2000:]
-            logger.error(f"slice {i} (entries {first}..{first + count - 1}) failed rc={rc}:\n{tail}")
+    def finish(slice_procs):
+        failed = []
+        for i, first, count, part, log, proc in slice_procs:
+            rc = proc.wait()
+            log.close()
+            if rc != 0 or not part.exists():
+                failed.append(i)
+                tail = (work_root / f"slice_{i:03d}" / "k4run.log").read_text()[-2000:]
+                logger.error(f"slice {i} (entries {first}..{first + count - 1}) failed rc={rc}:\n{tail}")
+        return failed
+
+    procs = [launch(i) for i in range(n_proc)]
+    failed = finish(procs)
+    if failed:
+        # At PU200 a few of 64 concurrent slices can run out of node memory (fixed config peaks
+        # ~11 GB per event): retry each failed slice once, alone, after the others have finished.
+        logger.warning(f"retrying {len(failed)} failed slice(s) one at a time: {failed}")
+        failed = [i for i in failed if finish([launch(i)])]
     if failed:
         raise RuntimeError(f"Pandora reconstruction failed in {len(failed)} of {n_proc} slices: {failed}")
 
