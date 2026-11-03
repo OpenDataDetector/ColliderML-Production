@@ -1,0 +1,13 @@
+diff --git a/k4GaudiPandora/src/DDTrackCreatorBase.cc b/k4GaudiPandora/src/DDTrackCreatorBase.cc
+index 1e25b92..f1f0289 100644
+--- a/k4GaudiPandora/src/DDTrackCreatorBase.cc
++++ b/k4GaudiPandora/src/DDTrackCreatorBase.cc
+@@ -426,6 +426,8 @@ void DDTrackCreatorBase::GetTrackStatesAtCalo(edm4hep::Track const& track,
+   if (i == static_cast<size_t>(-1)) {
+     m_algorithm.verbose() << "Track does not have a trackState at calorimeter" << endmsg;
+     // streamlog_out(DEBUG3) << toString(track) << endmsg;
++    // Use the state projected in GetTrackStates, else TrackClusterAssociation has no state to match.
++    trackParameters.m_trackStates.push_back(trackParameters.m_trackStateAtCalorimeter);
+     return;
+   }
+ 

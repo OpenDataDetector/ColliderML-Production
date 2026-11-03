@@ -1,0 +1,30 @@
+# Pflow v22 (PU200), step 2 of 3: per-run parquet for calo_cells / calo_clusters / pfos from the
+# v22 Pandora output. event_id = ddsim file position (EventHeader.eventNumber via edm4hep.root).
+campaign: "full_pileup"
+dataset: "ttbar"
+version: "v22"
+stage: "reco_tables"
+
+common:
+  container: "ghcr.io/opendatadetector/sw:pr-8"
+  container_tarball: "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/stress_mu200/sw_pr8_image.tar"
+  cache_dir: "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-prod-container/.cache"
+  output_base_dir: "/global/cfs/cdirs/m4958/data/ColliderML/simulation"
+  stage_containers:
+    reco_tables:
+      container: "localhost/colliderml/reco:20261103"
+      container_tarball: "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/images/colliderml_reco_20261103.tar"
+
+job_config:
+  n_runs: 157
+  runs_per_node: 16
+  time_limit: "00:30:00"
+  qos: "interactive"
+  execution_mode: "interactive"
+
+validation_config:
+  enabled: false
+
+events: -1
+objects: [calo_cells, calo_clusters, pfos]
+sim_input_name: edm4hep.root

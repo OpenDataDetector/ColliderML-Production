@@ -19,6 +19,9 @@ source /opt/key4hep-shim.sh
 ODD_REPO="${ODD_REPO:-https://gitlab.cern.ch/azaborow/OpenDataDetector.git}"
 ODD_REF="${ODD_REF:-addLayeredCalo_MuonCoil}"
 git clone --depth 1 --single-branch --branch "$ODD_REF" "$ODD_REPO" /opt/odd-src
+# Calo LayeredCalorimeterData fix (2026-11-02, OpenDataDetector/OpenDataDetector fix/calo-layer-data):
+# inner/sensitive quantities were overwritten per slice, so Pandora saw 2x X0/lambda per layer.
+patch -d /opt/odd-src -p1 --forward < /opt/steps/patches/odd_calo_layerdata.patch
 cmake -S /opt/odd-src -B /tmp/odd-build \
   -DCMAKE_INSTALL_PREFIX=/opt/odd-install \
   -DCMAKE_POLICY_VERSION_MINIMUM=3.5

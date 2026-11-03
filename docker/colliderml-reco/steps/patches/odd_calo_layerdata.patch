@@ -1,0 +1,52 @@
+diff --git a/factory/calorimeter/ODDPolyhedraBarrelCalorimeter_geo.cpp b/factory/calorimeter/ODDPolyhedraBarrelCalorimeter_geo.cpp
+index fb5f71f..8391aab 100644
+--- a/factory/calorimeter/ODDPolyhedraBarrelCalorimeter_geo.cpp
++++ b/factory/calorimeter/ODDPolyhedraBarrelCalorimeter_geo.cpp
+@@ -131,11 +131,16 @@ static Ref_t create_detector(Detector& description, xml_h e, SensitiveDetector s
+         nRadiationLengths += slice_thickness / (2. * slice_material.radLength());
+         nInteractionLengths += slice_thickness / (2. * slice_material.intLength());
+         thickness_sum += slice_thickness / 2;
+-        // Store "inner" quantities
+-        caloLayer.inner_nRadiationLengths = nRadiationLengths;
+-        caloLayer.inner_nInteractionLengths = nInteractionLengths;
+-        caloLayer.inner_thickness = thickness_sum;
+-        caloLayer.sensitive_thickness = slice_thickness;
++        // Store "inner" quantities (layer front to sensitive-slice centre); restart sums for "outer"
++        if (x_slice.isSensitive()) {
++          caloLayer.inner_nRadiationLengths = nRadiationLengths;
++          caloLayer.inner_nInteractionLengths = nInteractionLengths;
++          caloLayer.inner_thickness = thickness_sum;
++          caloLayer.sensitive_thickness = slice_thickness;
++          nRadiationLengths = 0.;
++          nInteractionLengths = 0.;
++          thickness_sum = 0.;
++        }
+         nRadiationLengths += slice_thickness / (2. * slice_material.radLength());
+         nInteractionLengths += slice_thickness / (2. * slice_material.intLength());
+         thickness_sum += slice_thickness / 2;
+diff --git a/factory/calorimeter/ODDPolyhedraEndcapCalorimeter_geo.cpp b/factory/calorimeter/ODDPolyhedraEndcapCalorimeter_geo.cpp
+index 1438e03..d78e46a 100644
+--- a/factory/calorimeter/ODDPolyhedraEndcapCalorimeter_geo.cpp
++++ b/factory/calorimeter/ODDPolyhedraEndcapCalorimeter_geo.cpp
+@@ -133,11 +133,16 @@ static Ref_t create_detector(Detector& description, xml_h e, SensitiveDetector s
+         nRadiationLengths += slice_thickness / (2. * slice_material.radLength());
+         nInteractionLengths += slice_thickness / (2. * slice_material.intLength());
+         thickness_sum += slice_thickness / 2;
+-        // Store "inner" quantities
+-        caloLayer.inner_nRadiationLengths = nRadiationLengths;
+-        caloLayer.inner_nInteractionLengths = nInteractionLengths;
+-        caloLayer.inner_thickness = thickness_sum;
+-        caloLayer.sensitive_thickness = slice_thickness;
++        // Store "inner" quantities (layer front to sensitive-slice centre); restart sums for "outer"
++        if (x_slice.isSensitive()) {
++          caloLayer.inner_nRadiationLengths = nRadiationLengths;
++          caloLayer.inner_nInteractionLengths = nInteractionLengths;
++          caloLayer.inner_thickness = thickness_sum;
++          caloLayer.sensitive_thickness = slice_thickness;
++          nRadiationLengths = 0.;
++          nInteractionLengths = 0.;
++          thickness_sum = 0.;
++        }
+         nRadiationLengths += slice_thickness / (2. * slice_material.radLength());
+         nInteractionLengths += slice_thickness / (2. * slice_material.intLength());
+         thickness_sum += slice_thickness / 2;

@@ -3,7 +3,7 @@
 # ci/pandora_stack.env) and build the 4-package Pandora stack (PandoraSDK ->
 # LCContent -> k4GaudiPandora -> k4DetectorPerformance) against the key4hep shim.
 set -e
-K4ODD_REF="${K4ODD_REF:-feat/pandora-calibrated-reco}"
+K4ODD_REF="${K4ODD_REF:-fix/pflow-settings-after-calo-fix}"
 git clone --depth 1 --branch "$K4ODD_REF" https://github.com/OpenDataDetector/k4ODD.git /opt/k4ODD
 cd /opt/k4ODD
 
@@ -20,6 +20,11 @@ grep -q "BUILD_TESTING=OFF" ci/build_pandora_stack.sh && echo "patched build_pan
 # MC-truth energy map keyed by a temporary's address. Applied right after the pinned checkout.
 sed -i '/^checkout k4GaudiPandora /a patch -d "$srcdir/k4GaudiPandora" -p1 --forward < /opt/steps/patches/k4gaudipandora_hitkeys.patch \|\| { echo "[stack] k4GaudiPandora hit-key patch FAILED"; exit 1; }' ci/build_pandora_stack.sh
 grep -q "k4gaudipandora_hitkeys.patch" ci/build_pandora_stack.sh && echo "hooked k4GaudiPandora hit-key patch"
+
+# k4GaudiPandora calo track state (2026-11-02, OpenDataDetector/k4GaudiPandora fix/acts-calo-trackstate):
+# ACTS tracks carry no AtCalorimeter state, so TrackClusterAssociation never matched them.
+sed -i '/^checkout k4GaudiPandora /a patch -d "$srcdir/k4GaudiPandora" -p1 --forward < /opt/steps/patches/k4gaudipandora_calostate.patch \|\| { echo "[stack] k4GaudiPandora calo-state patch FAILED"; exit 1; }' ci/build_pandora_stack.sh
+grep -q "k4gaudipandora_calostate.patch" ci/build_pandora_stack.sh && echo "hooked k4GaudiPandora calo-state patch"
 
 export KEY4HEP_SETUP=/opt/key4hep-shim.sh
 export PANDORA_STACK_DIR=/opt/pandora-stack
