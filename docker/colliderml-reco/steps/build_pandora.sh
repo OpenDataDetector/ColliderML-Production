@@ -26,6 +26,11 @@ grep -q "k4gaudipandora_hitkeys.patch" ci/build_pandora_stack.sh && echo "hooked
 sed -i '/^checkout k4GaudiPandora /a patch -d "$srcdir/k4GaudiPandora" -p1 --forward < /opt/steps/patches/k4gaudipandora_calostate.patch \|\| { echo "[stack] k4GaudiPandora calo-state patch FAILED"; exit 1; }' ci/build_pandora_stack.sh
 grep -q "k4gaudipandora_calostate.patch" ci/build_pandora_stack.sh && echo "hooked k4GaudiPandora calo-state patch"
 
+# LCContent SoftClusterMerging hit-to-hits cache (2026-11-03): cleared only on the next Run, it held
+# ~4-6 GB per PU200 event and caused OOM kills at 64 events per node. Output is bit-identical without it.
+sed -i '/^checkout LCContent /a patch -d "$srcdir/LCContent" -p1 --forward < /opt/steps/patches/lccontent_softmerge_nocache.patch \|\| { echo "[stack] LCContent no-cache patch FAILED"; exit 1; }' ci/build_pandora_stack.sh
+grep -q "lccontent_softmerge_nocache.patch" ci/build_pandora_stack.sh && echo "hooked LCContent no-cache patch"
+
 export KEY4HEP_SETUP=/opt/key4hep-shim.sh
 export PANDORA_STACK_DIR=/opt/pandora-stack
 export PANDORA_STACK_BUILD=/tmp/pandora-build

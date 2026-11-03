@@ -131,6 +131,12 @@ def run_pandora_reco(input_file, output_dir, config, logger):
         env["K4ODD_MAX_TRACK_SIGMA_POVERP"] = str(getattr(config, "max_track_sigma_pop", 999))
     if pandora_settings:
         env["K4ODD_PANDORA_SETTINGS"] = str(pandora_settings)
+    if getattr(config, "preload_jemalloc", False):
+        # jemalloc in k4run only: ~14% faster at PU200 with bit-identical output (2026-11-03).
+        jemalloc = Path("/opt/libjemalloc.so.2")
+        if not jemalloc.exists():
+            raise RuntimeError(f"preload_jemalloc set but {jemalloc} not found (image built before 2026-11-03?)")
+        env["LD_PRELOAD"] = ":".join(p for p in (str(jemalloc), env.get("LD_PRELOAD", "")) if p)
 
     logger.info("Pandora particle-flow reconstruction (k4ODD)")
     logger.info(f"  Input:    {input_file}")

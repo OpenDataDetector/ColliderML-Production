@@ -1,0 +1,11 @@
+--- a/src/LCTopologicalAssociation/SoftClusterMergingAlgorithm.cc
++++ b/src/LCTopologicalAssociation/SoftClusterMergingAlgorithm.cc
+@@ -235,7 +235,7 @@
+
+             for (const auto &hit : found)
+             {
+-                m_hitsToHitsCacheMap->emplace(pCaloHitI, hit.data);
++                // No hit-to-hits cache (held ~4-6 GB per PU200 event); results identical, nearby_hits is sorted below.
+                 nearby_hits.push_back(hit.data);
+             }
+         }

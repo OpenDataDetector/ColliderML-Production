@@ -68,6 +68,10 @@ RUN bash -lc 'source /opt/key4hep-shim.sh && \
         pyarrow polars tqdm && \
       PYTHONPATH=/opt/reco-pylibs:$PYTHONPATH python3 -c "import pyarrow, polars, yaml, uproot"'
 
+# jemalloc (already in the base spack tree) at a fixed path: pandora_reco.py preloads it into k4run
+# when the config sets preload_jemalloc (about 14% faster at PU200, identical output).
+RUN ln -sf "$(find /opt/spack -name 'libjemalloc.so.2' | head -1)" /opt/libjemalloc.so.2 && test -e /opt/libjemalloc.so.2
+
 # Env for the calo_digitization / pandora_reco stages.
 ENV K4ODD_PATH=/opt/k4ODD
 ENV ODD_INSTALL_DIR=/opt/odd-install
