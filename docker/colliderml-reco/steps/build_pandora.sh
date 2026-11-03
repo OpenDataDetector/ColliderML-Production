@@ -21,15 +21,15 @@ grep -q "BUILD_TESTING=OFF" ci/build_pandora_stack.sh && echo "patched build_pan
 sed -i '/^checkout k4GaudiPandora /a patch -d "$srcdir/k4GaudiPandora" -p1 --forward < /opt/steps/patches/k4gaudipandora_hitkeys.patch \|\| { echo "[stack] k4GaudiPandora hit-key patch FAILED"; exit 1; }' ci/build_pandora_stack.sh
 grep -q "k4gaudipandora_hitkeys.patch" ci/build_pandora_stack.sh && echo "hooked k4GaudiPandora hit-key patch"
 
-# k4GaudiPandora calo track state (2026-11-02, OpenDataDetector/k4GaudiPandora fix/acts-calo-trackstate):
-# ACTS tracks carry no AtCalorimeter state, so TrackClusterAssociation never matched them.
-sed -i '/^checkout k4GaudiPandora /a patch -d "$srcdir/k4GaudiPandora" -p1 --forward < /opt/steps/patches/k4gaudipandora_calostate.patch \|\| { echo "[stack] k4GaudiPandora calo-state patch FAILED"; exit 1; }' ci/build_pandora_stack.sh
-grep -q "k4gaudipandora_calostate.patch" ci/build_pandora_stack.sh && echo "hooked k4GaudiPandora calo-state patch"
+# k4GaudiPandora calo track state (OpenDataDetector/k4GaudiPandora PR #1): no patch needed here,
+# the k4ODD branch above pins k4GaudiPandora to fix/acts-calo-trackstate, which contains it.
+grep -q 'K4GAUDIPANDORA_REF="fix/acts-calo-trackstate"' ci/pandora_stack.env || { echo "[stack] k4GaudiPandora pin lacks the calo-state fix"; exit 1; }
 
-# LCContent SoftClusterMerging hit-to-hits cache (2026-11-03): cleared only on the next Run, it held
-# ~4-6 GB per PU200 event and caused OOM kills at 64 events per node. Output is bit-identical without it.
-sed -i '/^checkout LCContent /a patch -d "$srcdir/LCContent" -p1 --forward < /opt/steps/patches/lccontent_softmerge_nocache.patch \|\| { echo "[stack] LCContent no-cache patch FAILED"; exit 1; }' ci/build_pandora_stack.sh
-grep -q "lccontent_softmerge_nocache.patch" ci/build_pandora_stack.sh && echo "hooked LCContent no-cache patch"
+# LCContent SoftClusterMerging (2026-11-03): the hit-to-hits neighbour cache held ~4-6 GB per PU200 event
+# (OOM at 64 events per node). The patch caches only each hit's first search radius and repeats the
+# kd-tree search with it, which returns the same neighbour set as the original cache.
+sed -i '/^checkout LCContent /a patch -d "$srcdir/LCContent" -p1 --forward < /opt/steps/patches/lccontent_softmerge_radiuscache.patch \|\| { echo "[stack] LCContent radius-cache patch FAILED"; exit 1; }' ci/build_pandora_stack.sh
+grep -q "lccontent_softmerge_radiuscache.patch" ci/build_pandora_stack.sh && echo "hooked LCContent radius-cache patch"
 
 export KEY4HEP_SETUP=/opt/key4hep-shim.sh
 export PANDORA_STACK_DIR=/opt/pandora-stack
