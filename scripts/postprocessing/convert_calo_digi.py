@@ -62,6 +62,26 @@ def ranges_to_flat_indices(begin: np.ndarray, end: np.ndarray):
     return starts + offsets, counts
 
 
+def merge_per_particle(pid: np.ndarray, energy: np.ndarray, counts: np.ndarray):
+    """Sum contributions of the same particle within each cell.
+
+    Geant4 writes one SimCalorimeterHit contribution per step, so a cell lists the same
+    particle many times. Returns (particle_ids, energies, counts) with at most one entry per
+    (cell, particle), particles in ascending id order within each cell, as in
+    convert_calorimeter.py (Release 1).
+    """
+    if len(pid) == 0:
+        return pid.astype(np.uint64), energy.astype(np.float32), np.zeros_like(counts)
+    cell = np.repeat(np.arange(len(counts), dtype=np.int64), counts)
+    pid = pid.astype(np.int64)
+    key = cell * (int(pid.max()) + 1) + pid
+    uniq, inverse = np.unique(key, return_inverse=True)
+    summed = np.bincount(inverse, weights=energy.astype(np.float64))
+    cell_u = uniq // (int(pid.max()) + 1)
+    counts_m = np.bincount(cell_u, minlength=len(counts)).astype(np.int64)
+    return (uniq - cell_u * (int(pid.max()) + 1)).astype(np.uint64), summed.astype(np.float32), counts_m
+
+
 def process_events(tree, entry_start, entry_stop):
     """Return a list of per-event row dicts (event_id filled by caller)."""
     branches = {}
@@ -107,8 +127,10 @@ def process_events(tree, entry_start, entry_stop):
             contrib_en = np.asarray(arrays[f"{sim}Contributions/{sim}Contributions.energy"][ie])
             contrib_pid = np.asarray(
                 arrays[f"_{sim}Contributions_particle/_{sim}Contributions_particle.index"][ie])
-            c_pid.append(ak.unflatten(contrib_pid[flat_idx].astype(np.uint64), counts))
-            c_en.append(ak.unflatten(contrib_en[flat_idx].astype(np.float32), counts))
+            pid_m, en_m, counts_m = merge_per_particle(
+                contrib_pid[flat_idx], contrib_en[flat_idx], counts)
+            c_pid.append(ak.unflatten(pid_m, counts_m))
+            c_en.append(ak.unflatten(en_m, counts_m))
 
         cat = lambda parts, dt: np.concatenate(parts).astype(dt) if parts else np.empty(0, dtype=dt)
         rows.append({
