@@ -710,27 +710,35 @@ def delete_configs_from_repo(
         return False
 
 
-def get_existing_configs(repo_id: str, token: str) -> List[str]:
-    """Get list of existing configs by checking data/ directory structure."""
+def get_existing_configs(repo_id: str, token: str) -> Dict[str, int]:
+    """Map each config folder under data/ to the number of parquet shards it holds.
+
+    A folder alone is not proof of a complete upload: upload_large_folder commits in
+    batches, so an interrupted upload leaves a partial folder (dihiggs_pu200_tracker_hits
+    kept 295 of 1000 shards after HF returned 403 on 2025-12-03 and every later run
+    skipped it). Callers compare the count with the local file count.
+    """
     try:
-        from huggingface_hub.hf_api import RepoFolder
         api = HfApi(token=token)
-        repo_tree = list(api.list_repo_tree(
-            repo_id=repo_id,
-            repo_type="dataset",
-            path_in_repo="data",
-            recursive=False
-        ))
-        existing = []
-        for item in repo_tree:
-            if isinstance(item, RepoFolder):
-                config_name = item.path.split('/')[-1]
-                existing.append(config_name)
-        logger.info(f"Found {len(existing)} existing configs")
-        return existing
+        counts: Dict[str, int] = {}
+        for f in api.list_repo_files(repo_id=repo_id, repo_type="dataset"):
+            parts = f.split('/')
+            if len(parts) == 3 and parts[0] == "data" and parts[2].endswith(".parquet"):
+                counts[parts[1]] = counts.get(parts[1], 0) + 1
+        logger.info(f"Found {len(counts)} existing configs")
+        return counts
     except Exception:
         logger.info("Could not fetch existing configs (repo may not exist yet)")
-        return []
+        return {}
+
+
+def is_complete_on_hub(config_info: Dict, existing: Dict[str, int]) -> bool:
+    """True when the hub holds as many shards for this config as there are local files."""
+    n_local = len(list(config_info['path'].glob("*.parquet")))
+    n_hub = existing.get(config_info['config_name'], 0)
+    if 0 < n_hub < n_local:
+        logger.warning(f"{config_info['config_name']}: hub has {n_hub} of {n_local} shards, re-uploading")
+    return n_hub >= n_local > 0
 
 
 # ============================================================================
@@ -841,7 +849,7 @@ Examples:
         if args.skip_existing and not args.dry_run:
             existing = get_existing_configs(repo_id, token)
             before = len(configs_to_upload)
-            configs_to_upload = [c for c in configs_to_upload if c['config_name'] not in existing]
+            configs_to_upload = [c for c in configs_to_upload if not is_complete_on_hub(c, existing)]
             if before > len(configs_to_upload):
                 logger.info(f"Skipping {before - len(configs_to_upload)} existing configs")
             # Re-add configs we want to replace (will delete on HF then upload)
