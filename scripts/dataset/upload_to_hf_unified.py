@@ -275,6 +275,26 @@ def validate_event_ids_streaming(parquet_files: List[Path], config_name: str, ob
         return False
 
 
+def validate_calo_hits_files(parquet_files: List[Path], config_name: str) -> bool:
+    """Check every calo_hits file: detector codes 9-14 and equal contribution-list lengths per hit.
+
+    Release 1 shards had blocks of detector 255 and mismatched contrib lists (ColliderML-Production#53).
+    """
+    from validate_calo_hits import check_calo_hits_file
+    logger.info(f"  Checking calo_hits contents ({len(parquet_files)} files)...")
+    bad = []
+    for pf in parquet_files:
+        ok, msg = check_calo_hits_file(pf)
+        if not ok:
+            bad.append(pf.name)
+            logger.error(f"  ✗ {pf.name}: {msg}")
+    if bad:
+        logger.error(f"  ✗ {len(bad)} calo_hits files failed the check")
+        return False
+    logger.info(f"  ✓ calo_hits contents validated")
+    return True
+
+
 # ============================================================================
 # Direct Upload to HuggingFace
 # ============================================================================
@@ -285,7 +305,8 @@ def upload_config_direct(
     token: str,
     num_workers: int = 5,
     skip_validation: bool = False,
-    dry_run: bool = False
+    dry_run: bool = False,
+    skip_calo_check: bool = False,
 ) -> Tuple[bool, float]:
     """
     Upload a single config directly using HF API (no re-sharding).
@@ -320,6 +341,10 @@ def upload_config_direct(
             object_type = config_info['object_type']
             if not validate_event_ids_streaming(sorted_files, config_name, object_type):
                 logger.error(f"  ✗ Validation failed - aborting upload")
+                return False, time.time() - start_time
+            if object_type == "calo_hits" and not skip_calo_check and \
+                    not validate_calo_hits_files(sorted_files, config_name):
+                logger.error(f"  ✗ calo_hits check failed - aborting upload (--skip-calo-check to override)")
                 return False, time.time() - start_time
         else:
             logger.info(f"  Skipping validation (--skip-validation)")
@@ -368,7 +393,8 @@ def upload_config_large_folder(
     token: str,
     num_workers: int = 32,
     skip_validation: bool = False,
-    dry_run: bool = False
+    dry_run: bool = False,
+    skip_calo_check: bool = False,
 ) -> Tuple[bool, float]:
     """
     Upload a single config using upload_large_folder (multi-threaded, resumable).
@@ -410,6 +436,10 @@ def upload_config_large_folder(
             object_type = config_info['object_type']
             if not validate_event_ids_streaming(sorted_files, config_name, object_type):
                 logger.error(f"  ✗ Validation failed - aborting upload")
+                return False, time.time() - start_time
+            if object_type == "calo_hits" and not skip_calo_check and \
+                    not validate_calo_hits_files(sorted_files, config_name):
+                logger.error(f"  ✗ calo_hits check failed - aborting upload (--skip-calo-check to override)")
                 return False, time.time() - start_time
         else:
             logger.info(f"  Skipping validation (--skip-validation)")
@@ -780,6 +810,8 @@ Examples:
                         help='Re-upload existing configs')
     parser.add_argument('--skip-validation', action='store_true',
                         help='Skip event ID validation (faster but risky)')
+    parser.add_argument('--skip-calo-check', action='store_true',
+                        help='Skip the calo_hits content check (detector codes, contribution lengths)')
     parser.add_argument('--clean-repo', action='store_true',
                         help='Delete all parquet files before uploading')
     parser.add_argument('--num-workers', type=int, default=32,
@@ -895,6 +927,7 @@ Examples:
                     token,
                     num_workers=args.num_workers,
                     skip_validation=args.skip_validation,
+                    skip_calo_check=args.skip_calo_check,
                     dry_run=args.dry_run
                 )
 
