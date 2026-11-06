@@ -27,7 +27,8 @@ package_native_parquet adds run * run_size.
 
 Stage config keys: sim_input_name (default edm4hep.root), native_particles (default particles),
 parent_particles_dir + run_size (copy perigee/vertex_primary from v1), events (-1 = all),
-generator_particles (off | all | hard_scatter, default off).
+generator_particles (off | all | hard_scatter, default off), particles_full_table (default true; false
+writes only generator_particles, e.g. next to a Release 1 or v21 particles table that stays published).
 
 generator_particles writes a second table with only the generator history (generator_status not in
 0, 1, 2: beams, hard process, showers, hadronisation inputs), for publishing it next to a particles table
@@ -113,6 +114,9 @@ def load_config(args):
     args.generator_particles = args.generator_particles or "off"
     if args.generator_particles not in ("off", "all", "hard_scatter"):
         raise ValueError(f"generator_particles must be off, all or hard_scatter, not {args.generator_particles!r}")
+    args.particles_full_table = True if getattr(args, "particles_full_table", None) is None else bool(args.particles_full_table)
+    if not args.particles_full_table and args.generator_particles == "off":
+        raise ValueError("particles_full_table: false needs generator_particles (nothing to write)")
     return args
 
 
@@ -207,7 +211,9 @@ def convert_run(run_dir: Path, args) -> tuple[Path, int]:
              f"{M}/{M}.daughters_begin", f"{M}/{M}.daughters_end", f"_{M}_daughters/_{M}_daughters.index"])
     a = tree.arrays(br, entry_stop=stop, library="np")
     n_events = len(a[f"{M}/{M}.PDG"])
-    if args.parent_particles_dir:
+    if not args.particles_full_table:
+        acts = {}                                   # generator_particles only: no ACTS columns needed
+    elif args.parent_particles_dir:
         if not args.run_size:
             raise ValueError("parent_particles_dir needs run_size")
         acts = parent_columns(args.parent_particles_dir, int(run_dir.name), int(args.run_size), n_events)
@@ -271,12 +277,15 @@ def convert_run(run_dir: Path, args) -> tuple[Path, int]:
              "generator_status": pa.list_(pa.int32()), "simulator_status": pa.list_(pa.int32()),
              "color_a": pa.list_(pa.int32()), "color_b": pa.list_(pa.int32()),
              "parent_ids": pa.list_(pa.list_(pa.int64())), "daughter_ids": pa.list_(pa.list_(pa.int64()))}
-    arrays = {k: pa.array(v, type=types.get(k, pa.list_(pa.float32()))) for k, v in cols.items()}
-    final = write_table(pa.table(arrays), run_dir, OBJ, n_events)
+    final = None
+    if args.particles_full_table:
+        arrays = {k: pa.array(v, type=types.get(k, pa.list_(pa.float32()))) for k, v in cols.items()}
+        final = write_table(pa.table(arrays), run_dir, OBJ, n_events)
     if gen is not None:
         gtable = pa.table({k: pa.array(v, type=GEN_TYPES.get(k, pa.list_(pa.float32()))) for k, v in gen.items()})
         gfinal = write_table(gtable, run_dir, GEN, n_events)
         logger.info("%s (%s): %d rows", gfinal, args.generator_particles, sum(len(r) for r in gen["particle_id"]))
+        final = final or gfinal
     return final, n_events
 
 

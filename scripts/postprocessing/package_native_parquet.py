@@ -77,6 +77,9 @@ OBJECT_LAYOUT: dict[str, tuple[str, str]] = {
     # particles_full (convert_particles_full.py); published in place of the ACTS particle table.
     # Times are already ns (edm4hep), ids already the MCParticle index: no conversion, no remap.
     "particles_full": ("truth", "particles"),
+    # Generator history only (beams, hard process, showers; particles_full with generator_particles),
+    # same particle_id as truth/particles; ns and MCParticle ids already, no conversion, no remap.
+    "generator_particles": ("truth", "generator_particles"),
 }
 
 # The ACTS-native writer emits time-like quantities in ACTS native units
