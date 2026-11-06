@@ -35,6 +35,8 @@ no env knobs needed. Config keys (yaml):
                           parts are merged in entry order with podio-merge-files.
   merge_slices            default true. false: keep the slices as <run>/reco_parts/
                           reco_part_NNN.root (reco_tables reads them directly).
+  work_root               where the per-slice work dirs go (default: <run>/pandora_work);
+                          e.g. a $PSCRATCH path to keep their inodes off CFS.
 
 Isolation: every k4run gets its own K4ODD_OUTPUT_DIR (<run>/pandora_work/slice_NNN) for
 ddcalodigi_hist.root and its log. Sharing one histogram file killed 18 of 64 processes at
@@ -42,6 +44,7 @@ finalize in the 2026-09-22 pilot. The cwd stays the k4ODD root (relative resourc
 """
 
 import os
+import shutil
 import subprocess
 import sys
 import traceback
@@ -152,8 +155,13 @@ def run_pandora_reco(input_file, output_dir, config, logger):
     n_events = n_input if not events or int(events) < 0 else min(int(events), n_input)
     n_proc = max(1, min(int(getattr(config, "processes", 1) or 1), n_events))
     bounds = [round(i * n_events / n_proc) for i in range(n_proc + 1)]
-    work_root = output_dir / "pandora_work"
+    # work_root (config): put the per-slice work dirs (~3 files per slice) outside the run dir,
+    # e.g. on $PSCRATCH, to save CFS inodes. Same layout below it as the run dir's absolute path.
+    work_base = getattr(config, "work_root", None)
+    work_root = (Path(work_base) / str(output_dir.resolve()).lstrip("/") / "pandora_work") if work_base \
+        else output_dir / "pandora_work"
     logger.info(f"  Slices:   {n_proc} process(es) over {n_events} of {n_input} entries")
+    logger.info(f"  Work dir: {work_root}")
 
     def launch(i):
         first, count = bounds[i], bounds[i + 1] - bounds[i]
@@ -205,7 +213,7 @@ def run_pandora_reco(input_file, output_dir, config, logger):
         n_out = 0
         for i, _, count, part, _, _ in procs:
             dst = parts_dir / f"reco_part_{i:03d}.root"
-            os.replace(part, dst)
+            shutil.move(part, dst)                      # work_root may be another file system
             n = _count_entries(dst)
             if n != count:
                 raise RuntimeError(f"slice {i}: {n} events written, expected {count}")

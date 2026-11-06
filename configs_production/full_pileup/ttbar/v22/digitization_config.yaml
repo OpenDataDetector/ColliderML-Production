@@ -1,6 +1,7 @@
-# Pflow v22 (PU200), step 0: ACTS tracking (sw:pr-8, ODD v6), identical to v20, for the new runs
-# 16-156 (run with --run-range 16 157). Runs 0-15 are symlinked from v20. Input edm4hep.root is
-# symlinked from Release 1 full_pileup/ttbar/v1. 157 runs x 64 = 10,048 events.
+# Pflow v22 (PU200), step 0: ACTS tracking (sw:pr-8, ODD v6), identical to v20. Runs 0-15 are
+# symlinked from v20; runs 16-156 were tracked 2026-11-03 (10,048 events published 2026-11-04);
+# runs 157-1562 extend v22 to 1563 x 64 = 100,032 events (2026-11-06, run_blocks_multinode.sh).
+# Input edm4hep.root is symlinked from Release 1 full_pileup/ttbar/v1 (2100 runs).
 campaign: "full_pileup"
 dataset: "ttbar"
 version: "v22"
@@ -15,7 +16,7 @@ common:
 # Pilot: one interactive node, driven by run_v20.sh (16 runs in parallel, 8 threads each).
 # Time and memory per PU200 run are unmeasured: run_v20.sh measure does run 0 alone first.
 job_config:
-  n_runs: 157
+  n_runs: 1563
   runs_per_node: 16
   time_limit: "04:00:00"
   qos: "interactive"
