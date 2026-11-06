@@ -1,0 +1,39 @@
+# Release 1 diphoton PU0 (hard_scatter/diphoton/v1), Geant4: ddsim on the existing MadGraph +
+# Pythia events (runs/<n>/events.hepmc, pp > aa + 0-1 jets, ptgmin 20, MLM), runs 0-999
+# (1,000,000 events). Settings copied from the Release 1 multijet simulation
+# (hard_scatter/jets/v1/configs/simulation_slurm_hardscatter_config.yaml): same Release 1
+# environment (shifter atlas-grid-almalinux9, LCG_107, dd4hep-colliderml-new, acts_v4 with its
+# ODD), same ddsim_run.py (colliderml-production c8d5550), 8 threads per run, 32 runs per node.
+campaign: hard_scatter
+dataset: diphoton
+version: v1
+stage: simulation
+job_config:
+  n_runs: 1000
+  runs_per_node: 32
+  time_limit: 03:00:00
+  qos: regular
+  execution_mode: multi_node_slurm
+  depends_on: null
+validation_config: null
+events: 1000
+input_filename: events.hepmc
+threads: 8
+minimalKineticEnergy: 0.1
+truthParticleHandler: Geant4FullTruthParticleHandler
+vertexOffset:
+- 0.0
+- 0.0
+- 0.0
+- 0.0
+vertexSigma:
+- 0.0125
+- 0.0125
+- 55.5
+- 0.185
+ddsim_printLevel: 6
+filter_g4_warnings: true
+common:
+  account: m5386
+  container: registry.cern.ch/atlasadc/atlas-grid-almalinux9
+  output_base_dir: /global/cfs/cdirs/m4958/data/ColliderML/simulation

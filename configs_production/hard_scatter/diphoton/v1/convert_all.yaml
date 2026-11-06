@@ -1,0 +1,80 @@
+# Release 1 diphoton PU0 (hard_scatter/diphoton/v1), packaging: convert_all over runs 0-999
+# (1,000,000 events, after the Geant4 and tracking steps in this folder; same converter and
+# settings as hard_scatter/jets/v1/convert_all.yaml). Same objects, columns and chunking as hard_scatter/ggf/v1
+# (data-tree snapshot configs/convert_all.yaml), run_size 1000 instead of 1280.
+# Converter: colliderml-production 58c541d (issue #53 fixes: short calo chunk raises), run in
+# collider-env as in Release 1, at most 3 chunks per node (dihiggs OOMed at 4 in the v1_1 repair).
+campaign: hard_scatter
+dataset: diphoton
+version: v1
+stage: convert_all
+job_config:
+  n_runs: 1000          # chunks 0-999 -> events 0-999,999
+  runs_per_node: 3
+  time_limit: 02:00:00
+  qos: regular
+  execution_mode: multi_node_slurm
+objects:
+- tracker_hits
+- tracks
+- particles
+- calo_hits
+output_format: parquet
+chunk_size: 1000
+run_size: 1000
+particles_columns_keep:
+- particle_id
+- pdg_id
+- mass
+- energy
+- charge
+- vx
+- vy
+- vz
+- time
+- px
+- py
+- pz
+- perigee_d0
+- perigee_z0
+- vertex_primary
+- parent_id
+- primary
+digihits_columns_keep:
+- x
+- y
+- z
+- true_x
+- true_y
+- true_z
+- time
+- particle_id
+- detector
+- volume_id
+- layer_id
+- surface_id
+tracks_columns_keep:
+- d0
+- z0
+- phi
+- theta
+- qop
+- majority_particle_id
+calo_columns_keep:
+- event_id
+- detector
+- cell_id
+- total_energy
+- x
+- y
+- z
+- contrib_particle_ids
+- contrib_energies
+- contrib_times
+max_chunks: 1
+min_tracker_hits: 0
+min_calo_hits: 0
+log_level: DEBUG
+common:
+  account: m5386
+  output_base_dir: /global/cfs/cdirs/m4958/data/ColliderML/simulation

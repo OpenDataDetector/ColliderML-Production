@@ -1,0 +1,32 @@
+# Release 1 diphoton PU0 (hard_scatter/diphoton/v1), tracking: Release 1 digi + CKF on the new
+# Geant4 output, runs 0-999. Settings copied from hard_scatter/jets/v1/configs/
+# digitization_config.yaml (master c8d5550, 2026-03-06); digi_config is the same file in the
+# c8d5550 snapshot (byte-identical to the one Release 1 used).
+campaign: hard_scatter
+dataset: diphoton
+version: v1
+stage: digitization
+job_config:
+  n_runs: 1000
+  runs_per_node: 16
+  time_limit: 02:00:00
+  qos: regular
+  execution_mode: multi_node_slurm
+  depends_on: null
+validation_config: null
+events: 1000
+threads: 8
+digi: true
+reco: true
+num_seeds_per_spm: 40
+output_particles_root: true
+output_measurements_root: true
+ambi_root_output: true
+ambi_finding_performance: true
+ambi_fitting_performance: true
+write_helix_parameters: true
+digi_config: /global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/release1_code/c8d5550/scripts/simulation/odd-full-geo-digi-config.json
+common:
+  account: m5386
+  container: registry.cern.ch/atlasadc/atlas-grid-almalinux9
+  output_base_dir: /global/cfs/cdirs/m4958/data/ColliderML/simulation
