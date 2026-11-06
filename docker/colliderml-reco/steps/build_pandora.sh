@@ -7,6 +7,12 @@ K4ODD_REF="${K4ODD_REF:-fix/pflow-settings-after-calo-fix}"
 git clone --depth 1 --branch "$K4ODD_REF" https://github.com/OpenDataDetector/k4ODD.git /opt/k4ODD
 cd /opt/k4ODD
 
+# DDCaloDigi last layer (2026-11-06): ECALLayers [48, 48] / HCALLayers [36] left ODD ECAL layer 48 and HCAL
+# layer 36 (layers count from 1) outside every calibration range, so their hits were written with energy 0.
+# Drop this patch once the k4ODD branch carries the fix.
+patch -p1 --forward < /opt/steps/patches/k4odd_calo_last_layer.patch || { echo "[k4ODD] last-layer patch FAILED"; exit 1; }
+grep -q "ECALLayers = \[49, 49\]" k4ODD/options/ODDreconstruction.py && grep -q "HCALLayers = \[37\]" k4ODD/options/ODDreconstruction.py
+
 # k4GaudiPandora's test/ subdir requires k4geo (a key4hep geometry package we don't
 # fold in). It is guarded by BUILD_TESTING, but the stack builder doesn't disable
 # tests. Patch its cmake invocation to add -DBUILD_TESTING=OFF for all packages.
