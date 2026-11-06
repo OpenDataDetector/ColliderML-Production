@@ -1,0 +1,40 @@
+# Pflow v22 (PU0): package the hard-scatter generator history (generator_particles_config.yaml) into
+#   simulation/hard_scatter/ttbar/v22/parquet/truth/generator_particles/
+# Same chunks and event_id as the other v22 PU0 objects (run * 1280 + ddsim position). Ids are the
+# MCParticle index already (no remap); truth/particles (v21 full table) is not touched.
+campaign: "hard_scatter"
+dataset: "ttbar"
+version: "v22"
+stage: "package_parquet"
+
+stage_script_map:
+  package_parquet: "postprocessing/package_native_parquet.py"
+
+common:
+  container: "ghcr.io/opendatadetector/sw:pr-8"
+  container_tarball: "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/stress_mu200/sw_pr8_image.tar"
+  cache_dir: "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-prod-container/.cache"
+
+job_config:
+  n_runs: 11                   # chunks: events 0-999 ... 10000-10239
+  runs_per_node: 11
+  time_limit: "00:30:00"
+  qos: "regular"
+  execution_mode: "interactive"
+
+validation_config:
+  enabled: false
+
+input_base_dir: "/global/cfs/cdirs/m4958/data/ColliderML/simulation"
+output_base_dir: "/global/cfs/cdirs/m4958/data/ColliderML/simulation"
+
+run_size: 1280
+chunk_size: 1000
+
+objects:
+  - generator_particles
+
+remap_particle_ids: false
+sim_input_name: edm4hep.root
+compression: "snappy"
+row_group_size: 100000

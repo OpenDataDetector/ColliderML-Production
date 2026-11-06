@@ -35,5 +35,8 @@ case $1 in
       -o $S/full_pileup/ttbar/v22/logs/generator_particles/job_%j.out "${@:2}" \
       "$REPO/scripts/production/generator_particles.sbatch" \
       "$REPO/configs_production/full_pileup/ttbar/v22/generator_particles_config.yaml" 0 ;;
+  pkg_gen_pu0)           # package generator_particles, PU0 chunks 0-10 on 1 node
+    submit pkg-gen-pu0 1 00:30:00 $S/hard_scatter/ttbar/v22/logs/blocks \
+      "$REPO/configs_production/hard_scatter/ttbar/v22/package_generator_config.yaml" 0 10 11 "${@:2}" ;;
   *) echo "unknown target $1"; exit 1 ;;
 esac
