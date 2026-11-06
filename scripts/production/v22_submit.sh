@@ -23,5 +23,17 @@ case $1 in
   ttbar_pu200_trk)       # runs 159-1562: 130 nodes x 11 runs, one wave (~16 min at 16 per node in v22)
     submit ttbar-pu200-trk 130 01:00:00 $S/full_pileup/ttbar/v22/logs/blocks \
       "$REPO/configs_production/full_pileup/ttbar/v22/$TRK" 159 1562 11 "${@:2}" ;;
+  gen_pu0)               # generator_particles, PU0 runs 0-7 on 1 node
+    mkdir -p $S/hard_scatter/ttbar/v22/logs/generator_particles
+    sbatch -A m5386 -C cpu -q regular -N1 --ntasks 8 --cpus-per-task 16 -t 00:30:00 -J gen-pu0 \
+      -o $S/hard_scatter/ttbar/v22/logs/generator_particles/job_%j.out "${@:2}" \
+      "$REPO/scripts/production/generator_particles.sbatch" \
+      "$REPO/configs_production/hard_scatter/ttbar/v22/generator_particles_config.yaml" 0 ;;
+  gen_pu200)             # generator_particles, PU200 runs 0-1562: 98 nodes x 16 runs
+    mkdir -p $S/full_pileup/ttbar/v22/logs/generator_particles
+    sbatch -A m5386 -C cpu -q regular -N98 --ntasks 1563 --cpus-per-task 16 -t 01:00:00 -J gen-pu200 \
+      -o $S/full_pileup/ttbar/v22/logs/generator_particles/job_%j.out "${@:2}" \
+      "$REPO/scripts/production/generator_particles.sbatch" \
+      "$REPO/configs_production/full_pileup/ttbar/v22/generator_particles_config.yaml" 0 ;;
   *) echo "unknown target $1"; exit 1 ;;
 esac

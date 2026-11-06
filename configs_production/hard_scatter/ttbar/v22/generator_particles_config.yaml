@@ -1,0 +1,20 @@
+# Pflow v22 (PU0): hard-scatter generator history as truth/generator_particles. PU0 v22 already
+# publishes the complete v21 truth/particles table (which holds these rows too); this separate table
+# gives PU0 and PU200 the same object. particles_full stage with generator_particles: hard_scatter and
+# particles_full_table: false. Runs 0-7 (10,240 events); reads only edm4hep.root.
+campaign: "hard_scatter"
+dataset: "ttbar"
+version: "v22"
+stage: "particles_full"
+
+common:
+  output_base_dir: "/global/cfs/cdirs/m4958/data/ColliderML/simulation"
+
+job_config:
+  n_runs: 8
+  qos: "regular"
+
+events: -1
+sim_input_name: edm4hep.root
+generator_particles: hard_scatter
+particles_full_table: false
