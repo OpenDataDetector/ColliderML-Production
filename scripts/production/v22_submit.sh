@@ -6,6 +6,7 @@
 set -euo pipefail
 REPO="$(cd "$(dirname "$0")/../.." && pwd)"
 S=/global/cfs/cdirs/m4958/data/ColliderML/simulation
+ST=/global/cfs/cdirs/m4958/data/ColliderML/staging/simulation
 DRIVER="$REPO/scripts/cli/run_blocks_multinode.sh"
 TRK=digitization_config.yaml
 
@@ -38,5 +39,15 @@ case $1 in
   pkg_gen_pu0)           # package generator_particles, PU0 chunks 0-10 on 1 node
     submit pkg-gen-pu0 1 00:30:00 $S/hard_scatter/ttbar/v22/logs/blocks \
       "$REPO/configs_production/hard_scatter/ttbar/v22/package_generator_config.yaml" 0 10 11 "${@:2}" ;;
+  # Pandora rerun with reco 20261106 into staging (configs point output_base_dir at staging)
+  pandora_pu200_a)       # runs 0-156 (tracked): 157 nodes, one run per node (~45 min)
+    submit pandora-pu200-a 157 01:30:00 $ST/full_pileup/ttbar/v22/logs/blocks \
+      "$REPO/configs_production/full_pileup/ttbar/v22/pandora_reco_config.yaml" 0 156 1 "${@:2}" ;;
+  pandora_pu200_b)       # runs 157-1562: 201 nodes x 7 runs one after another (~5.5 h); add --dependency
+    submit pandora-pu200-b 201 07:00:00 $ST/full_pileup/ttbar/v22/logs/blocks \
+      "$REPO/configs_production/full_pileup/ttbar/v22/pandora_reco_config.yaml" 157 1562 1 "${@:2}" ;;
+  pandora_pu0)           # runs 0-7 on 1 node, all 8 at once (16 slices each)
+    submit pandora-pu0 1 01:00:00 $ST/hard_scatter/ttbar/v22/logs/blocks \
+      "$REPO/configs_production/hard_scatter/ttbar/v22/pandora_reco_config.yaml" 0 7 8 "${@:2}" ;;
   *) echo "unknown target $1"; exit 1 ;;
 esac
