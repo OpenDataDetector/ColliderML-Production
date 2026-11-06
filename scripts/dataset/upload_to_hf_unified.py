@@ -43,6 +43,7 @@ os.environ["HUGGINGFACE_HUB_CACHE"] = os.path.join(HF_CACHE_DIR, "hub")
 try:
     from huggingface_hub import HfApi, CommitOperationAdd, CommitOperationDelete
     from datasets import get_dataset_config_names
+    import pyarrow.compute as pc
     import pyarrow.parquet as pq
     import shutil
     HF_AVAILABLE = True
@@ -106,6 +107,12 @@ logger = logging.getLogger(__name__)
 # Configuration Management
 # ============================================================================
 
+def resolve_relative(path_str: str, config_path: str) -> Path:
+    """A relative path in the YAML is relative to the YAML file, not to the working directory."""
+    p = Path(path_str)
+    return p if p.is_absolute() else (Path(config_path).resolve().parent / p)
+
+
 def load_config(config_path: str) -> Dict:
     """Load and validate YAML configuration file."""
     config_path = Path(config_path)
@@ -128,6 +135,14 @@ def load_config(config_path: str) -> Dict:
     return config
 
 
+TRUTH_OBJECTS = {"particles", "tracker_simhits"}
+
+
+def object_subdir(object_type: str) -> str:
+    """Where an object lives under parquet/: truth/ for particles and tracker sim hits, reco/ otherwise."""
+    return f"{'truth' if object_type in TRUTH_OBJECTS else 'reco'}/{object_type}"
+
+
 def build_config_list(config: Dict) -> List[Dict]:
     """
     Build list of all configs to upload based on yaml configuration.
@@ -136,7 +151,7 @@ def build_config_list(config: Dict) -> List[Dict]:
     """
     configs = []
     base_dir = Path(config['data']['base_dir'])
-    version = config['data']['version']
+    default_version = config['data']['version']
     format_subdir = config['data']['format_subdir']
 
     for campaign in config['campaigns']:
@@ -148,15 +163,14 @@ def build_config_list(config: Dict) -> List[Dict]:
                 continue
 
             dataset_name = dataset['name']
+            # Release 2 versions differ per dataset (e.g. ttbar v22); Release 1 is v1 everywhere.
+            version = dataset.get('version', default_version)
 
             for object_type in config['object_types']:
                 config_name = f"{dataset_name}_{pileup_label}_{object_type}"
 
                 # Construct path: base/campaign/dataset/version/parquet/truth|reco/object_type/
-                if object_type == "particles":
-                    subdir = "truth/particles"
-                else:
-                    subdir = f"reco/{object_type}"
+                subdir = object_subdir(object_type)
 
                 data_path = base_dir / campaign_name / dataset_name / version / format_subdir / subdir
 
@@ -174,6 +188,7 @@ def build_config_list(config: Dict) -> List[Dict]:
                     'config_name': config_name,
                     'path': data_path,
                     'dataset_name': dataset_name,
+                    'version': version,
                     'campaign_name': campaign_name,
                     'pileup': campaign['pileup'],
                     'pileup_label': pileup_label,
@@ -295,6 +310,89 @@ def validate_calo_hits_files(parquet_files: List[Path], config_name: str) -> boo
     return True
 
 
+def validate_parquet_files(parquet_files: List[Path], config_name: str) -> bool:
+    """Every file has rows, an event_id column and the same schema as the first file.
+
+    A mixed schema (e.g. covariance columns missing from some chunks) breaks the HF dataset viewer
+    and `load_dataset`, and an empty file means a packaging step went wrong.
+    """
+    logger.info(f"  Checking file schemas ({len(parquet_files)} files)...")
+    ref = None
+    bad = []
+    for pf in parquet_files:
+        meta = pq.ParquetFile(pf)
+        schema = meta.schema_arrow
+        if meta.metadata.num_rows == 0:
+            bad.append(f"{pf.name}: no rows")
+        elif "event_id" not in schema.names:
+            bad.append(f"{pf.name}: no event_id column")
+        elif ref is None:
+            ref = schema
+        elif not schema.equals(ref):
+            bad.append(f"{pf.name}: schema differs from {parquet_files[0].name}")
+    for b in bad:
+        logger.error(f"  ✗ {b}")
+    if bad:
+        logger.error(f"  ✗ {len(bad)} files failed the schema check")
+        return False
+    logger.info(f"  ✓ {len(parquet_files)} files share one schema")
+    return True
+
+
+def config_event_range(parquet_files: List[Path]) -> Tuple[int, int, int]:
+    """(number of event rows, min event_id, max event_id) over all files."""
+    n, lo, hi = 0, None, None
+    for pf in parquet_files:
+        ids = pq.ParquetFile(pf).read(columns=['event_id'])['event_id']
+        if len(ids) == 0:
+            continue
+        n += len(ids)
+        a, b = pc.min(ids).as_py(), pc.max(ids).as_py()
+        lo = a if lo is None else min(lo, a)
+        hi = b if hi is None else max(hi, b)
+    return n, lo, hi
+
+
+def validate_only(configs: List[Dict], skip_calo_check: bool = False) -> bool:
+    """Run every gate on the local files without contacting the Hub, and print one line per config.
+
+    Also checks that all objects of a dataset cover the same events as its truth particles, so that
+    configs of one dataset can be joined on event_id.
+    """
+    ok_all = True
+    rows = []
+    for c in configs:
+        files = sort_parquet_files_numerically(list(c['path'].glob("*.parquet")))
+        size = sum(f.stat().st_size for f in files)
+        ok = validate_event_ids_streaming(files, c['config_name'], c['object_type'])
+        ok &= validate_parquet_files(files, c['config_name'])
+        if c['object_type'] == "calo_hits" and not skip_calo_check:
+            ok &= validate_calo_hits_files(files, c['config_name'])
+        n, lo, hi = config_event_range(files)
+        c['n_events'], c['event_range'] = n, (lo, hi)
+        rows.append((c, len(files), size, ok))
+        ok_all &= ok
+
+    by_dataset: Dict[Tuple[str, str], List[Dict]] = {}
+    for c, *_ in rows:
+        by_dataset.setdefault((c['dataset_name'], c['pileup_label']), []).append(c)
+    for (ds, pu), cs in by_dataset.items():
+        ref = next((c for c in cs if c['object_type'] == "particles"), cs[0])
+        for c in cs:
+            if c['event_range'] != ref['event_range']:
+                logger.warning(f"  ⚠ {c['config_name']}: events {c['event_range']} differ from "
+                               f"{ref['config_name']} {ref['event_range']}")
+
+    logger.info("=" * 80)
+    logger.info(f"{'config':40s} {'version':7s} {'files':>5s} {'GB':>8s} {'events':>9s} {'range':>17s} gate")
+    for c, nf, size, ok in rows:
+        lo, hi = c['event_range']
+        logger.info(f"{c['config_name']:40s} {c['version']:7s} {nf:5d} {size / 1e9:8.2f} {c['n_events']:9d} "
+                    f"{f'{lo}-{hi}':>17s} {'OK' if ok else 'FAIL'}")
+    logger.info("=" * 80)
+    return ok_all
+
+
 # ============================================================================
 # Direct Upload to HuggingFace
 # ============================================================================
@@ -341,6 +439,9 @@ def upload_config_direct(
             object_type = config_info['object_type']
             if not validate_event_ids_streaming(sorted_files, config_name, object_type):
                 logger.error(f"  ✗ Validation failed - aborting upload")
+                return False, time.time() - start_time
+            if not validate_parquet_files(sorted_files, config_name):
+                logger.error(f"  ✗ Schema check failed - aborting upload")
                 return False, time.time() - start_time
             if object_type == "calo_hits" and not skip_calo_check and \
                     not validate_calo_hits_files(sorted_files, config_name):
@@ -436,6 +537,9 @@ def upload_config_large_folder(
             object_type = config_info['object_type']
             if not validate_event_ids_streaming(sorted_files, config_name, object_type):
                 logger.error(f"  ✗ Validation failed - aborting upload")
+                return False, time.time() - start_time
+            if not validate_parquet_files(sorted_files, config_name):
+                logger.error(f"  ✗ Schema check failed - aborting upload")
                 return False, time.time() - start_time
             if object_type == "calo_hits" and not skip_calo_check and \
                     not validate_calo_hits_files(sorted_files, config_name):
@@ -817,6 +921,8 @@ Examples:
     parser.add_argument('--num-workers', type=int, default=32,
                         help='Number of concurrent upload threads (default: 32)')
     parser.add_argument('--verbose', action='store_true', help='Enable verbose logging')
+    parser.add_argument('--validate-only', action='store_true',
+                        help='Run every gate on the local files and print a summary; no Hub access')
 
     args = parser.parse_args()
 
@@ -833,6 +939,13 @@ Examples:
     try:
         # Load config
         config = load_config(args.config)
+
+        if args.validate_only:
+            selected = build_config_list(config)
+            if args.configs:
+                selected = [c for c in selected
+                            if any(c['config_name'] == sel or c['config_name'].startswith(sel) for sel in args.configs)]
+            sys.exit(0 if validate_only(selected, skip_calo_check=args.skip_calo_check) else 1)
 
         # Get HuggingFace token
         token_env = config['huggingface'].get('token_env', 'HF_TOKEN')
@@ -945,7 +1058,7 @@ Examples:
         if not args.dry_run:
             logger.info(f"\nUpdating README.md with all configs...")
             readme_path_str = config['huggingface'].get('readme_path')
-            readme_path = Path(readme_path_str) if readme_path_str else None
+            readme_path = resolve_relative(readme_path_str, args.config) if readme_path_str else None
             update_readme_with_all_configs(repo_id, readme_path, token, args.dry_run)
 
         # Summary

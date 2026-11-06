@@ -1,0 +1,78 @@
+# ColliderML Release 2 on the Hugging Face Hub: CERN/ColliderML-Release-2
+# Release 2 adds Pandora particle flow (PFOs, clusters, digitised cells), the full truth record and
+# tracker sim hits to Release 1 events. Versions differ per dataset, so each dataset names its own.
+#
+# Check the local files (no Hub access):
+#   python scripts/dataset/upload_to_hf_unified.py scripts/dataset/release2_dataset_config.yaml --validate-only
+# Upload one dataset (all its objects):
+#   HUGGINGFACE_TOKEN=... python scripts/dataset/upload_to_hf_unified.py \
+#       scripts/dataset/release2_dataset_config.yaml --configs ttbar_pu0_
+
+huggingface:
+  repo_id: "CERN/ColliderML-Release-2"
+  pretty_name: "ColliderML Dataset Release 2"
+  readme_path: "RELEASE2_README.md"        # relative to this file
+  license: "cc-by-4.0"
+  tags:
+    - physics
+    - high-energy-physics
+    - particle-physics
+    - collider-physics
+    - particle-flow
+    - tracking
+    - calorimetry
+    - machine-learning
+    - simulation
+  size_category: "10K<n<100K"
+  contact: "daniel.thomas.murnane@cern.ch"
+  token_env: "HUGGINGFACE_TOKEN"
+  private: false
+
+data:
+  base_dir: "/global/cfs/cdirs/m4958/data/ColliderML/simulation"
+  version: "v22"                            # default; a dataset can override with `version:`
+  format_subdir: "parquet"
+
+object_types:
+  - particles         # truth/particles
+  - tracker_simhits   # truth/tracker_simhits
+  - tracker_hits      # reco/tracker_hits
+  - tracks            # reco/tracks
+  - truth_tracks      # reco/truth_tracks
+  - calo_cells        # reco/calo_cells
+  - calo_clusters     # reco/calo_clusters
+  - pfos              # reco/pfos
+
+campaigns:
+  - campaign_name: "hard_scatter"
+    pileup: 0
+    pileup_label: "pu0"
+    description: "Hard-scatter events, no pileup"
+    datasets:
+      - name: "ttbar"
+        version: "v22"
+        description: "Top-quark pair production"
+        enabled: true
+      - name: "jets"
+        version: "v22"
+        description: "QCD multijet production"
+        enabled: false                      # enable once hard_scatter/jets/v22 is packaged
+      - name: "diphoton"
+        version: "v22"
+        description: "Diphoton production"
+        enabled: false                      # enable once hard_scatter/diphoton/v22 is packaged
+
+  - campaign_name: "full_pileup"
+    pileup: 200
+    pileup_label: "pu200"
+    description: "Events with HL-LHC pileup (mu = 200)"
+    datasets:
+      - name: "ttbar"
+        version: "v22"
+        description: "Top-quark pair production at mu = 200"
+        enabled: true
+
+upload:
+  num_workers: 1
+  skip_existing: true
+  dry_run: false
