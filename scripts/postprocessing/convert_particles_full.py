@@ -26,7 +26,19 @@ truth/particles table instead. Generator-history rows (not in ACTS) get NaN / 0.
 package_native_parquet adds run * run_size.
 
 Stage config keys: sim_input_name (default edm4hep.root), native_particles (default particles),
-parent_particles_dir + run_size (copy perigee/vertex_primary from v1), events (-1 = all).
+parent_particles_dir + run_size (copy perigee/vertex_primary from v1), events (-1 = all),
+generator_particles (off | all | hard_scatter, default off).
+
+generator_particles writes a second table with only the generator history (generator_status not in
+0, 1, 2: beams, hard process, showers, hadronisation inputs), for publishing it next to a particles table
+that keeps the Release 1 rows:
+
+    <runs>/<N>/generator_particles/generator_particles_000000-<n>.parquet
+
+Same particle_id (MCParticles index), so parent_ids / daughter_ids cross between the two tables. The
+`interaction` column numbers the pp interactions of the event (connected parts of the parent/daughter
+graph, ordered by their lowest index); the hard scatter is the interaction of MCParticle 0, which comes
+first in the merged generator record. `hard_scatter` keeps only that interaction.
 """
 
 from __future__ import annotations
@@ -40,6 +52,8 @@ from pathlib import Path
 
 import numpy as np
 import pyarrow as pa
+from scipy.sparse import coo_matrix
+from scipy.sparse.csgraph import connected_components
 import pyarrow.parquet as pq
 import uproot
 import yaml
@@ -60,6 +74,15 @@ FLOAT_BRANCHES = {
 INT_BRANCHES = {"generator_status": "generatorStatus", "simulator_status": "simulatorStatus",
                 "color_a": "colorFlow.a", "color_b": "colorFlow.b"}
 CREATED_IN_SIMULATION_BIT = 30
+RELEASE1_STATUS = (0, 1, 2)  # Geant4 particles, final state, decayed in the generator
+GEN = "generator_particles"
+GEN_COLUMNS = ["event_id", "particle_id", "interaction", "pdg_id", "generator_status", "mass", "energy", "charge",
+               "vx", "vy", "vz", "time", "px", "py", "pz", "endpoint_x", "endpoint_y", "endpoint_z",
+               "color_a", "color_b", "parent_ids", "daughter_ids"]
+GEN_TYPES = {"event_id": pa.uint32(), "particle_id": pa.list_(pa.uint64()), "interaction": pa.list_(pa.uint16()),
+             "pdg_id": pa.list_(pa.int64()), "generator_status": pa.list_(pa.int32()),
+             "color_a": pa.list_(pa.int32()), "color_b": pa.list_(pa.int32()),
+             "parent_ids": pa.list_(pa.list_(pa.int64())), "daughter_ids": pa.list_(pa.list_(pa.int64()))}
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -72,6 +95,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--native-particles", default=None)
     p.add_argument("--parent-particles-dir", default=None)
     p.add_argument("--run-size", type=int, default=None)
+    p.add_argument("--generator-particles", choices=["off", "all", "hard_scatter"], default=None)
     p.add_argument("--seed", default=None)  # run_stage compatibility, unused
     p.add_argument("--performance-metrics", action="store_true", default=None)
     return p
@@ -86,12 +110,37 @@ def load_config(args):
     args.events = -1 if args.events is None else int(args.events)
     args.sim_input_name = args.sim_input_name or "edm4hep.root"
     args.native_particles = args.native_particles or "particles"
+    args.generator_particles = args.generator_particles or "off"
+    if args.generator_particles not in ("off", "all", "hard_scatter"):
+        raise ValueError(f"generator_particles must be off, all or hard_scatter, not {args.generator_particles!r}")
     return args
 
 
 def _links(begin, end, index):
     """Per-particle lists of linked MCParticle indices (podio OneToMany relation)."""
     return [index[b:e].astype(np.int64).tolist() for b, e in zip(begin, end)]
+
+
+def interactions(parents: list[list[int]], n: int) -> np.ndarray:
+    """Interaction number per particle: connected parts of the parent/daughter graph, numbered in the
+    order of their lowest particle index (so the interaction of particle 0 is 0)."""
+    src = np.fromiter((i for i, ps in enumerate(parents) for _ in ps), dtype=np.int64)
+    dst = np.fromiter((p for ps in parents for p in ps), dtype=np.int64)
+    graph = coo_matrix((np.ones(len(src), np.int8), (src, dst)), shape=(n, n))
+    _, labels = connected_components(graph, directed=False)
+    first = np.full(labels.max() + 1 if n else 0, n, dtype=np.int64)
+    np.minimum.at(first, labels, np.arange(n))
+    order = np.empty_like(first)
+    order[np.argsort(first)] = np.arange(len(first))
+    return order[labels].astype(np.uint16)
+
+
+def generator_rows(gen_status: np.ndarray, inter: np.ndarray, scope: str) -> np.ndarray:
+    """Indices of the generator-history particles to keep (scope all or hard_scatter)."""
+    keep = ~np.isin(gen_status, RELEASE1_STATUS)
+    if scope == "hard_scatter":
+        keep &= inter == 0
+    return np.flatnonzero(keep)
 
 
 def acts_columns(run_dir: Path, native_dir: str, sim_file: Path):
@@ -170,6 +219,7 @@ def convert_run(run_dir: Path, args) -> tuple[Path, int]:
                                               "time", "px", "py", "pz", "perigee_d0", "perigee_z0", "vertex_primary",
                                               "parent_id", "primary", *INT_BRANCHES, "parent_ids", "daughter_ids",
                                               "endpoint_x", "endpoint_y", "endpoint_z", "endpoint_px", "endpoint_py", "endpoint_pz"]}
+    gen = {k: [] for k in GEN_COLUMNS} if args.generator_particles != "off" else None
     n_acts_missing = 0
     for e in range(n_events):
         g = lambda name: a[f"{M}/{M}.{name}"][e]
@@ -199,6 +249,20 @@ def convert_run(run_dir: Path, args) -> tuple[Path, int]:
         for k in INT_BRANCHES:
             cols[k].append(ints[k])
         cols["parent_ids"].append(parents); cols["daughter_ids"].append(daughters)
+        if gen is not None:
+            inter = interactions(parents, n)
+            rows = generator_rows(ints["generator_status"], inter, args.generator_particles)
+            gen["event_id"].append(e)
+            gen["particle_id"].append(rows.astype(np.uint64))
+            gen["interaction"].append(inter[rows])
+            gen["pdg_id"].append(np.asarray(g("PDG"), dtype=np.int64)[rows])
+            gen["energy"].append(energy[rows])
+            for k in ("mass", "charge", "vx", "vy", "vz", "time", "px", "py", "pz", "endpoint_x", "endpoint_y", "endpoint_z"):
+                gen[k].append(f[k][rows])
+            for k in ("generator_status", "color_a", "color_b"):
+                gen[k].append(ints[k][rows])
+            gen["parent_ids"].append([parents[i] for i in rows])
+            gen["daughter_ids"].append([daughters[i] for i in rows])
     if n_acts_missing:
         raise RuntimeError(f"{n_acts_missing} events missing from the perigee/vertex_primary source")
 
@@ -208,14 +272,22 @@ def convert_run(run_dir: Path, args) -> tuple[Path, int]:
              "color_a": pa.list_(pa.int32()), "color_b": pa.list_(pa.int32()),
              "parent_ids": pa.list_(pa.list_(pa.int64())), "daughter_ids": pa.list_(pa.list_(pa.int64()))}
     arrays = {k: pa.array(v, type=types.get(k, pa.list_(pa.float32()))) for k, v in cols.items()}
-    table = pa.table(arrays)
-    out_dir = run_dir / OBJ
-    out_dir.mkdir(parents=True, exist_ok=True)
-    tmp = out_dir / f".{OBJ}.partial.parquet"
-    pq.write_table(table, tmp)
-    final = out_dir / f"{OBJ}_000000-{n_events:06d}.parquet"
-    os.replace(tmp, final)
+    final = write_table(pa.table(arrays), run_dir, OBJ, n_events)
+    if gen is not None:
+        gtable = pa.table({k: pa.array(v, type=GEN_TYPES.get(k, pa.list_(pa.float32()))) for k, v in gen.items()})
+        gfinal = write_table(gtable, run_dir, GEN, n_events)
+        logger.info("%s (%s): %d rows", gfinal, args.generator_particles, sum(len(r) for r in gen["particle_id"]))
     return final, n_events
+
+
+def write_table(table: pa.Table, run_dir: Path, obj: str, n_events: int) -> Path:
+    out_dir = run_dir / obj
+    out_dir.mkdir(parents=True, exist_ok=True)
+    tmp = out_dir / f".{obj}.partial.parquet"
+    pq.write_table(table, tmp)
+    final = out_dir / f"{obj}_000000-{n_events:06d}.parquet"
+    os.replace(tmp, final)
+    return final
 
 
 def main() -> int:
