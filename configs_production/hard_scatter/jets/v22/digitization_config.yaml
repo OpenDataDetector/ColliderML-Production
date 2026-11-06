@@ -1,0 +1,53 @@
+# Multijet PU0 pilot (v22), step 1 of 4: ACTS digitization + tracking on the Release 1 multijet
+# sim (runs 0-9, 10,000 events; MadGraph pp > 2-4 jets, ptj > 20 GeV, MLM xqcut 40). Each v22 run
+# dir holds edm4hep.root as a symlink to v1; this stage writes the ACTS-native tracker tables, the
+# ROOT track summaries and the sim_with_tracks.root handoff for Pandora. Same settings as
+# hard_scatter/ttbar/v20 (sw:pr-8, ODD v6, geometric digitization).
+campaign: "hard_scatter"
+dataset: "jets"
+version: "v22"
+stage: "digitization"
+
+common:
+  container: "ghcr.io/opendatadetector/sw:pr-8"
+  container_tarball: "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/stress_mu200/sw_pr8_image.tar"
+  cache_dir: "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-prod-container/.cache"
+  output_base_dir: "/global/cfs/cdirs/m4958/data/ColliderML/simulation"
+
+# Pilot: one interactive node, 10 runs in parallel, 16 threads each.
+job_config:
+  n_runs: 10
+  runs_per_node: 10
+  time_limit: "02:00:00"
+  qos: "interactive"
+  execution_mode: "interactive"
+
+validation_config:
+  enabled: false
+
+events: 1000                  # whole Release 1 run
+threads: 16
+parquet_events_per_shard: 1000   # one parquet shard per run
+
+odd_geo_dir: /opt/odd
+digi_config: /opt/odd/config/odd-digi-geometric-config.json
+
+output_parquet_arrow: true    # tracker_simhits, tracker_hits, particles, tracks, truth_tracks
+digi: true
+reco: true
+num_seeds_per_spm: 40
+
+output_sim_with_tracks: true  # Pandora handoff (calo SimHits + MCParticles + ActsTracks)
+
+output_particles_root: true
+output_measurements_root: true
+ambi_root_output: true
+ambi_finding_performance: true
+ambi_fitting_performance: true
+write_helix_parameters: true
+performance_metrics: true     # CKF summary with cov_* branches (packaging joins them)
+
+truth_tracking: true
+truth_tracking_fitter: kf
+truth_tracking_prefit: gx2f
+truth_tracking_root_summary: true
