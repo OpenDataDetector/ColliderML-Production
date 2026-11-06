@@ -125,6 +125,7 @@ def _process_chunk_for_all(
     time_max: float = 10.0,
     output_format: str = 'hdf5',
     row_group_size: int | None = None,
+    allow_calo_event_loss: bool = False,
 ) -> None:
     chunk_start_time = time.time()
     logger.info(f"Starting chunk processing for events {start_event}-{end_event}")
@@ -138,6 +139,7 @@ def _process_chunk_for_all(
     seen_pairs_particles: set[tuple[int, int]] = set()
     seen_pairs_hits: set[tuple[int, int]] = set()
     seen_pairs_calo: set[tuple[int, int]] = set()
+    input_pairs_calo: set[tuple[int, int]] = set()  # events with at least one calo hit in the EDM4hep input
 
     run_processing_time = 0.0
     
@@ -192,6 +194,9 @@ def _process_chunk_for_all(
             calo_contributions_all = batch.get_calo_contributions_df()
             logger.debug(f"Loaded calorimeter DataFrames for run {abs_run} in {time.time() - calo_fetch_start:.3f}s")
             
+            if calo_hits_all is not None and not calo_hits_all.empty:
+                for local_event in calo_hits_all['event_id'].unique():
+                    input_pairs_calo.add((abs_run, int(local_event)))
             if calo_hits_all is not None and not calo_hits_all.empty and \
                calo_contributions_all is not None and not calo_contributions_all.empty:
                 # Process entire run at once (vectorized, no event loop!)
@@ -510,6 +515,17 @@ def _process_chunk_for_all(
             logger.warning(
                 f"Calo hits chunk events expected={expected_events}, processed={processed_events_calo}"
             )
+        # Events with calo hits in the input but no output rows were lost in conversion. Release 1
+        # wrote such short chunks after the warning above (ColliderML-Production#53).
+        lost_calo = sorted(input_pairs_calo - seen_pairs_calo)
+        if lost_calo:
+            msg = (f"Calo hits: {len(lost_calo)} events with input hits have no output rows, "
+                   f"first (run, local_event) {lost_calo[:5]}")
+            if allow_calo_event_loss:
+                logger.warning(msg + " (allow_calo_event_loss is set)")
+            else:
+                raise RuntimeError(msg + "; set allow_calo_event_loss: true only if every hit of these "
+                                         "events is below the energy/time thresholds")
         logger.info(f"Writing calo hits to: {calo_out} (rows={len(calo_all)})")
         write_calohits_with_selection(calo_all, str(calo_out), columns_keep=calo_columns_keep, output_format=output_format, row_group_size=row_group_size)
         if calo_out.exists():
@@ -574,6 +590,7 @@ def convert_all(config: dict, chunk_index: int | None = None) -> None:
     time_max = calo_config.get("time_max", 10.0)
 
     row_group_size = config.get("row_group_size")  # None means PyArrow default (single row group)
+    allow_calo_event_loss = bool(config.get("allow_calo_event_loss", False))
 
     processing_start_time = time.time()
     
@@ -613,6 +630,7 @@ def convert_all(config: dict, chunk_index: int | None = None) -> None:
             time_max=time_max,
             output_format=output_format,
             row_group_size=row_group_size,
+            allow_calo_event_loss=allow_calo_event_loss,
         ),
     )
 
