@@ -1,6 +1,6 @@
-# Multijet PU0 (v22), step 1 of 4: ACTS digitization + tracking on the Release 1 multijet sim
-# (runs 0-999, 1,000,000 events; runs 0-9 were the 10k pilot; MadGraph pp > 2-4 jets,
-# ptj > 20 GeV, MLM xqcut 40). Each v22 run
+# Multijet PU0 pilot (v22), step 1 of 4: ACTS digitization + tracking on the Release 1 multijet
+# sim (runs 0-9, 10,000 events; MadGraph pp > 2-4 jets, ptj > 20 GeV, MLM xqcut 40). Pilot only:
+# the 1M multijet sample is produced in the Release 1 format (Daniel, 2026-11-06). Each v22 run
 # dir holds edm4hep.root as a symlink to v1; this stage writes the ACTS-native tracker tables, the
 # ROOT track summaries and the sim_with_tracks.root handoff for Pandora. Same settings as
 # hard_scatter/ttbar/v20 (sw:pr-8, ODD v6, geometric digitization).
@@ -15,13 +15,12 @@ common:
   cache_dir: "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-prod-container/.cache"
   output_base_dir: "/global/cfs/cdirs/m4958/data/ColliderML/simulation"
 
-# Pilot: one interactive node, 10 runs in parallel, 16 threads each (15 min). Production:
-# run_blocks_multinode.sh on a regular multi-node job, same per-node shape.
+# Pilot: one interactive node, 10 runs in parallel, 16 threads each (15 min).
 job_config:
-  n_runs: 1000
+  n_runs: 10
   runs_per_node: 10
   time_limit: "02:00:00"
-  qos: "regular"
+  qos: "interactive"
   execution_mode: "interactive"
 
 validation_config:
