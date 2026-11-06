@@ -1,8 +1,11 @@
 # Pflow v22 (PU200), step 1 of 3: Pandora rerun on the v20 sim_with_tracks.root with image
-# colliderml/reco:20261103b = v20 image + ODD calo layer-data fix (OpenDataDetector PR #6) + LCContent no-cache patch +
+# colliderml/reco:20261106 = v20 image + ODD calo layer-data fix (OpenDataDetector PR #6) + LCContent no-cache patch +
 # k4GaudiPandora calo track-state fix (k4GaudiPandora PR #1) + k4ODD settings (k4ODD PR #2:
 # CLD electron ID, retrained photon likelihood, refit MIP/had scales, Z0UnmatchedVertexTrackCut 200).
 # Constants = ODDreconstruction.py defaults in that k4ODD branch, no overrides.
+# 2026-11-06 rerun (runs 0-1562, 100,032 events) with colliderml/reco:20261106 (ID 19738fc52f1e): DDCaloDigi
+# last-layer fix (ECALLayers [49,49], HCALLayers [37]), k4ODD d92d205 (Z->uds photon likelihood),
+# k4GaudiPandora faf0d67; no constants changed. Written to staging; swapped in after verification.
 campaign: "full_pileup"
 dataset: "ttbar"
 version: "v22"
@@ -12,14 +15,14 @@ common:
   container: "ghcr.io/opendatadetector/sw:pr-8"
   container_tarball: "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/stress_mu200/sw_pr8_image.tar"
   cache_dir: "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-prod-container/.cache"
-  output_base_dir: "/global/cfs/cdirs/m4958/data/ColliderML/simulation"
+  output_base_dir: "/global/cfs/cdirs/m4958/data/ColliderML/staging/simulation"   # staging rerun 2026-11-06 (reco 20261106); published copy swapped in after verification
   stage_containers:
     pandora_reco:
-      container: "localhost/colliderml/reco:20261103b"
-      container_tarball: "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/images/colliderml_reco_20261103b.tar"
+      container: "localhost/colliderml/reco:20261106"
+      container_tarball: "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/images/colliderml_reco_20261106.tar"
 
 job_config:
-  n_runs: 157
+  n_runs: 1563
   runs_per_node: 1
   time_limit: "04:00:00"
   qos: "interactive"
@@ -36,3 +39,4 @@ input_name: sim_with_tracks.root
 track_collection: ActsTracks   # charged PF
 max_track_sigma_pop: 999       # masks the inflated ACTS omega covariance (roadmap A7)
 preload_jemalloc: true        # ~14% faster at PU200, identical output (needs image 20261103b or later)
+work_root: /pscratch/sd/d/danieltm/colliderml_pandora_work   # per-slice work dirs off CFS (inodes)

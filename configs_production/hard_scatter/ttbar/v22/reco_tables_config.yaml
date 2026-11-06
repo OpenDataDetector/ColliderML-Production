@@ -9,11 +9,11 @@ common:
   container: "ghcr.io/opendatadetector/sw:pr-8"
   container_tarball: "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/stress_mu200/sw_pr8_image.tar"
   cache_dir: "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-prod-container/.cache"
-  output_base_dir: "/global/cfs/cdirs/m4958/data/ColliderML/simulation"
+  output_base_dir: "/global/cfs/cdirs/m4958/data/ColliderML/staging/simulation"   # staging rerun 2026-11-06 (reco 20261106); published copy swapped in after verification
   stage_containers:
     reco_tables:
-      container: "localhost/colliderml/reco:20261103b"
-      container_tarball: "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/images/colliderml_reco_20261103b.tar"
+      container: "localhost/colliderml/reco:20261106"
+      container_tarball: "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/images/colliderml_reco_20261106.tar"
 
 job_config:
   n_runs: 8

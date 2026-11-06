@@ -25,8 +25,8 @@ job_config:
 validation_config:
   enabled: false
 
-input_base_dir: "/global/cfs/cdirs/m4958/data/ColliderML/simulation"
-output_base_dir: "/global/cfs/cdirs/m4958/data/ColliderML/simulation"
+input_base_dir: "/global/cfs/cdirs/m4958/data/ColliderML/staging/simulation"   # staging rerun 2026-11-06
+output_base_dir: "/global/cfs/cdirs/m4958/data/ColliderML/staging/simulation"   # staging rerun 2026-11-06
 
 run_size: 1280
 chunk_size: 1000

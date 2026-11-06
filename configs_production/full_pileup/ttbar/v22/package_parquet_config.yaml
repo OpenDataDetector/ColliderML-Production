@@ -15,8 +15,10 @@ common:
   container_tarball: "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/stress_mu200/sw_pr8_image.tar"
   cache_dir: "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-prod-container/.cache"
 
+# 2026-11-06: 100k rerun (runs 0-1562, Pandora with reco 20261106), read from and written to staging;
+# 1001 chunks (events 0-99 ... 100000-100031); adds truth/generator_particles.
 job_config:
-  n_runs: 101                  # chunks: events 0-99 ... 10000-10047
+  n_runs: 1001                 # chunks: events 0-99 ... 100000-100031
   runs_per_node: 11
   time_limit: "00:30:00"
   qos: "interactive"
@@ -25,8 +27,8 @@ job_config:
 validation_config:
   enabled: false
 
-input_base_dir: "/global/cfs/cdirs/m4958/data/ColliderML/simulation"
-output_base_dir: "/global/cfs/cdirs/m4958/data/ColliderML/simulation"
+input_base_dir: "/global/cfs/cdirs/m4958/data/ColliderML/staging/simulation"   # staging rerun 2026-11-06
+output_base_dir: "/global/cfs/cdirs/m4958/data/ColliderML/staging/simulation"   # staging rerun 2026-11-06
 
 run_size: 64
 chunk_size: 100                # same file boundaries as Release 1 full_pileup/ttbar/v1
