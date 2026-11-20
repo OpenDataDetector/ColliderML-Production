@@ -60,6 +60,11 @@ python convert_particles.py /path/to/edm4hep/files /path/to/output dataset_name
 python convert_calorimeter.py /path/to/edm4hep/files /path/to/output dataset_name
 ```
 
+5. Tracker Cells
+
+   Add `tracker_cells` alongside `tracker_hits` in the `convert_all.py`
+   Parquet config. Cell export requires `clusters.root` from ACTS.
+
 Each script accepts the same optional arguments as `convert_all.py`.
 
 ### Converting Efficiency Graphs
@@ -135,6 +140,12 @@ At a high level, the content is:
     - Short strip: negative endcap = 3, barrel = 4, positive endcap = 5
     - Long strip: negative endcap = 6, barrel = 7, positive endcap = 8
   - **Note**: `cell_id` is not stored for tracker hits; it is redundant given `(volume_id, layer_id, surface_id)` and the underlying geometry.
+
+- **Tracker cells (`reco/tracker_cells`)**
+  - `event_id` (uint32) is the global event index.
+  - `measurement_id` (`list<uint64>`) gives the zero-based tracker hit index for each cell in the event.
+  - `channel0` and `channel1` (`list<int32>`) give the cell addresses.
+  - `value` (`list<float32>`) gives the ACTS activation for each cell. With the four-bit ODD configuration, enabled pixels store codes 1–15 and strips retain native activation.
 
 - **Tracks (`reco/tracks`)**:
   - `event_id` (int64)
