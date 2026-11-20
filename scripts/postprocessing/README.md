@@ -32,6 +32,8 @@ Key config fields:
 
 ### Converting Individual Components
 
+You can also convert individual components using their specific scripts:
+
 1. Tracker Hits:
 ```bash
 python convert_hits.py /path/to/edm4hep/files /path/to/output dataset_name
