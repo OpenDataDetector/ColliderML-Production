@@ -69,6 +69,15 @@ DIGIHITS_PARQUET_TYPES = {
     "detector": list_of(pa.uint8()),
 }
 
+# Tracker cells: one row per event, with aligned lists of constituent cells
+TRACKER_CELLS_PARQUET_TYPES = {
+    "event_id": pa.uint32(),
+    "measurement_id": list_of(pa.uint64()),
+    "channel0": list_of(pa.int32()),
+    "channel1": list_of(pa.int32()),
+    "value": list_of(pa.float32()),
+}
+
 
 # Tracks: one row per event, list-valued track properties
 TRACKS_PARQUET_TYPES = {

@@ -31,6 +31,7 @@ from convert_digihits import convert_digihits, process_event_for_digihits, write
 
 from utils.path_utils import make_dir, get_run_paths
 from utils.driver import iterate_and_process_chunks, local_events_for_run
+from utils.tracker_cells import load_digitized_tracker, write_tracker_cells
 from utils.track_utils import (
     load_root_file,
     build_hdf5_tracks,
@@ -125,6 +126,7 @@ def _process_chunk_for_all(
     time_max: float = 10.0,
     output_format: str = 'hdf5',
     row_group_size: int | None = None,
+    tracker_cells_out_dir: Path | None = None,
 ) -> None:
     chunk_start_time = time.time()
     logger.info(f"Starting chunk processing for events {start_event}-{end_event}")
@@ -132,6 +134,7 @@ def _process_chunk_for_all(
 
     particles_frames: list[pd.DataFrame] = []
     digihits_frames: list[pd.DataFrame] = []
+    tracker_cells_frames: list[pd.DataFrame] = []
     tracks_frames: list[pd.DataFrame] = []
     calo_frames: list[pd.DataFrame] = []
     seen_pairs_tracks: set[tuple[int, int]] = set()
@@ -140,12 +143,15 @@ def _process_chunk_for_all(
     seen_pairs_calo: set[tuple[int, int]] = set()
 
     run_processing_time = 0.0
+    include_tracker_cells = "tracker_cells" in objects
     
     for abs_run in tqdm(range(start_run, end_run + 1), leave=False):
         run_start_time = time.time()
         run_dir = run_dirs[abs_run]
         edm4hep_path = Path(run_dir) / "edm4hep.root"
         if not edm4hep_path.exists():
+            if include_tracker_cells:
+                raise FileNotFoundError(f"Missing EDM4hep file for tracker_cells: {edm4hep_path}")
             logger.warning(f"Missing EDM4hep file: {edm4hep_path}")
             continue
 
@@ -168,6 +174,31 @@ def _process_chunk_for_all(
         logger.info(
             f"Run {abs_run}: dir={run_dir} edm4hep={edm4hep_path} local_events={local_events_str}"
         )
+
+        measurement_columns = None
+        if "tracker_hits" in objects:
+            measurement_columns = digihits_measurements_columns
+            if measurement_columns is None:
+                measurement_columns = [
+                    "event_nr", "volume_id", "layer_id", "surface_id",
+                    "rec_gx", "rec_gy", "rec_gz", "true_x", "true_y", "true_z",
+                ]
+        measurements_path = run_dir / "measurements.root"
+        digi_measurements_df_all = None
+        if include_tracker_cells or (
+            measurement_columns is not None and measurements_path.exists()
+        ):
+            digi_measurements_df_all, cells = load_digitized_tracker(
+                run_dir,
+                local_events,
+                abs_run * run_size,
+                measurement_columns=measurement_columns,
+                include_cells=include_tracker_cells,
+            )
+            if cells is not None:
+                tracker_cells_frames.append(cells)
+        if objects == ["tracker_cells"]:
+            continue
 
         # Load only local events for this run to reduce I/O
         batch_load_start = time.time()
@@ -279,37 +310,17 @@ def _process_chunk_for_all(
         
         if "tracker_hits" in objects:
             digihits_start_time = time.time()
-            measurements_path = Path(run_dir) / "measurements.root"
-            if measurements_path.exists():
-                try:
-                    included_columns = (
-                        digihits_measurements_columns
-                        if digihits_measurements_columns is not None
-                        else [
-                        "event_nr",
-                            "volume_id",
-                            "layer_id",
-                            "surface_id",
-                            "rec_gx",
-                            "rec_gy",
-                            "rec_gz",
-                            "true_x",
-                            "true_y",
-                            "true_z",
-                        ]
-                    )
-                    digi_measurements_df_all = load_root_file(str(measurements_path), included_columns=included_columns)
-                except Exception as e:
-                    logger.error(f"Failed to load measurements for run {abs_run}: {e}")
-                    digi_measurements_df_all = pd.DataFrame()
+            if digi_measurements_df_all is not None:
                 hits_fetch_start = time.time()
                 hits_all = batch.get_tracker_hits_df()
                 logger.debug(f"Loaded tracker hits DataFrame for run {abs_run} in {time.time() - hits_fetch_start:.3f}s")
                 evs_for_run = []
                 for local_event_num in range(local_events[0], local_events[1]):
-                    ev_hits = hits_all[hits_all.event_id == local_event_num] if not hits_all.empty else None
                     # Boolean indexing creates a view; process_event_for_digihits will copy if needed
                     ev_meas = digi_measurements_df_all[digi_measurements_df_all.event_id == local_event_num]
+                    if ev_meas.empty:
+                        continue
+                    ev_hits = hits_all[hits_all.event_id == local_event_num] if not hits_all.empty else None
                     ev_df = process_event_for_digihits(abs_run * run_size + local_event_num, local_event_num, ev_meas, ev_hits)
                     if not ev_df.empty:
                         pair = (abs_run, local_event_num)
@@ -474,6 +485,14 @@ def _process_chunk_for_all(
             )
         digihits_write_time = time.time() - digihits_write_start
         logger.debug(f"Tracker hits file writing time: {digihits_write_time:.3f}s")
+
+    if tracker_cells_out_dir is not None and tracker_cells_frames:
+        tracker_cells_all = pd.concat(tracker_cells_frames, ignore_index=True)
+        tracker_cells_out = tracker_cells_out_dir / (
+            f"{dataset_name_dot}.reco.tracker_cells.events{start_event}-{end_event}{file_ext}"
+        )
+        logger.info(f"Writing tracker cells to: {tracker_cells_out} (rows={len(tracker_cells_all)})")
+        write_tracker_cells(tracker_cells_all, tracker_cells_out, row_group_size=row_group_size)
         
     if "tracks" in objects and tracks_frames:
         tracks_write_start = time.time()
@@ -543,6 +562,13 @@ def convert_all(config: dict, chunk_index: int | None = None) -> None:
     
     # Extract output format from config (default to hdf5 for backward compatibility)
     output_format = config.get("output_format", "hdf5")
+    tracker_cells_out_dir = None
+    if "tracker_cells" in objects:
+        if output_format != "parquet":
+            raise ValueError("tracker_cells requires output_format: parquet")
+        tracker_cells_out_dir = make_dir(
+            output_base_dir, f"{dataset_base}/parquet/reco/tracker_cells"
+        )
 
     logger.debug(f"Input base directory: {input_base_dir}")
     logger.debug(f"Output base directory: {output_base_dir}")
@@ -613,6 +639,7 @@ def convert_all(config: dict, chunk_index: int | None = None) -> None:
             time_max=time_max,
             output_format=output_format,
             row_group_size=row_group_size,
+            tracker_cells_out_dir=tracker_cells_out_dir,
         ),
     )
 
@@ -673,4 +700,4 @@ def main():
     logger.info(f"Total script execution time: {main_total_time:.2f}s")
 
 if __name__ == "__main__":
-    main() 
+    main()

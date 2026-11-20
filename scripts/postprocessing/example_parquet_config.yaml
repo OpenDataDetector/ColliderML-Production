@@ -23,6 +23,7 @@ output_format: parquet  # <-- Change this to switch formats!
 objects:
   - particles
   - tracker_hits
+  - tracker_cells  # Requires clusters.root from digitization
   - tracks
 
 # Optional: Column selection (works with both formats)
