@@ -41,7 +41,9 @@ Usage (matches convert_all.py, so run_stage drives it identically):
 from __future__ import annotations
 
 import argparse
+import hashlib
 import logging
+import os
 import sys
 import time
 from pathlib import Path
@@ -232,6 +234,24 @@ def _attach_covariance(table: pa.Table, run_dir: Path, obj: str) -> pa.Table:
 _TRACK_KEY_STRIDE = 1 << 20  # track_id is uint16, so 2^20 is a safe stride
 
 
+def _sha256(path) -> str:
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for b in iter(lambda: f.read(1 << 22), b""):
+            h.update(b)
+    return h.hexdigest()
+
+
+def release_chunk_window(chunk_index: int, chunk_size: int, release_events: int) -> tuple[int, int]:
+    """[start, end] of a release chunk; an index outside the release is an error, not a warning."""
+    n_chunks = (release_events + chunk_size - 1) // chunk_size
+    if not 0 <= chunk_index < n_chunks:
+        raise SystemExit(f"chunk index {chunk_index} outside the release (0..{n_chunks - 1}, "
+                         f"{release_events} events in chunks of {chunk_size})")
+    start = chunk_index * chunk_size
+    return start, min(release_events, start + chunk_size) - 1
+
+
 # --- Shared hits --------------------------------------------------------------
 # The ROOT summary's nSharedHits is 0 for every track in the pr-8 chain: nothing
 # computes it (TrackFindingAlgorithm has no computeSharedHits step and the greedy
@@ -243,7 +263,9 @@ _TRACK_KEY_STRIDE = 1 << 20  # track_id is uint16, so 2^20 is a safe stride
 def compute_shared_hits(table: pa.Table) -> pa.Table:
     """Return ``table`` with ``n_shared_hits`` (list<int32>, one per track) recomputed."""
     if "hit_ids" not in table.column_names:
-        return table
+        raise RuntimeError("shared_hits_from_hit_ids: table has no hit_ids column")
+    if "hit_outlier" not in table.column_names:
+        raise RuntimeError("shared_hits_from_hit_ids: table has no hit_outlier column")
     hits = table.column("hit_ids").combine_chunks()        # list<list<uint32>> per event
     trk_off = hits.offsets.to_numpy()                       # event -> tracks
     per_trk = hits.flatten()                                # list<uint32> per track
@@ -251,13 +273,16 @@ def compute_shared_hits(table: pa.Table) -> pa.Table:
     hit_val = per_trk.flatten().to_numpy(zero_copy_only=False).astype(np.int64)
     n_tracks = len(hit_off) - 1
     n_events = len(trk_off) - 1
-    if "hit_outlier" in table.column_names:
-        outl = table.column("hit_outlier").combine_chunks().flatten().flatten()
-        outl = outl.to_numpy(zero_copy_only=False).astype(bool)
-        if len(outl) != len(hit_val):
-            raise RuntimeError("hit_outlier and hit_ids have different lengths")
-    else:
-        outl = np.zeros(len(hit_val), dtype=bool)
+    flags = table.column("hit_outlier").combine_chunks()
+    flags_trk = flags.flatten()
+    # both nesting levels must agree (a short list on one track and a long one on the next
+    # would otherwise move outlier flags between tracks)
+    if not (np.array_equal(flags.offsets.to_numpy(), trk_off)
+            and np.array_equal(flags_trk.offsets.to_numpy(), hit_off)):
+        raise RuntimeError("hit_outlier and hit_ids nesting differs (event or track level)")
+    if hits.null_count or per_trk.null_count or per_trk.flatten().null_count or flags_trk.flatten().null_count:
+        raise RuntimeError("null entries in hit_ids or hit_outlier")
+    outl = flags_trk.flatten().to_numpy(zero_copy_only=False).astype(bool)
 
     trk_of_hit = np.repeat(np.arange(n_tracks, dtype=np.int64), np.diff(hit_off))
     ev_of_trk = np.repeat(np.arange(n_events, dtype=np.int64), np.diff(trk_off))
@@ -406,6 +431,7 @@ def package_chunk(
     sim_input_name: str = "edm4hep.root",
     sort_rows: bool = False,
     shared_hits_from_hit_ids: bool = False,
+    manifest_path: Path | None = None,
 ) -> None:
     """Write one output file per object for the event window [start_event, end_event].
 
@@ -422,6 +448,25 @@ def package_chunk(
 
     incomplete: list[str] = []
     particle_maps: dict[Path, RunParticleMap] = {}
+    inputs: dict[str, dict] = {}     # every file this chunk read (v23 chunk manifest)
+    outputs: list[Path] = []
+
+    def note_inputs(run_dir: Path, obj: str) -> None:
+        files = [run_dir / VERTEX_SOURCE] if obj == "vertices" else sorted((run_dir / obj).glob("*.parquet"))
+        if track_covariance and obj in COV_SOURCE:
+            files.append(run_dir / COV_SOURCE[obj])
+        if remap_particle_ids and obj in ID_COLUMNS:
+            files += sorted((run_dir / "particles").glob("*.parquet")) + [run_dir / sim_input_name]
+        for f in files:
+            if str(f) in inputs or not f.exists():
+                continue
+            real = Path(os.path.realpath(f))
+            st = real.stat()
+            rec = {"realpath": str(real), "size": st.st_size, "mtime_ns": st.st_mtime_ns, "inode": st.st_ino}
+            # the Geant4 input is frozen in the parent baseline (12 GB per PU200 run): stat only
+            if f.name != sim_input_name:
+                rec["sha256"] = _sha256(real)
+            inputs[str(f)] = rec
 
     def particle_map(run_dir: Path) -> RunParticleMap:
         if run_dir not in particle_maps:
@@ -457,6 +502,7 @@ def package_chunk(
                     end_run=end_run, end_local=end_local,
                     abs_run=abs_run, run_size=run_size,
                 )
+                note_inputs(run_dir, obj)
                 table = _read_run_table(run_dir, obj)
                 if table is None:
                     logger.warning("run %d: no %s parquet, skipping", abs_run, obj)
@@ -495,6 +541,7 @@ def package_chunk(
             logger.error("%s: no data in this chunk, no file written", obj)
             incomplete.append(obj)
             continue
+        outputs.append(out_file)
         # The event count is the load-bearing check: a short file here means a
         # run was missing or partially digitized, which must not pass silently.
         if events_seen != expected:
@@ -505,6 +552,16 @@ def package_chunk(
             incomplete.append(obj)
         logger.info("wrote %s (rows=%d, events=%d)", out_file.name, rows, events_seen)
 
+    if manifest_path is not None:
+        import json
+        man = {"start_event": start_event, "end_event": end_event, "runs": [start_run, end_run],
+               "objects": objects, "status": "incomplete" if incomplete else "ok", "incomplete": incomplete,
+               "inputs": inputs,
+               "outputs": {str(f): {"size": f.stat().st_size, "sha256": _sha256(f)} for f in outputs}}
+        manifest_path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = manifest_path.with_name(f".{manifest_path.name}.{os.getpid()}.tmp")
+        tmp.write_text(json.dumps(man, indent=1, sort_keys=True) + "\n")
+        os.replace(tmp, manifest_path)
     if incomplete:
         raise RuntimeError(f"chunk {start_event}-{end_event}: incomplete objects {incomplete}")
     logger.info("chunk %d-%d done in %.1fs", start_event, end_event, time.time() - t0)
@@ -584,6 +641,14 @@ def main() -> None:
         logger.warning("shared_hits_from_hit_ids without track_covariance: n_shared_hits is appended")
     logger.info("sort_by_event_id=%s shared_hits_from_hit_ids=%s", sort_rows, shared_hits_from_hit_ids)
 
+    release_events = config.get("release_events")
+    version_dir = out_base.parent
+
+    def manifest_for(start_event):
+        if not config.get("chunk_manifest", bool(release_events)):
+            return None
+        return version_dir / "provenance" / "package_parquet" / f"chunk{start_event // chunk_size}_inputs.json"
+
     def process(start_event, end_event, start_run, start_local, end_run, end_local):
         package_chunk(
             start_event=start_event, end_event=end_event,
@@ -597,7 +662,22 @@ def main() -> None:
             sim_input_name=sim_input_name,
             sort_rows=sort_rows,
             shared_hits_from_hit_ids=shared_hits_from_hit_ids,
+            manifest_path=manifest_for(start_event),
         )
+
+    if release_events:
+        # The release, not the discovered run dirs, defines the chunks (v23: PU200 0-99,999 in
+        # 1000 chunks; run 1562 contributes entries 0-31 only). Every chunk needs all its input runs.
+        release_events = int(release_events)
+        if len(run_dirs) * run_size < release_events:
+            raise SystemExit(f"{len(run_dirs)} runs x {run_size} < release_events {release_events}")
+        indices = [args.chunk_index] if args.chunk_index is not None else \
+            range((release_events + chunk_size - 1) // chunk_size)
+        for ci in indices:
+            start_event, end_event = release_chunk_window(ci, chunk_size, release_events)
+            process(start_event, end_event, start_event // run_size, start_event % run_size,
+                    end_event // run_size, end_event % run_size)
+        return
 
     iterate_and_process_chunks(
         run_dirs=run_dirs,

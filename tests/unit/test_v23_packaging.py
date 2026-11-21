@@ -183,3 +183,40 @@ def test_vertices_length_mismatch_raises(tmp_path):
         f["vertexing"] = d
     with pytest.raises(RuntimeError, match="nRecoVtx"):
         pkg.vertices_from_root(p)
+
+
+def test_release_chunk_window():
+    assert pkg.release_chunk_window(0, 100, 100_000) == (0, 99)
+    assert pkg.release_chunk_window(999, 100, 100_000) == (99_900, 99_999)
+    assert pkg.release_chunk_window(10, 1000, 10_240) == (10_000, 10_239)
+    for bad in (1000, -1):
+        with pytest.raises(SystemExit):
+            pkg.release_chunk_window(bad, 100, 100_000)
+    # chunk 999 of PU200 ends inside run 1562 at local entry 31
+    s, e = pkg.release_chunk_window(999, 100, 100_000)
+    assert (e // 64, e % 64) == (1562, 31) and s // 64 == 1560
+
+
+def test_shared_hits_rejects_misaligned_flags():
+    # same total flag count (3) but distributed 1+2 instead of 2+1 across tracks
+    t = _tracks([0], [[[1, 2], [2]]], outliers=[[[False], [False, True]]])
+    with pytest.raises(RuntimeError, match="nesting"):
+        pkg.compute_shared_hits(t)
+    with pytest.raises(RuntimeError, match="hit_outlier"):
+        pkg.compute_shared_hits(t.drop(["hit_outlier"]))
+
+
+def test_chunk_manifest_lists_inputs_and_outputs(tmp_path):
+    rd = tmp_path / "runs" / "0"
+    (rd / "tracks").mkdir(parents=True)
+    pq.write_table(_tracks([1, 0], [[[1]], [[2]]]), rd / "tracks" / "tracks_000000-000002.parquet")
+    man = tmp_path / "prov" / "chunk0_inputs.json"
+    pkg.package_chunk(start_event=0, end_event=1, start_run=0, start_local=0, end_run=0, end_local=1,
+                      run_dirs=[rd], run_size=2, objects=["tracks"], out_base=tmp_path / "out",
+                      dataset_name_dot="c.d.v23", row_group_size=None, compression="snappy",
+                      sort_rows=True, shared_hits_from_hit_ids=True, manifest_path=man)
+    import json
+    m = json.loads(man.read_text())
+    assert m["status"] == "ok" and len(m["inputs"]) == 1 and len(m["outputs"]) == 1
+    (inp,) = m["inputs"].values()
+    assert inp["sha256"] == pkg._sha256(rd / "tracks" / "tracks_000000-000002.parquet")
