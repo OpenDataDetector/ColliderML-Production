@@ -56,6 +56,7 @@ provenance:
   record: true
   require_pushed_commit: true
   require_approved_sha: true   # HEAD must equal $COLLIDERML_APPROVED_SHA (set by the launcher)
-  approved_remote: OpenDataDetector/ColliderML-Production
+  approved_remote: https://github.com/OpenDataDetector/ColliderML-Production
+  approved_ref: origin/release/v23
   commit_marker: false         # .git_commit_success: scripts/production/finalize_version.py after all chunks
   container_json: 'provenance/package_parquet/chunk{unit}_inputs.json'   # files read and written by the chunk

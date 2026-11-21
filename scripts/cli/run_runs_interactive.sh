@@ -15,6 +15,8 @@ set -uo pipefail
 CFG=$(readlink -f "$1"); FIRST=$2; LAST=$3
 REPO="$(cd "$(dirname "$0")/../.." && pwd)"
 PY=${PY:-/global/homes/d/danieltm/.conda/envs/collider-env/bin/python}
+# provenance gate before any write or image load (exit 1, nothing created)
+$PY "$REPO/scripts/cli/provenance_preflight.py" "$CFG" || exit 1
 
 read -r STAGE VERSION_DIR IMAGE TARBALL < <($PY - "$CFG" <<'EOF'
 import sys, yaml
@@ -56,4 +58,4 @@ echo "=== $(date '+%F %T') $STAGE done: $fail failed"
 # One run: exit with that task's own code (e.g. 137 stays 137). Several runs: the number of
 # failed runs (capped at 255 by the shell), every run's code is in the lines above.
 if [ "$FIRST" -eq "$LAST" ]; then exit $last_rc; fi
-exit $fail
+exit $(( fail > 255 ? 255 : fail ))

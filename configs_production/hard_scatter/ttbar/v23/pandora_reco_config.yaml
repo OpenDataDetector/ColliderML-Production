@@ -39,7 +39,8 @@ provenance:
   record: true
   require_pushed_commit: true
   require_approved_sha: true   # HEAD must equal $COLLIDERML_APPROVED_SHA (set by the launcher)
-  approved_remote: OpenDataDetector/ColliderML-Production
+  approved_remote: https://github.com/OpenDataDetector/ColliderML-Production
+  approved_ref: origin/release/v23
   commit_marker: false
   inputs: [sim_with_tracks.root]
   outputs: [pandora_slices.json, 'reco_parts/reco_part_*.root|reco_edm4hep.root']

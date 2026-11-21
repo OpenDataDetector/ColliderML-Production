@@ -7,7 +7,8 @@ Config block (all keys optional, off unless ``record`` / ``require_pushed_commit
       require_pushed_commit: true   # refuse to run from a dirty tree or a commit on no remote branch
       commit_marker: false          # write <version>/.git_commit_success (packaging stage only in v23)
       require_approved_sha: true    # HEAD must equal $COLLIDERML_APPROVED_SHA
-      approved_remote: OpenDataDetector/ColliderML-Production   # origin URL must contain this
+      approved_remote: https://github.com/OpenDataDetector/ColliderML-Production   # origin URL (normalised, exact)
+      approved_ref: origin/release/v23   # HEAD must be on this remote-tracking branch
       inputs:  [edm4hep.root, ...]  # run-relative paths or globs, hashed (sha256) after the stage
       outputs: [...]                # same, for outputs; "a|b" = at least one of the alternatives
       image_files: [/opt/...]       # files inside the stage image, hashed inside the container
@@ -71,18 +72,31 @@ def git_state(repo) -> dict:
     }
 
 
+def _norm_url(u: str) -> str:
+    """https://github.com/Org/Repo(.git)(/) and git@github.com:Org/Repo.git -> github.com/org/repo"""
+    u = u.strip().rstrip("/").lower()
+    if u.endswith(".git"):
+        u = u[:-4]
+    for pre in ("https://", "http://", "ssh://git@", "git@"):
+        if u.startswith(pre):
+            u = u[len(pre):]
+    return u.replace(":", "/", 1) if u.startswith("github.com:") else u
+
+
 def pushed_commit_error(state: dict, approved_sha: str | None = None,
-                        approved_remote: str | None = None) -> str | None:
+                        approved_remote: str | None = None, approved_ref: str | None = None) -> str | None:
     """Reason the code state is not acceptable for a production run, or None."""
     if not state.get("sha"):
         return "not a git checkout"
     if state["dirty"]:
         return f"working tree is dirty: {state['dirty_paths']}"
-    if approved_remote and approved_remote.lower() not in state.get("origin_url", "").lower():
+    if approved_remote and _norm_url(state.get("origin_url", "")) != _norm_url(approved_remote):
         return f"origin {state.get('origin_url')!r} is not {approved_remote}"
     origin_branches = [r for r in state["remote_branches_containing_head"] if r.startswith("origin/")]
     if not origin_branches:
         return f"HEAD {state['sha'][:10]} is on no origin branch (push it, then git fetch)"
+    if approved_ref and approved_ref not in origin_branches:
+        return f"HEAD {state['sha'][:10]} is not on {approved_ref} (on {origin_branches})"
     if approved_sha is not None and state["sha"] != approved_sha:
         return f"HEAD {state['sha'][:10]} is not the approved commit {approved_sha[:10]}"
     return None
@@ -97,7 +111,7 @@ def gate_error(config: dict, repo) -> tuple[dict, str | None]:
         approved = os.environ.get("COLLIDERML_APPROVED_SHA")
         if not approved:
             return state, "provenance.require_approved_sha: COLLIDERML_APPROVED_SHA is not set"
-    return state, pushed_commit_error(state, approved, prov.get("approved_remote"))
+    return state, pushed_commit_error(state, approved, prov.get("approved_remote"), prov.get("approved_ref"))
 
 
 def redacted_sha256(path) -> str | None:
@@ -222,6 +236,8 @@ def record_problems(rec: dict) -> list[str]:
     cr = rec.get("container_record")
     if isinstance(cr, dict) and "error" in cr and len(cr) == 1:
         probs.append(f"container record: {cr['error']}")
+    elif isinstance(cr, dict) and "status" in cr and cr["status"] != "ok":
+        probs.append(f"container record status {cr['status']!r}")
     if not (rec.get("git") or {}).get("sha"):
         probs.append("no git sha")
     return probs

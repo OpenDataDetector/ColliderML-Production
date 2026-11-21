@@ -529,6 +529,8 @@ def setup_acts_reconstruction(input_path, output_dir, config, rnd, logger=None):
         else:
             seed_bz_tesla = 2.0
             seed_bz_source = "no seeding_bfield_tesla in config: ACTS default 2 T (v22 and earlier)"
+        if not (math.isfinite(seed_bz_tesla) and math.isfinite(float(getattr(config, "seed_min_pt_gev", 0.5)))):
+            raise RuntimeError("seed-finder field or minPt is not finite")
         if getattr(config, "seeding_require_detector_match", False):
             if detector_bz_tesla is None or not math.isfinite(detector_bz_tesla):
                 raise RuntimeError("seeding_require_detector_match: detector field at the origin is unreadable")
@@ -947,6 +949,8 @@ def main():
         # Historical seed replay (v23): the run's digitisation seed string from the
         # version it replaces, so digitisation random numbers are those of v20/v22.
         replay = getattr(config, "digitization_seed_replay", None)
+        if replay is None and getattr(config, "digitization_seed_replay_required", False):
+            raise RuntimeError("digitization_seed_replay_required but no digitization_seed_replay table")
         if replay is not None:  # an empty table is an error (replay_seed_string raises)
             from utils.seed_replay import replay_seed_string
             seed_string = replay_seed_string(replay, args.output_subdir)

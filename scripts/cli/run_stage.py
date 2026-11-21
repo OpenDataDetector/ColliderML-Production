@@ -481,6 +481,9 @@ def main():
                 processed_config_paths.append(logged_config_path)
                 logger.info(f"Config {i+1}/{len(configs)} saved to: {logged_config_path}")
     else:
+        if any((c.get("provenance") or {}).get("require_pushed_commit") for c in configs):
+            logger.error("provenance.require_pushed_commit but no git checkout found; refusing")
+            sys.exit(1)
         # No git repo - still save configs to their target locations
         logger.warning("No git repository found. Saving configs without git tracking.")
         for i, (cfg, cfg_path) in enumerate(zip(configs, args.configs)):
@@ -514,6 +517,9 @@ def main():
         logger.info(f"Multi-config mode: combining {len(configs)} configs into single SLURM job")
     
     logger.info(f"Effective execution mode: {execution_mode}")
+    if len(configs) > 1 and any((c.get("provenance") or {}) for c in configs):
+        logger.error("provenance configs cannot be combined in a multi-config job; refusing")
+        sys.exit(2)
     if (config.get("provenance") or {}).get("record") and execution_mode != "interactive":
         logger.error("provenance.record is implemented for the interactive per-run path only "
                      "(run_runs_interactive.sh / run_blocks_multinode.sh); refusing " + execution_mode)

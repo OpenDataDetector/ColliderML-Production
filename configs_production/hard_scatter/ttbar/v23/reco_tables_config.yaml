@@ -35,7 +35,8 @@ provenance:
   record: true
   require_pushed_commit: true
   require_approved_sha: true   # HEAD must equal $COLLIDERML_APPROVED_SHA (set by the launcher)
-  approved_remote: OpenDataDetector/ColliderML-Production
+  approved_remote: https://github.com/OpenDataDetector/ColliderML-Production
+  approved_ref: origin/release/v23
   commit_marker: false
   inputs: ['reco_parts/reco_part_*.root|reco_edm4hep.root', edm4hep.root]
   outputs: ['calo_cells/*.parquet', 'calo_clusters/*.parquet', 'pfos/*.parquet']

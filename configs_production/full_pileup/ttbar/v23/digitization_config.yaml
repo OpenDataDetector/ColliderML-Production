@@ -39,6 +39,7 @@ seeding_require_detector_match: true   # fail unless the detector field reads ba
 seed_min_pt_gev: 0.65         # seed-finder minPt (v23_plan README 5b: recovers the high-pT seeding loss at 3 T)
 vertexing: true               # AMVF on the ambiguity-resolved tracks -> performance_vertexing.root -> reco/vertices
 vertexing_write_track_info: true
+digitization_seed_replay_required: true
 digitization_seed_replay:     # D2: the seed string each run had in the version v23 replaces
   - {runs: [0, 15], seed_string: "ttbar_v20_run{run}"}
   - {runs: [16, 1562], seed_string: "ttbar_v22_run{run}"}
@@ -63,7 +64,8 @@ provenance:                   # per-run record, scripts/cli/run_provenance.py (v
   record: true
   require_pushed_commit: true  # refuse to run from a dirty tree or an unpushed commit
   require_approved_sha: true   # HEAD must equal $COLLIDERML_APPROVED_SHA (set by the launcher)
-  approved_remote: OpenDataDetector/ColliderML-Production
+  approved_remote: https://github.com/OpenDataDetector/ColliderML-Production
+  approved_ref: origin/release/v23
   commit_marker: false         # .git_commit_success is written by package_parquet only
   inputs: [edm4hep.root]
   outputs: [digi_provenance.json, timing.csv, sim_with_tracks.root, measurements.root, particles.root,

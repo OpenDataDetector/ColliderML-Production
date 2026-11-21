@@ -204,7 +204,8 @@ def test_gate_approved_sha_and_remote(repos, monkeypatch):
     _git(work, "push", "-q", "origin", "HEAD:refs/heads/release/v23")
     _git(work, "fetch", "-q", "origin")
     st = rp.git_state(work)
-    assert rp.pushed_commit_error(st, approved_sha=st["sha"], approved_remote="origin.git") is None
+    assert rp.pushed_commit_error(st, approved_sha=st["sha"], approved_remote=str(origin), approved_ref="origin/release/v23") is None
+    assert "not on" in rp.pushed_commit_error(st, approved_ref="origin/other")
     assert "approved commit" in rp.pushed_commit_error(st, approved_sha="0" * 40)
     assert "is not" in rp.pushed_commit_error(st, approved_remote="OpenDataDetector/ColliderML-Production")
     cfg = {"provenance": {"require_approved_sha": True}}
