@@ -16,6 +16,7 @@ from acts.examples.reconstruction import (
     addSeeding,
     SeedingAlgorithm,
     SeedFinderConfigArg,
+    SeedFinderOptionsArg,
     addCKFTracks,
     addVertexFitting,
     addAmbiguityResolution,
@@ -31,7 +32,7 @@ from acts.examples.reconstruction import (
 )
 import traceback
 from utils.app_logging import setup_logging, TimingRecorder
-from utils.config import create_base_parser, load_config
+from utils.config import create_base_parser, load_config, hash_seed_string
 from contextlib import contextmanager
 import math
 from acts.examples.edm4hep import (
@@ -47,6 +48,82 @@ u = acts.UnitConstants
 # LOG_LEVEL = acts.logging.INFO
 # LOG_LEVEL = acts.logging.ERROR
 LOG_LEVEL = acts.logging.FATAL
+
+
+def _sha256(path):
+    import hashlib
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for block in iter(lambda: f.read(1 << 20), b""):
+            h.update(block)
+    return h.hexdigest()
+
+
+def _write_json(path, obj):
+    import json
+    tmp = Path(str(path) + ".tmp")
+    tmp.write_text(json.dumps(obj, indent=1, sort_keys=True, default=str) + "\n")
+    os.replace(tmp, path)
+
+
+def _field_bz_tesla(field):
+    """Bz of an ACTS magnetic field provider at the origin, in tesla (None if unreadable)."""
+    try:
+        cache = field.makeCache(acts.MagneticFieldContext())
+        return float(field.getField(acts.Vector3(0.0, 0.0, 0.0), cache)[2] / u.T)
+    except Exception:
+        return None
+
+
+def _add_seeding_v23(s, trackingGeometry, field, seed_bz_tesla, seed_min_pt_gev,
+                     config, oddSeedingSel, seeds_root_dir):
+    """GridTriplet seeding as in production, with the seed-finder field and minPt explicit."""
+    addSeeding(
+        s,
+        trackingGeometry,
+        field,
+        seedingAlgorithm=SeedingAlgorithm.GridTriplet,
+        particleHypothesis=acts.ParticleHypothesis.pion,
+        seedFinderOptionsArg=SeedFinderOptionsArg(
+            beamPos=(0.0, 0.0),
+            bFieldInZ=seed_bz_tesla * u.T,
+        ),
+        seedFinderConfigArg=SeedFinderConfigArg(
+            r=(33 * u.mm, 200 * u.mm),
+            # kills efficiency at |eta|~2
+            deltaR=(1 * u.mm, 300 * u.mm),
+            collisionRegion=(-250 * u.mm, 250 * u.mm),
+            z=(-2000 * u.mm, 2000 * u.mm),
+            maxSeedsPerSpM=getattr(config, 'num_seeds_per_spm', 5),
+            sigmaScattering=5,
+            radLengthPerSeed=0.1,
+            minPt=seed_min_pt_gev * u.GeV,
+            # Seed acceptance in transverse impact parameter. 3 mm is the
+            # benchmark value used by hard_scatter and full_pileup and must
+            # stay that way for them. The drift_beamspot gun spreads vertices
+            # uniformly over +-5 mm in x and y, so |d0| reaches 7.1 mm at the
+            # box corners: at 3 mm the CKF efficiency there is 0.97 inside
+            # 2 mm, 0.65 at 3 mm and 0.09 at 5 mm, i.e. ~40% of particles are
+            # outside seed acceptance by construction. Config-driven so that
+            # campaign can widen it without touching the benchmark.
+            impactMax=getattr(config, "seed_impact_max", 3.0) * u.mm,
+            zBinEdges=[-1600, -1000, -600, 0, 600, 1000, 1600],
+        ),
+        initialSigmas=[
+            1 * u.mm,
+            1 * u.mm,
+            1 * u.degree,
+            1 * u.degree,
+            0.1 * u.e / u.GeV,
+            1 * u.ns,
+        ],
+        initialSigmaQoverPt=0.1 * u.e / u.GeV,
+        initialSigmaPtRel = 0.1,
+        initialVarInflation = [1e0, 1e0, 1e0, 1e0, 1e0, 1e0],
+        geoSelectionConfigFile=oddSeedingSel,
+        outputDirRoot=seeds_root_dir,
+    )
+
 
 def parse_args():
     """Parse command line arguments"""
@@ -132,13 +209,19 @@ def _truth_primary(truth_track_outputs, which):
 def setup_acts_reconstruction(input_path, output_dir, config, rnd, logger=None):
     """Configure ACTS reconstruction chain"""
     logger = logger or setup_logging("ACTSReco")
-    
-    # Create sequencer
+    # Filled below and written to <run>/digi_provenance.json by main(): values read
+    # back from the configured algorithms, not from the config file.
+    readback = {}
+
+    # Create sequencer. outputDir makes the sequencer write timing.csv (wall time
+    # per algorithm, summed over events and threads) into the run directory; this
+    # is the per-algorithm CPU record used for the vertexing cost.
     s = Sequencer(
         numThreads=config.threads if config.threads is not None else 1,
         events=config.events,
         logLevel=LOG_LEVEL,
         trackFpes=False,
+        outputDir=str(output_dir),
     )
     
     # Get detector and field. The geometry dir overrides the ACTS-bundled ODD so ACTS
@@ -421,47 +504,83 @@ def setup_acts_reconstruction(input_path, output_dir, config, rnd, logger=None):
         # ROOT output for seeding performance (purely controlled by config flag)
         seeds_root_dir = output_dir if output_seeds_root else None
 
-        addSeeding(
-            s,
-            trackingGeometry,
-            field,
-            seedingAlgorithm=SeedingAlgorithm.GridTriplet,
-            particleHypothesis=acts.ParticleHypothesis.pion,
-            seedFinderConfigArg=SeedFinderConfigArg(
-                r=(33 * u.mm, 200 * u.mm),
-                # kills efficiency at |eta|~2
-                deltaR=(1 * u.mm, 300 * u.mm),
-                collisionRegion=(-250 * u.mm, 250 * u.mm),
-                z=(-2000 * u.mm, 2000 * u.mm),
-                maxSeedsPerSpM=getattr(config, 'num_seeds_per_spm', 5),
-                sigmaScattering=5,
-                radLengthPerSeed=0.1,
-                minPt=0.5 * u.GeV,
-                # Seed acceptance in transverse impact parameter. 3 mm is the
-                # benchmark value used by hard_scatter and full_pileup and must
-                # stay that way for them. The drift_beamspot gun spreads vertices
-                # uniformly over +-5 mm in x and y, so |d0| reaches 7.1 mm at the
-                # box corners: at 3 mm the CKF efficiency there is 0.97 inside
-                # 2 mm, 0.65 at 3 mm and 0.09 at 5 mm, i.e. ~40% of particles are
-                # outside seed acceptance by construction. Config-driven so that
-                # campaign can widen it without touching the benchmark.
-                impactMax=getattr(config, "seed_impact_max", 3.0) * u.mm,
-                zBinEdges=[-1600, -1000, -600, 0, 600, 1000, 1600],
-            ),
-            initialSigmas=[
-                1 * u.mm,
-                1 * u.mm,
-                1 * u.degree,
-                1 * u.degree,
-                0.1 * u.e / u.GeV,
-                1 * u.ns,
-            ],
-            initialSigmaQoverPt=0.1 * u.e / u.GeV,
-            initialSigmaPtRel = 0.1,
-            initialVarInflation = [1e0, 1e0, 1e0, 1e0, 1e0, 1e0],
-            geoSelectionConfigFile=oddSeedingSel,
-            outputDirRoot=seeds_root_dir,
+        # Magnetic field assumed by the seed finder. The ACTS seeding algorithms
+        # (GridTripletSeedingAlgorithm here) take their own constant bFieldInZ and
+        # do NOT read `field`; their default is 2 T, while the ODD solenoid used by
+        # ddsim (and `field`, the EDM4hep track converter and Pandora) is 3 T. With
+        # 2 T the seed finder converts curvature to pT with the wrong scale, so the
+        # minPt = 0.5 GeV cut acts at 0.75 GeV and the scattering window is
+        # mis-sized. All releases up to v22 ran with that 2 T default.
+        # Default: the detector field at the origin. `seeding_bfield_tesla` in the
+        # config overrides it (2.0 reproduces v22 and earlier).
+        detector_bz_tesla = _field_bz_tesla(field)
+        seeding_bfield_tesla = getattr(config, "seeding_bfield_tesla", None)
+        if seeding_bfield_tesla is not None:
+            seed_bz_tesla = float(seeding_bfield_tesla)
+            seed_bz_source = "config seeding_bfield_tesla"
+        elif detector_bz_tesla is not None:
+            seed_bz_tesla = detector_bz_tesla
+            seed_bz_source = "detector field at origin"
+        else:
+            seed_bz_tesla = 3.0
+            seed_bz_source = "fallback, ODD nominal solenoid"
+        # Seed-finder pT cut (in the seed finder's own field). 0.5 GeV is the
+        # production value; config-driven for the v23 seeding studies only.
+        seed_min_pt_gev = float(getattr(config, "seed_min_pt_gev", 0.5))
+        logger.info(
+            "Seeding: seed-finder bFieldInZ = %.4f T (%s); detector field Bz at "
+            "origin = %s T; seed minPt = %.3f GeV; maxSeedsPerSpM = %d",
+            seed_bz_tesla,
+            seed_bz_source,
+            "n/a" if detector_bz_tesla is None else f"{detector_bz_tesla:.4f}",
+            seed_min_pt_gev,
+            int(getattr(config, "num_seeds_per_spm", 5)),
         )
+        if detector_bz_tesla is not None and abs(seed_bz_tesla - detector_bz_tesla) > 0.01 * abs(detector_bz_tesla):
+            logger.warning(
+                "Seeding: seed-finder field %.4f T differs from the detector field "
+                "%.4f T; the effective seed pT threshold is %.3f GeV",
+                seed_bz_tesla,
+                detector_bz_tesla,
+                seed_min_pt_gev * detector_bz_tesla / seed_bz_tesla,
+            )
+
+        # Capture the seeding algorithm addSeeding builds, so its configured
+        # bFieldInZ / minPt are read back from the algorithm itself (a config typo
+        # or an ignored keyword would otherwise go unnoticed).
+        _seed_algs = []
+        _orig_grid = acts.examples.GridTripletSeedingAlgorithm
+
+        def _capture_grid(*a, **kw):
+            alg = _orig_grid(*a, **kw)
+            _seed_algs.append(alg)
+            return alg
+
+        acts.examples.GridTripletSeedingAlgorithm = _capture_grid
+        try:
+            _add_seeding_v23(
+                s, trackingGeometry, field, seed_bz_tesla, seed_min_pt_gev,
+                config, oddSeedingSel, seeds_root_dir,
+            )
+        finally:
+            acts.examples.GridTripletSeedingAlgorithm = _orig_grid
+        if len(_seed_algs) != 1:
+            raise RuntimeError(f"expected 1 GridTripletSeedingAlgorithm, captured {len(_seed_algs)}")
+        _sc = _seed_algs[0].config
+        readback["seed_finder_bFieldInZ_T"] = float(_sc.bFieldInZ / u.T)
+        readback["seed_finder_minPt_GeV"] = float(_sc.minPt / u.GeV)
+        readback["seed_finder_maxSeedsPerSpM"] = int(_sc.maxSeedsPerSpM)
+        readback["detector_Bz_origin_T"] = detector_bz_tesla
+        readback["seed_field_source"] = seed_bz_source
+        logger.info(
+            "Seeding read-back: GridTripletSeedingAlgorithm bFieldInZ = %.6f T, minPt = %.4f GeV",
+            readback["seed_finder_bFieldInZ_T"], readback["seed_finder_minPt_GeV"],
+        )
+        if abs(readback["seed_finder_bFieldInZ_T"] - seed_bz_tesla) > 1e-6:
+            raise RuntimeError(
+                f"seed finder bFieldInZ read back as {readback['seed_finder_bFieldInZ_T']} T, "
+                f"configured {seed_bz_tesla} T"
+            )
 
         # Shared by the CKF and (optionally) the truth-found track collection, so
         # the two have identical acceptance and any difference between them is
@@ -653,11 +772,21 @@ def setup_acts_reconstruction(input_path, output_dir, config, rnd, logger=None):
         
         # Add vertex fitting
         vertexing_enabled = getattr(config, 'vertexing', False)  # Default False
+        readback["vertexing"] = bool(vertexing_enabled)
         if vertexing_enabled:
+            # AMVF on the ambiguity-resolved tracks (the "tracks" alias at this
+            # point; the truth-track collection uses its own names). The ROOT
+            # ntuple writer and the truth matcher read the truth vertices under
+            # "vertices_truth"; the EDM4hep converter publishes them as
+            # "simvertices". The ntuple (performance_vertexing.root, tree
+            # "vertexing") is what package_native_parquet turns into reco/vertices;
+            # writeTrackInfo adds the per-vertex track list and weights.
+            s.addWhiteboardAlias("vertices_truth", "simvertices")
             addVertexFitting(
                 s,
                 field,
                 vertexFinder=VertexFinder.AMVF,
+                writeTrackInfo=bool(getattr(config, "vertexing_write_track_info", True)),
                 outputDirRoot=output_dir if getattr(config, 'output_root', True) else None,
             )
     
@@ -677,6 +806,7 @@ def setup_acts_reconstruction(input_path, output_dir, config, rnd, logger=None):
             outputTracks="ActsTracks",
             Bz=3 * u.T,
         )
+        readback["track_converter_Bz_T"] = float(track_converter.config.Bz / u.T)
         s.addAlgorithm(track_converter)
         s.addWriter(
             PodioWriter(
@@ -717,7 +847,7 @@ def setup_acts_reconstruction(input_path, output_dir, config, rnd, logger=None):
             log_level=LOG_LEVEL,
         )
 
-    return s
+    return s, readback
 
 def add_root_writers(s, output_dir, field, config=None):
     """Add ROOT output writers to the sequencer"""
@@ -793,7 +923,22 @@ def main():
     try:
         # Parse arguments and load config
         args = parse_args()
+        cli_seed_string = args.seed
         config = load_config(args)
+        seed_string = cli_seed_string
+        seed_source = "command line --seed"
+        # Historical seed replay (v23): the run's digitisation seed string from the
+        # version it replaces, so digitisation random numbers are those of v20/v22.
+        replay = getattr(config, "digitization_seed_replay", None)
+        if replay:
+            from utils.seed_replay import replay_seed_string
+            seed_string = replay_seed_string(replay, args.output_subdir)
+            config.seed = hash_seed_string(seed_string)
+            seed_source = "config digitization_seed_replay"
+            logger.info(
+                "Seed replay: digitisation seed string %r -> %d (replaces command-line %r)",
+                seed_string, config.seed, cli_seed_string,
+            )
         rnd = acts.examples.RandomNumbers(seed=config.seed)
 
         # Create output directory structure
@@ -810,7 +955,19 @@ def main():
         
         # Setup and run reconstruction
         with timer.record("ACTS Reconstruction"):
-            s = setup_acts_reconstruction(input_path, output_dir, config, rnd, logger)
+            s, readback = setup_acts_reconstruction(input_path, output_dir, config, rnd, logger)
+            # Written before the run so a crashed run still records its settings.
+            readback.update({
+                "seed_string": seed_string,
+                "seed": int(config.seed),
+                "seed_source": seed_source,
+                "config_path": str(args.config) if args.config else None,
+                "config_sha256": _sha256(args.config) if args.config else None,
+                "input_file": str(input_path),
+                "events": config.events,
+                "threads": config.threads,
+            })
+            _write_json(output_dir / "digi_provenance.json", readback)
             s.run()
 
         # Restore metadata frames the PodioWriter dropped from sim_with_tracks.root, so the
