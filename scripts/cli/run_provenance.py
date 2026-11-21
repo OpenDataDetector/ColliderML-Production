@@ -6,14 +6,22 @@ Config block (all keys optional, off unless ``record`` / ``require_pushed_commit
       record: true                  # write one JSON record per run (or chunk) and attempt
       require_pushed_commit: true   # refuse to run from a dirty tree or a commit on no remote branch
       commit_marker: false          # write <version>/.git_commit_success (packaging stage only in v23)
+      require_approved_sha: true    # HEAD must equal $COLLIDERML_APPROVED_SHA
+      approved_remote: OpenDataDetector/ColliderML-Production   # origin URL must contain this
       inputs:  [edm4hep.root, ...]  # run-relative paths or globs, hashed (sha256) after the stage
-      outputs: [...]                # same, for outputs
+      outputs: [...]                # same, for outputs; "a|b" = at least one of the alternatives
       image_files: [/opt/...]       # files inside the stage image, hashed inside the container
-      container_json: digi_provenance.json   # run-relative JSON written by the stage, embedded
+      container_json: digi_provenance.json   # JSON written by the stage, embedded ({unit} = run/chunk)
+
+Attempts are reserved before the stage starts (exclusive create of <stem>_attempt<K>.json with
+status "started"), so concurrent retries get distinct numbers and a killed wrapper leaves a
+"started" record behind. The final record has status "complete" only when every declared input
+and output is present and hashed, the image id is known and the embedded JSON is readable;
+otherwise "incomplete" with a list of problems, and run_stage turns a task exit 0 into 4.
 
 Record path: <runs>/<N>/provenance/<stage>_attempt<K>.json for per-run stages, and
-<version>/provenance/<stage>/chunk<N>_attempt<K>.json for packaging. Attempts are numbered
-1, 2, ... in the order they finish; a record is written for failed attempts too.
+<version>/provenance/<stage>/chunk<N>_attempt<K>.json for packaging. A record is written for
+failed attempts too.
 
 Pure python + git/podman-hpc subprocess calls; runs on the host (run_stage), not in the image.
 """
@@ -54,6 +62,7 @@ def git_state(repo) -> dict:
     remotes = _git(repo, "branch", "-r", "--contains", "HEAD").stdout.split()
     remotes = [r for r in remotes if r != "->"]
     return {
+        "origin_url": _git(repo, "remote", "get-url", "origin").stdout.strip(),
         "sha": sha,
         "branch": branch,
         "dirty": bool(status.stdout.strip()) or status.returncode != 0,
@@ -62,15 +71,33 @@ def git_state(repo) -> dict:
     }
 
 
-def pushed_commit_error(state: dict) -> str | None:
+def pushed_commit_error(state: dict, approved_sha: str | None = None,
+                        approved_remote: str | None = None) -> str | None:
     """Reason the code state is not acceptable for a production run, or None."""
     if not state.get("sha"):
         return "not a git checkout"
     if state["dirty"]:
         return f"working tree is dirty: {state['dirty_paths']}"
-    if not state["remote_branches_containing_head"]:
-        return f"HEAD {state['sha'][:10]} is on no remote-tracking branch (push it, then git fetch)"
+    if approved_remote and approved_remote.lower() not in state.get("origin_url", "").lower():
+        return f"origin {state.get('origin_url')!r} is not {approved_remote}"
+    origin_branches = [r for r in state["remote_branches_containing_head"] if r.startswith("origin/")]
+    if not origin_branches:
+        return f"HEAD {state['sha'][:10]} is on no origin branch (push it, then git fetch)"
+    if approved_sha is not None and state["sha"] != approved_sha:
+        return f"HEAD {state['sha'][:10]} is not the approved commit {approved_sha[:10]}"
     return None
+
+
+def gate_error(config: dict, repo) -> tuple[dict, str | None]:
+    """Apply the provenance gate of a config: (git state, error or None)."""
+    prov = config.get("provenance") or {}
+    state = git_state(repo)
+    approved = None
+    if prov.get("require_approved_sha"):
+        approved = os.environ.get("COLLIDERML_APPROVED_SHA")
+        if not approved:
+            return state, "provenance.require_approved_sha: COLLIDERML_APPROVED_SHA is not set"
+    return state, pushed_commit_error(state, approved, prov.get("approved_remote"))
 
 
 def redacted_sha256(path) -> str | None:
@@ -88,10 +115,15 @@ def effective_config_sha256(config: dict) -> str:
 
 
 def hash_paths(base: Path, patterns) -> list[dict]:
-    """sha256, size and realpath of every file matching the run-relative patterns."""
+    """sha256, size and realpath of every file matching the run-relative patterns.
+    "a|b" matches the first alternative that exists."""
     out = []
     for pat in patterns or []:
-        matches = sorted(glob.glob(str(base / pat)))
+        matches = []
+        for alt in pat.split("|"):
+            matches = sorted(glob.glob(str(base / alt)))
+            if matches:
+                break
         if not matches:
             out.append({"pattern": pat, "missing": True})
             continue
@@ -146,7 +178,8 @@ def image_file_hashes(container: str | None, files) -> dict:
     return out
 
 
-def record_path(config: dict, runs_dir: Path, version_dir: Path, unit: int, postprocessing: bool) -> Path:
+def reserve_attempt(config: dict, runs_dir: Path, version_dir: Path, unit: int, postprocessing: bool) -> Path:
+    """Exclusively create the next <stem>_attempt<K>.json with status "started" and return it."""
     stage = config["stage"]
     if postprocessing:
         d = version_dir / "provenance" / stage
@@ -156,9 +189,42 @@ def record_path(config: dict, runs_dir: Path, version_dir: Path, unit: int, post
         stem = stage
     d.mkdir(parents=True, exist_ok=True)
     k = 1
-    while (d / f"{stem}_attempt{k}.json").exists():
-        k += 1
-    return d / f"{stem}_attempt{k}.json"
+    while True:
+        path = d / f"{stem}_attempt{k}.json"
+        try:
+            with open(path, "x") as f:
+                json.dump({"schema": SCHEMA, "stage": stage, "unit": unit, "status": "started",
+                           "host": socket.gethostname(), "pid": os.getpid(),
+                           "slurm_job_id": os.environ.get("SLURM_JOB_ID"),
+                           "start_utc": datetime.datetime.utcnow().isoformat() + "Z"}, f)
+            return path
+        except FileExistsError:
+            k += 1
+
+
+record_path = reserve_attempt  # backwards-compatible name
+
+
+def record_problems(rec: dict) -> list[str]:
+    """Missing evidence in a record (empty list = complete)."""
+    probs = []
+    for kind in ("inputs", "outputs"):
+        for e in rec.get(kind) or []:
+            if e.get("missing"):
+                probs.append(f"{kind}: {e['pattern']} missing")
+            elif "sha256" not in e:
+                probs.append(f"{kind}: {e.get('path')} not hashed ({e.get('error')})")
+    if rec.get("container") and not rec.get("image_id"):
+        probs.append("image id unknown")
+    imgf = rec.get("image_files") or {}
+    if "error" in imgf or any(v is None for k, v in imgf.items() if k != "error"):
+        probs.append(f"image files not hashed: {imgf}")
+    cr = rec.get("container_record")
+    if isinstance(cr, dict) and "error" in cr and len(cr) == 1:
+        probs.append(f"container record: {cr['error']}")
+    if not (rec.get("git") or {}).get("sha"):
+        probs.append("no git sha")
+    return probs
 
 
 def build_record(*, config: dict, config_path, unit: int, rc: int, t_start: float, t_end: float,
@@ -190,7 +256,7 @@ def build_record(*, config: dict, config_path, unit: int, rc: int, t_start: floa
     }
     cj = prov.get("container_json")
     if cj:
-        p = base / cj
+        p = base / str(cj).format(unit=unit)
         try:
             rec["container_record"] = json.loads(p.read_text())
         except (OSError, ValueError) as e:
@@ -199,6 +265,9 @@ def build_record(*, config: dict, config_path, unit: int, rc: int, t_start: floa
 
 
 def write_record(path: Path, rec: dict) -> None:
-    tmp = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+    rec = dict(rec)
+    rec["problems"] = record_problems(rec)
+    rec["status"] = "complete" if not rec["problems"] else "incomplete"
+    tmp = path.with_name(f".{path.name}.{socket.gethostname()}.{os.getpid()}.tmp")
     tmp.write_text(json.dumps(rec, indent=1, sort_keys=True, default=str) + "\n")
     os.replace(tmp, path)

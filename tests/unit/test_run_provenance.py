@@ -34,7 +34,7 @@ def repos(tmp_path):
 def test_gate_unpushed_dirty_pushed(repos):
     origin, work = repos
     err = rp.pushed_commit_error(rp.git_state(work))
-    assert err and "no remote-tracking branch" in err
+    assert err and "no origin branch" in err
     _git(work, "push", "-q", "origin", "HEAD:refs/heads/release/v23")
     _git(work, "fetch", "-q", "origin")
     st = rp.git_state(work)
@@ -197,3 +197,49 @@ def test_v23_configs_resolve_to_staging():
         cfg = cli_utils.load_and_process_config(c, REPO / "scripts/cli/env_setup.yaml.two-container-template")
         assert str(cli_utils.get_version_directory(cfg)).startswith(
             "/global/cfs/cdirs/m4958/data/ColliderML/staging/simulation/"), c
+
+
+def test_gate_approved_sha_and_remote(repos, monkeypatch):
+    origin, work = repos
+    _git(work, "push", "-q", "origin", "HEAD:refs/heads/release/v23")
+    _git(work, "fetch", "-q", "origin")
+    st = rp.git_state(work)
+    assert rp.pushed_commit_error(st, approved_sha=st["sha"], approved_remote="origin.git") is None
+    assert "approved commit" in rp.pushed_commit_error(st, approved_sha="0" * 40)
+    assert "is not" in rp.pushed_commit_error(st, approved_remote="OpenDataDetector/ColliderML-Production")
+    cfg = {"provenance": {"require_approved_sha": True}}
+    monkeypatch.delenv("COLLIDERML_APPROVED_SHA", raising=False)
+    assert "not set" in rp.gate_error(cfg, work)[1]
+    monkeypatch.setenv("COLLIDERML_APPROVED_SHA", st["sha"])
+    assert rp.gate_error(cfg, work)[1] is None
+
+
+def test_attempts_reserved_exclusively(tmp_path):
+    config = {"stage": "digitization"}
+    paths = {rp.reserve_attempt(config, tmp_path, tmp_path, 3, False) for _ in range(5)}
+    assert len(paths) == 5
+    assert all(json.loads(p.read_text())["status"] == "started" for p in paths)
+
+
+def test_incomplete_record_fails_successful_task(tmp_path, monkeypatch):
+    rs = pytest.importorskip("run_stage")
+    import cli_utils
+    run_dir = tmp_path / "runs"
+    (run_dir / "5").mkdir(parents=True)
+    monkeypatch.setattr(cli_utils, "create_necessary_directories", lambda c: {"run_dir": run_dir})
+    monkeypatch.setattr(cli_utils, "get_version_directory", lambda c: tmp_path)
+    monkeypatch.setattr(cli_utils, "build_stage_command",
+                        lambda **kw: {"full_command": "true", "use_shifter": False, "env_setup_commands": ["true"]})
+    cfg = tmp_path / "c.yaml"
+    cfg.write_text("x: 1\n")
+    config = {"stage": "digitization", "campaign": "c", "dataset": "d", "version": "v23",
+              "validation_config": {"enabled": False},
+              "provenance": {"record": True, "outputs": ["sim_with_tracks.root"]}}
+    with pytest.raises(SystemExit) as e:
+        rs.run_interactive(config, cfg, tmp_path / "s.py", run_id=5)
+    assert e.value.code == 4
+    rec = json.loads((run_dir / "5" / "provenance" / "digitization_attempt1.json").read_text())
+    assert rec["status"] == "incomplete" and rec["task_return_code"] == 0 and rec["return_code"] == 4
+    with pytest.raises(SystemExit) as e:
+        rs.run_interactive(dict(config), cfg, tmp_path / "s.py", run_id=None)
+    assert e.value.code == 2, "provenance configs refuse an unnumbered run"

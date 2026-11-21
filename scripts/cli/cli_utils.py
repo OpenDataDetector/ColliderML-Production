@@ -573,8 +573,7 @@ def git_commit_and_log_config(config, config_path, software_repo_path, force_com
             # on GitHub. The marker is written only where the config asks for it (packaging),
             # only once, so a later stage cannot overwrite it.
             import run_provenance
-            state = run_provenance.git_state(software_repo_path)
-            err = run_provenance.pushed_commit_error(state)
+            state, err = run_provenance.gate_error(config, software_repo_path)
             if err:
                 logger.error(f"provenance.require_pushed_commit: {err}")
                 return False, None
@@ -582,7 +581,8 @@ def git_commit_and_log_config(config, config_path, software_repo_path, force_com
             # nothing is written (not even the version dir) before the gate has passed
             config_snapshot_dir.mkdir(parents=True, exist_ok=True)
             clean_config = {k: v for k, v in config.items() if k != 'env_setup'}
-            tmp = config_snapshot_dir / f".{original_config_filename}.{os.getpid()}.tmp"
+            import socket
+            tmp = config_snapshot_dir / f".{original_config_filename}.{socket.gethostname()}.{os.getpid()}.tmp"
             with open(tmp, 'w') as f_out:
                 yaml.dump(clean_config, f_out, default_flow_style=False, sort_keys=False)
             os.replace(tmp, logged_config_path)

@@ -7,8 +7,8 @@
 #   salloc -A m4958 -C cpu -q interactive -t 120 -N 1 \
 #       srun -N1 -n1 -c256 bash scripts/cli/run_runs_interactive.sh <config.yaml> <first> <last>
 #
-# Per-run logs: <version dir>/logs/interactive/<stage>_run<N>.log. Exit status is the
-# number of failed runs (0 = all good). If the config names a container_tarball for this
+# Per-run logs: <version dir>/logs/interactive/<stage>_run<N>.log. Exit status: for one run,
+# that run's own exit code; for several, the number of failed runs (0 = all good). If the config names a container_tarball for this
 # stage and the image is not in the podman store, it is loaded first (batch jobs do this
 # in job_submission.py; interactive run_stage does not).
 set -uo pipefail
@@ -46,11 +46,14 @@ for n in $(seq "$FIRST" "$LAST"); do
       > "$LOGDIR/${STAGE}_run${n}.log" 2>&1 &
   PIDS[$n]=$!
 done
-fail=0
+fail=0; last_rc=0
 for n in $(seq "$FIRST" "$LAST"); do
   wait "${PIDS[$n]}"; rc=$?
   echo "=== $(date '+%F %T') $STAGE run $n rc=$rc"
-  [ $rc -eq 0 ] || fail=$((fail + 1))
+  [ $rc -eq 0 ] || { fail=$((fail + 1)); last_rc=$rc; }
 done
 echo "=== $(date '+%F %T') $STAGE done: $fail failed"
+# One run: exit with that task's own code (e.g. 137 stays 137). Several runs: the number of
+# failed runs (capped at 255 by the shell), every run's code is in the lines above.
+if [ "$FIRST" -eq "$LAST" ]; then exit $last_rc; fi
 exit $fail

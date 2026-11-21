@@ -247,6 +247,21 @@ def run_interactive(config, config_path_arg, stage_script_path, run_id=None):
     stage_success = False
     stage_exit_code = 1
     t_start = time.time()
+
+    # Provenance: production configs need a numbered run (or chunk) and reserve the attempt
+    # record BEFORE the stage starts, so retries get distinct numbers and a killed wrapper
+    # leaves a "started" record behind.
+    prov = config.get("provenance") or {}
+    attempt_path = None
+    if prov.get("record"):
+        if run_id is None:
+            logger.error("provenance.record needs --run-list N (one numbered run or chunk); refusing")
+            sys.exit(2)
+        import run_provenance
+        is_post = config["stage"] in cli_utils.POSTPROCESSING_STAGES
+        version_dir = cli_utils.get_version_directory(config)
+        attempt_path = run_provenance.reserve_attempt(config, Path(run_dir), version_dir, int(run_id), is_post)
+        logger.info(f"Provenance attempt reserved: {attempt_path}")
     
     try:
         command_info = cli_utils.build_stage_command(
@@ -295,13 +310,10 @@ def run_interactive(config, config_path_arg, stage_script_path, run_id=None):
         stage_exit_code = 128 - stage_exit_code
 
     # One provenance record per run (or chunk) and attempt, failed attempts included.
-    # A run whose record cannot be written is not acceptable for production: exit 3.
-    prov = config.get("provenance") or {}
-    if prov.get("record") and run_id is not None:
+    # A record that cannot be written exits 3; a record with missing evidence (declared output
+    # absent, unhashed file, unknown image, unreadable stage JSON) turns a task exit 0 into 4.
+    if attempt_path is not None:
         try:
-            import run_provenance
-            is_post = config["stage"] in cli_utils.POSTPROCESSING_STAGES
-            version_dir = cli_utils.get_version_directory(config)
             base = version_dir if is_post else Path(run_dir) / str(run_id)
             container, _ = cli_utils.resolve_stage_container(config, config["stage"])
             rec = run_provenance.build_record(
@@ -316,9 +328,14 @@ def run_interactive(config, config_path_arg, stage_script_path, run_id=None):
                 if cs:
                     rec["outputs"] = run_provenance.hash_paths(
                         version_dir, [f"parquet/*/*/*.events{int(run_id) * cs}-*.parquet"])
-            path = run_provenance.record_path(config, Path(run_dir), version_dir, int(run_id), is_post)
-            run_provenance.write_record(path, rec)
-            logger.info(f"Provenance record: {path}")
+            rec["task_return_code"] = stage_exit_code
+            problems = run_provenance.record_problems(rec)
+            if problems and stage_exit_code == 0:
+                logger.error(f"Provenance record incomplete, failing the run: {problems}")
+                stage_exit_code = 4
+            rec["return_code"] = stage_exit_code
+            run_provenance.write_record(attempt_path, rec)
+            logger.info(f"Provenance record: {attempt_path}")
         except Exception as e:
             logger.error(f"Provenance record failed: {e}")
             logger.exception("Full traceback:")
@@ -497,6 +514,10 @@ def main():
         logger.info(f"Multi-config mode: combining {len(configs)} configs into single SLURM job")
     
     logger.info(f"Effective execution mode: {execution_mode}")
+    if (config.get("provenance") or {}).get("record") and execution_mode != "interactive":
+        logger.error("provenance.record is implemented for the interactive per-run path only "
+                     "(run_runs_interactive.sh / run_blocks_multinode.sh); refusing " + execution_mode)
+        sys.exit(2)
 
     # --- 5. Execute based on mode ---
     if len(configs) > 1:
