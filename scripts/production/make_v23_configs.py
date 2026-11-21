@@ -136,6 +136,9 @@ def build(src, dst, kind, base):
         extra = TRACKING_EXTRA.format(replay=replay).rstrip("\n")
         t = sub_once(r"^(reco: true)$", lambda m: m.group(1) + "\n" + extra, t, dst)
     if kind == "package":
+        # run_stage resolves the version dir (config snapshot, provenance, marker) from
+        # common.output_base_dir; without it the site default (the published tree) is used.
+        t = sub_once(r"^(common:\n(?:  .*\n)*?)(?=\S|\n)", lambda m: m.group(1) + f'  output_base_dir: "{base}"   # = output_base_dir below (run_stage version dir)\n', t, dst)
         if campaign == "full_pileup":
             t = sub_once(r"^(\s*)n_runs: 1001\b.*$",
                          lambda m: m.group(1) + "n_runs: 1000                 # chunks: events 0-99 ... 99900-99999 (100,000 events)",

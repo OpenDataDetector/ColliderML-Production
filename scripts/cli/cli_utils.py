@@ -743,6 +743,19 @@ def load_and_process_config(config_path, env_config_path):
     # Load main config
     with open(config_path, 'r') as f:
         config = yaml.safe_load(f)
+
+    # Production configs (with a provenance block) must name ONE output base: the packager
+    # writes to the top-level output_base_dir while run_stage puts the config snapshot, the
+    # provenance records and .git_commit_success under common.output_base_dir, which the site
+    # defaults fill with the PUBLISHED tree when a config leaves it out. That is how a staging
+    # packaging job overwrote the published v22 PU200 marker on 2026-11-21.
+    if isinstance(config, dict) and config.get("provenance"):
+        common_base = (config.get("common") or {}).get("output_base_dir")
+        top_base = config.get("output_base_dir")
+        if not common_base:
+            raise ValueError(f"{config_path}: provenance configs must set common.output_base_dir explicitly")
+        if top_base and os.path.realpath(top_base) != os.path.realpath(common_base):
+            raise ValueError(f"{config_path}: output_base_dir {top_base} != common.output_base_dir {common_base}")
     
     # Load and merge env_setup if it exists
     if env_config_path.exists():

@@ -168,3 +168,32 @@ def test_gate_marker_written_once(tmp_path, repos, monkeypatch):
     (vdir / ".git_commit_success").unlink()
     assert cli_utils.git_commit_and_log_config(config, cfg, work)[0]
     assert not (vdir / ".git_commit_success").exists(), "non-packaging stages write no marker"
+
+
+def test_provenance_config_needs_one_output_base(tmp_path):
+    import cli_utils
+    env = tmp_path / "env_setup.yaml"
+    env.write_text("config_defaults:\n  common:\n    output_base_dir: /published\n")
+    bad = tmp_path / "a.yaml"
+    bad.write_text("campaign: c\ndataset: d\nversion: v23\nstage: package_parquet\noutput_base_dir: /staging\n"
+                   "common: {}\nprovenance: {record: true}\n")
+    with pytest.raises(ValueError, match="common.output_base_dir"):
+        cli_utils.load_and_process_config(bad, env)
+    bad.write_text("campaign: c\ndataset: d\nversion: v23\nstage: package_parquet\noutput_base_dir: /staging\n"
+                   "common: {output_base_dir: /other}\nprovenance: {record: true}\n")
+    with pytest.raises(ValueError, match="!="):
+        cli_utils.load_and_process_config(bad, env)
+    good = tmp_path / "b.yaml"
+    good.write_text("campaign: c\ndataset: d\nversion: v23\nstage: package_parquet\noutput_base_dir: /staging\n"
+                    "common: {output_base_dir: /staging}\nprovenance: {record: true}\n")
+    cfg = cli_utils.load_and_process_config(good, env)
+    assert str(cli_utils.get_version_directory(cfg)) == "/staging/c/d/v23"
+
+
+def test_v23_configs_resolve_to_staging():
+    import glob
+    import cli_utils
+    for c in sorted(glob.glob(str(REPO / "configs_production/*/ttbar/v23/*.yaml"))):
+        cfg = cli_utils.load_and_process_config(c, REPO / "scripts/cli/env_setup.yaml.two-container-template")
+        assert str(cli_utils.get_version_directory(cfg)).startswith(
+            "/global/cfs/cdirs/m4958/data/ColliderML/staging/simulation/"), c

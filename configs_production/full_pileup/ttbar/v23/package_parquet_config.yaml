@@ -14,6 +14,7 @@ common:
   container: "ghcr.io/opendatadetector/sw:pr-8"
   container_tarball: "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/stress_mu200/sw_pr8_image.tar"
   cache_dir: "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-prod-container/.cache"
+  output_base_dir: "/global/cfs/cdirs/m4958/data/ColliderML/staging/simulation"   # = output_base_dir below (run_stage version dir)
 
 # 2026-11-06: 100k rerun (runs 0-1562, Pandora with reco 20261106), read from and written to staging;
 # 1001 chunks (events 0-99 ... 100000-100031); adds truth/generator_particles.
