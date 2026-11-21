@@ -15,6 +15,11 @@ Default is a dry run; pass --apply to create the links.
   python link_version_objects.py --dataset-dir .../simulation/hard_scatter/ttbar \
       --parent v1 --version v20 --runs 0 7 --run-files edm4hep.root \
       --parquet truth/particles --events 0 10239 --apply
+
+  # v23 in staging, parent in the published tree, links to terminal files:
+  python link_version_objects.py --dataset-dir .../staging/simulation/full_pileup/ttbar \
+      --parent-dataset-dir .../simulation/full_pileup/ttbar --parent v1 --version v23 \
+      --runs 0 1562 --run-files edm4hep.root --terminal --apply
 """
 
 from __future__ import annotations
@@ -28,9 +33,16 @@ from pathlib import Path
 RANGE = re.compile(r"\.events(\d+)-(\d+)\.parquet$")
 
 
+def _terminal(src: Path) -> Path:
+    """Resolve a chain of links to the real file, so the new version points at the terminal
+    file (v23 D4: links only to terminal files listed in the parent baseline)."""
+    return Path(os.path.realpath(src))
+
+
 def plan(args) -> list[tuple[Path, Path]]:
     base = Path(args.dataset_dir)
-    parent, new = base / args.parent, base / args.version
+    parent_base = Path(args.parent_dataset_dir) if args.parent_dataset_dir else base
+    parent, new = parent_base / args.parent, base / args.version
     links = []
     if args.runs:
         for n in range(args.runs[0], args.runs[1] + 1):
@@ -38,14 +50,14 @@ def plan(args) -> list[tuple[Path, Path]]:
                 src = parent / "runs" / str(n) / name
                 if not src.exists():
                     raise FileNotFoundError(src)
-                links.append((new / "runs" / str(n) / name, src))
+                links.append((new / "runs" / str(n) / name, _terminal(src) if args.terminal else src))
     for obj in args.parquet:
         lo, hi = args.events
         found = 0
         for src in sorted((parent / "parquet" / obj).glob("*.parquet")):
             m = RANGE.search(src.name)
             if m and int(m.group(1)) <= hi and int(m.group(2)) >= lo:
-                links.append((new / "parquet" / obj / src.name, src))
+                links.append((new / "parquet" / obj / src.name, _terminal(src) if args.terminal else src))
                 found += 1
         if not found:
             raise FileNotFoundError(f"no {obj} files in {parent / 'parquet' / obj} overlap events {lo}-{hi}")
@@ -57,6 +69,11 @@ def main() -> int:
     p.add_argument("--dataset-dir", required=True, help="<simulation>/<campaign>/<dataset>")
     p.add_argument("--parent", required=True, help="existing version, e.g. v1")
     p.add_argument("--version", required=True, help="new version, e.g. v20")
+    p.add_argument("--parent-dataset-dir", default=None,
+                   help="<base>/<campaign>/<dataset> holding the parent when it is not under --dataset-dir "
+                        "(e.g. the new version is built in staging or a pilot area)")
+    p.add_argument("--terminal", action="store_true",
+                   help="link to the resolved terminal file instead of the parent's path (follows parent links)")
     p.add_argument("--runs", type=int, nargs=2, metavar=("FIRST", "LAST"), help="inclusive run range")
     p.add_argument("--run-files", nargs="*", default=["edm4hep.root"])
     p.add_argument("--parquet", nargs="*", default=[], help="objects under parquet/, e.g. truth/particles")
