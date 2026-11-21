@@ -131,3 +131,40 @@ def test_run_stage_writes_record_for_failed_attempt(tmp_path, monkeypatch):
     assert e.value.code == 2
     rec = json.loads((run_dir / "5" / "provenance" / "digitization_attempt1.json").read_text())
     assert rec["return_code"] == 2 and rec["inputs"][0]["missing"] is True
+
+
+def test_gate_writes_nothing_when_refused(tmp_path, repos, monkeypatch):
+    """A refused run must not create the version dir (v23: staging/.../v23 must not exist before launch)."""
+    import cli_utils
+    _, work = repos  # unpushed commit -> refused
+    vdir = tmp_path / "base" / "c" / "d" / "v23"
+    monkeypatch.setattr(cli_utils, "get_version_directory", lambda c: vdir)
+    cfg = tmp_path / "digitization_config.yaml"
+    cfg.write_text("x: 1\n")
+    config = {"campaign": "c", "dataset": "d", "version": "v23", "stage": "digitization",
+              "provenance": {"require_pushed_commit": True, "commit_marker": True}}
+    ok, path = cli_utils.git_commit_and_log_config(config, cfg, work)
+    assert ok is False and path is None
+    assert not vdir.exists()
+
+
+def test_gate_marker_written_once(tmp_path, repos, monkeypatch):
+    import cli_utils
+    origin, work = repos
+    _git(work, "push", "-q", "origin", "HEAD:refs/heads/release/v23")
+    _git(work, "fetch", "-q", "origin")
+    vdir = tmp_path / "v23"
+    monkeypatch.setattr(cli_utils, "get_version_directory", lambda c: vdir)
+    cfg = tmp_path / "package_parquet_config.yaml"
+    cfg.write_text("x: 1\n")
+    config = {"campaign": "c", "dataset": "d", "version": "v23", "stage": "package_parquet",
+              "provenance": {"require_pushed_commit": True, "commit_marker": True}}
+    assert cli_utils.git_commit_and_log_config(config, cfg, work)[0]
+    first = (vdir / ".git_commit_success").read_text()
+    assert cli_utils.git_commit_and_log_config(config, cfg, work)[0]
+    assert (vdir / ".git_commit_success").read_text() == first
+    config["provenance"]["commit_marker"] = False
+    config["stage"] = "digitization"
+    (vdir / ".git_commit_success").unlink()
+    assert cli_utils.git_commit_and_log_config(config, cfg, work)[0]
+    assert not (vdir / ".git_commit_success").exists(), "non-packaging stages write no marker"

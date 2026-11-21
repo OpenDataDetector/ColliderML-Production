@@ -561,8 +561,6 @@ def git_commit_and_log_config(config, config_path, software_repo_path, force_com
         output_version_dir = get_version_directory(config) # Will now include campaign
         commit_success_file = output_version_dir / GIT_COMMIT_SUCCESS_FILE
         
-        output_version_dir.mkdir(parents=True, exist_ok=True) # Ensure it exists early
-
         # Determine original config filename and new paths
         original_config_filename = Path(config_path).name
         config_snapshot_dir = output_version_dir / "configs"
@@ -581,22 +579,28 @@ def git_commit_and_log_config(config, config_path, software_repo_path, force_com
                 logger.error(f"provenance.require_pushed_commit: {err}")
                 return False, None
             logger.info(f"Code: {state['sha']} on {state['remote_branches_containing_head']} (clean)")
+            # nothing is written (not even the version dir) before the gate has passed
             config_snapshot_dir.mkdir(parents=True, exist_ok=True)
             clean_config = {k: v for k, v in config.items() if k != 'env_setup'}
             tmp = config_snapshot_dir / f".{original_config_filename}.{os.getpid()}.tmp"
             with open(tmp, 'w') as f_out:
                 yaml.dump(clean_config, f_out, default_flow_style=False, sort_keys=False)
             os.replace(tmp, logged_config_path)
-            if prov.get("commit_marker", False) and not commit_success_file.exists():
-                with open(commit_success_file, 'w') as f_marker:
-                    f_marker.write(f"Last run at {datetime.datetime.now()}\n"
-                                   f"Git Branch: {current_branch_name}\n"
-                                   f"Git Hash: {state['sha']}\n"
-                                   f"Config: {Path('configs') / original_config_filename}\n"
-                                   f"Committed this run: False\n"
-                                   f"Stage: {config.get('stage')}\n")
-                logger.info(f"Success marker written at {commit_success_file}")
+            if prov.get("commit_marker", False):
+                try:  # exclusive create: written once, parallel chunks cannot overwrite it
+                    with open(commit_success_file, 'x') as f_marker:
+                        f_marker.write(f"Last run at {datetime.datetime.now()}\n"
+                                       f"Git Branch: {current_branch_name}\n"
+                                       f"Git Hash: {state['sha']}\n"
+                                       f"Config: {Path('configs') / original_config_filename}\n"
+                                       f"Committed this run: False\n"
+                                       f"Stage: {config.get('stage')}\n")
+                    logger.info(f"Success marker written at {commit_success_file}")
+                except FileExistsError:
+                    logger.info(f"Success marker already present, kept: {commit_success_file}")
             return True, logged_config_path
+
+        output_version_dir.mkdir(parents=True, exist_ok=True)
 
         # --- 3. Git Working Directory Check and Commit Logic (ALWAYS check) ---
         logger.info(f"Checking git working directory status in {software_repo_path}")
