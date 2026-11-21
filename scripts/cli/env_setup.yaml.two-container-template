@@ -1,0 +1,74 @@
+# ColliderML site config, TWO-CONTAINER variant (sim + reco), NERSC podman-hpc.
+# Copy to scripts/cli/env_setup.yaml (git-ignored) and replace every <...>.
+#   <DEPLOY_CHECKOUT>  absolute path of the checkout jobs run from
+#   <SOFTWARE_BASE>    directory holding the checkouts (was .../ColliderML/software)
+#   <IMAGE_STORE>      directory holding the image tarballs
+#   <SCRATCH>          per-user scratch for MadGraph ($PSCRATCH/ColliderML)
+# Deployed reference: sha256 8177a805231b4b2c226567992ba14b1d132e468bcbd0d32ee827fcb06423952b (2026-11-21).
+
+env_variables:
+  SOFTWARE_BASE_DIR: "<SOFTWARE_BASE>"
+  CONTAINER_SETUP: "<DEPLOY_CHECKOUT>/scripts/cli/setup_container_env.sh"
+  ACTS_ARROW_SETUP: "/opt/acts-arrow/setup.sh"
+  KEY4HEP_SHIM: "/opt/key4hep-shim.sh"
+  PANDORA_STACK_SETUP: "/opt/pandora-stack/install/setup_stack.sh"
+  ODD_THIS_SCRIPT: "/opt/odd-install/bin/this_odd.sh"
+  ODD_INSTALL: "/opt/odd-install"
+  K4ODD_PATH: "/opt/k4ODD"
+  K4ODD_INSTALL: "/opt/k4ODD/install"
+
+config_defaults:
+  common:
+    account: m4958
+    container: "localhost/colliderml/acts-arrow:tracker-hits-v2-tables"
+    container_tarball: "<IMAGE_STORE>/thv2_image.tar"
+    stage_containers:
+      calo_digitization:
+        container: "localhost/colliderml/reco:20261106"
+        container_tarball: "<IMAGE_STORE>/colliderml_reco_20261106.tar"
+      pandora_reco:
+        container: "localhost/colliderml/reco:20261106"
+        container_tarball: "<IMAGE_STORE>/colliderml_reco_20261106.tar"
+    output_base_dir: "/global/cfs/cdirs/m4958/data/ColliderML/simulation"
+    public_output_base_dir: "/global/cfs/cdirs/m4958/data/ColliderML/public"
+
+  madgraph:
+    mg_base_path: "MG5_IN_IMAGE"
+    generation_scratch_dir: "<SCRATCH>/mg_scratch"
+    output: "<SCRATCH>/simulation"
+
+  templates:
+    pythia8_card_fxfx: "<DEPLOY_CHECKOUT>/configs_production/templates/pythia8_card_fxfx_template.dat"
+
+simulation:
+  - 'source {CONTAINER_SETUP}'
+  - '[ -f {ACTS_ARROW_SETUP} ] && source {ACTS_ARROW_SETUP} || true'
+  - '[ -f {ODD_THIS_SCRIPT} ] && source {ODD_THIS_SCRIPT} || true'
+
+madgraph:
+  - 'source {CONTAINER_SETUP}'
+
+calo_digitization: &reco_env
+  - 'source {KEY4HEP_SHIM}'
+  - 'source {PANDORA_STACK_SETUP}'
+  - 'source {ODD_THIS_SCRIPT}'
+  - 'export K4ODD_PATH={K4ODD_PATH}'
+  - 'export ODD_INSTALL_DIR={ODD_INSTALL}'
+  - 'export LD_LIBRARY_PATH={K4ODD_INSTALL}/lib:{K4ODD_INSTALL}/lib64:$LD_LIBRARY_PATH'
+  - 'export PYTHONPATH={K4ODD_INSTALL}/python:$PYTHONPATH'
+
+pandora_reco: *reco_env
+
+reco_tables:
+  - 'source {KEY4HEP_SHIM}'
+  - 'source {PANDORA_STACK_SETUP}'
+  - 'source {ODD_THIS_SCRIPT}'
+  - 'export K4ODD_PATH={K4ODD_PATH}'
+  - 'export ODD_INSTALL_DIR={ODD_INSTALL}'
+  - 'export LD_LIBRARY_PATH={K4ODD_INSTALL}/lib:{K4ODD_INSTALL}/lib64:$LD_LIBRARY_PATH'
+
+particles_full:
+  - 'source {CONTAINER_SETUP}'
+
+postprocessing:
+  - 'source {CONTAINER_SETUP}'
