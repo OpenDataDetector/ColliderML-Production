@@ -511,19 +511,30 @@ def setup_acts_reconstruction(input_path, output_dir, config, rnd, logger=None):
         # 2 T the seed finder converts curvature to pT with the wrong scale, so the
         # minPt = 0.5 GeV cut acts at 0.75 GeV and the scattering window is
         # mis-sized. All releases up to v22 ran with that 2 T default.
-        # Default: the detector field at the origin. `seeding_bfield_tesla` in the
-        # config overrides it (2.0 reproduces v22 and earlier).
+        # `seeding_bfield_tesla` sets it ("detector" = the detector field at the origin).
+        # A config without the key keeps the historical behaviour (ACTS default 2 T, as
+        # Release 1 and v20-v22 ran), so old configs reproduce; the log warns about it.
+        # `seeding_require_detector_match: true` (v23) fails the run unless the detector
+        # field is readable and equal to the seed-finder field within 1e-3 T.
         detector_bz_tesla = _field_bz_tesla(field)
         seeding_bfield_tesla = getattr(config, "seeding_bfield_tesla", None)
-        if seeding_bfield_tesla is not None:
-            seed_bz_tesla = float(seeding_bfield_tesla)
-            seed_bz_source = "config seeding_bfield_tesla"
-        elif detector_bz_tesla is not None:
+        if seeding_bfield_tesla == "detector":
+            if detector_bz_tesla is None:
+                raise RuntimeError("seeding_bfield_tesla: detector, but the detector field is unreadable")
             seed_bz_tesla = detector_bz_tesla
             seed_bz_source = "detector field at origin"
+        elif seeding_bfield_tesla is not None:
+            seed_bz_tesla = float(seeding_bfield_tesla)
+            seed_bz_source = "config seeding_bfield_tesla"
         else:
-            seed_bz_tesla = 3.0
-            seed_bz_source = "fallback, ODD nominal solenoid"
+            seed_bz_tesla = 2.0
+            seed_bz_source = "no seeding_bfield_tesla in config: ACTS default 2 T (v22 and earlier)"
+        if getattr(config, "seeding_require_detector_match", False):
+            if detector_bz_tesla is None or not math.isfinite(detector_bz_tesla):
+                raise RuntimeError("seeding_require_detector_match: detector field at the origin is unreadable")
+            if abs(seed_bz_tesla - detector_bz_tesla) > 1e-3:
+                raise RuntimeError(
+                    f"seeding_require_detector_match: seed-finder field {seed_bz_tesla} T != detector {detector_bz_tesla} T")
         # Seed-finder pT cut (in the seed finder's own field). 0.5 GeV is the
         # production value; config-driven for the v23 seeding studies only.
         seed_min_pt_gev = float(getattr(config, "seed_min_pt_gev", 0.5))
@@ -581,6 +592,12 @@ def setup_acts_reconstruction(input_path, output_dir, config, rnd, logger=None):
                 f"seed finder bFieldInZ read back as {readback['seed_finder_bFieldInZ_T']} T, "
                 f"configured {seed_bz_tesla} T"
             )
+        # minPt is stored as float32 in the algorithm config: compare at 1e-6 relative
+        if abs(readback["seed_finder_minPt_GeV"] - seed_min_pt_gev) > 1e-6 * max(1.0, seed_min_pt_gev):
+            raise RuntimeError(
+                f"seed finder minPt read back as {readback['seed_finder_minPt_GeV']} GeV, configured {seed_min_pt_gev} GeV")
+        if readback["seed_finder_maxSeedsPerSpM"] != int(getattr(config, "num_seeds_per_spm", 5)):
+            raise RuntimeError("seed finder maxSeedsPerSpM read back differs from num_seeds_per_spm")
 
         # Shared by the CKF and (optionally) the truth-found track collection, so
         # the two have identical acceptance and any difference between them is
@@ -930,7 +947,7 @@ def main():
         # Historical seed replay (v23): the run's digitisation seed string from the
         # version it replaces, so digitisation random numbers are those of v20/v22.
         replay = getattr(config, "digitization_seed_replay", None)
-        if replay:
+        if replay is not None:  # an empty table is an error (replay_seed_string raises)
             from utils.seed_replay import replay_seed_string
             seed_string = replay_seed_string(replay, args.output_subdir)
             config.seed = hash_seed_string(seed_string)
