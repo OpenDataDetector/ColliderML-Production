@@ -1,4 +1,5 @@
-"""finalize_version: the marker is written only after every release chunk has an accepted record."""
+"""finalize_version: the marker is written only for a complete, unchanged, approved release candidate."""
+import hashlib
 import json
 import subprocess
 import sys
@@ -8,40 +9,66 @@ import yaml
 
 REPO = Path(__file__).resolve().parents[2]
 TOOL = REPO / "scripts" / "production" / "finalize_version.py"
+SHA = "a" * 40
 
 
-def _setup(tmp_path, n_ok, sha2=None):
+def _setup(tmp_path, attempts=2):
     cfg = tmp_path / "package_parquet_config.yaml"
+    tmp_path.mkdir(parents=True, exist_ok=True)
     cfg.write_text(yaml.safe_dump({"campaign": "c", "dataset": "d", "version": "v23", "release_events": 250,
-                                   "chunk_size": 100, "common": {"output_base_dir": str(tmp_path)}}))
-    pdir = tmp_path / "c" / "d" / "v23" / "provenance" / "package_parquet"
+                                   "chunk_size": 100, "objects": ["tracks", "vertices"],
+                                   "common": {"output_base_dir": str(tmp_path)}}))
+    v = tmp_path / "c" / "d" / "v23"
+    pdir = v / "provenance" / "package_parquet"
     pdir.mkdir(parents=True)
-    for i in range(n_ok):
-        sha = sha2 if (sha2 and i == n_ok - 1) else "a" * 40
-        (pdir / f"chunk{i}_attempt1.json").write_text(json.dumps({"status": "incomplete", "return_code": 4}))
-        (pdir / f"chunk{i}_attempt2.json").write_text(json.dumps({"status": "complete", "return_code": 0,
-                                                                  "git": {"sha": sha}}))
-        (pdir / f"chunk{i}_inputs.json").write_text(json.dumps({"status": "ok"}))
-    return cfg, tmp_path / "c" / "d" / "v23" / ".git_commit_success"
+    for i, (s, e) in enumerate([(0, 99), (100, 199), (200, 249)]):
+        outs = {}
+        for obj in ("tracks", "vertices"):
+            f = v / "parquet" / "reco" / obj / f"c.d.v23.reco.{obj}.events{s}-{e}.parquet"
+            f.parent.mkdir(parents=True, exist_ok=True)
+            f.write_bytes(f"{obj}{i}".encode())
+            outs[str(f)] = {"size": f.stat().st_size, "sha256": hashlib.sha256(f.read_bytes()).hexdigest()}
+        man = {"status": "ok", "start_event": s, "end_event": e, "objects": ["tracks", "vertices"], "outputs": outs}
+        for k in range(1, attempts):
+            (pdir / f"chunk{i}_attempt{k}.json").write_text(json.dumps({"status": "incomplete", "return_code": 4}))
+        (pdir / f"chunk{i}_attempt{attempts}.json").write_text(json.dumps(
+            {"status": "complete", "return_code": 0, "git": {"sha": SHA}, "container_record": man}))
+    return cfg, v
 
 
-def _run(cfg):
-    return subprocess.run([sys.executable, str(TOOL), str(cfg)], capture_output=True, text=True)
+def _run(cfg, sha=SHA):
+    return subprocess.run([sys.executable, str(TOOL), str(cfg), "--approved-sha", sha], capture_output=True, text=True)
 
 
-def test_missing_chunk_writes_nothing(tmp_path):
-    cfg, marker = _setup(tmp_path, 2)          # 3 chunks expected (250 events / 100)
+def test_intact_candidate_writes_once_readonly(tmp_path):
+    cfg, v = _setup(tmp_path)
     r = _run(cfg)
-    assert r.returncode == 1 and "chunk 2" in r.stdout and not marker.exists()
-
-
-def test_mixed_sha_refused(tmp_path):
-    cfg, marker = _setup(tmp_path, 3, sha2="b" * 40)
-    assert _run(cfg).returncode == 1 and not marker.exists()
-
-
-def test_complete_writes_once_readonly(tmp_path):
-    cfg, marker = _setup(tmp_path, 3)
-    assert _run(cfg).returncode == 0
-    assert marker.exists() and (marker.stat().st_mode & 0o222) == 0
+    assert r.returncode == 0, r.stdout
+    m = v / ".git_commit_success"
+    assert m.exists() and (m.stat().st_mode & 0o222) == 0
     assert _run(cfg).returncode == 1, "never overwritten"
+
+
+def test_deleted_or_changed_shard_fails(tmp_path):
+    cfg, v = _setup(tmp_path / "a")
+    next((v / "parquet/reco/tracks").glob("*events100-*")).unlink()
+    assert _run(cfg).returncode == 1 and not (v / ".git_commit_success").exists()
+    cfg2, v2 = _setup(tmp_path / "b")
+    f = next((v2 / "parquet/reco/vertices").glob("*events200-*"))
+    f.write_bytes(b"x" * f.stat().st_size)  # same size, different bytes
+    assert _run(cfg2).returncode == 1 and not (v2 / ".git_commit_success").exists()
+
+
+def test_later_unresolved_attempt_and_numeric_order(tmp_path):
+    cfg, v = _setup(tmp_path, attempts=9)
+    (v / "provenance" / "package_parquet" / "chunk1_attempt10.json").write_text(json.dumps({"status": "started"}))
+    r = _run(cfg)
+    assert r.returncode == 1 and "attempt 10" in r.stdout, "attempt 10 is later than attempt 9"
+
+
+def test_wrong_sha_and_stray_file_fail(tmp_path):
+    cfg, v = _setup(tmp_path)
+    assert _run(cfg, sha="b" * 40).returncode == 1
+    (v / "parquet/reco/tracks/c.d.v23.reco.tracks.events250-349.parquet").write_bytes(b"x")
+    r = _run(cfg)
+    assert r.returncode == 1 and "unexpected file" in r.stdout

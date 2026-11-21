@@ -256,10 +256,10 @@ def release_chunk_window(chunk_index: int, chunk_size: int, release_events: int)
 # The ROOT summary's nSharedHits is 0 for every track in the pr-8 chain: nothing
 # computes it (TrackFindingAlgorithm has no computeSharedHits step and the greedy
 # ambiguity solver does not write the flag). Recompute it here from hit_ids, per
-# event and per collection, with the ACTS computeSharedHits semantics: a hit of a
-# track counts as shared if it is a measurement (not an outlier) on this track and
-# a measurement on at least one other track of the same collection in the same
-# event. A hit repeated within one track counts once for that track.
+# event and per collection. Released definition (not claimed equal to ACTS
+# computeSharedHits, which decorates states of its input tracks, including tracks
+# later removed): the number of distinct non-outlier hit ids of a track that are
+# also non-outlier hits of another track of the same final collection and event.
 def compute_shared_hits(table: pa.Table) -> pa.Table:
     """Return ``table`` with ``n_shared_hits`` (list<int32>, one per track) recomputed."""
     if "hit_ids" not in table.column_names:
@@ -280,7 +280,8 @@ def compute_shared_hits(table: pa.Table) -> pa.Table:
     if not (np.array_equal(flags.offsets.to_numpy(), trk_off)
             and np.array_equal(flags_trk.offsets.to_numpy(), hit_off)):
         raise RuntimeError("hit_outlier and hit_ids nesting differs (event or track level)")
-    if hits.null_count or per_trk.null_count or per_trk.flatten().null_count or flags_trk.flatten().null_count:
+    if (hits.null_count or per_trk.null_count or per_trk.flatten().null_count
+            or flags.null_count or flags_trk.null_count or flags_trk.flatten().null_count):
         raise RuntimeError("null entries in hit_ids or hit_outlier")
     outl = flags_trk.flatten().to_numpy(zero_copy_only=False).astype(bool)
 
@@ -452,6 +453,8 @@ def package_chunk(
     outputs: list[Path] = []
 
     def note_inputs(run_dir: Path, obj: str) -> None:
+        if manifest_path is None:   # no manifest requested: no hashing
+            return
         files = [run_dir / VERTEX_SOURCE] if obj == "vertices" else sorted((run_dir / obj).glob("*.parquet"))
         if track_covariance and obj in COV_SOURCE:
             files.append(run_dir / COV_SOURCE[obj])
@@ -482,6 +485,8 @@ def package_chunk(
 
     for obj in objects:
         if obj not in OBJECT_LAYOUT:
+            if manifest_path is not None:
+                raise RuntimeError(f"unknown object {obj!r}")
             logger.error("unknown object %r - not in OBJECT_LAYOUT, skipping", obj)
             continue
         group, published_name = OBJECT_LAYOUT[obj]
@@ -510,7 +515,10 @@ def package_chunk(
                 if track_covariance:
                     # Join BEFORE the event_id shift, while event_id is still the
                     # run-local number the ROOT summary uses.
+                    n_cols = table.num_columns
                     table = _attach_covariance(table, run_dir, obj)
+                    if manifest_path is not None and obj in COV_SOURCE and table.num_columns == n_cols:
+                        raise RuntimeError(f"run {abs_run}: {obj} covariance join failed (see warnings)")
                 if remap_particle_ids and obj in ID_COLUMNS:
                     # Also before the shift: the map is keyed by run-local event.
                     table = particle_map(run_dir).remap_table(table, obj)
