@@ -303,10 +303,13 @@ def sort_by_event_id(table: pa.Table, obj: str) -> pa.Table:
 #   truth_vertex_primary      truth vertex the reco vertex is matched to (VertexTruthMatcher,
 #   truth_vertex_secondary    majority track weight); same numbering as truth/particles
 #                             vertex_primary / vertex_secondary (hard scatter = 1)
-#   truth_x, truth_y, truth_z matched truth vertex position [mm]
 #   truth_match_ratio         weight fraction from the matched truth vertex
 #   contamination             1 - purity, as ACTS defines it
 #   classification            0 unknown (no match), 1 clean, 2 merged, 3 split (ACTS enum)
+# The ntuple's truthX/Y/Z are not published: for split vertices they can be the position of
+# another SimVertex with the same (primary, secondary) barcode (measured on the v23 smoke test:
+# a reco vertex at z = 196.07 mm matched to the hard scatter carried truthZ = 1622 mm). The
+# interaction position is in truth/particles (vx, vy, vz of the primaries with that vertex_primary).
 # Track links are NOT in the ntuple (per-vertex track parameters only, evaluated at the
 # vertex); they need an ACTS writer change. Times (recoT, covTT) are not published.
 VERTEX_SOURCE = "performance_vertexing.root"
@@ -315,7 +318,6 @@ _VERTEX_F32 = [
     ("cov_xx", "covXX"), ("cov_xy", "covXY"), ("cov_xz", "covXZ"),
     ("cov_yy", "covYY"), ("cov_yz", "covYZ"), ("cov_zz", "covZZ"),
     ("sum_pt2", "sumPt2"), ("track_weight_sum", "recoVertexTrackWeights"),
-    ("truth_x", "truthX"), ("truth_y", "truthY"), ("truth_z", "truthZ"),
     ("truth_match_ratio", "truthVertexMatchRatio"), ("contamination", "recoVertexContamination"),
 ]
 _VERTEX_I32 = [

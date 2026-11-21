@@ -133,3 +133,53 @@ def test_v23_package_configs_enable_both():
         assert "staging" in c["output_base_dir"] and "staging" in c["input_base_dir"]
     c = yaml.safe_load(open(REPO / "configs_production/full_pileup/ttbar/v23/package_parquet_config.yaml"))
     assert c["job_config"]["n_runs"] * c["chunk_size"] == 100_000
+
+
+def _write_vertex_ntuple(path, events):
+    """events: list of (event_nr, [per-vertex dicts]) -> minimal RootVertexNTupleWriter-like tree."""
+    ak = pytest.importorskip("awkward")
+    uproot = pytest.importorskip("uproot")
+    f32 = ["recoX", "recoY", "recoZ", "covXX", "covXY", "covXZ", "covYY", "covYZ", "covZZ", "sumPt2",
+           "recoVertexTrackWeights", "truthVertexMatchRatio", "recoVertexContamination"]
+    i32 = ["nTracksRecoVtx", "vertex_primary", "vertex_secondary", "recoVertexClassification"]
+    data = {"event_nr": np.array([e for e, _ in events], dtype=np.uint32),
+            "nRecoVtx": np.array([len(v) for _, v in events], dtype=np.int32)}
+    for b in f32:
+        data[b] = ak.Array([[float(x.get(b, 0.5)) for x in v] for _, v in events])
+    for b in i32:
+        data[b] = ak.Array([[int(x.get(b, 1)) for x in v] for _, v in events])
+    with uproot.recreate(path) as f:
+        f["vertexing"] = data
+
+
+def test_vertices_from_root(tmp_path):
+    p = tmp_path / "performance_vertexing.root"
+    _write_vertex_ntuple(p, [(1, [{"recoZ": 5.0, "sumPt2": 100.0, "recoVertexClassification": 1},
+                                  {"recoZ": -3.0, "sumPt2": 4.0, "vertex_primary": 7, "recoVertexClassification": 2}]),
+                             (0, []),
+                             (2, [{"recoZ": 1.0, "recoVertexClassification": 0}])])
+    t = pkg.vertices_from_root(p)
+    assert t.column("event_id").to_pylist() == [1, 0, 2]
+    assert t.column("vertex_id").to_pylist() == [[0, 1], [], [0]]
+    assert t.column("z").to_pylist() == [[5.0, -3.0], [], [1.0]]
+    assert t.column("truth_vertex_primary").to_pylist() == [[1, 7], [], [1]]
+    assert t.column("classification").to_pylist() == [[1, 2], [], [0]]
+    assert t.schema.field("classification").type == pa.list_(pa.int8())
+    assert "truth_z" not in t.column_names, "ntuple truth positions are not published"
+    s = pkg.sort_by_event_id(t, "vertices")
+    assert s.column("event_id").to_pylist() == [0, 1, 2]
+
+
+def test_vertices_length_mismatch_raises(tmp_path):
+    ak = pytest.importorskip("awkward")
+    uproot = pytest.importorskip("uproot")
+    p = tmp_path / "performance_vertexing.root"
+    _write_vertex_ntuple(p, [(0, [{"recoZ": 1.0}])])
+    # rewrite with nRecoVtx inconsistent with the vectors
+    t = uproot.open(p)["vertexing"].arrays(library="ak")
+    d = {k: t[k] for k in t.fields}
+    d["nRecoVtx"] = np.array([2], dtype=np.int32)
+    with uproot.recreate(p) as f:
+        f["vertexing"] = d
+    with pytest.raises(RuntimeError, match="nRecoVtx"):
+        pkg.vertices_from_root(p)
