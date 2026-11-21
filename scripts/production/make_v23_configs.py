@@ -116,7 +116,9 @@ def sub_once(pattern, repl, text, name):
 
 def build(src, dst, kind, base):
     s = (C / src).read_text()
-    body = re.sub(r"\A(?:#.*\n)+", "", s)
+    # Drop every full-line comment of the parent (they describe v20/v22 runs, chunk counts and
+    # dates that are wrong for v23); inline comments on settings are kept.
+    body = re.sub(r"^[ \t]*#.*\n", "", s, flags=re.M)
     campaign = src.split("/")[0]
     pu = "PU0" if campaign == "hard_scatter" else "PU200"
     t = HEADER.format(pu=pu, src=src) + body

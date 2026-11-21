@@ -13,7 +13,6 @@ common:
   cache_dir: "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-prod-container/.cache"
   output_base_dir: "/global/cfs/cdirs/m4958/data/ColliderML/staging/simulation"
 
-# Pilot: one interactive node, driven by run_v20.sh (8 runs in parallel, 16 threads each).
 job_config:
   n_runs: 8
   runs_per_node: 8
@@ -21,7 +20,6 @@ job_config:
   qos: "interactive"
   execution_mode: "interactive"
 
-# The validator expects a whole version dir; run_v20.sh runs check_run.py per run instead.
 validation_config:
   enabled: false
 
@@ -42,7 +40,6 @@ vertexing_write_track_info: true
 digitization_seed_replay:     # D2: the seed string each run had in the version v23 replaces
   - {runs: [0, 7], seed_string: "ttbar_v20_run{run}"}
 num_seeds_per_spm: 40
-# seed_impact_max: code default 3.0 mm (hard_scatter / full_pileup convention)
 
 output_sim_with_tracks: true  # Pandora handoff (calo SimHits + MCParticles + ActsTracks)
 

@@ -16,8 +16,6 @@ common:
   cache_dir: "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-prod-container/.cache"
   output_base_dir: "/global/cfs/cdirs/m4958/data/ColliderML/staging/simulation"   # = output_base_dir below (run_stage version dir)
 
-# 2026-11-06: 100k rerun (runs 0-1562, Pandora with reco 20261106), read from and written to staging;
-# 1001 chunks (events 0-99 ... 100000-100031); adds truth/generator_particles.
 job_config:
   n_runs: 1000                 # chunks: events 0-99 ... 99900-99999 (100,000 events)
   runs_per_node: 11
