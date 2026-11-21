@@ -568,6 +568,36 @@ def git_commit_and_log_config(config, config_path, software_repo_path, force_com
         config_snapshot_dir = output_version_dir / "configs"
         logged_config_path = config_snapshot_dir / original_config_filename
 
+        prov = config.get("provenance") or {}
+        if prov.get("require_pushed_commit"):
+            # Production (v23 on): never auto-commit. The code must be a clean checkout of a
+            # commit on a remote-tracking branch, so every provenance record's git SHA resolves
+            # on GitHub. The marker is written only where the config asks for it (packaging),
+            # only once, so a later stage cannot overwrite it.
+            import run_provenance
+            state = run_provenance.git_state(software_repo_path)
+            err = run_provenance.pushed_commit_error(state)
+            if err:
+                logger.error(f"provenance.require_pushed_commit: {err}")
+                return False, None
+            logger.info(f"Code: {state['sha']} on {state['remote_branches_containing_head']} (clean)")
+            config_snapshot_dir.mkdir(parents=True, exist_ok=True)
+            clean_config = {k: v for k, v in config.items() if k != 'env_setup'}
+            tmp = config_snapshot_dir / f".{original_config_filename}.{os.getpid()}.tmp"
+            with open(tmp, 'w') as f_out:
+                yaml.dump(clean_config, f_out, default_flow_style=False, sort_keys=False)
+            os.replace(tmp, logged_config_path)
+            if prov.get("commit_marker", False) and not commit_success_file.exists():
+                with open(commit_success_file, 'w') as f_marker:
+                    f_marker.write(f"Last run at {datetime.datetime.now()}\n"
+                                   f"Git Branch: {current_branch_name}\n"
+                                   f"Git Hash: {state['sha']}\n"
+                                   f"Config: {Path('configs') / original_config_filename}\n"
+                                   f"Committed this run: False\n"
+                                   f"Stage: {config.get('stage')}\n")
+                logger.info(f"Success marker written at {commit_success_file}")
+            return True, logged_config_path
+
         # --- 3. Git Working Directory Check and Commit Logic (ALWAYS check) ---
         logger.info(f"Checking git working directory status in {software_repo_path}")
         

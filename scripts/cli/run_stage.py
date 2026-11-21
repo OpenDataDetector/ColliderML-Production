@@ -8,6 +8,7 @@ from pathlib import Path
 import logging
 import datetime
 import json
+import time
 
 # Import shared utilities
 import cli_utils
@@ -199,6 +200,10 @@ def run_guardian(validation_result, config, runs_dir):
         logger.exception("Full traceback:")
         return {'action': 'FAIL', 'exit_code': 1, 'reason': f'Guardian error: {e}'}
 
+def cli_utils_git_root():
+    return get_git_root(Path(__file__).resolve())
+
+
 def run_interactive(config, config_path_arg, stage_script_path, run_id=None):
     """Runs the stage script interactively with integrated validation + guardian.
 
@@ -241,6 +246,7 @@ def run_interactive(config, config_path_arg, stage_script_path, run_id=None):
     
     stage_success = False
     stage_exit_code = 1
+    t_start = time.time()
     
     try:
         command_info = cli_utils.build_stage_command(
@@ -285,6 +291,40 @@ def run_interactive(config, config_path_arg, stage_script_path, run_id=None):
         stage_exit_code = 1
         stage_success = False
     
+    if stage_exit_code < 0:  # killed by a signal: report it as the shell would
+        stage_exit_code = 128 - stage_exit_code
+
+    # One provenance record per run (or chunk) and attempt, failed attempts included.
+    # A run whose record cannot be written is not acceptable for production: exit 3.
+    prov = config.get("provenance") or {}
+    if prov.get("record") and run_id is not None:
+        try:
+            import run_provenance
+            is_post = config["stage"] in cli_utils.POSTPROCESSING_STAGES
+            version_dir = cli_utils.get_version_directory(config)
+            base = version_dir if is_post else Path(run_dir) / str(run_id)
+            container, _ = cli_utils.resolve_stage_container(config, config["stage"])
+            rec = run_provenance.build_record(
+                config=config, config_path=config_path_arg, unit=int(run_id), rc=stage_exit_code,
+                t_start=t_start, t_end=time.time(), repo=cli_utils_git_root(),
+                base=base, container=container,
+                env_setup_path=Path(__file__).resolve().parent / "env_setup.yaml",
+            )
+            if is_post:
+                # packaging: hash this chunk's output files only
+                cs = int(config.get("chunk_size", 0) or 0)
+                if cs:
+                    rec["outputs"] = run_provenance.hash_paths(
+                        version_dir, [f"parquet/*/*/*.events{int(run_id) * cs}-*.parquet"])
+            path = run_provenance.record_path(config, Path(run_dir), version_dir, int(run_id), is_post)
+            run_provenance.write_record(path, rec)
+            logger.info(f"Provenance record: {path}")
+        except Exception as e:
+            logger.error(f"Provenance record failed: {e}")
+            logger.exception("Full traceback:")
+            if stage_exit_code == 0:
+                stage_exit_code = 3
+
     # If validation is disabled, exit with stage result
     if not validation_enabled:
         logger.info(f"Validation disabled. Exiting with stage exit code: {stage_exit_code}")
@@ -329,8 +369,10 @@ def run_interactive(config, config_path_arg, stage_script_path, run_id=None):
     logger.info(f"INTERACTIVE RUN COMPLETE - Exiting with code {decision['exit_code']}")
     logger.info("=" * 80)
     
-    # Exit with guardian's decision
-    sys.exit(decision['exit_code'])
+    # Exit with the task's own return code when it failed: the guardian decides about
+    # the run directory, it must not turn a failed task into a successful exit.
+    final_code = stage_exit_code if stage_exit_code != 0 else decision['exit_code']
+    sys.exit(final_code)
 
 def main():
     parser = argparse.ArgumentParser(description="Run a ColliderML data production stage.")
