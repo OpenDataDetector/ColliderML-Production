@@ -35,8 +35,14 @@ RANGE = re.compile(r"\.events(\d+)-(\d+)\.parquet$")
 
 def _terminal(src: Path) -> Path:
     """Resolve a chain of links to the real file, so the new version points at the terminal
-    file (v23 D4: links only to terminal files listed in the parent baseline)."""
-    return Path(os.path.realpath(src))
+    file (v23 D4: links only to terminal files listed in the parent baseline). Parquet shards
+    must resolve to regular files; run objects may be directories (e.g. generator_particles)."""
+    real = Path(os.path.realpath(src))
+    if not real.exists():
+        raise FileNotFoundError(f"{src} resolves to missing {real}")
+    if "/staging/" in str(real):
+        raise ValueError(f"{src} resolves into staging ({real}); terminals must be published files")
+    return real
 
 
 def plan(args) -> list[tuple[Path, Path]]:
@@ -61,6 +67,12 @@ def plan(args) -> list[tuple[Path, Path]]:
                 found += 1
         if not found:
             raise FileNotFoundError(f"no {obj} files in {parent / 'parquet' / obj} overlap events {lo}-{hi}")
+        if args.expect_files is not None and found != args.expect_files:
+            raise ValueError(f"{obj}: {found} parent files overlap events {lo}-{hi}, expected {args.expect_files}")
+        if args.terminal:
+            for dst, src in links[-found:]:
+                if not src.is_file():
+                    raise ValueError(f"{dst.name}: terminal {src} is not a regular file")
     return links
 
 
@@ -78,6 +90,8 @@ def main() -> int:
     p.add_argument("--run-files", nargs="*", default=["edm4hep.root"])
     p.add_argument("--parquet", nargs="*", default=[], help="objects under parquet/, e.g. truth/particles")
     p.add_argument("--events", type=int, nargs=2, metavar=("FIRST", "LAST"), help="global event range for --parquet")
+    p.add_argument("--expect-files", type=int, default=None,
+                   help="with --parquet: exact number of parent files per object (e.g. 1000 for PU200 v23)")
     p.add_argument("--apply", action="store_true", help="create the links (default: dry run)")
     args = p.parse_args()
     if args.parquet and not args.events:

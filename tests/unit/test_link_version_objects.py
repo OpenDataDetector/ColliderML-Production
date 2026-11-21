@@ -31,3 +31,17 @@ def test_parent_dir_and_terminal(tmp_path):
     assert _run(*args, "--terminal", "--apply").returncode == 0, "identical link is accepted"
     r = _run(*args, "--apply")  # non-terminal target differs from the existing link
     assert r.returncode == 1 and "REFUSE" in r.stderr
+
+
+def test_parquet_expect_files_and_contiguity(tmp_path):
+    pub = tmp_path / "pub" / "c" / "d"
+    obj = pub / "v1" / "parquet" / "truth" / "particles"
+    obj.mkdir(parents=True)
+    for s in (0, 100, 200):
+        (obj / f"c.d.v1.truth.particles.events{s}-{s + 99}.parquet").write_bytes(b"x")
+    st = tmp_path / "st" / "c" / "d"
+    base = ["--dataset-dir", st, "--parent-dataset-dir", pub, "--parent", "v1", "--version", "v23",
+            "--parquet", "truth/particles", "--events", 0, 299, "--terminal"]
+    assert _run(*base, "--expect-files", 3).returncode == 0
+    r = _run(*base, "--expect-files", 4)
+    assert r.returncode != 0 and "expected 4" in r.stderr

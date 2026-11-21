@@ -168,6 +168,8 @@ def run_pandora_reco(input_file, output_dir, config, logger):
         work = work_root / f"slice_{i:03d}"
         work.mkdir(parents=True, exist_ok=True)
         part = (work / "reco_part.root") if n_proc > 1 else output_file
+        if part.exists():  # a part from an earlier attempt must not pass as this one's output
+            part.unlink()
         cmd = ["k4run", str(k4odd_script),
                f"--inputFile={input_file}",
                f"--outputFile={part}",
@@ -186,11 +188,30 @@ def run_pandora_reco(input_file, output_dir, config, logger):
     # return code, every attempt included. Written whether or not the slices succeed.
     slice_log = []
 
+    def _digest(path):
+        import hashlib
+        try:
+            return hashlib.sha256(Path(path).read_bytes()).hexdigest()
+        except OSError:
+            return None
+
+    # the settings file and the photon-likelihood file it names, as k4run sees them (relative
+    # paths resolve against k4odd_base, the k4run working directory), hashed in this container
+    import re as _re
+    _lik = None
+    try:
+        _m = _re.search(r"<HistogramFile>\s*([^<\s]+)\s*</HistogramFile>", Path(pandora_settings).read_text())
+        _lik = (Path(k4odd_base) / _m.group(1)) if _m else None
+    except OSError:
+        pass
+    resources = {"pandora_settings": {"path": str(pandora_settings), "sha256": _digest(pandora_settings)},
+                 "photon_likelihood": {"path": str(_lik) if _lik else None,
+                                       "sha256": _digest(_lik) if _lik else None}}
+
     def write_slice_record(status):
         import json
         rec = {"input_file": str(input_file), "n_input_entries": n_input, "n_events": n_events,
-               "n_slices": n_proc, "pandora_settings": str(pandora_settings), "status": status,
-               "slices": slice_log}
+               "n_slices": n_proc, "resources": resources, "status": status, "slices": slice_log}
         tmp = output_dir / ".pandora_slices.json.tmp"
         tmp.write_text(json.dumps(rec, indent=1) + "\n")
         os.replace(tmp, output_dir / "pandora_slices.json")
@@ -215,9 +236,10 @@ def run_pandora_reco(input_file, output_dir, config, logger):
         # ~11 GB per event): retry each failed slice once, alone, after the others have finished.
         logger.warning(f"retrying {len(failed)} failed slice(s) one at a time: {failed}")
         failed = [i for i in failed if finish([launch(i)])]
-    write_slice_record("failed" if failed else "ok")
     if failed:
+        write_slice_record("failed")
         raise RuntimeError(f"Pandora reconstruction failed in {len(failed)} of {n_proc} slices: {failed}")
+    write_slice_record("slices_done")   # final status written after the output checks below
 
     merge = bool(getattr(config, "merge_slices", True))
     if n_proc > 1 and not merge:
@@ -232,8 +254,15 @@ def run_pandora_reco(input_file, output_dir, config, logger):
             shutil.move(part, dst)                      # work_root may be another file system
             n = _count_entries(dst)
             if n != count:
+                write_slice_record(f"failed: slice {i} wrote {n} events, expected {count}")
                 raise RuntimeError(f"slice {i}: {n} events written, expected {count}")
+            dump = subprocess.run(["podio-dump", str(dst)], capture_output=True, text=True, env=env)
+            missing = [c for c in ("GaudiPandoraPFOs", "GaudiPandoraClusters") if c not in dump.stdout]
+            if missing:
+                write_slice_record(f"failed: slice {i} lacks {missing}")
+                raise RuntimeError(f"slice {i}: output missing collections {missing}")
             n_out += n
+        write_slice_record("ok")
         logger.info(f"✓ {n_proc} slice files ({n_out} events) in {parts_dir} (merge_slices: false)")
         _remove_stale_outputs(output_dir, keep="parts", n_parts=n_proc, logger=logger)
         return parts_dir
@@ -259,6 +288,7 @@ def run_pandora_reco(input_file, output_dir, config, logger):
             raise RuntimeError(f"Output missing collection {coll} - reco silently failed")
 
     _remove_stale_outputs(output_dir, keep="merged", n_parts=0, logger=logger)
+    write_slice_record("ok")
     out_mb = output_file.stat().st_size / 1024**2
     logger.info(f"✓ Pandora reco complete ({out_mb:.1f} MB)")
     return output_file
