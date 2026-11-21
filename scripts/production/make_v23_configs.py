@@ -76,9 +76,10 @@ PROVENANCE = {
         "  require_pushed_commit: true\n"
         "  commit_marker: false\n"
         "  inputs: [sim_with_tracks.root]\n"
-        "  outputs: ['reco_parts/reco_part_*.root', reco_edm4hep.root]\n"
+        "  outputs: [pandora_slices.json, 'reco_parts/reco_part_*.root', reco_edm4hep.root]\n"
         "  image_files: [/opt/k4ODD/k4ODD/options/PandoraSettingsCLD.xml,\n"
         "                /opt/k4ODD/k4ODD/options/PandoraLikelihoodData9EBin_zuds200.xml]\n"
+        "  container_json: pandora_slices.json    # source entries and return code of every slice attempt\n"
     ),
     "reco_tables": (
         "provenance:\n"

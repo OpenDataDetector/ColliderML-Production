@@ -182,11 +182,26 @@ def run_pandora_reco(input_file, output_dir, config, logger):
         return (i, first, count, part, log,
                 subprocess.Popen(cmd, stdout=log, stderr=subprocess.STDOUT, env=penv, cwd=k4odd_base))
 
+    # Per-slice record (v23 provenance): which source entries each k4run process read, and its
+    # return code, every attempt included. Written whether or not the slices succeed.
+    slice_log = []
+
+    def write_slice_record(status):
+        import json
+        rec = {"input_file": str(input_file), "n_input_entries": n_input, "n_events": n_events,
+               "n_slices": n_proc, "pandora_settings": str(pandora_settings), "status": status,
+               "slices": slice_log}
+        tmp = output_dir / ".pandora_slices.json.tmp"
+        tmp.write_text(json.dumps(rec, indent=1) + "\n")
+        os.replace(tmp, output_dir / "pandora_slices.json")
+
     def finish(slice_procs):
         failed = []
         for i, first, count, part, log, proc in slice_procs:
             rc = proc.wait()
             log.close()
+            slice_log.append({"slice": i, "first_entry": first, "count": count, "rc": rc,
+                              "output_exists": part.exists()})
             if rc != 0 or not part.exists():
                 failed.append(i)
                 tail = (work_root / f"slice_{i:03d}" / "k4run.log").read_text()[-2000:]
@@ -200,6 +215,7 @@ def run_pandora_reco(input_file, output_dir, config, logger):
         # ~11 GB per event): retry each failed slice once, alone, after the others have finished.
         logger.warning(f"retrying {len(failed)} failed slice(s) one at a time: {failed}")
         failed = [i for i in failed if finish([launch(i)])]
+    write_slice_record("failed" if failed else "ok")
     if failed:
         raise RuntimeError(f"Pandora reconstruction failed in {len(failed)} of {n_proc} slices: {failed}")
 
