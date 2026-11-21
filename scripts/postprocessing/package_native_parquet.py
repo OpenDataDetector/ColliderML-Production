@@ -80,6 +80,8 @@ OBJECT_LAYOUT: dict[str, tuple[str, str]] = {
     # Generator history only (beams, hard process, showers; particles_full with generator_particles),
     # same particle_id as truth/particles; ns and MCParticle ids already, no conversion, no remap.
     "generator_particles": ("truth", "generator_particles"),
+    # AMVF primary vertices, from the per-run ROOT ntuple (see vertices_from_root).
+    "vertices": ("reco", "vertices"),
 }
 
 # The ACTS-native writer emits time-like quantities in ACTS native units
@@ -230,8 +232,136 @@ def _attach_covariance(table: pa.Table, run_dir: Path, obj: str) -> pa.Table:
 _TRACK_KEY_STRIDE = 1 << 20  # track_id is uint16, so 2^20 is a safe stride
 
 
+# --- Shared hits --------------------------------------------------------------
+# The ROOT summary's nSharedHits is 0 for every track in the pr-8 chain: nothing
+# computes it (TrackFindingAlgorithm has no computeSharedHits step and the greedy
+# ambiguity solver does not write the flag). Recompute it here from hit_ids, per
+# event and per collection, with the ACTS computeSharedHits semantics: a hit of a
+# track counts as shared if it is a measurement (not an outlier) on this track and
+# a measurement on at least one other track of the same collection in the same
+# event. A hit repeated within one track counts once for that track.
+def compute_shared_hits(table: pa.Table) -> pa.Table:
+    """Return ``table`` with ``n_shared_hits`` (list<int32>, one per track) recomputed."""
+    if "hit_ids" not in table.column_names:
+        return table
+    hits = table.column("hit_ids").combine_chunks()        # list<list<uint32>> per event
+    trk_off = hits.offsets.to_numpy()                       # event -> tracks
+    per_trk = hits.flatten()                                # list<uint32> per track
+    hit_off = per_trk.offsets.to_numpy()                    # track -> hits
+    hit_val = per_trk.flatten().to_numpy(zero_copy_only=False).astype(np.int64)
+    n_tracks = len(hit_off) - 1
+    n_events = len(trk_off) - 1
+    if "hit_outlier" in table.column_names:
+        outl = table.column("hit_outlier").combine_chunks().flatten().flatten()
+        outl = outl.to_numpy(zero_copy_only=False).astype(bool)
+        if len(outl) != len(hit_val):
+            raise RuntimeError("hit_outlier and hit_ids have different lengths")
+    else:
+        outl = np.zeros(len(hit_val), dtype=bool)
+
+    trk_of_hit = np.repeat(np.arange(n_tracks, dtype=np.int64), np.diff(hit_off))
+    ev_of_trk = np.repeat(np.arange(n_events, dtype=np.int64), np.diff(trk_off))
+    ev_of_hit = ev_of_trk[trk_of_hit]
+    meas = ~outl
+    # unique (event, hit, track) among measurements: a hit counted once per track
+    key = np.stack([ev_of_hit[meas], hit_val[meas], trk_of_hit[meas]], axis=1)
+    key = np.unique(key, axis=0) if len(key) else key.reshape(0, 3)
+    n_shared = np.zeros(n_tracks, dtype=np.int32)
+    if len(key):
+        eh = key[:, 0] * (1 << 32) + key[:, 1]               # hit ids are uint32
+        _, inv, counts = np.unique(eh, return_inverse=True, return_counts=True)
+        shared = counts[inv] >= 2
+        np.add.at(n_shared, key[shared, 2], 1)
+    col = pa.ListArray.from_arrays(pa.array(trk_off.astype(np.int32), type=pa.int32()),
+                                   pa.array(n_shared, type=pa.int32()))
+    if "n_shared_hits" in table.column_names:
+        return table.set_column(table.schema.get_field_index("n_shared_hits"), "n_shared_hits", col)
+    return table.append_column("n_shared_hits", col)
+
+
+def sort_by_event_id(table: pa.Table, obj: str) -> pa.Table:
+    """Sort outer rows (one per event) by event_id; refuse duplicated event ids."""
+    ev = table.column("event_id").to_numpy().astype(np.int64)
+    if len(np.unique(ev)) != len(ev):
+        raise RuntimeError(f"{obj}: duplicated event_id rows in one run table")
+    if len(ev) > 1 and np.all(ev[1:] > ev[:-1]):
+        return table
+    return table.take(pa.array(np.argsort(ev, kind="stable")))
+
+
+# --- Vertices -------------------------------------------------------------------
+# AMVF primary vertices (digi_and_reco `vertexing: true`). The pr-8 ACTS build has no
+# Arrow vertex writer, so the per-run source is the ROOT ntuple of
+# RootVertexNTupleWriter (performance_vertexing.root, tree "vertexing", one entry per
+# event, per-vertex vectors). Published per event, one list entry per reco vertex:
+#   vertex_id                 0..N-1 in AMVF output order
+#   x, y, z                   fitted position [mm]
+#   cov_xx ... cov_zz         spatial covariance [mm^2] (time row dropped: no time measurement)
+#   n_tracks                  tracks attached to the vertex
+#   sum_pt2                   sum of track pT^2 [GeV^2] (hard-scatter selection: max per event)
+#   track_weight_sum          sum of AMVF track weights
+#   truth_vertex_primary      truth vertex the reco vertex is matched to (VertexTruthMatcher,
+#   truth_vertex_secondary    majority track weight); same numbering as truth/particles
+#                             vertex_primary / vertex_secondary (hard scatter = 1)
+#   truth_x, truth_y, truth_z matched truth vertex position [mm]
+#   truth_match_ratio         weight fraction from the matched truth vertex
+#   contamination             1 - purity, as ACTS defines it
+#   classification            0 unknown (no match), 1 clean, 2 merged, 3 split (ACTS enum)
+# Track links are NOT in the ntuple (per-vertex track parameters only, evaluated at the
+# vertex); they need an ACTS writer change. Times (recoT, covTT) are not published.
+VERTEX_SOURCE = "performance_vertexing.root"
+_VERTEX_F32 = [
+    ("x", "recoX"), ("y", "recoY"), ("z", "recoZ"),
+    ("cov_xx", "covXX"), ("cov_xy", "covXY"), ("cov_xz", "covXZ"),
+    ("cov_yy", "covYY"), ("cov_yz", "covYZ"), ("cov_zz", "covZZ"),
+    ("sum_pt2", "sumPt2"), ("track_weight_sum", "recoVertexTrackWeights"),
+    ("truth_x", "truthX"), ("truth_y", "truthY"), ("truth_z", "truthZ"),
+    ("truth_match_ratio", "truthVertexMatchRatio"), ("contamination", "recoVertexContamination"),
+]
+_VERTEX_I32 = [
+    ("n_tracks", "nTracksRecoVtx"),
+    ("truth_vertex_primary", "vertex_primary"), ("truth_vertex_secondary", "vertex_secondary"),
+]
+
+
+def vertices_from_root(path: Path) -> pa.Table:
+    import uproot  # available in the stage container via setup_container_env.sh
+
+    branches = ["event_nr", "nRecoVtx", "recoVertexClassification"] + [b for _, b in _VERTEX_F32 + _VERTEX_I32]
+    tree = uproot.open(path)["vertexing"]
+    missing = [b for b in branches if b not in set(tree.keys())]
+    if missing:
+        raise RuntimeError(f"{path}: vertexing tree lacks {missing}")
+    arr = tree.arrays(branches, library="np")
+    n = np.array([len(x) for x in arr["recoX"]], dtype=np.int64)
+    if not np.array_equal(n, np.asarray(arr["nRecoVtx"], dtype=np.int64)):
+        raise RuntimeError(f"{path}: per-vertex vector length differs from nRecoVtx")
+    off = pa.array(np.concatenate([[0], np.cumsum(n)]).astype(np.int32), type=pa.int32())
+
+    def flat(b, dt):
+        v = arr[b]
+        lens = np.array([len(x) for x in v])
+        if not np.array_equal(lens, n):
+            raise RuntimeError(f"{path}: branch {b} length differs from nRecoVtx")
+        return np.concatenate([np.asarray(x, dtype=dt) for x in v]) if len(v) else np.zeros(0, dt)
+
+    cols = {"event_id": pa.array(np.asarray(arr["event_nr"], dtype=np.uint32), type=pa.uint32())}
+    cols["vertex_id"] = pa.ListArray.from_arrays(
+        off, pa.array(np.concatenate([np.arange(k) for k in n]).astype(np.uint16) if len(n) else [], type=pa.uint16()))
+    for name, b in _VERTEX_F32:
+        cols[name] = pa.ListArray.from_arrays(off, pa.array(flat(b, np.float32), type=pa.float32()))
+    for name, b in _VERTEX_I32:
+        cols[name] = pa.ListArray.from_arrays(off, pa.array(flat(b, np.int32), type=pa.int32()))
+    cols["classification"] = pa.ListArray.from_arrays(
+        off, pa.array(flat("recoVertexClassification", np.int8), type=pa.int8()))
+    return pa.table(cols)
+
+
 def _read_run_table(run_dir: Path, obj: str) -> pa.Table | None:
     """Read a run's single native parquet file for one object."""
+    if obj == "vertices":
+        src = run_dir / VERTEX_SOURCE
+        return vertices_from_root(src) if src.exists() else None
     files = sorted((run_dir / obj).glob("*.parquet"))
     if not files:
         return None
@@ -272,6 +402,8 @@ def package_chunk(
     track_covariance: bool = False,
     remap_particle_ids: bool = False,
     sim_input_name: str = "edm4hep.root",
+    sort_rows: bool = False,
+    shared_hits_from_hit_ids: bool = False,
 ) -> None:
     """Write one output file per object for the event window [start_event, end_event].
 
@@ -334,9 +466,16 @@ def package_chunk(
                 if remap_particle_ids and obj in ID_COLUMNS:
                     # Also before the shift: the map is keyed by run-local event.
                     table = particle_map(run_dir).remap_table(table, obj)
+                if shared_hits_from_hit_ids and obj in ("tracks", "truth_tracks"):
+                    # After the covariance join, which brings the all-zero ROOT nSharedHits.
+                    table = compute_shared_hits(table)
                 table = _slice_and_offset(table, local_start, local_stop, abs_run * run_size)
                 if table.num_rows == 0:
                     continue
+                if sort_rows:
+                    # Runs are written in ascending order and event_id = run*run_size + local,
+                    # so sorting each run's slice makes the whole file ascending.
+                    table = sort_by_event_id(table, obj)
                 table = _convert_times(table, obj)
                 if writer is None:
                     writer = pq.ParquetWriter(out_file, table.schema, compression=compression)
@@ -435,6 +574,13 @@ def main() -> None:
     track_covariance = bool(config.get("track_covariance", False))
     remap_particle_ids = bool(config.get("remap_particle_ids", False))
     sim_input_name = config.get("sim_input_name", "edm4hep.root")
+    sort_rows = bool(config.get("sort_by_event_id", False))
+    shared_hits_from_hit_ids = bool(config.get("shared_hits_from_hit_ids", False))
+    if shared_hits_from_hit_ids and not track_covariance:
+        # Without the ROOT join there is no n_shared_hits column to replace; the
+        # computed one is appended, which changes the schema. Allowed, but say so.
+        logger.warning("shared_hits_from_hit_ids without track_covariance: n_shared_hits is appended")
+    logger.info("sort_by_event_id=%s shared_hits_from_hit_ids=%s", sort_rows, shared_hits_from_hit_ids)
 
     def process(start_event, end_event, start_run, start_local, end_run, end_local):
         package_chunk(
@@ -447,6 +593,8 @@ def main() -> None:
             track_covariance=track_covariance,
             remap_particle_ids=remap_particle_ids,
             sim_input_name=sim_input_name,
+            sort_rows=sort_rows,
+            shared_hits_from_hit_ids=shared_hits_from_hit_ids,
         )
 
     iterate_and_process_chunks(
