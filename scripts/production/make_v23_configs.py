@@ -62,6 +62,8 @@ PROVENANCE = {
         "provenance:                   # per-run record, scripts/cli/run_provenance.py (via run_stage)\n"
         "  record: true\n"
         "  require_pushed_commit: true  # refuse to run from a dirty tree or an unpushed commit\n"
+        "  require_approved_sha: true   # HEAD must equal $COLLIDERML_APPROVED_SHA (set by the launcher)\n"
+        "  approved_remote: OpenDataDetector/ColliderML-Production\n"
         "  commit_marker: false         # .git_commit_success is written by package_parquet only\n"
         "  inputs: [edm4hep.root]\n"
         "  outputs: [digi_provenance.json, timing.csv, sim_with_tracks.root, measurements.root, particles.root,\n"
@@ -74,9 +76,11 @@ PROVENANCE = {
         "provenance:\n"
         "  record: true\n"
         "  require_pushed_commit: true\n"
+        "  require_approved_sha: true   # HEAD must equal $COLLIDERML_APPROVED_SHA (set by the launcher)\n"
+        "  approved_remote: OpenDataDetector/ColliderML-Production\n"
         "  commit_marker: false\n"
         "  inputs: [sim_with_tracks.root]\n"
-        "  outputs: [pandora_slices.json, 'reco_parts/reco_part_*.root', reco_edm4hep.root]\n"
+        "  outputs: [pandora_slices.json, 'reco_parts/reco_part_*.root|reco_edm4hep.root']\n"
         "  image_files: [/opt/k4ODD/k4ODD/options/PandoraSettingsCLD.xml,\n"
         "                /opt/k4ODD/k4ODD/options/PandoraLikelihoodData9EBin_zuds200.xml]\n"
         "  container_json: pandora_slices.json    # source entries and return code of every slice attempt\n"
@@ -85,20 +89,26 @@ PROVENANCE = {
         "provenance:\n"
         "  record: true\n"
         "  require_pushed_commit: true\n"
+        "  require_approved_sha: true   # HEAD must equal $COLLIDERML_APPROVED_SHA (set by the launcher)\n"
+        "  approved_remote: OpenDataDetector/ColliderML-Production\n"
         "  commit_marker: false\n"
-        "  inputs: ['reco_parts/reco_part_*.root', reco_edm4hep.root, edm4hep.root]\n"
+        "  inputs: ['reco_parts/reco_part_*.root|reco_edm4hep.root', edm4hep.root]\n"
         "  outputs: ['calo_cells/*.parquet', 'calo_clusters/*.parquet', 'pfos/*.parquet']\n"
     ),
     "package": (
         "provenance:\n"
         "  record: true\n"
         "  require_pushed_commit: true\n"
-        "  commit_marker: true          # the only v23 stage that writes .git_commit_success\n"
+        "  require_approved_sha: true   # HEAD must equal $COLLIDERML_APPROVED_SHA (set by the launcher)\n"
+        "  approved_remote: OpenDataDetector/ColliderML-Production\n"
+        "  commit_marker: false         # .git_commit_success: scripts/production/finalize_version.py after all chunks\n"
+        "  container_json: 'provenance/package_parquet/chunk{unit}_inputs.json'   # files read and written by the chunk\n"
     ),
 }
 
 TRACKING_EXTRA = (
     "seeding_bfield_tesla: 3.0     # ACTS seed finder field = ODD solenoid (v22 and earlier: ACTS default 2 T)\n"
+    "seeding_require_detector_match: true   # fail unless the detector field reads back 3 T within 1e-3 T\n"
     "seed_min_pt_gev: 0.65         # seed-finder minPt (v23_plan README 5b: recovers the high-pT seeding loss at 3 T)\n"
     "vertexing: true               # AMVF on the ambiguity-resolved tracks -> performance_vertexing.root -> reco/vertices\n"
     "vertexing_write_track_info: true\n"
@@ -149,8 +159,10 @@ def build(src, dst, kind, base):
                      lambda m: m.group(1)
                      + "\n  - generator_particles        # per-run tables linked from v22 (unchanged)"
                      + "\n  - vertices                   # AMVF, from performance_vertexing.root", t, dst)
+        release = 10240 if campaign == "hard_scatter" else 100000
         t = t.rstrip("\n") + (
-            "\nsort_by_event_id: true         # D3: outer rows strictly ascending in event_id\n"
+            f"\nrelease_events: {release}         # chunks are cut from the release, not the run dirs\n"
+            "sort_by_event_id: true         # D3: outer rows strictly ascending in event_id\n"
             "shared_hits_from_hit_ids: true # n_shared_hits recomputed per event from hit_ids (ACTS leaves it 0)\n"
         )
     return t.rstrip("\n") + "\n\n" + PROVENANCE[kind]

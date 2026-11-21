@@ -48,10 +48,14 @@ sim_input_name: edm4hep.root   # per-run symlink to v1, used to build the id map
 track_covariance: true         # 5x5 covariance + fit quality from the ROOT summaries
 compression: "snappy"
 row_group_size: 100000
+release_events: 100000         # chunks are cut from the release, not the run dirs
 sort_by_event_id: true         # D3: outer rows strictly ascending in event_id
 shared_hits_from_hit_ids: true # n_shared_hits recomputed per event from hit_ids (ACTS leaves it 0)
 
 provenance:
   record: true
   require_pushed_commit: true
-  commit_marker: true          # the only v23 stage that writes .git_commit_success
+  require_approved_sha: true   # HEAD must equal $COLLIDERML_APPROVED_SHA (set by the launcher)
+  approved_remote: OpenDataDetector/ColliderML-Production
+  commit_marker: false         # .git_commit_success: scripts/production/finalize_version.py after all chunks
+  container_json: 'provenance/package_parquet/chunk{unit}_inputs.json'   # files read and written by the chunk

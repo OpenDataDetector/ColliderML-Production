@@ -35,6 +35,7 @@ output_parquet_arrow: true    # tracker_simhits, tracker_hits, particles, tracks
 digi: true
 reco: true
 seeding_bfield_tesla: 3.0     # ACTS seed finder field = ODD solenoid (v22 and earlier: ACTS default 2 T)
+seeding_require_detector_match: true   # fail unless the detector field reads back 3 T within 1e-3 T
 seed_min_pt_gev: 0.65         # seed-finder minPt (v23_plan README 5b: recovers the high-pT seeding loss at 3 T)
 vertexing: true               # AMVF on the ambiguity-resolved tracks -> performance_vertexing.root -> reco/vertices
 vertexing_write_track_info: true
@@ -61,6 +62,8 @@ truth_tracking_root_summary: true
 provenance:                   # per-run record, scripts/cli/run_provenance.py (via run_stage)
   record: true
   require_pushed_commit: true  # refuse to run from a dirty tree or an unpushed commit
+  require_approved_sha: true   # HEAD must equal $COLLIDERML_APPROVED_SHA (set by the launcher)
+  approved_remote: OpenDataDetector/ColliderML-Production
   commit_marker: false         # .git_commit_success is written by package_parquet only
   inputs: [edm4hep.root]
   outputs: [digi_provenance.json, timing.csv, sim_with_tracks.root, measurements.root, particles.root,

@@ -34,6 +34,8 @@ sim_input_name: edm4hep.root
 provenance:
   record: true
   require_pushed_commit: true
+  require_approved_sha: true   # HEAD must equal $COLLIDERML_APPROVED_SHA (set by the launcher)
+  approved_remote: OpenDataDetector/ColliderML-Production
   commit_marker: false
-  inputs: ['reco_parts/reco_part_*.root', reco_edm4hep.root, edm4hep.root]
+  inputs: ['reco_parts/reco_part_*.root|reco_edm4hep.root', edm4hep.root]
   outputs: ['calo_cells/*.parquet', 'calo_clusters/*.parquet', 'pfos/*.parquet']

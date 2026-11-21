@@ -38,9 +38,11 @@ work_root: /pscratch/sd/d/danieltm/colliderml_pandora_work   # per-slice work di
 provenance:
   record: true
   require_pushed_commit: true
+  require_approved_sha: true   # HEAD must equal $COLLIDERML_APPROVED_SHA (set by the launcher)
+  approved_remote: OpenDataDetector/ColliderML-Production
   commit_marker: false
   inputs: [sim_with_tracks.root]
-  outputs: [pandora_slices.json, 'reco_parts/reco_part_*.root', reco_edm4hep.root]
+  outputs: [pandora_slices.json, 'reco_parts/reco_part_*.root|reco_edm4hep.root']
   image_files: [/opt/k4ODD/k4ODD/options/PandoraSettingsCLD.xml,
                 /opt/k4ODD/k4ODD/options/PandoraLikelihoodData9EBin_zuds200.xml]
   container_json: pandora_slices.json    # source entries and return code of every slice attempt
