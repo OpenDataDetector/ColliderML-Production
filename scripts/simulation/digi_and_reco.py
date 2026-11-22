@@ -810,6 +810,20 @@ def setup_acts_reconstruction(input_path, output_dir, config, rnd, logger=None):
                 writeTrackInfo=bool(getattr(config, "vertexing_write_track_info", True)),
                 outputDirRoot=output_dir if getattr(config, 'output_root', True) else None,
             )
+            # Vertex -> track links (v23): the ColliderML writer in the v23 sim image
+            # (image/vertex_track_links) writes, per vertex, the reco/tracks track_id of each
+            # attached track and its AMVF weight. Required when vertexing_track_links is set.
+            if getattr(config, "vertexing_track_links", False):
+                import importlib
+                vtl = importlib.import_module("colliderml_vertex_links")
+                wcfg = vtl.VertexTrackLinkWriter.Config()
+                wcfg.inputVertices = "vertices"
+                wcfg.inputTrackParameters = "selectedTracksParametersVertexing"
+                wcfg.inputTracks = "tracks"
+                wcfg.filePath = str(output_dir / "vertex_track_links.csv")
+                s.addWriter(vtl.VertexTrackLinkWriter(wcfg, LOG_LEVEL))
+                readback["vertex_track_link_module"] = vtl.__file__
+                readback["vertex_track_link_module_sha256"] = _sha256(vtl.__file__)
     
     # Optional: write the edm4hep sim+tracks file the Pandora reco stage consumes
     # (ported from colliderml-production PR #43). After ambiguity resolution the
