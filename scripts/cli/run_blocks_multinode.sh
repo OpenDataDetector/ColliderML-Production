@@ -13,6 +13,8 @@ set -uo pipefail
 CFG=$(readlink -f "$1"); FIRST=$2; LAST=$3; PER_WAVE=$4
 REPO="$(cd "$(dirname "$0")/../.." && pwd)"
 PY=${PY:-/global/homes/d/danieltm/.conda/envs/collider-env/bin/python}
+[[ "$FIRST" =~ ^[0-9]+$ && "$LAST" =~ ^[0-9]+$ && "$PER_WAVE" =~ ^[1-9][0-9]*$ ]] && [ "$FIRST" -le "$LAST" ] \
+  || { echo "invalid range or wave size: FIRST=$FIRST LAST=$LAST PER_WAVE=$PER_WAVE"; exit 2; }
 # provenance gate before any write or image load (exit 1, nothing created)
 $PY "$REPO/scripts/cli/provenance_preflight.py" "$CFG" || exit 1
 read -r STAGE VDIR < <($PY - "$CFG" <<'EOF'

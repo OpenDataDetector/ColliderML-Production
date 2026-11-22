@@ -26,7 +26,9 @@ def _setup(tmp_path, attempts=2):
         for obj in ("tracks", "vertices"):
             f = v / "parquet" / "reco" / obj / f"c.d.v23.reco.{obj}.events{s}-{e}.parquet"
             f.parent.mkdir(parents=True, exist_ok=True)
-            f.write_bytes(f"{obj}{i}".encode())
+            import pyarrow as pa
+            import pyarrow.parquet as pq
+            pq.write_table(pa.table({"event_id": pa.array(list(range(s, e + 1)), type=pa.uint32())}), f)
             outs[str(f)] = {"size": f.stat().st_size, "sha256": hashlib.sha256(f.read_bytes()).hexdigest()}
         man = {"status": "ok", "start_event": s, "end_event": e, "objects": ["tracks", "vertices"], "outputs": outs}
         for k in range(1, attempts):
@@ -72,3 +74,23 @@ def test_wrong_sha_and_stray_file_fail(tmp_path):
     (v / "parquet/reco/tracks/c.d.v23.reco.tracks.events250-349.parquet").write_bytes(b"x")
     r = _run(cfg)
     assert r.returncode == 1 and "unexpected file" in r.stdout
+
+
+def test_manifest_naming_another_chunks_shard_fails(tmp_path):
+    """Codex round 3: both manifests authenticate chunk 0, chunk 1's bytes are never read."""
+    cfg, v = _setup(tmp_path)
+    pdir = v / "provenance" / "package_parquet"
+    rec0 = json.loads((pdir / "chunk0_attempt2.json").read_text())
+    rec1 = json.loads((pdir / "chunk1_attempt2.json").read_text())
+    rec1["container_record"]["outputs"] = rec0["container_record"]["outputs"]
+    (pdir / "chunk1_attempt2.json").write_text(json.dumps(rec1))
+    next((v / "parquet/reco/tracks").glob("*events100-*")).write_bytes(b"corrupt")
+    r = _run(cfg)
+    assert r.returncode == 1 and "not exactly this chunk" in r.stdout
+
+
+def test_empty_object_list_fails(tmp_path):
+    cfg, v = _setup(tmp_path)
+    c = yaml.safe_load(cfg.read_text()); c["objects"] = []
+    cfg.write_text(yaml.safe_dump(c))
+    assert _run(cfg).returncode == 1

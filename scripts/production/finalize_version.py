@@ -60,12 +60,15 @@ def main() -> int:
     objects = list(c["objects"])
     prefix = f"{c['campaign']}.{c['dataset']}.{c['version']}"
     pdir = vdir / "provenance" / "package_parquet"
-    problems = []
-    expected_files = set()
-    for obj in objects:
-        g, pub = GROUP[obj], PUBLISHED.get(obj, obj)
-        for s, e in windows:
-            expected_files.add(str(vdir / "parquet" / g / pub / f"{prefix}.{g}.{pub}.events{s}-{e}.parquet"))
+    problems = [] if objects and release > 0 else ["empty release or object list"]
+    expected_files, per_chunk = set(), {}
+    for s, e in windows:
+        per_chunk[(s, e)] = set()
+        for obj in objects:
+            g, pub = GROUP[obj], PUBLISHED.get(obj, obj)
+            f = str(vdir / "parquet" / g / pub / f"{prefix}.{g}.{pub}.events{s}-{e}.parquet")
+            per_chunk[(s, e)].add(f)
+            expected_files.add(f)
     for i, (s, e) in enumerate(windows):
         recs = sorted(glob.glob(str(pdir / f"chunk{i}_attempt*.json")), key=attempt_no)
         if not recs:
@@ -86,11 +89,12 @@ def main() -> int:
         if sorted(man.get("objects", [])) != sorted(objects):
             problems.append(f"chunk {i}: manifest objects {man.get('objects')} != configured {objects}")
         outs = man.get("outputs") or {}
-        if len(outs) != len(objects):
-            problems.append(f"chunk {i}: {len(outs)} outputs in the manifest, expected {len(objects)}")
+        if set(outs) != per_chunk[(s, e)]:
+            problems.append(f"chunk {i}: manifest outputs are not exactly this chunk's shards "
+                            f"({len(set(outs) - per_chunk[(s, e)])} foreign, {len(per_chunk[(s, e)] - set(outs))} missing)")
         for f, meta in outs.items():
-            if f not in expected_files:
-                problems.append(f"chunk {i}: output {f} is not a canonical release shard")
+            if f not in per_chunk[(s, e)]:
+                continue
             elif not Path(f).exists() or os.path.getsize(f) != meta.get("size") or sha256(f) != meta.get("sha256"):
                 problems.append(f"chunk {i}: {Path(f).name} missing or changed since the accepted attempt")
     present = set()
@@ -108,7 +112,7 @@ def main() -> int:
     if marker.exists():
         problems.append(f"{marker} already exists; it is never overwritten")
     if problems:
-        print("\n".join(problems[:50]))
+        print("\n".join(problems))
         print(f"{len(problems)} problem(s); marker not written")
         return 1
     print(f"{n} chunks x {len(objects)} objects verified, code {a.approved_sha}")

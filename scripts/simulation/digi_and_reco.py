@@ -589,6 +589,8 @@ def setup_acts_reconstruction(input_path, output_dir, config, rnd, logger=None):
             "Seeding read-back: GridTripletSeedingAlgorithm bFieldInZ = %.6f T, minPt = %.4f GeV",
             readback["seed_finder_bFieldInZ_T"], readback["seed_finder_minPt_GeV"],
         )
+        if not all(math.isfinite(readback[k]) for k in ("seed_finder_bFieldInZ_T", "seed_finder_minPt_GeV")):
+            raise RuntimeError(f"non-finite seeding read-back: {readback}")
         if abs(readback["seed_finder_bFieldInZ_T"] - seed_bz_tesla) > 1e-6:
             raise RuntimeError(
                 f"seed finder bFieldInZ read back as {readback['seed_finder_bFieldInZ_T']} T, "

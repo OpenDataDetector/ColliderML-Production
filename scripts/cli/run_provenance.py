@@ -240,7 +240,7 @@ def record_problems(rec: dict) -> list[str]:
                 probs.append(f"{kind}: {e['pattern']} missing")
             elif "sha256" not in e:
                 probs.append(f"{kind}: {e.get('path')} not hashed ({e.get('error')})")
-            elif kind == "outputs" and t0 is not None and not e.get("is_link") and e.get("mtime", t0) < t0 - 1:
+            elif kind == "outputs" and t0 is not None and e.get("mtime", t0) < t0:
                 probs.append(f"outputs: {e.get('path')} older than the attempt (stale)")
     if rec.get("container") and not rec.get("image_id"):
         probs.append("image id unknown")
@@ -248,6 +248,8 @@ def record_problems(rec: dict) -> list[str]:
     if "error" in imgf or any(v is None for k, v in imgf.items() if k != "error"):
         probs.append(f"image files not hashed: {imgf}")
     cr = rec.get("container_record")
+    if "container_record" in rec and not cr:
+        probs.append("container record empty")
     if isinstance(cr, dict) and "error" in cr and len(cr) == 1:
         probs.append(f"container record: {cr['error']}")
     elif isinstance(cr, dict) and "status" in cr and cr["status"] != "ok":

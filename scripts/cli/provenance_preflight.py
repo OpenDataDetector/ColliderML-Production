@@ -16,6 +16,12 @@ def main() -> int:
     prov = (cfg or {}).get("provenance") or {}
     if not prov.get("require_pushed_commit"):
         return 0
+    import cli_utils  # the same base-path guard run_stage applies, before the driver writes anything
+    try:
+        cli_utils.load_and_process_config(sys.argv[1], Path(__file__).resolve().parent / "env_setup.yaml")
+    except ValueError as e:
+        print(f"provenance preflight: {e}")
+        return 1
     repo = Path(__file__).resolve().parents[2]
     if not (repo / ".git").exists():
         print(f"provenance preflight: {repo} is not a git checkout")

@@ -163,8 +163,9 @@ QUALITY_COLUMNS = [
 ]
 
 
-def _attach_covariance(table: pa.Table, run_dir: Path, obj: str) -> pa.Table:
-    """Append the 15 upper-triangle covariance columns, joined on (event, track_id)."""
+def _attach_covariance(table: pa.Table, run_dir: Path, obj: str, strict: bool = False) -> pa.Table:
+    """Append the 15 upper-triangle covariance columns, joined on (event, track_id).
+    strict (production, with chunk manifests): every track must have exactly one ROOT entry."""
     src = COV_SOURCE.get(obj)
     if src is None or "track_id" not in table.schema.names:
         return table
@@ -199,11 +200,17 @@ def _attach_covariance(table: pa.Table, run_dir: Path, obj: str) -> pa.Table:
     p_event = np.repeat(table.column("event_id").to_numpy().astype(np.int64), np.diff(offsets))
     p_key = p_event * _TRACK_KEY_STRIDE + p_track
 
+    if strict:
+        uk, cnt = np.unique(r_key, return_counts=True)
+        if (cnt > 1).any():
+            raise RuntimeError(f"{run_dir.name}/{obj}: {int((cnt > 1).sum())} duplicate (event, track) keys in {src}")
     order = np.argsort(r_key)
     pos = np.searchsorted(r_key[order], p_key)
     pos = np.clip(pos, 0, len(order) - 1)
     idx = order[pos]
     ok = r_key[idx] == p_key
+    if strict and not ok.all():
+        raise RuntimeError(f"{run_dir.name}/{obj}: {int((~ok).sum())} of {len(p_key)} tracks without a {src} entry")
     if not ok.all():
         logger.warning(
             "%s/%s: %d of %d tracks have no covariance entry, filled with NaN",
@@ -516,7 +523,7 @@ def package_chunk(
                     # Join BEFORE the event_id shift, while event_id is still the
                     # run-local number the ROOT summary uses.
                     n_cols = table.num_columns
-                    table = _attach_covariance(table, run_dir, obj)
+                    table = _attach_covariance(table, run_dir, obj, strict=manifest_path is not None)
                     if manifest_path is not None and obj in COV_SOURCE and table.num_columns == n_cols:
                         raise RuntimeError(f"run {abs_run}: {obj} covariance join failed (see warnings)")
                 if remap_particle_ids and obj in ID_COLUMNS:
