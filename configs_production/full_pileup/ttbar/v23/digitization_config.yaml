@@ -8,8 +8,8 @@ version: "v23"
 stage: "digitization"
 
 common:
-  container: "ghcr.io/opendatadetector/sw:pr-8"
-  container_tarball: "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/stress_mu200/sw_pr8_image.tar"
+  container: "localhost/colliderml/sw:pr-8-vtxlinks-20261121"
+  container_tarball: "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/images/sw_pr8_vtxlinks_20261121.tar"
   cache_dir: "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-prod-container/.cache"
   output_base_dir: "/global/cfs/cdirs/m4958/data/ColliderML/staging/simulation"
 
@@ -39,6 +39,7 @@ seeding_require_detector_match: true   # fail unless the detector field reads ba
 seed_min_pt_gev: 0.65         # seed-finder minPt (v23_plan README 5b: recovers the high-pT seeding loss at 3 T)
 vertexing: true               # AMVF on the ambiguity-resolved tracks -> performance_vertexing.root -> reco/vertices
 vertexing_write_track_info: true
+vertexing_track_links: true      # vertex -> track_id and AMVF weight (VertexTrackLinkWriter, v23 sim image)
 digitization_seed_replay_required: true
 digitization_seed_replay:     # D2: the seed string each run had in the version v23 replaces
   - {runs: [0, 15], seed_string: "ttbar_v20_run{run}"}
@@ -71,5 +72,5 @@ provenance:                   # per-run record, scripts/cli/run_provenance.py (v
   outputs: [digi_provenance.json, timing.csv, sim_with_tracks.root, measurements.root, particles.root,
             tracksummary_ambi.root, tracksummary_truth.root, performance_vertexing.root,
             'tracker_hits/*.parquet', 'tracker_simhits/*.parquet', 'particles/*.parquet',
-            'tracks/*.parquet', 'truth_tracks/*.parquet']
+            'tracks/*.parquet', 'truth_tracks/*.parquet', vertex_track_links.csv]
   container_json: digi_provenance.json   # field and seed read-back written inside the container

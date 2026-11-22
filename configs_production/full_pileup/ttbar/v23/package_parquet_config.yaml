@@ -11,8 +11,8 @@ stage_script_map:
   package_parquet: "postprocessing/package_native_parquet.py"
 
 common:
-  container: "ghcr.io/opendatadetector/sw:pr-8"
-  container_tarball: "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/stress_mu200/sw_pr8_image.tar"
+  container: "localhost/colliderml/sw:pr-8-vtxlinks-20261121"
+  container_tarball: "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/images/sw_pr8_vtxlinks_20261121.tar"
   cache_dir: "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-prod-container/.cache"
   output_base_dir: "/global/cfs/cdirs/m4958/data/ColliderML/staging/simulation"   # = output_base_dir below (run_stage version dir)
 
@@ -50,6 +50,9 @@ compression: "snappy"
 row_group_size: 100000
 release_events: 100000         # chunks are cut from the release, not the run dirs
 sort_by_event_id: true         # D3: outer rows strictly ascending in event_id
+vertex_links: true             # reco/vertices track_ids, track_weights, truth_interaction(_dz)
+drop_columns:                  # P-D3: no time measurement in the geometric digitisation
+  tracker_hits: [time, var_time]   # true times: truth/tracker_simhits true_time
 shared_hits_from_hit_ids: true # n_shared_hits recomputed per event from hit_ids (ACTS leaves it 0)
 
 provenance:

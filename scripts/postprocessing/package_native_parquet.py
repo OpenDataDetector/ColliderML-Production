@@ -104,11 +104,15 @@ TIME_COLUMNS: dict[str, dict[str, int]] = {
 }
 
 
+DROP_COLUMNS: dict[str, list[str]] = {}   # set from the config key drop_columns (v23: tracker_hits time, var_time)
+
+
 def _convert_times(table: pa.Table, obj: str) -> pa.Table:
     """Divide time-like columns by c (mm/ns), power-aware, list-layout-aware."""
     for col, power in TIME_COLUMNS.get(obj, {}).items():
         if col not in table.column_names:
-            logger.warning("%s: expected time column %r absent, skipping", obj, col)
+            if col not in DROP_COLUMNS.get(obj, []):
+                logger.warning("%s: expected time column %r absent, skipping", obj, col)
             continue
         idx = table.schema.get_field_index(col)
         factor = _MM_PER_NS ** power
@@ -392,11 +396,67 @@ def vertices_from_root(path: Path) -> pa.Table:
     return pa.table(cols)
 
 
+VERTEX_LINKS_CSV = "vertex_track_links.csv"
+
+
+def attach_vertex_links(table: pa.Table, run_dir: Path) -> pa.Table:
+    """Append track_ids / track_weights (from the image's VertexTrackLinkWriter CSV) and truth_interaction /
+    truth_interaction_dz (position-based, utils/vertex_links.py) to a run's vertices table (run-local events).
+    Every vertex must have a CSV entry at the same z; every event needs native particles and simhits."""
+    from utils import vertex_links as vl
+    links = vl.read_track_links(run_dir / VERTEX_LINKS_CSV)
+    part = _read_run_table(run_dir, "particles")
+    sim = _read_run_table(run_dir, "tracker_simhits")
+    if part is None or sim is None:
+        raise RuntimeError(f"{run_dir}: native particles or tracker_simhits missing for the vertex truth links")
+    pi = {int(e): i for i, e in enumerate(part.column("event_id").to_numpy())}
+    si = {int(e): i for i, e in enumerate(sim.column("event_id").to_numpy())}
+    pcols = ["particle_id", "charge", "px", "py", "pz", "vx", "vy", "vz", "vertex_primary", "primary"]
+    tids, tws, tint, tdz = [], [], [], []
+    seen = 0
+    for i in range(table.num_rows):
+        e = int(table.column("event_id")[i].as_py())
+        z = table.column("z")[i].as_py(); x = table.column("x")[i].as_py(); y = table.column("y")[i].as_py()
+        spt = table.column("sum_pt2")[i].as_py()
+        ev_ids, ev_ws = [], []
+        for k in range(len(z)):
+            if (e, k) not in links:
+                raise RuntimeError(f"{run_dir}: vertex ({e}, {k}) missing in {VERTEX_LINKS_CSV}")
+            ids, ws, vz = links[(e, k)]
+            if abs(vz - z[k]) > 1e-4:
+                raise RuntimeError(f"{run_dir}: vertex ({e}, {k}) z {z[k]} != link file z {vz}")
+            ev_ids.append(ids); ev_ws.append(ws)
+            seen += 1
+        tids.append(ev_ids); tws.append(ev_ws)
+        if e not in pi or e not in si:
+            raise RuntimeError(f"{run_dir}: event {e} missing in native particles or simhits")
+        p = {c: part.column(c)[pi[e]].as_py() for c in pcols}
+        s_ = {c: sim.column(c)[si[e]].as_py() for c in ("particle_id", "volume_id", "layer_id")}
+        truth = vl.interactions(p, s_)
+        tz = {t["id"]: t["z"] for t in truth}
+        reco = [{"x": x[k], "y": y[k], "z": z[k], "sum_pt2": spt[k]} for k in range(len(z))]
+        a = vl.assign(truth, reco)
+        tint.append([a.get(k, -1) for k in range(len(z))])
+        tdz.append([float(z[k] - tz[a[k]]) if k in a else float("nan") for k in range(len(z))])
+    if seen != len(links):
+        raise RuntimeError(f"{run_dir}: {len(links) - seen} link-file vertices without a vertices row")
+    table = table.append_column("track_ids", pa.array(tids, type=pa.list_(pa.list_(pa.uint16()))))
+    table = table.append_column("track_weights", pa.array(tws, type=pa.list_(pa.list_(pa.float32()))))
+    table = table.append_column("truth_interaction", pa.array(tint, type=pa.list_(pa.int32())))
+    return table.append_column("truth_interaction_dz", pa.array(tdz, type=pa.list_(pa.float32())))
+
+
+VERTEX_LINKS = False   # set from the config key vertex_links (v23: true)
+
+
 def _read_run_table(run_dir: Path, obj: str) -> pa.Table | None:
     """Read a run's single native parquet file for one object."""
     if obj == "vertices":
         src = run_dir / VERTEX_SOURCE
-        return vertices_from_root(src) if src.exists() else None
+        if not src.exists():
+            return None
+        t = vertices_from_root(src)
+        return attach_vertex_links(t, run_dir) if VERTEX_LINKS else t
     files = sorted((run_dir / obj).glob("*.parquet"))
     if not files:
         return None
@@ -462,7 +522,8 @@ def package_chunk(
     def note_inputs(run_dir: Path, obj: str) -> None:
         if manifest_path is None:   # no manifest requested: no hashing
             return
-        files = [run_dir / VERTEX_SOURCE] if obj == "vertices" else sorted((run_dir / obj).glob("*.parquet"))
+        files = ([run_dir / VERTEX_SOURCE] + ([run_dir / VERTEX_LINKS_CSV] if VERTEX_LINKS else [])
+                 if obj == "vertices" else sorted((run_dir / obj).glob("*.parquet")))
         if track_covariance and obj in COV_SOURCE:
             files.append(run_dir / COV_SOURCE[obj])
         if remap_particle_ids and obj in ID_COLUMNS:
@@ -539,6 +600,9 @@ def package_chunk(
                     # Runs are written in ascending order and event_id = run*run_size + local,
                     # so sorting each run's slice makes the whole file ascending.
                     table = sort_by_event_id(table, obj)
+                drop = [c for c in DROP_COLUMNS.get(obj, []) if c in table.column_names]
+                if drop:
+                    table = table.drop(drop)
                 table = _convert_times(table, obj)
                 if writer is None:
                     writer = pq.ParquetWriter(out_file, table.schema, compression=compression)
@@ -648,6 +712,9 @@ def main() -> None:
     track_covariance = bool(config.get("track_covariance", False))
     remap_particle_ids = bool(config.get("remap_particle_ids", False))
     sim_input_name = config.get("sim_input_name", "edm4hep.root")
+    global VERTEX_LINKS, DROP_COLUMNS
+    VERTEX_LINKS = bool(config.get("vertex_links", False))
+    DROP_COLUMNS = {k: list(v) for k, v in (config.get("drop_columns") or {}).items()}
     sort_rows = bool(config.get("sort_by_event_id", False))
     shared_hits_from_hit_ids = bool(config.get("shared_hits_from_hit_ids", False))
     if shared_hits_from_hit_ids and not track_covariance:

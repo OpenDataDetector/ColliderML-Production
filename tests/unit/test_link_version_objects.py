@@ -45,3 +45,26 @@ def test_parquet_expect_files_and_contiguity(tmp_path):
     assert _run(*base, "--expect-files", 3).returncode == 0
     r = _run(*base, "--expect-files", 4)
     assert r.returncode != 0 and "expected 4" in r.stderr
+
+
+def test_rename_protect_and_gap(tmp_path):
+    pub = tmp_path / "pub" / "c" / "d"
+    obj = pub / "v1" / "parquet" / "truth" / "particles"
+    obj.mkdir(parents=True)
+    for s in (0, 100):
+        (obj / f"c.d.v1.truth.particles.events{s}-{s + 99}.parquet").write_bytes(b"x")
+    st = tmp_path / "st" / "c" / "d"
+    base = ["--dataset-dir", st, "--parent-dataset-dir", pub, "--parent", "v1", "--version", "v23",
+            "--parquet", "truth/particles", "--terminal"]
+    r = _run(*base, "--events", 0, 199, "--expect-files", 2, "--rename-version", "--protect", "--apply")
+    assert r.returncode == 0, r.stderr
+    link = st / "v23" / "parquet" / "truth" / "particles" / "c.d.v23.truth.particles.events0-99.parquet"
+    assert link.is_symlink() and link.resolve() == (obj / "c.d.v1.truth.particles.events0-99.parquet").resolve()
+    assert (link.resolve().stat().st_mode & 0o222) == 0, "terminal made read-only"
+    (obj / "c.d.v1.truth.particles.events100-199.parquet").chmod(0o644)
+    (obj / "c.d.v1.truth.particles.events100-199.parquet").unlink()
+    (obj / "c.d.v1.truth.particles.events150-199.parquet").write_bytes(b"x")
+    (obj / "c.d.v1.truth.particles.events100-139.parquet").write_bytes(b"x")
+    r = _run("--dataset-dir", tmp_path / "st2", "--parent-dataset-dir", pub, "--parent", "v1", "--version", "v23",
+             "--parquet", "truth/particles", "--terminal", "--events", 0, 199, "--expect-files", 3)
+    assert r.returncode != 0 and "do not tile" in r.stderr

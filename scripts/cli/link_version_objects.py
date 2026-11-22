@@ -60,11 +60,25 @@ def plan(args) -> list[tuple[Path, Path]]:
     for obj in args.parquet:
         lo, hi = args.events
         found = 0
+        wins = []
         for src in sorted((parent / "parquet" / obj).glob("*.parquet")):
             m = RANGE.search(src.name)
             if m and int(m.group(1)) <= hi and int(m.group(2)) >= lo:
-                links.append((new / "parquet" / obj / src.name, _terminal(src) if args.terminal else src))
+                name = src.name
+                if args.rename_version:
+                    # <campaign>.<dataset>.<parent version>.<group>... -> the new version's name
+                    parts = name.split(".")
+                    if len(parts) < 4 or parts[2] != args.parent_name_version:
+                        raise ValueError(f"{name}: cannot rename, third field is not {args.parent_name_version!r}")
+                    parts[2] = args.version
+                    name = ".".join(parts)
+                links.append((new / "parquet" / obj / name, _terminal(src) if args.terminal else src))
+                wins.append((int(m.group(1)), int(m.group(2))))
                 found += 1
+        wins.sort()
+        gaps = [(a, b) for (_, a), (b, _) in zip(wins, wins[1:]) if b != a + 1]
+        if args.expect_files is not None and (gaps or not wins or wins[0][0] > lo or wins[-1][1] < hi):
+            raise ValueError(f"{obj}: windows do not tile events {lo}-{hi} (gaps {gaps[:3]}, span {wins[:1]}..{wins[-1:]})")
         if not found:
             raise FileNotFoundError(f"no {obj} files in {parent / 'parquet' / obj} overlap events {lo}-{hi}")
         if args.expect_files is not None and found != args.expect_files:
@@ -92,11 +106,18 @@ def main() -> int:
     p.add_argument("--events", type=int, nargs=2, metavar=("FIRST", "LAST"), help="global event range for --parquet")
     p.add_argument("--expect-files", type=int, default=None,
                    help="with --parquet: exact number of parent files per object (e.g. 1000 for PU200 v23)")
+    p.add_argument("--rename-version", action="store_true",
+                   help="name parquet links with the new version (third name field), target unchanged")
+    p.add_argument("--parent-name-version", default=None,
+                   help="version written in the parent shard names (default: --parent)")
+    p.add_argument("--protect", action="store_true",
+                   help="make each terminal target read-only (chmod a-w; permission bits only)")
     p.add_argument("--apply", action="store_true", help="create the links (default: dry run)")
     args = p.parse_args()
     if args.parquet and not args.events:
         p.error("--parquet needs --events")
 
+    args.parent_name_version = args.parent_name_version or args.parent
     links = plan(args)
     for dst, src in links:
         if dst.is_symlink() and Path(os.readlink(dst)) == src:
@@ -109,6 +130,15 @@ def main() -> int:
         if args.apply:
             dst.parent.mkdir(parents=True, exist_ok=True)
             dst.symlink_to(src)
+    if args.apply and args.protect:
+        import stat
+        for _, src in links:
+            targets = [src] if src.is_file() else [x for x in src.rglob("*") if x.is_file()]
+            for t in targets:
+                mode = t.stat().st_mode
+                if mode & 0o222:
+                    os.chmod(t, mode & ~0o222)
+                    print(f"protected {t}")
     print(f"{len(links)} links {'in place' if args.apply else 'planned (dry run)'}")
     return 0
 

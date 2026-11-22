@@ -70,7 +70,7 @@ PROVENANCE = {
         "  outputs: [digi_provenance.json, timing.csv, sim_with_tracks.root, measurements.root, particles.root,\n"
         "            tracksummary_ambi.root, tracksummary_truth.root, performance_vertexing.root,\n"
         "            'tracker_hits/*.parquet', 'tracker_simhits/*.parquet', 'particles/*.parquet',\n"
-        "            'tracks/*.parquet', 'truth_tracks/*.parquet']\n"
+        "            'tracks/*.parquet', 'truth_tracks/*.parquet', vertex_track_links.csv]\n"
         "  container_json: digi_provenance.json   # field and seed read-back written inside the container\n"
     ),
     "pandora": (
@@ -116,6 +116,7 @@ TRACKING_EXTRA = (
     "seed_min_pt_gev: 0.65         # seed-finder minPt (v23_plan README 5b: recovers the high-pT seeding loss at 3 T)\n"
     "vertexing: true               # AMVF on the ambiguity-resolved tracks -> performance_vertexing.root -> reco/vertices\n"
     "vertexing_write_track_info: true\n"
+    "vertexing_track_links: true      # vertex -> track_id and AMVF weight (VertexTrackLinkWriter, v23 sim image)\n"
     "digitization_seed_replay_required: true\n"
     "digitization_seed_replay:     # D2: the seed string each run had in the version v23 replaces\n"
     "{replay}"
@@ -129,6 +130,10 @@ def sub_once(pattern, repl, text, name):
     return new
 
 
+SIM_IMAGE = "localhost/colliderml/sw:pr-8-vtxlinks-20261121"   # sw:pr-8 + VertexTrackLinkWriter (image/vertex_track_links)
+SIM_TARBALL = "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/images/sw_pr8_vtxlinks_20261121.tar"
+
+
 def build(src, dst, kind, base):
     s = (C / src).read_text()
     # Drop every full-line comment of the parent (they describe v20/v22 runs, chunk counts and
@@ -138,6 +143,9 @@ def build(src, dst, kind, base):
     pu = "PU0" if campaign == "hard_scatter" else "PU200"
     t = HEADER.format(pu=pu, src=src) + body
     t = sub_once(r'^version: "v2[02]"$', 'version: "v23"', t, dst)
+    if kind in ("tracking", "package"):
+        t = sub_once(r'^(\s*)container: "ghcr.io/opendatadetector/sw:pr-8"$', lambda m: f'{m.group(1)}container: "{SIM_IMAGE}"', t, dst)
+        t = sub_once(r'^(\s*)container_tarball: ".*sw_pr8_image.tar"$', lambda m: f'{m.group(1)}container_tarball: "{SIM_TARBALL}"', t, dst)
     for key in ("output_base_dir", "input_base_dir"):
         t = re.sub(rf'^(\s*){key}: "(?:{re.escape(ST)}|{re.escape(PUB)})".*$',
                    lambda m: f'{m.group(1)}{key}: "{base}"', t, flags=re.M)
@@ -170,6 +178,9 @@ def build(src, dst, kind, base):
         t = t.rstrip("\n") + (
             f"\nrelease_events: {release}         # chunks are cut from the release, not the run dirs\n"
             "sort_by_event_id: true         # D3: outer rows strictly ascending in event_id\n"
+            "vertex_links: true             # reco/vertices track_ids, track_weights, truth_interaction(_dz)\n"
+            "drop_columns:                  # P-D3: no time measurement in the geometric digitisation\n"
+            "  tracker_hits: [time, var_time]   # true times: truth/tracker_simhits true_time\n"
             "shared_hits_from_hit_ids: true # n_shared_hits recomputed per event from hit_ids (ACTS leaves it 0)\n"
         )
     return t.rstrip("\n") + "\n\n" + PROVENANCE[kind]
