@@ -14,6 +14,7 @@ Truth link rule (documented in the dataset card and PILOT_PLAN_v5):
                          are taken in input order
   truth population       the RELEASED truth/particles (primary flag and vertex_primary as published) and
                          simulated hits with particle ids remapped to the released ids
+  track weights          AMVF weight per link; NaN where AMVF returned a non-finite weight (kept, never counted)
   columns                truth_interaction (vertex_primary of the assigned interaction, -1 if none) and
                          truth_interaction_dz (z_reco - z_truth in mm, NaN if none)
 """
@@ -186,8 +187,10 @@ def read_track_links(path: Path) -> dict[tuple[int, int], tuple[list[int], list[
             key = (int(row["event"]), int(row["vertex"]))
             pos = (float(row["vx"]), float(row["vy"]), float(row["vz"]))
             w = float(row["weight"])
-            if not all(np.isfinite(pos)) or not np.isfinite(w):
-                raise RuntimeError(f"{path}: non-finite value for vertex {key}")
+            if not all(np.isfinite(pos)):
+                raise RuntimeError(f"{path}: non-finite position for vertex {key}")
+            # a non-finite AMVF weight is kept as NaN (observed: 1 of about 88k links in PU200 run 0); it never counts
+            # towards n_tracks (weight > 0.1 is false) and the ROOT ntuple does not list it either
             ids, ws, p0 = out.setdefault(key, ([], [], pos))
             if p0 != pos:
                 raise RuntimeError(f"{path}: vertex {key} has two positions")

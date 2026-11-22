@@ -400,7 +400,8 @@ def vertices_from_root(path: Path) -> pa.Table:
 VERTEX_LINKS_CSV = "vertex_track_links.csv"
 
 
-def attach_vertex_links(table: pa.Table, run_dir: Path, abs_run: int, run_size: int, released, sim_remapped) -> pa.Table:
+def attach_vertex_links(table: pa.Table, run_dir: Path, abs_run: int, run_size: int, released, sim_remapped,
+                        window: tuple[int, int] | None = None) -> pa.Table:
     """Append track_ids / track_weights (from the image's VertexTrackLinkWriter CSV) and truth_interaction /
     truth_interaction_dz (position-based, utils/vertex_links.py) to a run's vertices table (run-local events).
     released: {global event: dict of released truth/particles lists}; sim_remapped: tracker_simhits table with
@@ -440,8 +441,13 @@ def attach_vertex_links(table: pa.Table, run_dir: Path, abs_run: int, run_size: 
         a = vl.assign(truth, reco)
         tint.append([a.get(k, -1) for k in range(len(z))])
         tdz.append([float(z[k] - tz[a[k]]) if k in a else float("nan") for k in range(len(z))])
-    if seen != len(links):
-        raise RuntimeError(f"{run_dir}: {len(links) - seen} link-file vertices without a vertices row")
+    in_win = sum(1 for (e, _) in links if window is None or window[0] <= e < window[1])
+    if seen != in_win:
+        raise RuntimeError(f"{run_dir}: {in_win - seen} link-file vertices in the window without a vertices row")
+    events_rows = {int(x) for x in table.column("event_id").to_pylist()}
+    events_links = {e for (e, _) in links if window is None or window[0] <= e < window[1]}
+    if events_links - events_rows:
+        raise RuntimeError(f"{run_dir}: link-file events without a vertices row: {sorted(events_links - events_rows)[:5]}")
     table = table.append_column("track_ids", pa.array(tids, type=pa.list_(pa.list_(pa.uint16()))))
     table = table.append_column("track_weights", pa.array(tws, type=pa.list_(pa.list_(pa.float32()))))
     table = table.append_column("truth_interaction", pa.array(tint, type=pa.list_(pa.int32())))
@@ -625,7 +631,11 @@ def package_chunk(
                     sim = particle_map(run_dir).remap_table(_read_run_table(run_dir, "tracker_simhits"), "tracker_simhits")
                     for f in sorted((run_dir / "tracker_simhits").glob("*.parquet")) + sorted((run_dir / "particles").glob("*.parquet")) + [run_dir / sim_input_name]:
                         _note_file(f)
-                    table = attach_vertex_links(table, run_dir, abs_run, run_size, released, sim)
+                    # only this chunk's events of the run: the window is applied first
+                    table = table.filter(pc.and_(pc.greater_equal(table.column("event_id"), local_start),
+                                                 pc.less(table.column("event_id"), local_stop)))
+                    table = attach_vertex_links(table, run_dir, abs_run, run_size, released, sim,
+                                                window=(local_start, local_stop))
                 if track_covariance:
                     # Join BEFORE the event_id shift, while event_id is still the
                     # run-local number the ROOT summary uses.
