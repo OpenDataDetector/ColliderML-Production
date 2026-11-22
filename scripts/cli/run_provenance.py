@@ -156,24 +156,35 @@ def hash_paths(base: Path, patterns) -> list[dict]:
     return out
 
 
+def parse_image_listing(stdout: str, container: str) -> str | None:
+    """Full image id (64 hex, no 'sha256:') of `container` from `podman-hpc images --no-trunc` output lines
+    '<repository>:<tag> <id>'; None if absent or ambiguous."""
+    ids = set()
+    for line in stdout.splitlines():
+        name, _, iid = line.strip().partition(" ")
+        if name in (container, f"localhost/{container}"):
+            ids.add(iid.strip().removeprefix("sha256:"))
+    return ids.pop() if len(ids) == 1 else None
+
+
 def image_id(container: str | None) -> str | None:
+    """Full image id. `podman-hpc inspect` fails on compute nodes for migrated images ('no such object'), so the
+    no-trunc image listing is the fallback there (verified 2026-11-21, debug jobs 61773295 and 61773331)."""
     if not container:
         return None
-    for cmd in (["podman-hpc", "inspect", "--format", "{{.Id}}", container],
-                ["podman-hpc", "images", "--format", "{{.Repository}}:{{.Tag}} {{.ID}}"]):
-        try:
-            r = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
-        except (OSError, subprocess.TimeoutExpired):
-            continue
-        if r.returncode != 0:
-            continue
-        if cmd[1] == "inspect" and r.stdout.strip():
-            return r.stdout.strip()
-        for line in r.stdout.splitlines():
-            name, _, iid = line.partition(" ")
-            if name == container or name == f"localhost/{container}":
-                return iid
-    return None
+    try:
+        r = subprocess.run(["podman-hpc", "inspect", "--format", "{{.Id}}", container], capture_output=True,
+                           text=True, timeout=120)
+        if r.returncode == 0 and r.stdout.strip():
+            return r.stdout.strip().removeprefix("sha256:")
+    except (OSError, subprocess.TimeoutExpired):
+        pass
+    try:
+        r = subprocess.run(["podman-hpc", "images", "--no-trunc", "--format", "{{.Repository}}:{{.Tag}} {{.ID}}"],
+                           capture_output=True, text=True, timeout=120)
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    return parse_image_listing(r.stdout, container) if r.returncode == 0 else None
 
 
 def image_file_hashes(container: str | None, files) -> dict:

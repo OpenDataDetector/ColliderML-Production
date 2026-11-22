@@ -263,3 +263,13 @@ def test_unit_lock_and_stale_outputs(tmp_path):
     assert any("stale" in p for p in rp.record_problems(rec))
     rec["start_epoch"] = 999_000.0
     assert not rp.record_problems(rec)
+
+
+def test_parse_image_listing():
+    out = ("localhost/colliderml/sw:pr-8-vtxlinks-20261121 sha256:" + "8e" * 32 + "\n"
+           "localhost/colliderml/reco:20261106 sha256:" + "19" * 32 + "\n")
+    assert rp.parse_image_listing(out, "localhost/colliderml/sw:pr-8-vtxlinks-20261121") == "8e" * 32
+    assert rp.parse_image_listing(out, "colliderml/reco:20261106") == "19" * 32
+    assert rp.parse_image_listing(out, "localhost/other:1") is None
+    dup = out + "localhost/colliderml/reco:20261106 sha256:" + "aa" * 32 + "\n"
+    assert rp.parse_image_listing(dup, "localhost/colliderml/reco:20261106") is None, "ambiguous"
