@@ -244,3 +244,22 @@ def test_incomplete_record_fails_successful_task(tmp_path, monkeypatch):
     with pytest.raises(SystemExit) as e:
         rs.run_interactive(dict(config), cfg, tmp_path / "s.py", run_id=None)
     assert e.value.code == 2, "provenance configs refuse an unnumbered run"
+
+
+def test_unit_lock_and_stale_outputs(tmp_path):
+    a1 = rp.reserve_attempt({"stage": "digitization"}, tmp_path, tmp_path, 1, False)
+    lock = rp.unit_lock(a1)
+    a2 = rp.reserve_attempt({"stage": "digitization"}, tmp_path, tmp_path, 1, False)
+    with pytest.raises(FileExistsError):
+        rp.unit_lock(a2)
+    lock.unlink()
+    rp.unit_lock(a2)
+    old = tmp_path / "old.root"
+    old.write_bytes(b"x")
+    import os
+    os.utime(old, (1_000_000, 1_000_000))
+    rec = {"start_epoch": 2_000_000.0, "git": {"sha": "s"},
+           "outputs": rp.hash_paths(tmp_path, ["old.root"])}
+    assert any("stale" in p for p in rp.record_problems(rec))
+    rec["start_epoch"] = 999_000.0
+    assert not rp.record_problems(rec)

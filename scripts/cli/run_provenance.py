@@ -148,6 +148,7 @@ def hash_paths(base: Path, patterns) -> list[dict]:
                    "realpath": real, "is_link": p.is_symlink()}
             try:
                 rec["size"] = os.path.getsize(real)
+                rec["mtime"] = os.path.getmtime(real)
                 rec["sha256"] = sha256_file(real)
             except OSError as e:
                 rec["error"] = str(e)
@@ -219,15 +220,28 @@ def reserve_attempt(config: dict, runs_dir: Path, version_dir: Path, unit: int, 
 record_path = reserve_attempt  # backwards-compatible name
 
 
+def unit_lock(attempt_path: Path) -> Path:
+    """Exclusive per-unit lock next to the attempt records: a second concurrent attempt of the same run or
+    chunk is refused (FileExistsError). A lock left by a killed attempt stays until the operator removes it."""
+    lock = attempt_path.parent / (attempt_path.name.rsplit("_attempt", 1)[0] + ".lock")
+    with open(lock, "x") as f:
+        f.write(f"{socket.gethostname()} {os.getpid()} {attempt_path.name}\n")
+    return lock
+
+
 def record_problems(rec: dict) -> list[str]:
-    """Missing evidence in a record (empty list = complete)."""
+    """Missing evidence in a record (empty list = complete). Outputs must be fresh: modified after the
+    attempt started (a no-op retry cannot inherit an earlier attempt's files)."""
     probs = []
+    t0 = rec.get("start_epoch")
     for kind in ("inputs", "outputs"):
         for e in rec.get(kind) or []:
             if e.get("missing"):
                 probs.append(f"{kind}: {e['pattern']} missing")
             elif "sha256" not in e:
                 probs.append(f"{kind}: {e.get('path')} not hashed ({e.get('error')})")
+            elif kind == "outputs" and t0 is not None and not e.get("is_link") and e.get("mtime", t0) < t0 - 1:
+                probs.append(f"outputs: {e.get('path')} older than the attempt (stale)")
     if rec.get("container") and not rec.get("image_id"):
         probs.append("image id unknown")
     imgf = rec.get("image_files") or {}
@@ -255,6 +269,7 @@ def build_record(*, config: dict, config_path, unit: int, rc: int, t_start: floa
         "unit": unit,
         "return_code": rc,
         "start_utc": datetime.datetime.utcfromtimestamp(t_start).isoformat() + "Z",
+        "start_epoch": t_start,
         "end_utc": datetime.datetime.utcfromtimestamp(t_end).isoformat() + "Z",
         "host": socket.gethostname(),
         "slurm": {k: os.environ.get(k) for k in

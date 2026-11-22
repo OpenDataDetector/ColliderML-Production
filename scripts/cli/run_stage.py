@@ -262,6 +262,14 @@ def run_interactive(config, config_path_arg, stage_script_path, run_id=None):
         version_dir = cli_utils.get_version_directory(config)
         attempt_path = run_provenance.reserve_attempt(config, Path(run_dir), version_dir, int(run_id), is_post)
         logger.info(f"Provenance attempt reserved: {attempt_path}")
+        try:
+            unit_lock = run_provenance.unit_lock(attempt_path)
+        except FileExistsError:
+            logger.error(f"another attempt of this unit holds its lock next to {attempt_path}; refusing")
+            run_provenance.write_record(attempt_path, {"stage": config["stage"], "unit": int(run_id),
+                                                       "return_code": 5, "refused": "unit locked",
+                                                       "git": {"sha": "n/a"}})
+            sys.exit(5)
     
     try:
         command_info = cli_utils.build_stage_command(
@@ -336,6 +344,7 @@ def run_interactive(config, config_path_arg, stage_script_path, run_id=None):
             rec["return_code"] = stage_exit_code
             run_provenance.write_record(attempt_path, rec)
             logger.info(f"Provenance record: {attempt_path}")
+            unit_lock.unlink()
         except Exception as e:
             logger.error(f"Provenance record failed: {e}")
             logger.exception("Full traceback:")
