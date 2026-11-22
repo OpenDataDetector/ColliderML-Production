@@ -15,7 +15,7 @@ common:
 
 job_config:
   n_runs: 1563
-  runs_per_node: 16
+  runs_per_node: 11
   time_limit: "04:00:00"
   qos: "interactive"
   execution_mode: "interactive"

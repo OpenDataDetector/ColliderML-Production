@@ -152,6 +152,8 @@ def build(src, dst, kind, base):
         )
         extra = TRACKING_EXTRA.format(replay=replay).rstrip("\n")
         t = sub_once(r"^(reco: true)$", lambda m: m.group(1) + "\n" + extra, t, dst)
+        if campaign == "full_pileup":   # frozen production geometry: 143 nodes x 11 runs, one wave
+            t = sub_once(r"^(\s*)runs_per_node: 16\b.*$", lambda m: m.group(1) + "runs_per_node: 11", t, dst)
     if kind == "package":
         # run_stage resolves the version dir (config snapshot, provenance, marker) from
         # common.output_base_dir; without it the site default (the published tree) is used.
