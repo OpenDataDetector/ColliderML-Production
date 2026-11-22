@@ -1,0 +1,10 @@
+# ColliderML v23 sim image: ghcr.io/opendatadetector/sw:pr-8 (b88e6cd86940) plus the vertex-track link writer
+# (colliderml-production image/vertex_track_links, built against the image's ACTS by build.sh).
+FROM ghcr.io/opendatadetector/sw:pr-8
+COPY lib/colliderml_vertex_links.cpython-313-x86_64-linux-gnu.so /spack/opt/spack/linux-x86_64/acts-44.99.99-colliderml-arrow-lnywcfu62aua4tljvjsnhvlqfdard7od/python/
+COPY VertexTrackLinkWriter.cpp /opt/colliderml/src/VertexTrackLinkWriter.cpp
+RUN mkdir -p /opt/colliderml && printf 'base ghcr.io/opendatadetector/sw:pr-8 b88e6cd86940\nsource_sha256 12f765d461b988472fb463b69a1e98cc84e343ba6e83c39d6cd04a83bf74bcfb\nlib_sha256 221b528d2571c389a0da55a88a54d723e1a84206cd066e025d18e13514ea896a\n' > /opt/colliderml/IMAGE_INFO
+# Build (2026-11-21, login node): bash build.sh <ctx>/lib inside sw:pr-8, copy VertexTrackLinkWriter.cpp to <ctx>,
+#   podman-hpc build -t localhost/colliderml/sw:pr-8-vtxlinks-20261121 -f Containerfile <ctx>; podman-hpc migrate ...
+# Result: image id 8e292ac8549809622126b025f19fd1041f909fec0c383b46b05b7e46408dbadc,
+#   tarball images/sw_pr8_vtxlinks_20261121.tar sha256 97fbbe3d38c49eed411dfea581e84b70254cff9639d79f337ff26292894f0ac6
