@@ -8,9 +8,10 @@ Truth link rule (documented in the dataset card and PILOT_PLAN_v5):
                          (volume_id, layer_id) pairs among their simulated tracker hits
   assignment             per event, between reco vertices and reconstructable interactions, edges only for
                          |z_reco - z_truth| <= 0.1 mm; lexicographic objective: (1) maximum number of assigned
-                         pairs, (2) minimum total |dz| with |dz| quantised at 1e-7 mm, (3) minimum sum of squared
-                         differences between the reco rank (-sum_pt2, z, x, y) and the interaction rank
-                         (vertex_primary); remaining ties (identical keys) broken by input order
+                         pairs, (2) minimum total |dz| with |dz| quantised at 1e-7 mm, (3) among those optima, reco
+                         vertices in rank order (-sum_pt2, z, x, y) each take the lowest-vertex_primary interaction
+                         (or none, ranked last) that still allows an optimum; reco vertices with identical rank keys
+                         are taken in input order
   truth population       the RELEASED truth/particles (primary flag and vertex_primary as published) and
                          simulated hits with particle ids remapped to the released ids
   columns                truth_interaction (vertex_primary of the assigned interaction, -1 if none) and
@@ -79,19 +80,31 @@ def interactions(part: dict, sim: dict) -> list[dict]:
     vp = np.asarray(part["vertex_primary"], dtype=np.int64)
     prim = np.asarray(part["primary"], dtype=bool)
     px, py, pz = (np.asarray(part[k], dtype=np.float64) for k in ("px", "py", "pz"))
+    vx, vy, vz = (np.asarray(part[k], dtype=np.float64) for k in ("vx", "vy", "vz"))
+    pid = np.asarray(part["particle_id"], dtype=np.uint64)
     pt = np.hypot(px, py)
     aeta = np.abs(np.arcsinh(pz / np.maximum(pt, 1e-12)))
-    layers = {}
-    for a, vol, lay in zip(sim["particle_id"], sim["volume_id"], sim["layer_id"]):
-        layers.setdefault(int(a), set()).add((int(vol), int(lay)))
-    nlay = np.array([len(layers.get(int(x), ())) for x in part["particle_id"]])
+    # distinct (volume, layer) per particle id, vectorised
+    sp = np.asarray(sim["particle_id"], dtype=np.uint64)
+    key = np.asarray(sim["volume_id"], dtype=np.int64) * 1_000_000 + np.asarray(sim["layer_id"], dtype=np.int64)
+    if len(sp):
+        pairs = np.unique(np.stack([sp, key.astype(np.uint64)], axis=1), axis=0)
+        upid, cnt = np.unique(pairs[:, 0], return_counts=True)
+        pos = np.searchsorted(upid, pid)
+        pos_c = np.minimum(pos, len(upid) - 1)
+        nlay = np.where(upid[pos_c] == pid, cnt[pos_c], 0)
+    else:
+        nlay = np.zeros(len(pid), dtype=np.int64)
     good = prim & (np.abs(np.asarray(part["charge"], dtype=np.float64)) > 0) & (pt > 0.7) & (aeta < 3.5) & (nlay >= 6)
     out = []
-    for k in np.unique(vp[prim & (vp >= 1)]):
-        msk = prim & (vp == k)
-        out.append({"id": int(k), "x": float(np.median(np.asarray(part["vx"])[msk])),
-                    "y": float(np.median(np.asarray(part["vy"])[msk])), "z": float(np.median(np.asarray(part["vz"])[msk])),
-                    "reconstructable": int((good & (vp == k)).sum()) >= 2})
+    sel = prim & (vp >= 1)
+    order = np.argsort(vp[sel], kind="stable")
+    v_s, x_s, y_s, z_s, g_s = vp[sel][order], vx[sel][order], vy[sel][order], vz[sel][order], good[sel][order]
+    ks, starts = np.unique(v_s, return_index=True)
+    ends = np.append(starts[1:], len(v_s))
+    for k, a, b in zip(ks, starts, ends):
+        out.append({"id": int(k), "x": float(np.median(x_s[a:b])), "y": float(np.median(y_s[a:b])),
+                    "z": float(np.median(z_s[a:b])), "reconstructable": int(g_s[a:b].sum()) >= 2})
     return out
 
 
@@ -128,21 +141,35 @@ def assign(truth: list[dict], reco: list[dict], dz_max: float = DZ_MAX_MM) -> di
     for rows, cols in comps.values():
         if not rows or not cols:
             continue
-        sub = D[np.ix_(rows, cols)]
         ok = allowed[np.ix_(rows, cols)]
-        # lexicographic objective as one integer cost: (1) number of assigned pairs, (2) total |dz| quantised at
-        # DZ_QUANTUM_MM (distances closer than that are a tie), (3) sum of squared rank differences
-        n = max(len(rows), len(cols))
-        tie = (rank_r[rows][:, None] - rank_t[cols][None, :]) ** 2
-        tie_scale = float(n) * float(nr + nt) ** 2 + 1.0       # > any total of tie terms
-        dq = np.rint(sub / DZ_QUANTUM_MM)                        # integer distance units
-        big = (float(n) + 1.0) * (float(dq[ok].max(initial=0.0)) * tie_scale + tie_scale)   # > any allowed total
-        if big * (n + 1) > 2.0 ** 52:
-            raise RuntimeError("assignment cost exceeds exact float64 integers")
-        cost = np.where(ok, dq * tie_scale + tie, big)
-        for i, j in hungarian(cost):
-            if ok[i, j]:
-                out[rows[i]] = T[cols[j]]["id"]
+        dq = np.rint(D[np.ix_(rows, cols)] / DZ_QUANTUM_MM)       # integer distance units
+        big = float(dq[ok].sum()) + 1.0                           # one missing pair costs more than any distance
+
+        def solve(mask):
+            """(number of pairs, total quantised distance, pairs) of the optimum with only `mask` edges."""
+            if big * (max(mask.shape) + 1) > 2.0 ** 52:
+                raise RuntimeError("assignment cost exceeds exact float64 integers")
+            pr = [(i, j) for i, j in hungarian(np.where(mask, dq, big)) if mask[i, j]]
+            return len(pr), float(sum(dq[i, j] for i, j in pr)), pr
+        n_opt, d_opt, pairs = solve(ok)
+        # final key: in reco rank order, each reco vertex takes the best-ranked interaction (or none, ranked last)
+        # that still allows an optimal (pairs, distance) assignment
+        mask = ok.copy()
+        order_r = sorted(range(len(rows)), key=lambda a: rank_r[rows[a]])
+        for a in order_r:
+            cands = sorted(np.flatnonzero(mask[a]).tolist(), key=lambda b: rank_t[cols[b]]) + [None]
+            for b in cands:
+                trial = mask.copy()
+                trial[a, :] = False
+                if b is not None:
+                    trial[:, b] = False
+                    trial[a, b] = True
+                n_, d_, pr = solve(trial)
+                if n_ == n_opt and d_ == d_opt and (b is None or (a, b) in pr):
+                    mask, pairs = trial, pr
+                    break
+        for i, j in pairs:
+            out[rows[i]] = T[cols[j]]["id"]
     return out
 
 

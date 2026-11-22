@@ -80,8 +80,9 @@ def oracle(truth, reco, dz_max=0.1, q=1e-7):
         for sel in itertools.combinations(edges, k):
             if len({a for a, _ in sel}) < k or len({j for _, j in sel}) < k:
                 continue
+            m = {a: rt[j] for a, j in sel}
             key = (-k, sum(round(abs(reco[a]["z"] - T[j]["z"]) / q) for a, j in sel),
-                   sum((rr[a] - rt[j]) ** 2 for a, j in sel))
+                   tuple(m.get(a, len(T)) for a in keys))
             if best_key is None or key < best_key:
                 best_key, best = key, {a: T[j]["id"] for a, j in sel}
     return best
@@ -91,10 +92,10 @@ def test_assign_matches_exhaustive_oracle():
     rng = np.random.default_rng(5)
     cases = [([T(1, 0.0), T(2, 5e-13 * 1e6)], [R(0.0, 1)]),   # unequal near-tie above the quantum
              ([T(1, 5e-13), T(2, 0.0)], [R(0.0, 1)])]          # below the quantum: a tie, HS by rank
-    for _ in range(40):
+    for _ in range(300):
         nt, nr = rng.integers(1, 4), rng.integers(1, 4)
-        cases.append(([T(i + 1, float(rng.choice([0.0, 0.03, 0.05, 0.2, 5.0])), bool(rng.random() < 0.8)) for i in range(nt)],
-                      [R(float(rng.choice([0.0, 0.02, 0.05, 0.12, 5.05])), float(rng.integers(1, 4))) for _ in range(nr)]))
+        cases.append(([T(i + 1, float(rng.choice([0.0, 0.03, 0.05, 0.0500001, 0.2, 5.0])), bool(rng.random() < 0.8)) for i in range(nt)],
+                      [R(float(rng.choice([0.0, 0.02, 0.05, 0.12, 5.05, 0.0300002])), float(rng.integers(1, 4))) for _ in range(nr)]))
     for truth, reco in cases:
         assert vl.assign(truth, reco) == oracle(truth, reco), (truth, reco)
     assert vl.assign([T(1, 5e-13), T(2, 0.0)], [R(0.0, 1)]) == {0: 1}, "sub-quantum difference resolved by rank"
