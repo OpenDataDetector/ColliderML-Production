@@ -59,10 +59,56 @@ def test_read_track_links(tmp_path):
     p = tmp_path / "vertex_track_links.csv"
     p.write_text("event,vertex,track_id,weight,vx,vy,vz\n0,0,3,0.9,0,0,1.5\n0,0,1,0.2,0,0,1.5\n0,1,-1,0,0,0,9\n")
     L = vl.read_track_links(p)
-    assert L[(0, 0)] == ([3, 1], [0.9, 0.2], 1.5) and L[(0, 1)] == ([], [], 9.0)
+    assert L[(0, 0)] == ([3, 1], [0.9, 0.2], (0.0, 0.0, 1.5)) and L[(0, 1)] == ([], [], (0.0, 0.0, 9.0))
     p.write_text("event,vertex,track_id,weight,vx,vy,vz\n0,0,3,0.9,0,0,1.5\n0,0,3,0.2,0,0,1.5\n")
     with pytest.raises(RuntimeError, match="twice"):
         vl.read_track_links(p)
     p.write_text("event,vertex,track,weight,vx,vy,vz\n")
     with pytest.raises(RuntimeError, match="header"):
+        vl.read_track_links(p)
+
+
+def oracle(truth, reco, dz_max=0.1, q=1e-7):
+    """Exhaustive lexicographic optimum (independent of the cost construction)."""
+    T = [t for t in truth if t["reconstructable"]]
+    keys = sorted(range(len(reco)), key=lambda a: (-reco[a]["sum_pt2"], reco[a]["z"], reco[a]["x"], reco[a]["y"]))
+    rr = {a: i for i, a in enumerate(keys)}
+    rt = {j: i for i, j in enumerate(sorted(range(len(T)), key=lambda j: T[j]["id"]))}
+    best, best_key = {}, None
+    edges = [(a, j) for a in range(len(reco)) for j in range(len(T)) if abs(reco[a]["z"] - T[j]["z"]) <= dz_max]
+    for k in range(len(edges) + 1):
+        for sel in itertools.combinations(edges, k):
+            if len({a for a, _ in sel}) < k or len({j for _, j in sel}) < k:
+                continue
+            key = (-k, sum(round(abs(reco[a]["z"] - T[j]["z"]) / q) for a, j in sel),
+                   sum((rr[a] - rt[j]) ** 2 for a, j in sel))
+            if best_key is None or key < best_key:
+                best_key, best = key, {a: T[j]["id"] for a, j in sel}
+    return best
+
+
+def test_assign_matches_exhaustive_oracle():
+    rng = np.random.default_rng(5)
+    cases = [([T(1, 0.0), T(2, 5e-13 * 1e6)], [R(0.0, 1)]),   # unequal near-tie above the quantum
+             ([T(1, 5e-13), T(2, 0.0)], [R(0.0, 1)])]          # below the quantum: a tie, HS by rank
+    for _ in range(40):
+        nt, nr = rng.integers(1, 4), rng.integers(1, 4)
+        cases.append(([T(i + 1, float(rng.choice([0.0, 0.03, 0.05, 0.2, 5.0])), bool(rng.random() < 0.8)) for i in range(nt)],
+                      [R(float(rng.choice([0.0, 0.02, 0.05, 0.12, 5.05])), float(rng.integers(1, 4))) for _ in range(nr)]))
+    for truth, reco in cases:
+        assert vl.assign(truth, reco) == oracle(truth, reco), (truth, reco)
+    assert vl.assign([T(1, 5e-13), T(2, 0.0)], [R(0.0, 1)]) == {0: 1}, "sub-quantum difference resolved by rank"
+
+
+def test_read_track_links_sentinel_rules(tmp_path):
+    p = tmp_path / "l.csv"
+    h = "event,vertex,track_id,weight,vx,vy,vz\n"
+    p.write_text(h + "0,0,-1,0,0,0,1\n0,0,3,0.5,0,0,1\n")
+    with pytest.raises(RuntimeError, match="marker"):
+        vl.read_track_links(p)
+    p.write_text(h + "0,0,-2,0,0,0,1\n")
+    with pytest.raises(RuntimeError, match="invalid track id"):
+        vl.read_track_links(p)
+    p.write_text(h + "0,0,1,0.5,0,0,1\n0,0,2,0.5,0.1,0,1\n")
+    with pytest.raises(RuntimeError, match="two positions"):
         vl.read_track_links(p)

@@ -8,8 +8,8 @@ version: "v23"
 stage: "digitization"
 
 common:
-  container: "localhost/colliderml/sw:pr-8-vtxlinks-20261121"
-  container_tarball: "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/images/sw_pr8_vtxlinks_20261121.tar"
+  container: "localhost/colliderml/sw:pr-8-vtxlinks-20261121b"
+  container_tarball: "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/images/sw_pr8_vtxlinks_20261121b.tar"
   cache_dir: "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-prod-container/.cache"
   output_base_dir: "/global/cfs/cdirs/m4958/data/ColliderML/staging/simulation"
 

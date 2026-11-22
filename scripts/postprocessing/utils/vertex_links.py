@@ -7,9 +7,12 @@ Truth link rule (documented in the dataset card and PILOT_PLAN_v5):
   reconstructable        >= 2 charged primary particles of it with pT > 0.7 GeV, |eta| < 3.5 and >= 6 distinct
                          (volume_id, layer_id) pairs among their simulated tracker hits
   assignment             per event, between reco vertices and reconstructable interactions, edges only for
-                         |z_reco - z_truth| <= 0.1 mm; maximum number of assigned pairs first, then minimum total
-                         |dz|; ties: reco vertices ranked by (-sum_pt2, z, x, y), interactions by vertex_primary,
-                         pairs matching the two ranks preferred
+                         |z_reco - z_truth| <= 0.1 mm; lexicographic objective: (1) maximum number of assigned
+                         pairs, (2) minimum total |dz| with |dz| quantised at 1e-7 mm, (3) minimum sum of squared
+                         differences between the reco rank (-sum_pt2, z, x, y) and the interaction rank
+                         (vertex_primary); remaining ties (identical keys) broken by input order
+  truth population       the RELEASED truth/particles (primary flag and vertex_primary as published) and
+                         simulated hits with particle ids remapped to the released ids
   columns                truth_interaction (vertex_primary of the assigned interaction, -1 if none) and
                          truth_interaction_dz (z_reco - z_truth in mm, NaN if none)
 """
@@ -21,6 +24,7 @@ from pathlib import Path
 import numpy as np
 
 DZ_MAX_MM = 0.1
+DZ_QUANTUM_MM = 1e-7   # z differences below 0.1 nm are a tie (resolved by rank)
 
 
 def hungarian(cost: np.ndarray) -> list[tuple[int, int]]:
@@ -126,31 +130,49 @@ def assign(truth: list[dict], reco: list[dict], dz_max: float = DZ_MAX_MM) -> di
             continue
         sub = D[np.ix_(rows, cols)]
         ok = allowed[np.ix_(rows, cols)]
-        big = 1e3 * (1.0 + float(sub[ok].sum())) * max(len(rows), len(cols))
-        tie = 1e-12 * (rank_r[rows][:, None] - rank_t[cols][None, :]) ** 2
-        cost = np.where(ok, sub + tie, big)
+        # lexicographic objective as one integer cost: (1) number of assigned pairs, (2) total |dz| quantised at
+        # DZ_QUANTUM_MM (distances closer than that are a tie), (3) sum of squared rank differences
+        n = max(len(rows), len(cols))
+        tie = (rank_r[rows][:, None] - rank_t[cols][None, :]) ** 2
+        tie_scale = float(n) * float(nr + nt) ** 2 + 1.0       # > any total of tie terms
+        dq = np.rint(sub / DZ_QUANTUM_MM)                        # integer distance units
+        big = (float(n) + 1.0) * (float(dq[ok].max(initial=0.0)) * tie_scale + tie_scale)   # > any allowed total
+        if big * (n + 1) > 2.0 ** 52:
+            raise RuntimeError("assignment cost exceeds exact float64 integers")
+        cost = np.where(ok, dq * tie_scale + tie, big)
         for i, j in hungarian(cost):
             if ok[i, j]:
                 out[rows[i]] = T[cols[j]]["id"]
     return out
 
 
-def read_track_links(path: Path) -> dict[tuple[int, int], tuple[list[int], list[float], float]]:
-    """{(event, vertex): (track_ids, weights, vz)} from vertex_track_links.csv; a vertex line with track_id -1
-    means a vertex without tracks."""
-    out = {}
+def read_track_links(path: Path) -> dict[tuple[int, int], tuple[list[int], list[float], tuple[float, float, float]]]:
+    """{(event, vertex): (track_ids, weights, (vx, vy, vz))} from vertex_track_links.csv. A vertex without tracks
+    has exactly one line with track_id -1; any other negative id, a sentinel mixed with tracks, a repeated track,
+    a non-finite value or two positions for one vertex is an error."""
+    out, empty = {}, set()
     with open(path) as f:
         r = csv.DictReader(f)
         if r.fieldnames != ["event", "vertex", "track_id", "weight", "vx", "vy", "vz"]:
             raise RuntimeError(f"{path}: unexpected header {r.fieldnames}")
         for row in r:
             key = (int(row["event"]), int(row["vertex"]))
-            ids, ws, z = out.setdefault(key, ([], [], float(row["vz"])))
-            if abs(float(row["vz"]) - z) > 1e-6:
+            pos = (float(row["vx"]), float(row["vy"]), float(row["vz"]))
+            w = float(row["weight"])
+            if not all(np.isfinite(pos)) or not np.isfinite(w):
+                raise RuntimeError(f"{path}: non-finite value for vertex {key}")
+            ids, ws, p0 = out.setdefault(key, ([], [], pos))
+            if p0 != pos:
                 raise RuntimeError(f"{path}: vertex {key} has two positions")
             t = int(row["track_id"])
-            if t >= 0:
-                if t in ids:
-                    raise RuntimeError(f"{path}: vertex {key} lists track {t} twice")
-                ids.append(t); ws.append(float(row["weight"]))
+            if t == -1:
+                if ids or key in empty:
+                    raise RuntimeError(f"{path}: empty-vertex marker for {key} mixed with tracks or repeated")
+                empty.add(key)
+                continue
+            if t < 0 or key in empty:
+                raise RuntimeError(f"{path}: invalid track id {t} or tracks after the empty marker for {key}")
+            if t in ids:
+                raise RuntimeError(f"{path}: vertex {key} lists track {t} twice")
+            ids.append(t); ws.append(w)
     return out

@@ -331,11 +331,17 @@ def run_interactive(config, config_path_arg, stage_script_path, run_id=None):
                 env_setup_path=Path(__file__).resolve().parent / "env_setup.yaml",
             )
             if is_post:
-                # packaging: hash this chunk's output files only
-                cs = int(config.get("chunk_size", 0) or 0)
-                if cs:
-                    rec["outputs"] = run_provenance.hash_paths(
-                        version_dir, [f"parquet/*/*/*.events{int(run_id) * cs}-*.parquet"])
+                # packaging: exactly the files this chunk wrote, as listed in its own manifest (a window glob
+                # would also catch carried parent shards, e.g. truth/particles events1000-1999)
+                man = rec.get("container_record") or {}
+                outs = sorted((man.get("outputs") or {}).keys())
+                rec["outputs"] = run_provenance.hash_paths(version_dir, outs) if outs else \
+                    [{"pattern": "chunk manifest outputs", "missing": True}]
+                for e in rec["outputs"]:
+                    mo = man.get("outputs") or {}
+                    meta = mo.get(str(version_dir / e["path"])) or mo.get(e.get("realpath") or "") or {} if e.get("path") else {}
+                    if e.get("sha256") and meta and e["sha256"] != meta.get("sha256"):
+                        e["error"] = "sha256 differs from the chunk manifest"; e.pop("sha256")
             rec["task_return_code"] = stage_exit_code
             problems = run_provenance.record_problems(rec)
             if problems and stage_exit_code == 0:

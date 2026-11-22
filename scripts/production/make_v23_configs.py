@@ -130,8 +130,8 @@ def sub_once(pattern, repl, text, name):
     return new
 
 
-SIM_IMAGE = "localhost/colliderml/sw:pr-8-vtxlinks-20261121"   # sw:pr-8 + VertexTrackLinkWriter (image/vertex_track_links)
-SIM_TARBALL = "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/images/sw_pr8_vtxlinks_20261121.tar"
+SIM_IMAGE = "localhost/colliderml/sw:pr-8-vtxlinks-20261121b"   # sw:pr-8 + VertexTrackLinkWriter (image/vertex_track_links)
+SIM_TARBALL = "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/images/sw_pr8_vtxlinks_20261121b.tar"
 
 
 def build(src, dst, kind, base):

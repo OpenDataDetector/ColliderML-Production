@@ -44,6 +44,7 @@ import argparse
 import hashlib
 import logging
 import os
+import re
 import sys
 import time
 from pathlib import Path
@@ -399,40 +400,41 @@ def vertices_from_root(path: Path) -> pa.Table:
 VERTEX_LINKS_CSV = "vertex_track_links.csv"
 
 
-def attach_vertex_links(table: pa.Table, run_dir: Path) -> pa.Table:
+def attach_vertex_links(table: pa.Table, run_dir: Path, abs_run: int, run_size: int, released, sim_remapped) -> pa.Table:
     """Append track_ids / track_weights (from the image's VertexTrackLinkWriter CSV) and truth_interaction /
     truth_interaction_dz (position-based, utils/vertex_links.py) to a run's vertices table (run-local events).
-    Every vertex must have a CSV entry at the same z; every event needs native particles and simhits."""
+    released: {global event: dict of released truth/particles lists}; sim_remapped: tracker_simhits table with
+    particle ids remapped to the released ids. Every vertex needs a CSV entry at the same position, n_tracks must
+    equal the number of CSV weights > 0.1 (the ROOT writer's minTrkWeight rule), every event needs truth rows."""
     from utils import vertex_links as vl
     links = vl.read_track_links(run_dir / VERTEX_LINKS_CSV)
-    part = _read_run_table(run_dir, "particles")
-    sim = _read_run_table(run_dir, "tracker_simhits")
-    if part is None or sim is None:
-        raise RuntimeError(f"{run_dir}: native particles or tracker_simhits missing for the vertex truth links")
-    pi = {int(e): i for i, e in enumerate(part.column("event_id").to_numpy())}
-    si = {int(e): i for i, e in enumerate(sim.column("event_id").to_numpy())}
-    pcols = ["particle_id", "charge", "px", "py", "pz", "vx", "vy", "vz", "vertex_primary", "primary"]
+    si = {int(e): i for i, e in enumerate(sim_remapped.column("event_id").to_numpy())}
     tids, tws, tint, tdz = [], [], [], []
     seen = 0
     for i in range(table.num_rows):
         e = int(table.column("event_id")[i].as_py())
-        z = table.column("z")[i].as_py(); x = table.column("x")[i].as_py(); y = table.column("y")[i].as_py()
+        x, y, z = (table.column(c)[i].as_py() for c in ("x", "y", "z"))
         spt = table.column("sum_pt2")[i].as_py()
+        ntr = table.column("n_tracks")[i].as_py()
         ev_ids, ev_ws = [], []
         for k in range(len(z)):
             if (e, k) not in links:
                 raise RuntimeError(f"{run_dir}: vertex ({e}, {k}) missing in {VERTEX_LINKS_CSV}")
-            ids, ws, vz = links[(e, k)]
-            if abs(vz - z[k]) > 1e-4:
-                raise RuntimeError(f"{run_dir}: vertex ({e}, {k}) z {z[k]} != link file z {vz}")
+            ids, ws, pos = links[(e, k)]
+            # the table holds float32 positions: equal within 2 float32 ulp of the link file's doubles
+            if any(abs(np.float32(a) - np.float32(b)) > 2 * np.spacing(np.float32(abs(b)) + np.float32(1e-30))
+                   for a, b in zip(pos, (x[k], y[k], z[k]))):
+                raise RuntimeError(f"{run_dir}: vertex ({e}, {k}) position differs from the link file")
+            if sum(w > 0.1 for w in ws) != ntr[k]:
+                raise RuntimeError(f"{run_dir}: vertex ({e}, {k}) n_tracks {ntr[k]} != links with weight > 0.1")
             ev_ids.append(ids); ev_ws.append(ws)
             seen += 1
         tids.append(ev_ids); tws.append(ev_ws)
-        if e not in pi or e not in si:
-            raise RuntimeError(f"{run_dir}: event {e} missing in native particles or simhits")
-        p = {c: part.column(c)[pi[e]].as_py() for c in pcols}
-        s_ = {c: sim.column(c)[si[e]].as_py() for c in ("particle_id", "volume_id", "layer_id")}
-        truth = vl.interactions(p, s_)
+        g = e + abs_run * run_size
+        if g not in released or e not in si:
+            raise RuntimeError(f"{run_dir}: event {e} (global {g}) missing in released truth/particles or simhits")
+        s_ = {c: sim_remapped.column(c)[si[e]].as_py() for c in ("particle_id", "volume_id", "layer_id")}
+        truth = vl.interactions(released[g], s_)
         tz = {t["id"]: t["z"] for t in truth}
         reco = [{"x": x[k], "y": y[k], "z": z[k], "sum_pt2": spt[k]} for k in range(len(z))]
         a = vl.assign(truth, reco)
@@ -446,6 +448,25 @@ def attach_vertex_links(table: pa.Table, run_dir: Path) -> pa.Table:
     return table.append_column("truth_interaction_dz", pa.array(tdz, type=pa.list_(pa.float32())))
 
 
+RELEASED_COLS = ["event_id", "particle_id", "charge", "px", "py", "pz", "vx", "vy", "vz", "vertex_primary", "primary"]
+
+
+def released_particles(truth_dir: Path, start_event: int, end_event: int) -> tuple[dict, list[Path]]:
+    """{global event: {column: list}} for events in [start, end] from the released truth/particles shards
+    (carried links included) overlapping that window; also the shard paths read."""
+    out, used = {}, []
+    for f in sorted(truth_dir.glob("*.parquet")):
+        m = re.search(r"\.events(\d+)-(\d+)\.parquet$", f.name)
+        if not m or int(m.group(2)) < start_event or int(m.group(1)) > end_event:
+            continue
+        t = pq.read_table(f, columns=RELEASED_COLS)
+        ev = t.column("event_id").to_numpy().astype(np.int64)
+        for i in np.flatnonzero((ev >= start_event) & (ev <= end_event)):
+            out[int(ev[i])] = {c: t.column(c)[int(i)].as_py() for c in RELEASED_COLS[1:]}
+        used.append(f)
+    return out, used
+
+
 VERTEX_LINKS = False   # set from the config key vertex_links (v23: true)
 
 
@@ -455,8 +476,7 @@ def _read_run_table(run_dir: Path, obj: str) -> pa.Table | None:
         src = run_dir / VERTEX_SOURCE
         if not src.exists():
             return None
-        t = vertices_from_root(src)
-        return attach_vertex_links(t, run_dir) if VERTEX_LINKS else t
+        return vertices_from_root(src)
     files = sorted((run_dir / obj).glob("*.parquet"))
     if not files:
         return None
@@ -500,6 +520,7 @@ def package_chunk(
     sort_rows: bool = False,
     shared_hits_from_hit_ids: bool = False,
     manifest_path: Path | None = None,
+    vertex_truth_dir: Path | None = None,
 ) -> None:
     """Write one output file per object for the event window [start_event, end_event].
 
@@ -516,8 +537,22 @@ def package_chunk(
 
     incomplete: list[str] = []
     particle_maps: dict[Path, RunParticleMap] = {}
+    if vertex_truth_dir is None:
+        vertex_truth_dir = out_base / "truth" / "particles"
     inputs: dict[str, dict] = {}     # every file this chunk read (v23 chunk manifest)
     outputs: list[Path] = []
+
+    released = None
+
+    def _note_file(f: Path) -> None:
+        if manifest_path is None or str(f) in inputs or not f.exists():
+            return
+        real = Path(os.path.realpath(f))
+        st = real.stat()
+        rec = {"realpath": str(real), "size": st.st_size, "mtime_ns": st.st_mtime_ns, "inode": st.st_ino}
+        if f.name != sim_input_name:
+            rec["sha256"] = _sha256(real)
+        inputs[str(f)] = rec
 
     def note_inputs(run_dir: Path, obj: str) -> None:
         if manifest_path is None:   # no manifest requested: no hashing
@@ -580,6 +615,17 @@ def package_chunk(
                 if table is None:
                     logger.warning("run %d: no %s parquet, skipping", abs_run, obj)
                     continue
+                if obj == "vertices" and VERTEX_LINKS:
+                    if not remap_particle_ids:
+                        raise RuntimeError("vertex_links needs remap_particle_ids (simhits in released ids)")
+                    if released is None:
+                        released, used = released_particles(vertex_truth_dir, start_event, end_event)
+                        for f in used:
+                            _note_file(f)
+                    sim = particle_map(run_dir).remap_table(_read_run_table(run_dir, "tracker_simhits"), "tracker_simhits")
+                    for f in sorted((run_dir / "tracker_simhits").glob("*.parquet")) + sorted((run_dir / "particles").glob("*.parquet")) + [run_dir / sim_input_name]:
+                        _note_file(f)
+                    table = attach_vertex_links(table, run_dir, abs_run, run_size, released, sim)
                 if track_covariance:
                     # Join BEFORE the event_id shift, while event_id is still the
                     # run-local number the ROOT summary uses.
@@ -745,6 +791,7 @@ def main() -> None:
             sort_rows=sort_rows,
             shared_hits_from_hit_ids=shared_hits_from_hit_ids,
             manifest_path=manifest_for(start_event),
+            vertex_truth_dir=Path(config["vertex_truth_dir"]) if config.get("vertex_truth_dir") else None,
         )
 
     if release_events:

@@ -9,8 +9,8 @@
 //
 // Output: CSV with header "event,vertex,track_id,weight,vx,vy,vz", one line per (vertex, track); vertex is the
 // position in the vertex container (= reco/vertices vertex_id, the order RootVertexNTupleWriter uses); vx, vy, vz
-// the fitted vertex position in mm (a join key check against the ntuple). Vertices without tracks get one line with
-// track_id -1. Lines of one event are contiguous; events may appear in any order (multi-threaded sequencer).
+// the fitted vertex position in mm (a join key check against the ntuple); weights and positions printed with 17
+// significant digits (exact doubles). A vertex without tracks gets exactly one line with track_id -1. Lines of one event are contiguous; events may appear in any order (multi-threaded sequencer).
 #include "Acts/Definitions/Units.hpp"
 #include "Acts/Utilities/Logger.hpp"
 #include "Acts/Vertexing/TrackAtVertex.hpp"
@@ -24,7 +24,9 @@
 #include <iomanip>
 #include <mutex>
 #include <sstream>
+#include <any>
 #include <stdexcept>
+#include <unordered_map>
 #include <vector>
 
 #include <pybind11/pybind11.h>
@@ -78,9 +80,14 @@ class VertexTrackLinkWriter final : public WriterT<VertexContainer> {
                           << " tracks with a reference surface");
       return ProcessCode::ABORT;
     }
+    // address -> track index lookup (no pointer arithmetic on possibly unrelated pointers)
+    std::unordered_map<const TrackParameters*, long> index_of;
+    index_of.reserve(params.size());
+    for (std::size_t k = 0; k < params.size(); ++k) {
+      index_of.emplace(&params[k], order[k]);
+    }
     std::ostringstream os;
-    os << std::setprecision(9);
-    const auto* base = params.data();
+    os << std::setprecision(17);
     for (std::size_t iv = 0; iv < vertices.size(); ++iv) {
       const auto& v = vertices[iv];
       const auto pos = v.position();
@@ -88,13 +95,19 @@ class VertexTrackLinkWriter final : public WriterT<VertexContainer> {
         os << ctx.eventNumber << ',' << iv << ",-1,0," << pos.x() << ',' << pos.y() << ',' << pos.z() << '\n';
       }
       for (const auto& trk : v.tracks()) {
-        const auto* p = trk.originalParams.as<TrackParameters>();
-        const long k = p - base;
-        if (k < 0 || k >= static_cast<long>(params.size())) {
+        const TrackParameters* p = nullptr;
+        try {
+          p = trk.originalParams.as<TrackParameters>();
+        } catch (const std::bad_any_cast&) {
+          ACTS_ERROR("event " << ctx.eventNumber << " vertex " << iv << ": track of unexpected type");
+          return ProcessCode::ABORT;
+        }
+        const auto it = index_of.find(p);
+        if (p == nullptr || it == index_of.end()) {
           ACTS_ERROR("event " << ctx.eventNumber << " vertex " << iv << ": track pointer outside the input container");
           return ProcessCode::ABORT;
         }
-        os << ctx.eventNumber << ',' << iv << ',' << order[k] << ',' << trk.trackWeight << ',' << pos.x() << ','
+        os << ctx.eventNumber << ',' << iv << ',' << it->second << ',' << trk.trackWeight << ',' << pos.x() << ','
            << pos.y() << ',' << pos.z() << '\n';
       }
     }
