@@ -430,8 +430,9 @@ def upstream_problems(rec: dict, cr: dict, stage: str, unit: int, jobs, cache: d
         return cache[key]
     runs_dir = Path(cr["version_dir"]) / "runs"
     probs = []
+    g4 = SIM_INPUT in cr["parent_names"]
     if stage == "digitization":
-        return _parent_current(cr, unit, SIM_INPUT)
+        return _parent_current(cr, unit, SIM_INPUT) if g4 else []
     if stage in ("pandora_reco", "reco_tables"):
         up = "digitization" if stage == "pandora_reco" else "pandora_reco"
         s = acc(up, unit)
@@ -441,7 +442,7 @@ def upstream_problems(rec: dict, cr: dict, stage: str, unit: int, jobs, cache: d
             why = _current(e, runs_dir / str(unit))
             if why:
                 probs.append(f"{up} run {unit}: {why}")
-        if stage == "reco_tables":
+        if stage == "reco_tables" and g4:
             probs += _parent_current(cr, unit, SIM_INPUT)
         return probs
     # packaging: every contributing run, both upstream stages, the parents, the carried truth
@@ -937,8 +938,8 @@ def main(argv=None) -> int:
             for s in STAGES:
                 us = units_of(cr, s)
                 print(f"{cname} {s}: {len(us)} units {us[0]}..{us[-1]}")
-            n = len(units_of(cr, "package_parquet"))
-            for i in sorted({0, 1, n - 2, n - 1}):
+            cu = units_of(cr, "package_parquet")
+            for i in sorted({cu[0], cu[min(1, len(cu) - 1)], cu[-2] if len(cu) > 1 else cu[0], cu[-1]}):
                 w = chunk_window(i, cr["chunk_size"], cr["release_events"])
                 print(f"  chunk {i} events {w[0]}-{w[1]}: {contributors(i, cr['chunk_size'], cr['release_events'], cr['run_size'])}")
         return 0
