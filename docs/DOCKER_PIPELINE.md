@@ -58,8 +58,7 @@ a sim image with the `colliderml_vertex_links` module
 them.
 
 ```bash
-./scripts/cli/run_pipeline_docker.sh --channel ttbar \
-    --sim-image localhost/colliderml/sw:pr-8-vtxlinks-20261121b
+./scripts/cli/run_pipeline_docker.sh --channel ttbar --sim-image <image with the writer>
 ```
 
 ## Options
@@ -99,8 +98,7 @@ local disk where possible.
 ## Timing
 
 Measured on 2026-11-27 on one Perlmutter CPU node (AMD EPYC 7763) with
-podman-hpc, output on CFS, Geant4 cache in place. Commit and logs:
-`e2e/E2E_RESULTS.md` of the release test folder.
+podman-hpc, output on CFS, Geant4 cache in place, at commit `c4b6493`.
 
 | Stage | ttbar, 10 events, no pile-up | ttbar, 2 events, pile-up 200 |
 |---|--:|--:|

@@ -110,6 +110,8 @@ def test_single_thread_is_rejected():
         sim = yaml.safe_load((CONFIGS / channel / "simulation_config.yaml").read_text())
         assert sim["threads"] >= 2
         assert sim["verify_output"] is True
+        digi = yaml.safe_load((CONFIGS / channel / "digitization_config.yaml").read_text())
+        assert digi["threads"] >= 2
 
 
 def test_output_directory_with_a_run_is_refused(tmp_path):
