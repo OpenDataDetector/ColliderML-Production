@@ -103,18 +103,18 @@ podman-hpc, output on CFS, Geant4 cache in place. Commit and logs:
 | Stage | ttbar, 10 events, no pile-up | ttbar, 2 events, pile-up 200 |
 |---|--:|--:|
 | settings | 2 threads, 1 Pandora process | 2 threads, 2 Pandora processes |
-| `madgraph_init` | 396 s | PU200_madgraph_init |
-| `madgraph_generation` | 15 s | PU200_madgraph_generation |
-| `pythia_generation` | 1 s | PU200_pythia_generation |
-| `simulation` | 143 s | PU200_simulation |
-| `digitization` | 17 s | PU200_digitization |
-| `particles_full` | 3 s | PU200_particles_full |
-| `pandora_reco` | 38 s | PU200_pandora_reco |
-| `reco_tables` | 7 s | PU200_reco_tables |
-| `package_parquet` | 3 s | PU200_package_parquet |
-| whole run | 744 s | PU200_total |
-| largest single process | 2.2 GB (simulation) | PU200_rss |
-| output directory | 0.42 GB (tables: 17 MB) | PU200_disk |
+| `madgraph_init` | 396 s | 475 s |
+| `madgraph_generation` | 15 s | 16 s |
+| `pythia_generation` | 1 s | 19 s |
+| `simulation` | 143 s | 768 s |
+| `digitization` | 17 s | 97 s |
+| `particles_full` | 3 s | 9 s |
+| `pandora_reco` | 38 s | 736 s |
+| `reco_tables` | 7 s | 13 s |
+| `package_parquet` | 3 s | 7 s |
+| whole run | 744 s | 2269 s |
+| largest single process | 2.2 GB (simulation) | 11.3 GB (simulation); 5.6 GB per Pandora process |
+| output directory | 0.42 GB (tables: 17 MB) | 1.8 GB (tables: 160 MB) |
 
 MadGraph uses every core it is given (128 here).
 
