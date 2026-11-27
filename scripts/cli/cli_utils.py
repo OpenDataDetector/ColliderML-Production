@@ -579,13 +579,23 @@ def git_commit_and_log_config(config, config_path, software_repo_path, force_com
                 return False, None
             logger.info(f"Code: {state['sha']} on {state['remote_branches_containing_head']} (clean)")
             # nothing is written (not even the version dir) before the gate has passed
+            # nothing else is written before the unit lock (run_stage): the snapshot is content-addressed,
+            # <name>.<sha256[:16]>.yaml, so concurrent or later attempts never rewrite one another's snapshot
             config_snapshot_dir.mkdir(parents=True, exist_ok=True)
             clean_config = {k: v for k, v in config.items() if k != 'env_setup'}
+            import hashlib
             import socket
-            tmp = config_snapshot_dir / f".{original_config_filename}.{socket.gethostname()}.{os.getpid()}.tmp"
-            with open(tmp, 'w') as f_out:
-                yaml.dump(clean_config, f_out, default_flow_style=False, sort_keys=False)
-            os.replace(tmp, logged_config_path)
+            text = yaml.dump(clean_config, default_flow_style=False, sort_keys=False)
+            digest = hashlib.sha256(text.encode()).hexdigest()[:16]
+            p = Path(original_config_filename)
+            logged_config_path = config_snapshot_dir / f"{p.stem}.{digest}{p.suffix}"
+            if not logged_config_path.exists():
+                tmp = config_snapshot_dir / f".{logged_config_path.name}.{socket.gethostname()}.{os.getpid()}.tmp"
+                tmp.write_text(text)
+                os.replace(tmp, logged_config_path)
+            elif logged_config_path.read_text() != text:
+                logger.error(f"config snapshot {logged_config_path} exists with other content; refusing")
+                return False, None
             if prov.get("commit_marker", False):
                 try:  # exclusive create: written once, parallel chunks cannot overwrite it
                     with open(commit_success_file, 'x') as f_marker:

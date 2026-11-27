@@ -231,13 +231,81 @@ def reserve_attempt(config: dict, runs_dir: Path, version_dir: Path, unit: int, 
 record_path = reserve_attempt  # backwards-compatible name
 
 
-def unit_lock(attempt_path: Path) -> Path:
-    """Exclusive per-unit lock next to the attempt records: a second concurrent attempt of the same run or
-    chunk is refused (FileExistsError). A lock left by a killed attempt stays until the operator removes it."""
-    lock = attempt_path.parent / (attempt_path.name.rsplit("_attempt", 1)[0] + ".lock")
-    with open(lock, "x") as f:
-        f.write(f"{socket.gethostname()} {os.getpid()} {attempt_path.name}\n")
+def unit_paths(runs_dir: Path, version_dir: Path, unit: int, postprocessing: bool, stage: str) -> tuple[Path, str]:
+    """(provenance directory, record stem) of a run or chunk, as reserve_attempt uses them."""
+    if postprocessing:
+        return Path(version_dir) / "provenance" / stage, f"chunk{unit}"
+    return Path(runs_dir) / str(unit) / "provenance", stage
+
+
+def acquire_unit_lock(prov_dir: Path, stem: str) -> Path:
+    """Exclusive per-unit lock, taken BEFORE any other write of an attempt (record, outputs). A second
+    concurrent attempt of the same run or chunk gets FileExistsError and writes nothing. The lock names its
+    owner (host, pid, Slurm job and step) so that `v23_control.py reconcile` can tell a lock of a finished
+    job from a live one; a lock of a killed attempt stays until then."""
+    prov_dir = Path(prov_dir)
+    prov_dir.mkdir(parents=True, exist_ok=True)
+    lock = prov_dir / f"{stem}.lock"
+    owner = {"host": socket.gethostname(), "pid": os.getpid(), "slurm_job_id": os.environ.get("SLURM_JOB_ID"),
+             "slurm_step_id": os.environ.get("SLURM_STEP_ID"), "start_utc": datetime.datetime.utcnow().isoformat() + "Z"}
+    fd = os.open(lock, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o660)
+    with os.fdopen(fd, "w") as f:
+        json.dump(owner, f)
     return lock
+
+
+def unit_lock(attempt_path: Path) -> Path:
+    """Backwards-compatible: the lock of the unit an attempt record belongs to (see acquire_unit_lock)."""
+    return acquire_unit_lock(attempt_path.parent, attempt_path.name.rsplit("_attempt", 1)[0])
+
+
+FREEZE = ".freeze"            # writer exclusion during verification, finalization and publication
+MARKER = ".git_commit_success"
+
+
+def frozen_error(version_dir: Path) -> str | None:
+    """Reason no attempt may write into this version (finalized, or frozen for verification/finalization)."""
+    v = Path(version_dir)
+    if (v / MARKER).exists():
+        return f"{v} is finalized ({MARKER} exists); a finalized version refuses further writes"
+    if (v / FREEZE).exists():
+        return f"{v} is frozen ({FREEZE}: {(v / FREEZE).read_text(errors='replace').strip()[:200]})"
+    return None
+
+
+def attempt_records(prov_dir: Path, stem: str) -> list[Path]:
+    """Attempt records of a unit in numeric attempt order."""
+    return sorted(Path(prov_dir).glob(f"{stem}_attempt*.json"), key=lambda p: int(p.stem.rsplit("attempt", 1)[1]))
+
+
+def latest_record(prov_dir: Path, stem: str) -> tuple[Path | None, dict | None]:
+    recs = attempt_records(prov_dir, stem)
+    if not recs:
+        return None, None
+    try:
+        return recs[-1], json.loads(recs[-1].read_text())
+    except (OSError, ValueError):
+        return recs[-1], {"status": "unreadable"}
+
+
+def is_accepted(rec: dict | None, approved_sha: str | None = None) -> bool:
+    """An accepted attempt: complete, return code 0, and (if given) the approved code."""
+    if not rec or rec.get("status") != "complete" or rec.get("return_code") != 0:
+        return False
+    return approved_sha is None or (rec.get("git") or {}).get("sha") == approved_sha
+
+
+def set_status(path: Path, status: str, **fields) -> None:
+    """Rewrite an attempt record's status (atomic replace), keeping its other fields."""
+    try:
+        rec = json.loads(Path(path).read_text())
+    except (OSError, ValueError):
+        rec = {}
+    rec.update(fields)
+    rec["status"] = status
+    tmp = Path(path).with_name(f".{Path(path).name}.{socket.gethostname()}.{os.getpid()}.tmp")
+    tmp.write_text(json.dumps(rec, indent=1, sort_keys=True, default=str) + "\n")
+    os.replace(tmp, path)
 
 
 def record_problems(rec: dict) -> list[str]:

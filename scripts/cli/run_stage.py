@@ -248,35 +248,69 @@ def run_interactive(config, config_path_arg, stage_script_path, run_id=None):
     stage_exit_code = 1
     t_start = time.time()
 
-    # Provenance: production configs need a numbered run (or chunk) and reserve the attempt
-    # record BEFORE the stage starts, so retries get distinct numbers and a killed wrapper
-    # leaves a "started" record behind.
+    # Provenance (v23): production configs need a numbered run (or chunk). Order of writes:
+    #   1. the unit lock (exclusive create; a concurrent attempt is refused before it writes anything),
+    #   2. the version must not be frozen or finalized (checked after the lock: two-phase with the finalizer),
+    #   3. an accepted unit is never rerun unless COLLIDERML_REPLACE_ACCEPTED names it,
+    #   4. the attempt record ("started"), so retries get distinct numbers and a killed wrapper leaves it,
+    #   5. per-run stages write into a private attempt directory; outputs are promoted after exit 0.
     prov = config.get("provenance") or {}
     attempt_path = None
+    attempt_dir = None
+    stage_output_dir = run_dir
     if prov.get("record"):
         if run_id is None:
             logger.error("provenance.record needs --run-list N (one numbered run or chunk); refusing")
             sys.exit(2)
         import run_provenance
+        import attempt_isolation
         is_post = config["stage"] in cli_utils.POSTPROCESSING_STAGES
         version_dir = cli_utils.get_version_directory(config)
+        prov_dir, stem = run_provenance.unit_paths(Path(run_dir), version_dir, int(run_id), is_post, config["stage"])
+        try:
+            unit_lock = run_provenance.acquire_unit_lock(prov_dir, stem)
+        except FileExistsError:
+            logger.error(f"another attempt of {stem} holds {prov_dir / (stem + '.lock')}; refusing (nothing written)")
+            sys.exit(5)
+        frozen = run_provenance.frozen_error(version_dir)
+        if frozen:
+            unit_lock.unlink()
+            logger.error(f"{frozen}; refusing")
+            sys.exit(7)
+        last_path, last = run_provenance.latest_record(prov_dir, stem)
+        replacing = None
+        if run_provenance.is_accepted(last):
+            if os.environ.get("COLLIDERML_REPLACE_ACCEPTED") != str(run_id):
+                unit_lock.unlink()
+                logger.error(f"{stem}: latest attempt {last_path.name} is accepted; a rerun needs "
+                             f"COLLIDERML_REPLACE_ACCEPTED={run_id} (invalidates every downstream acceptance); refusing")
+                sys.exit(6)
+            replacing = last_path.name
         attempt_path = run_provenance.reserve_attempt(config, Path(run_dir), version_dir, int(run_id), is_post)
         logger.info(f"Provenance attempt reserved: {attempt_path}")
-        try:
-            unit_lock = run_provenance.unit_lock(attempt_path)
-        except FileExistsError:
-            logger.error(f"another attempt of this unit holds its lock next to {attempt_path}; refusing")
-            run_provenance.write_record(attempt_path, {"stage": config["stage"], "unit": int(run_id),
-                                                       "return_code": 5, "refused": "unit locked",
-                                                       "git": {"sha": "n/a"}})
-            sys.exit(5)
-    
+        attempt_no = int(attempt_path.stem.rsplit("attempt", 1)[1])
+        if not is_post and prov.get("isolate_attempts", True):
+            attempt_dir = attempt_isolation.attempt_root(version_dir, config["stage"], int(run_id), attempt_no)
+            try:
+                linked = attempt_isolation.prepare(Path(run_dir) / str(run_id), attempt_dir / str(run_id),
+                                                   attempt_isolation.top_names(prov.get("inputs")))
+            except OSError as e:
+                run_provenance.write_record(attempt_path, {"stage": config["stage"], "unit": int(run_id), "return_code": 8,
+                                                           "refused": f"attempt directory: {e}", "git": {"sha": "n/a"}})
+                unit_lock.unlink()
+                logger.error(f"cannot prepare the attempt directory {attempt_dir}: {e}; refusing")
+                sys.exit(8)
+            stage_output_dir = attempt_dir
+            logger.info(f"Attempt directory {attempt_dir / str(run_id)} (inputs linked: {linked})")
+            run_provenance.set_status(attempt_path, "started", attempt_dir=str(attempt_dir), inputs_linked=linked,
+                                      replaces_accepted=replacing)
+
     try:
         command_info = cli_utils.build_stage_command(
             config=config,
             config_path=config_path_arg,
             stage_script_path=stage_script_path,
-            output_dir=run_dir,
+            output_dir=stage_output_dir,
             output_subdir=output_subdir,
             execution_mode="interactive"
         )
@@ -322,7 +356,20 @@ def run_interactive(config, config_path_arg, stage_script_path, run_id=None):
     # absent, unhashed file, unknown image, unreadable stage JSON) turns a task exit 0 into 4.
     if attempt_path is not None:
         try:
-            base = version_dir if is_post else Path(run_dir) / str(run_id)
+            promotion = None
+            if is_post:
+                base = version_dir
+            elif attempt_dir is None:
+                base = Path(run_dir) / str(run_id)
+            elif stage_exit_code == 0:
+                # promote: record the plan first ("promoting"), then one rename per top-level entry
+                work_n, run_n = attempt_dir / str(run_id), Path(run_dir) / str(run_id)
+                the_plan = attempt_isolation.plan(work_n, run_n, attempt_isolation.top_names(prov.get("outputs")))
+                run_provenance.set_status(attempt_path, "promoting", promotion_plan=the_plan)
+                promotion = attempt_isolation.promote(work_n, run_n, the_plan, attempt_dir / "replaced")
+                base = run_n
+            else:
+                base = attempt_dir / str(run_id)   # a failed attempt is recorded from its own directory
             container, _ = cli_utils.resolve_stage_container(config, config["stage"])
             rec = run_provenance.build_record(
                 config=config, config_path=config_path_arg, unit=int(run_id), rc=stage_exit_code,
@@ -330,6 +377,10 @@ def run_interactive(config, config_path_arg, stage_script_path, run_id=None):
                 base=base, container=container,
                 env_setup_path=Path(__file__).resolve().parent / "env_setup.yaml",
             )
+            if attempt_dir is not None:
+                rec["attempt_dir"] = str(attempt_dir)
+                rec["promotion"] = promotion
+                rec["replaces_accepted"] = replacing
             if is_post:
                 # packaging: exactly the files this chunk wrote, as listed in its own manifest (a window glob
                 # would also catch carried parent shards, e.g. truth/particles events1000-1999)
@@ -342,6 +393,7 @@ def run_interactive(config, config_path_arg, stage_script_path, run_id=None):
                     meta = mo.get(str(version_dir / e["path"])) or mo.get(e.get("realpath") or "") or {} if e.get("path") else {}
                     if e.get("sha256") and meta and e["sha256"] != meta.get("sha256"):
                         e["error"] = "sha256 differs from the chunk manifest"; e.pop("sha256")
+                rec["replaces_accepted"] = replacing
             rec["task_return_code"] = stage_exit_code
             problems = run_provenance.record_problems(rec)
             if problems and stage_exit_code == 0:
@@ -350,12 +402,15 @@ def run_interactive(config, config_path_arg, stage_script_path, run_id=None):
             rec["return_code"] = stage_exit_code
             run_provenance.write_record(attempt_path, rec)
             logger.info(f"Provenance record: {attempt_path}")
-            unit_lock.unlink()
+            if attempt_dir is not None and stage_exit_code == 0:
+                attempt_isolation.cleanup(attempt_dir)
         except Exception as e:
             logger.error(f"Provenance record failed: {e}")
             logger.exception("Full traceback:")
             if stage_exit_code == 0:
                 stage_exit_code = 3
+        finally:
+            unit_lock.unlink()
 
     # If validation is disabled, exit with stage result
     if not validation_enabled:

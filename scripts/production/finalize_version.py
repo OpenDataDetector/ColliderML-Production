@@ -11,7 +11,13 @@ For every release chunk 0..N-1 (N = ceil(release_events / chunk_size)):
   * every configured object has exactly one canonically named shard per window under parquet/ and no other
     files there.
 Only then is the marker created (exclusive create, never overwritten) and made read-only (0444). Exit 1 with
-the problems otherwise; nothing is written. Run it with no packaging job active for this version.
+the problems otherwise; nothing is written.
+
+Writer exclusion (v23, Codex round 5 finding 6): the check runs under <version>/.freeze, created exclusively
+before anything is read. run_stage takes its unit lock first and then refuses to run while .freeze or the marker
+exists; the finalizer creates .freeze first and then requires that no unit lock exists (runs/*/provenance/*.lock,
+provenance/*/*.lock). Either order of the two leaves at most one of them proceeding. .freeze is removed after a
+dry run or a refusal and stays after a successful finalization (with the marker, the version refuses writes).
 
   python finalize_version.py <package_parquet_config.yaml> --approved-sha <sha> [--dry-run]
 """
@@ -54,6 +60,33 @@ def main() -> int:
     c = yaml.safe_load(Path(a.config).read_text())
     base = (c.get("common") or {}).get("output_base_dir") or c["output_base_dir"]
     vdir = Path(base) / c["campaign"] / c["dataset"] / c["version"]
+    freeze = vdir / ".freeze"
+    try:
+        fd = os.open(freeze, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o440)
+    except FileExistsError:
+        print(f"{freeze} exists (another finalization, verification or publication holds the version); refusing")
+        return 1
+    with os.fdopen(fd, "w") as f:
+        f.write(f"finalize_version.py {'dry run' if a.dry_run else 'finalization'} pid {os.getpid()} "
+                f"host {os.uname().nodename} at {datetime.datetime.now().isoformat()}\n")
+    try:
+        locks = sorted(glob.glob(str(vdir / "runs" / "*" / "provenance" / "*.lock")) +
+                       glob.glob(str(vdir / "provenance" / "*" / "*.lock")))
+        if locks:
+            print(f"{len(locks)} unit lock(s) held (an attempt is running or was interrupted), e.g. {locks[0]}; "
+                  "run v23_control.py reconcile first")
+            os.unlink(freeze)
+            return 1
+        rc = _check_and_write(a, c, vdir)
+    except BaseException:
+        os.unlink(freeze)
+        raise
+    if rc != 0 or a.dry_run:
+        os.unlink(freeze)
+    return rc
+
+
+def _check_and_write(a, c, vdir) -> int:
     release, chunk = int(c["release_events"]), int(c["chunk_size"])
     n = (release + chunk - 1) // chunk
     windows = [(i * chunk, min(release, (i + 1) * chunk) - 1) for i in range(n)]

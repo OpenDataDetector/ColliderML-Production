@@ -549,6 +549,14 @@ def package_chunk(
     outputs: list[Path] = []
 
     released = None
+    # Attempt isolation (v23, Codex round 5 finding 6): shards are written under hidden temporary names
+    # (.<final name>.<token>.tmp, same directory) and renamed into place only after every object of the chunk
+    # is complete and the manifest is written. A killed or failed attempt never truncates or replaces a final
+    # shard; its temporary files are removed by `v23_control.py reconcile` (the finalizer refuses while any
+    # file other than the canonical shards is present).
+    import uuid
+    token = uuid.uuid4().hex[:12]
+    pending: list[tuple[Path, Path]] = []    # (temporary, final)
 
     def _note_file(f: Path) -> None:
         if manifest_path is None or str(f) in inputs or not f.exists():
@@ -661,7 +669,8 @@ def package_chunk(
                     table = table.drop(drop)
                 table = _convert_times(table, obj)
                 if writer is None:
-                    writer = pq.ParquetWriter(out_file, table.schema, compression=compression)
+                    tmp_file = out_dir / f".{out_file.name}.{token}.tmp"
+                    writer = pq.ParquetWriter(tmp_file, table.schema, compression=compression)
                 # Stream run by run: peak memory is one run, not one chunk.
                 writer.write_table(table, row_group_size=row_group_size)
                 rows += table.num_rows
@@ -677,6 +686,7 @@ def package_chunk(
             incomplete.append(obj)
             continue
         outputs.append(out_file)
+        pending.append((tmp_file, out_file))
         # The event count is the load-bearing check: a short file here means a
         # run was missing or partially digitized, which must not pass silently.
         if events_seen != expected:
@@ -687,18 +697,26 @@ def package_chunk(
             incomplete.append(obj)
         logger.info("wrote %s (rows=%d, events=%d)", out_file.name, rows, events_seen)
 
+    if incomplete:
+        for tmp_f, _ in pending:     # nothing of an incomplete chunk becomes visible
+            tmp_f.unlink(missing_ok=True)
+        pending, outputs = [], []
     if manifest_path is not None:
         import json
+        tmp_of = {str(f): t for t, f in pending}
         man = {"start_event": start_event, "end_event": end_event, "runs": [start_run, end_run],
                "objects": objects, "status": "incomplete" if incomplete else "ok", "incomplete": incomplete,
-               "inputs": inputs,
-               "outputs": {str(f): {"size": f.stat().st_size, "sha256": _sha256(f)} for f in outputs}}
+               "inputs": inputs, "attempt_token": token,
+               "outputs": {str(f): {"size": tmp_of[str(f)].stat().st_size, "sha256": _sha256(tmp_of[str(f)])}
+                           for f in outputs}}
         manifest_path.parent.mkdir(parents=True, exist_ok=True)
-        tmp = manifest_path.with_name(f".{manifest_path.name}.{os.getpid()}.tmp")
+        tmp = manifest_path.with_name(f".{manifest_path.name}.{token}.tmp")
         tmp.write_text(json.dumps(man, indent=1, sort_keys=True) + "\n")
         os.replace(tmp, manifest_path)
     if incomplete:
         raise RuntimeError(f"chunk {start_event}-{end_event}: incomplete objects {incomplete}")
+    for tmp_f, final in pending:     # promotion: one atomic rename per shard
+        os.replace(tmp_f, final)
     logger.info("chunk %d-%d done in %.1fs", start_event, end_event, time.time() - t0)
 
 

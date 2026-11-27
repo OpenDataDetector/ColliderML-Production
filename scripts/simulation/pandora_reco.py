@@ -248,20 +248,30 @@ def run_pandora_reco(input_file, output_dir, config, logger):
         # took longer than the reconstruction itself.
         parts_dir = output_dir / "reco_parts"
         parts_dir.mkdir(exist_ok=True)
-        n_out = 0
-        for i, _, count, part, _, _ in procs:
+
+        def settle(item):
+            # move (work_root may be another file system), entry count, collection check: per slice
+            # independent, run in parallel (with the optimised Pandora the serial loop took longer than
+            # the reconstruction). Same checks and the same output files as before.
+            i, _, count, part, _, _ = item
             dst = parts_dir / f"reco_part_{i:03d}.root"
-            shutil.move(part, dst)                      # work_root may be another file system
+            shutil.move(part, dst)
             n = _count_entries(dst)
             if n != count:
-                write_slice_record(f"failed: slice {i} wrote {n} events, expected {count}")
-                raise RuntimeError(f"slice {i}: {n} events written, expected {count}")
+                return i, n, f"slice {i} wrote {n} events, expected {count}"
             dump = subprocess.run(["podio-dump", str(dst)], capture_output=True, text=True, env=env)
             missing = [c for c in ("GaudiPandoraPFOs", "GaudiPandoraClusters") if c not in dump.stdout]
-            if missing:
-                write_slice_record(f"failed: slice {i} lacks {missing}")
-                raise RuntimeError(f"slice {i}: output missing collections {missing}")
-            n_out += n
+            return i, n, (f"slice {i} lacks {missing}" if missing else None)
+
+        from concurrent.futures import ThreadPoolExecutor
+        workers = max(1, min(len(procs), int(getattr(config, "settle_workers", 16) or 16)))
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            settled = sorted(pool.map(settle, procs))
+        errors = [e for _, _, e in settled if e]
+        if errors:
+            write_slice_record(f"failed: {errors[0]}")
+            raise RuntimeError(f"{len(errors)} slice output(s) failed the checks: {errors[:3]}")
+        n_out = sum(n for _, n, _ in settled)
         write_slice_record("ok")
         logger.info(f"✓ {n_proc} slice files ({n_out} events) in {parts_dir} (merge_slices: false)")
         _remove_stale_outputs(output_dir, keep="parts", n_parts=n_proc, logger=logger)
