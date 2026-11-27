@@ -1,0 +1,216 @@
+{
+ "image": "localhost/colliderml/reco:20261127",
+ "image_id": "7390034fab5d043ceeac63557881b61e080b92348bd67add9af807e4a2e6fe08",
+ "workers": 1,
+ "env": [
+  "PANDORA_ALG_TIMING=1"
+ ],
+ "k4run_args": [],
+ "total_wall_s": 347.5,
+ "slices_with_error": 0,
+ "all_identical": true,
+ "summary": {
+  "pu200": {
+   "slices": 5,
+   "events": 5,
+   "slices_with_error": 0,
+   "events_equal": 5,
+   "calo_hits_compared": 3992766,
+   "pandora_objects_compared": 92954,
+   "wall_s": 109.4,
+   "pandora_s": 42.6,
+   "max_rss_gb": 6.313,
+   "wall_s_per_event": 21.872,
+   "pandora_s_per_event": 8.514
+  },
+  "pu0": {
+   "slices": 1,
+   "events": 80,
+   "slices_with_error": 0,
+   "events_equal": 80,
+   "calo_hits_compared": 2552666,
+   "pandora_objects_compared": 63875,
+   "wall_s": 40.5,
+   "pandora_s": 15.4,
+   "max_rss_gb": 2.201,
+   "wall_s_per_event": 0.507,
+   "pandora_s_per_event": 0.193
+  }
+ },
+ "records": [
+  {
+   "name": "pu200_r0_e00",
+   "category": "pu200",
+   "count": 1,
+   "rc": 0,
+   "wall_s": 18.79,
+   "max_rss_gb": 4.39,
+   "pandora_s": 5.8,
+   "events": 1,
+   "pfos": [
+    4919,
+    4919
+   ],
+   "clusters": [
+    4863,
+    4863
+   ],
+   "strict_max_abs_diff": 0.0,
+   "strict_message": "",
+   "pandora_objects_compared": 14701,
+   "pandora_events_differing": [],
+   "pandora_messages": [],
+   "calo_hits_compared": 623134,
+   "calo_events_differing": [],
+   "calo_hit_messages": [],
+   "pandora_identical": true,
+   "calo_hits_identical": true,
+   "identical": true
+  },
+  {
+   "name": "pu200_r0_e04",
+   "category": "pu200",
+   "count": 1,
+   "rc": 0,
+   "wall_s": 22.9,
+   "max_rss_gb": 5.372,
+   "pandora_s": 9.52,
+   "events": 1,
+   "pfos": [
+    6560,
+    6560
+   ],
+   "clusters": [
+    6483,
+    6483
+   ],
+   "strict_max_abs_diff": 0.0,
+   "strict_message": "",
+   "pandora_objects_compared": 19603,
+   "pandora_events_differing": [],
+   "pandora_messages": [],
+   "calo_hits_compared": 849568,
+   "calo_events_differing": [],
+   "calo_hit_messages": [],
+   "pandora_identical": true,
+   "calo_hits_identical": true,
+   "identical": true
+  },
+  {
+   "name": "pu200_r0_e07",
+   "category": "pu200",
+   "count": 1,
+   "rc": 0,
+   "wall_s": 26.63,
+   "max_rss_gb": 6.313,
+   "pandora_s": 12.54,
+   "events": 1,
+   "pfos": [
+    7867,
+    7867
+   ],
+   "clusters": [
+    7774,
+    7774
+   ],
+   "strict_max_abs_diff": 0.0,
+   "strict_message": "",
+   "pandora_objects_compared": 23508,
+   "pandora_events_differing": [],
+   "pandora_messages": [],
+   "calo_hits_compared": 1036605,
+   "calo_events_differing": [],
+   "calo_hit_messages": [],
+   "pandora_identical": true,
+   "calo_hits_identical": true,
+   "identical": true
+  },
+  {
+   "name": "pu200_r0_e38",
+   "category": "pu200",
+   "count": 1,
+   "rc": 0,
+   "wall_s": 21.62,
+   "max_rss_gb": 5.073,
+   "pandora_s": 7.86,
+   "events": 1,
+   "pfos": [
+    6165,
+    6165
+   ],
+   "clusters": [
+    6090,
+    6090
+   ],
+   "strict_max_abs_diff": 0.0,
+   "strict_message": "",
+   "pandora_objects_compared": 18420,
+   "pandora_events_differing": [],
+   "pandora_messages": [],
+   "calo_hits_compared": 763926,
+   "calo_events_differing": [],
+   "calo_hit_messages": [],
+   "pandora_identical": true,
+   "calo_hits_identical": true,
+   "identical": true
+  },
+  {
+   "name": "pu200_r0_e46",
+   "category": "pu200",
+   "count": 1,
+   "rc": 0,
+   "wall_s": 19.42,
+   "max_rss_gb": 4.879,
+   "pandora_s": 6.85,
+   "events": 1,
+   "pfos": [
+    5596,
+    5596
+   ],
+   "clusters": [
+    5530,
+    5530
+   ],
+   "strict_max_abs_diff": 0.0,
+   "strict_message": "",
+   "pandora_objects_compared": 16722,
+   "pandora_events_differing": [],
+   "pandora_messages": [],
+   "calo_hits_compared": 719533,
+   "calo_events_differing": [],
+   "calo_hit_messages": [],
+   "pandora_identical": true,
+   "calo_hits_identical": true,
+   "identical": true
+  },
+  {
+   "name": "pu0_r0_slice00",
+   "category": "pu0",
+   "count": 80,
+   "rc": 0,
+   "wall_s": 40.55,
+   "max_rss_gb": 2.201,
+   "pandora_s": 15.43,
+   "events": 80,
+   "pfos": [
+    21363,
+    21363
+   ],
+   "clusters": [
+    21149,
+    21149
+   ],
+   "strict_max_abs_diff": 0.0,
+   "strict_message": "",
+   "pandora_objects_compared": 63875,
+   "pandora_events_differing": [],
+   "pandora_messages": [],
+   "calo_hits_compared": 2552666,
+   "calo_events_differing": [],
+   "calo_hit_messages": [],
+   "pandora_identical": true,
+   "calo_hits_identical": true,
+   "identical": true
+  }
+ ]
+}

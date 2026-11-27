@@ -1,0 +1,15 @@
+--- a/python/k4FWCore/ApplicationMgr.py
++++ b/python/k4FWCore/ApplicationMgr.py
+@@ -113,7 +113,11 @@
+         try:
+             self._mgr.EventLoop
+         except AttributeError:
+-            self._mgr.EventLoop = EventLoopMgr(Warnings=False)
++            try:
++                self._mgr.EventLoop = EventLoopMgr(Warnings=False)
++            except AttributeError:
++                # Gaudi 40 removed EventLoopMgr.Warnings; it only silenced two warnings.
++                pass
+ 
+         if "MetadataSvc" in self._mgr.allConfigurables:
+             self._mgr.ExtSvc.append(self._mgr.allConfigurables["MetadataSvc"])

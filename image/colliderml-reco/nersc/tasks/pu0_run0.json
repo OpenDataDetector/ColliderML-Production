@@ -1,0 +1,146 @@
+[
+ {
+  "name": "pu0_r0_slice00",
+  "category": "pu0",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/hard_scatter/ttbar/v23/runs/0/sim_with_tracks.root",
+  "first": 0,
+  "count": 80,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/hard_scatter/ttbar/v23/runs/0/reco_edm4hep.root",
+  "ref_first": 0
+ },
+ {
+  "name": "pu0_r0_slice01",
+  "category": "pu0",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/hard_scatter/ttbar/v23/runs/0/sim_with_tracks.root",
+  "first": 80,
+  "count": 80,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/hard_scatter/ttbar/v23/runs/0/reco_edm4hep.root",
+  "ref_first": 80
+ },
+ {
+  "name": "pu0_r0_slice02",
+  "category": "pu0",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/hard_scatter/ttbar/v23/runs/0/sim_with_tracks.root",
+  "first": 160,
+  "count": 80,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/hard_scatter/ttbar/v23/runs/0/reco_edm4hep.root",
+  "ref_first": 160
+ },
+ {
+  "name": "pu0_r0_slice03",
+  "category": "pu0",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/hard_scatter/ttbar/v23/runs/0/sim_with_tracks.root",
+  "first": 240,
+  "count": 80,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/hard_scatter/ttbar/v23/runs/0/reco_edm4hep.root",
+  "ref_first": 240
+ },
+ {
+  "name": "pu0_r0_slice04",
+  "category": "pu0",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/hard_scatter/ttbar/v23/runs/0/sim_with_tracks.root",
+  "first": 320,
+  "count": 80,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/hard_scatter/ttbar/v23/runs/0/reco_edm4hep.root",
+  "ref_first": 320
+ },
+ {
+  "name": "pu0_r0_slice05",
+  "category": "pu0",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/hard_scatter/ttbar/v23/runs/0/sim_with_tracks.root",
+  "first": 400,
+  "count": 80,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/hard_scatter/ttbar/v23/runs/0/reco_edm4hep.root",
+  "ref_first": 400
+ },
+ {
+  "name": "pu0_r0_slice06",
+  "category": "pu0",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/hard_scatter/ttbar/v23/runs/0/sim_with_tracks.root",
+  "first": 480,
+  "count": 80,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/hard_scatter/ttbar/v23/runs/0/reco_edm4hep.root",
+  "ref_first": 480
+ },
+ {
+  "name": "pu0_r0_slice07",
+  "category": "pu0",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/hard_scatter/ttbar/v23/runs/0/sim_with_tracks.root",
+  "first": 560,
+  "count": 80,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/hard_scatter/ttbar/v23/runs/0/reco_edm4hep.root",
+  "ref_first": 560
+ },
+ {
+  "name": "pu0_r0_slice08",
+  "category": "pu0",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/hard_scatter/ttbar/v23/runs/0/sim_with_tracks.root",
+  "first": 640,
+  "count": 80,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/hard_scatter/ttbar/v23/runs/0/reco_edm4hep.root",
+  "ref_first": 640
+ },
+ {
+  "name": "pu0_r0_slice09",
+  "category": "pu0",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/hard_scatter/ttbar/v23/runs/0/sim_with_tracks.root",
+  "first": 720,
+  "count": 80,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/hard_scatter/ttbar/v23/runs/0/reco_edm4hep.root",
+  "ref_first": 720
+ },
+ {
+  "name": "pu0_r0_slice10",
+  "category": "pu0",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/hard_scatter/ttbar/v23/runs/0/sim_with_tracks.root",
+  "first": 800,
+  "count": 80,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/hard_scatter/ttbar/v23/runs/0/reco_edm4hep.root",
+  "ref_first": 800
+ },
+ {
+  "name": "pu0_r0_slice11",
+  "category": "pu0",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/hard_scatter/ttbar/v23/runs/0/sim_with_tracks.root",
+  "first": 880,
+  "count": 80,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/hard_scatter/ttbar/v23/runs/0/reco_edm4hep.root",
+  "ref_first": 880
+ },
+ {
+  "name": "pu0_r0_slice12",
+  "category": "pu0",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/hard_scatter/ttbar/v23/runs/0/sim_with_tracks.root",
+  "first": 960,
+  "count": 80,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/hard_scatter/ttbar/v23/runs/0/reco_edm4hep.root",
+  "ref_first": 960
+ },
+ {
+  "name": "pu0_r0_slice13",
+  "category": "pu0",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/hard_scatter/ttbar/v23/runs/0/sim_with_tracks.root",
+  "first": 1040,
+  "count": 80,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/hard_scatter/ttbar/v23/runs/0/reco_edm4hep.root",
+  "ref_first": 1040
+ },
+ {
+  "name": "pu0_r0_slice14",
+  "category": "pu0",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/hard_scatter/ttbar/v23/runs/0/sim_with_tracks.root",
+  "first": 1120,
+  "count": 80,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/hard_scatter/ttbar/v23/runs/0/reco_edm4hep.root",
+  "ref_first": 1120
+ },
+ {
+  "name": "pu0_r0_slice15",
+  "category": "pu0",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/hard_scatter/ttbar/v23/runs/0/sim_with_tracks.root",
+  "first": 1200,
+  "count": 80,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/hard_scatter/ttbar/v23/runs/0/reco_edm4hep.root",
+  "ref_first": 1200
+ }
+]

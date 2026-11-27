@@ -1,0 +1,13 @@
+# Build context: only what the Containerfile copies.
+*
+!Containerfile
+!build.sh
+!LICENSE
+!LICENSES
+!THIRD_PARTY.md
+!sources.env
+!requirements.txt
+!bin
+!env
+!patches
+!steps

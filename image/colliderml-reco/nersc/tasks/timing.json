@@ -1,0 +1,51 @@
+[
+ {
+  "name": "pu200_r0_e00",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/0/sim_with_tracks.root",
+  "first": 0,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/pandora_speedup_2026-11-22/carbon/validation/golden/pu200_r0_e00.root"
+ },
+ {
+  "name": "pu200_r0_e04",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/0/sim_with_tracks.root",
+  "first": 4,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/pandora_speedup_2026-11-22/carbon/validation/golden/pu200_r0_e04.root"
+ },
+ {
+  "name": "pu200_r0_e07",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/0/sim_with_tracks.root",
+  "first": 7,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/pandora_speedup_2026-11-22/carbon/validation/golden/pu200_r0_e07.root"
+ },
+ {
+  "name": "pu200_r0_e38",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/0/sim_with_tracks.root",
+  "first": 38,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/pandora_speedup_2026-11-22/carbon/validation/golden/pu200_r0_e38.root"
+ },
+ {
+  "name": "pu200_r0_e46",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/0/sim_with_tracks.root",
+  "first": 46,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/pandora_speedup_2026-11-22/carbon/validation/golden/pu200_r0_e46.root"
+ },
+ {
+  "name": "pu0_r0_slice00",
+  "category": "pu0",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/hard_scatter/ttbar/v23/runs/0/sim_with_tracks.root",
+  "first": 0,
+  "count": 80,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/hard_scatter/ttbar/v23/runs/0/reco_edm4hep.root",
+  "ref_first": 0
+ }
+]

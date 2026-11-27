@@ -1,0 +1,67 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 819860d..d01489c 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -33,9 +33,9 @@ find_package(podio 1.2.99 REQUIRED)
+ find_package(EDM4HEP REQUIRED)
+ find_package(DD4hep REQUIRED)
+ find_package(Gaudi REQUIRED)
+-find_package(k4FWCore 1.4 REQUIRED)
++find_package(k4FWCore REQUIRED)
+ find_package(ROOT REQUIRED COMPONENTS RIO Tree)
+-find_package(k4SimGeant4 REQUIRED)
++# k4SimGeant4 dropped: not used by GaudiTrkUtils
+ 
+ include(cmake/Key4hepConfig.cmake)
+ 
+@@ -47,6 +47,6 @@ if(BUILD_TESTING)
+   add_subdirectory(test)
+ endif()
+ 
+-add_subdirectory(python)
++# python confdb subdir dropped (no plugins module)
+ 
+ include(cmake/CreateProjectConfig.cmake)
+diff --git a/k4Reco/CMakeLists.txt b/k4Reco/CMakeLists.txt
+index e002025..5e13f4f 100644
+--- a/k4Reco/CMakeLists.txt
++++ b/k4Reco/CMakeLists.txt
+@@ -107,37 +107,7 @@ if(BUILD_TRACKING)
+ endif()
+ 
+ 
+-gaudi_add_module(k4RecoPlugins
+-                 SOURCES ${sources}
+-                 LINK ${libs}
+-)
+-
+-# Common include directories
+-set(k4RecoPlugins_public_includes
+-  $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
+-)
+-
+-target_include_directories(k4RecoPlugins PUBLIC ${k4RecoPlugins_public_includes})
+-target_include_directories(k4RecoPlugins PUBLIC
+-  $<BUILD_INTERFACE:${CMAKE_CURRENT_LIST_DIR}/ConformalTracking/include>
+-  $<BUILD_INTERFACE:${CMAKE_CURRENT_LIST_DIR}/GaudiLumiCalClusterer/include>
+-  $<BUILD_INTERFACE:${CMAKE_CURRENT_LIST_DIR}/Tracking/include>
+-  $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)
+-
+-if(BUILD_TRACKING)
+-  target_include_directories(k4RecoPlugins
+-    PUBLIC
+-    $<BUILD_INTERFACE:${CMAKE_CURRENT_LIST_DIR}/ConformalTracking/include>
+-    $<BUILD_INTERFACE:${CMAKE_CURRENT_LIST_DIR}/Tracking/include>
+-    ${k4RecoPlugins_public_includes}
+-    PRIVATE
+-    ${KalTest_INCLUDE_DIRS}
+-    ${DDKalTest_INCLUDE_DIRS}
+-    ${streamlog_INCLUDE_DIRS}
+-  )
+-endif()
+-
+-install(TARGETS GaudiTrkUtils k4RecoPlugins
++install(TARGETS GaudiTrkUtils
+   EXPORT k4RecoTargets
+   RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}" COMPONENT bin
+   LIBRARY DESTINATION "${CMAKE_INSTALL_LIBDIR}" COMPONENT shlib

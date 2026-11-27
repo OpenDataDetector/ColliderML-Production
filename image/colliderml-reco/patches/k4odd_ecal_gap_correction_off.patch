@@ -1,0 +1,26 @@
+--- a/k4ODD/options/ODDdigitisation.py
++++ b/k4ODD/options/ODDdigitisation.py
+@@ -153,7 +153,9 @@
+     calodigicol.CalibECALMIP = 0.0001
+     calodigicol.ECALThreshold = 5.0e-5
+     calodigicol.ECALThresholdUnit = "GeV"
+-    calodigicol.ECALGapCorrection = 1
++    # Off: ODD has no dead gaps between ECAL cells, and the gap correction of this
++    # k4GaudiPandora reads the hits through dangling pointers (it never changed a hit).
++    calodigicol.ECALGapCorrection = 0
+     calodigicol.ECALGapCorrectionFactor = 1
+     calodigicol.ECALModuleGapCorrectionFactor = 0.0
+     calodigicol.MapsEcalCorrection = 0
+--- a/k4ODD/options/ODDreconstruction.py
++++ b/k4ODD/options/ODDreconstruction.py
+@@ -183,7 +183,9 @@
+     calodigicol.CalibECALMIP = 0.0001
+     calodigicol.ECALThreshold = 5.0e-5
+     calodigicol.ECALThresholdUnit = "GeV"
+-    calodigicol.ECALGapCorrection = 1
++    # Off: ODD has no dead gaps between ECAL cells, and the gap correction of this
++    # k4GaudiPandora reads the hits through dangling pointers (it never changed a hit).
++    calodigicol.ECALGapCorrection = 0
+     calodigicol.ECALGapCorrectionFactor = 1
+     calodigicol.ECALModuleGapCorrectionFactor = 0.0
+     calodigicol.MapsEcalCorrection = 0
