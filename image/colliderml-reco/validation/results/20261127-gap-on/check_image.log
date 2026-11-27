@@ -1,0 +1,57 @@
+== image configuration (no setting of the build host)
+id: 7390034fab5d043ceeac63557881b61e080b92348bd67add9af807e4a2e6fe08
+env: ["PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin","SPACK_COLOR=always","SPACK_INSTALL_OPTS=--only-concrete --no-add --fail-fast","RECO_VERSION=20261127"]
+entrypoint: ["/opt/colliderml-reco/bin/entrypoint.sh"]
+labels: {"io.buildah.version":"1.43.1","org.opencontainers.image.base.name":"ghcr.io/key4hep/key4hep-sim-reco-ubuntu24@sha256:5b3a56c63a3337eca22bbfc14cfb3239e1049037a8734322e70ae8580ce96911","org.opencontainers.image.created":"2025-12-01T13:13:03.094Z","org.opencontainers.image.description":"Calorimeter digitisation and Pandora particle flow on the Open Data Detector","org.opencontainers.image.licenses":"","org.opencontainers.image.ref.name":"ubuntu","org.opencontainers.image.revision":"d708f5c5c04f21bc461aa3e735ad9abff2421671","org.opencontainers.image.source":"https://github.com/OpenDataDetector/ColliderML-Production","org.opencontainers.image.title":"ColliderML reconstruction","org.opencontainers.image.url":"https://github.com/key4hep/key4hep-spack","org.opencontainers.image.version":"20261127"}
+annotations: {"org.opencontainers.image.base.digest":"sha256:c8126fa7a240b192a81786dffb4b858e8c068e7d9173590e108968ebddbbfef8","org.opencontainers.image.base.name":"ghcr.io/key4hep/key4hep-sim-reco-ubuntu24@sha256:5b3a56c63a3337eca22bbfc14cfb3239e1049037a8734322e70ae8580ce96911","org.opencontainers.image.created":"2026-11-27T16:20:34.090148478Z"}
+== build record
+version: 20261127
+base_image: ghcr.io/key4hep/key4hep-sim-reco-ubuntu24@sha256:5b3a56c63a3337eca22bbfc14cfb3239e1049037a8734322e70ae8580ce96911
+pandora_variant: optimised
+pandora_cxx_flags: -O3 -DNDEBUG -march=x86-64-v3 -mtune=generic -ffp-contract=off -fno-semantic-interposition -flto=auto -DPANDORA_STRICT_BYTE_IDENTICAL=1
+pandora_ld_flags: -flto=auto -fno-semantic-interposition
+sources:
+  K4RECO_REPO=https://github.com/key4hep/k4Reco.git
+  K4RECO_COMMIT=4be5a1b02e2a6f63cfcfb4377be68c54f399cbed
+  PANDORASDK_REPO=https://github.com/OpenDataDetector/PandoraSDK.git
+  PANDORASDK_COMMIT=d8c6466071ff3300c86c1049454d295e0288030a
+  LCCONTENT_REPO=https://github.com/OpenDataDetector/LCContent.git
+  LCCONTENT_COMMIT=3948e46055bed9ab40df3a3d20b8d776d10053e3
+  K4GAUDIPANDORA_REPO=https://github.com/OpenDataDetector/k4GaudiPandora.git
+  K4GAUDIPANDORA_COMMIT=faf0d672bc64aa665dcfda51649e766c220664b9
+  K4DETPERFORMANCE_REPO=https://github.com/OpenDataDetector/k4DetectorPerformance.git
+  K4DETPERFORMANCE_COMMIT=d684e12e2562e1df0d5e49babed9fdab688f48c3
+  K4ODD_REPO=https://github.com/OpenDataDetector/k4ODD.git
+  K4ODD_COMMIT=d92d2056f14ebde9b9c3fc885d4363869fd08cf5
+  ODD_REPO=https://gitlab.cern.ch/azaborow/OpenDataDetector.git
+  ODD_COMMIT=a1f2ca18c17c09f805e6e6b12830eb6c9fff7cb7
+libraries:
+  2a90f9586c580ff949e2b1ac8dee29d1f8baf8647ea090d7fcd64f888e5f4c40  /opt/pandora-stack/install/lib/libPandoraSDK.so
+  67d6a8085a4d680ec8bacc11e601b402350cd749d53008069170931af93648fd  /opt/pandora-stack/install/lib/libLCContent.so
+  d28a94dd3bcd1c40d3a68da22899e68c415cb349a568f9ce3345135921bbd1ac  /opt/pandora-stack/install/lib/libk4GaudiPandoraPlugins.so
+  786d9732ae2d12ab7ed650d5c6b9a3c2d66c689d8e0a4dd5430cf4eee58062b2  /opt/pandora-stack/install/lib/libk4DetectorPerformancePFlowPlugins.so
+  39dac19941d4e7528f6a60b9db9a47a8f16b8b8f30faff241e09d3ee7ce34ef9  /opt/k4ODD/install/lib/libk4ODDPlugins.so
+  90a5cf2f4593275a9622573a09ab73791fbb2370a4321e24957005af8660e27e  /opt/odd-install/lib/libOpenDataDetector.so
+  ce2cb4b3d496bb0e991e4ed6cab93688cd527ced1e93d3ad7484696ab3ecc5bb  /opt/k4reco-install/lib/libGaudiTrkUtils.so
+settings:
+  93640855b6d73de9ec2bcd086a50ef8aaafa4097f6719bbe79b2e9bbfbabff34  /opt/k4ODD/k4ODD/options/ODDreconstruction.py
+  87c1f0ae82069b4233e0e1be66f1b4eac1491e307679cfdd65871b9a5ae46a2f  /opt/k4ODD/k4ODD/options/PandoraSettingsCLD.xml
+  40114152283839ddd8156c47b3c04fdfcd84cbe1e500b48e5f3da33b423e3cbc  /opt/k4ODD/k4ODD/options/PandoraLikelihoodData9EBin_zuds200.xml
+  74dcf1c20e57ff110c19a7f502a7ed98e458148080be7cb0aa8083f144da5096  /opt/odd-install/share/OpenDataDetector/xml/OpenDataDetector.xml
+== self-test as root
+selftest: simulating 2 photons of 10 GeV in /tmp/colliderml-reco-selftest.JP9DcB
+selftest: reconstructing
+selftest: 2 events, PFOs per event [1, 1], summed PFO energy per event [GeV] [11.04, 10.23]
+selftest: OK
+== self-test as an arbitrary user
+selftest: simulating 2 photons of 10 GeV in /tmp/colliderml-reco-selftest.eOhVTP
+selftest: reconstructing
+selftest: 2 events, PFOs per event [1, 1], summed PFO energy per event [GeV] [11.04, 10.23]
+selftest: OK
+== self-test as an arbitrary user on a read-only root file system
+selftest: simulating 2 photons of 10 GeV in /tmp/colliderml-reco-selftest.ECxuss
+selftest: reconstructing
+selftest: 2 events, PFOs per event [1, 1], summed PFO energy per event [GeV] [11.04, 10.23]
+selftest: OK
+== NERSC paths and names in the recipe files, install prefixes and built libraries (expect none)
+== all checks passed

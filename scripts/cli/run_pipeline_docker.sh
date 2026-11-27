@@ -173,20 +173,26 @@ if [ -z "$FROM_STAGE" ] && { [ -e "$OUTPUT_DIR/runs" ] || [ -e "$OUTPUT_DIR/parq
 fi
 mkdir -p "$OUTPUT_DIR"
 
-# A partial rerun (--from) uses the event count and pile-up of the run it continues,
-# unless they are given again: packaging with another event count would publish a
-# different event range.
+# A partial rerun (--from) uses the event count, pile-up and seed of the run it
+# continues, unless they are given again: packaging with another event count would
+# publish a different event range. It must use the channel of that run.
 SETTINGS_FILE="$OUTPUT_DIR/pipeline_settings"
 if [ -n "$FROM_STAGE" ] && [ -f "$SETTINGS_FILE" ]; then
     while IFS='=' read -r key value; do
         case "$key" in
+            channel)
+                if [ "$value" != "$CHANNEL" ]; then
+                    echo "ERROR: $OUTPUT_DIR holds a $value run; --channel $CHANNEL does not match." >&2
+                    exit 1
+                fi ;;
             events) [ -z "$EVENTS" ] && EVENTS="$value" ;;
             pileup) [ -z "$PILEUP" ] && PILEUP="$value" ;;
+            seed) [ -z "${SEED:-}" ] && [ -n "$value" ] && export SEED="$value" ;;
         esac
     done < "$SETTINGS_FILE"
 fi
 if [ -z "$FROM_STAGE" ]; then
-    printf 'channel=%s\nevents=%s\npileup=%s\n' "$CHANNEL" "$EVENTS" "$PILEUP" > "$SETTINGS_FILE"
+    printf 'channel=%s\nevents=%s\npileup=%s\nseed=%s\n' "$CHANNEL" "$EVENTS" "$PILEUP" "${SEED:-}" > "$SETTINGS_FILE"
 fi
 
 # Arguments each stage script gets on top of --config/--output/--output-subdir/--seed.

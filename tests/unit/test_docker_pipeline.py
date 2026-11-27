@@ -145,7 +145,7 @@ def test_partial_rerun_keeps_the_event_count_of_the_run(tmp_path):
                       "--runtime", "echo", "--events", "007", "--pileup", "3")
     assert first.returncode == 0, first.stderr
     assert "--events 7 --pileup 3" in first.stdout
-    assert (out / "pipeline_settings").read_text() == "channel=higgs_portal\nevents=7\npileup=3\n"
+    assert (out / "pipeline_settings").read_text() == "channel=higgs_portal\nevents=7\npileup=3\nseed=\n"
     (out / "parquet" / "reco").mkdir(parents=True)
 
     again = _pipeline("--channel", "higgs_portal", "--output", str(out), "--cache", str(tmp_path / "c"),
@@ -154,6 +154,21 @@ def test_partial_rerun_keeps_the_event_count_of_the_run(tmp_path):
     assert "--run-size 7 --chunk-size 7" in again.stdout
     assert not (out / "parquet").exists()            # set aside before packaging again
     assert len(list(out.glob("parquet.replaced.*"))) == 1
+
+
+def test_partial_rerun_keeps_the_seed_and_refuses_another_channel(tmp_path):
+    out = tmp_path / "out"
+    first = _pipeline("--channel", "higgs_portal", "--output", str(out), "--cache", str(tmp_path / "c"),
+                      "--runtime", "echo", "--events", "2", "--seed", "7")
+    assert first.returncode == 0, first.stderr
+    again = _pipeline("--channel", "higgs_portal", "--output", str(out), "--cache", str(tmp_path / "c"),
+                      "--runtime", "echo", "--from", "particles_full")
+    assert again.returncode == 0, again.stderr
+    assert "particles_full_config.yaml 0 7" in again.stdout
+    other = _pipeline("--channel", "ttbar", "--output", str(out), "--cache", str(tmp_path / "c"),
+                      "--runtime", "echo", "--from", "package_parquet")
+    assert other.returncode != 0
+    assert "does not match" in other.stderr
 
 
 def test_run_id_must_be_a_plain_name():
