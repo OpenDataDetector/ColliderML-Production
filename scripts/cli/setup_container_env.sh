@@ -165,6 +165,17 @@ fi
 # (ODDCylinder, ODDPixelBarrel, etc.) needed by ddsim to construct the detector.
 _odd_src="${CACHE_DIR}/odd-v4"
 _odd_install="${CACHE_DIR}/odd-v4-install"
+# COLLIDERML_ODD_SOURCE (optional) names an existing ODD source tree to use instead of
+# the v4.0.4 clone, with its factory library under COLLIDERML_ODD_INSTALL (built below
+# if missing). The docker pipeline sets both; see scripts/cli/docker_stage_env.sh.
+if [ -n "${COLLIDERML_ODD_SOURCE:-}" ]; then
+    _odd_src="$COLLIDERML_ODD_SOURCE"
+    _odd_install="${COLLIDERML_ODD_INSTALL:?COLLIDERML_ODD_INSTALL must be set with COLLIDERML_ODD_SOURCE}"
+    if [ ! -f "$_odd_src/xml/OpenDataDetector.xml" ]; then
+        echo "ERROR: COLLIDERML_ODD_SOURCE=$_odd_src has no xml/OpenDataDetector.xml"
+        return 1 2>/dev/null || exit 1
+    fi
+fi
 
 # Clone ODD source if not present
 if [ ! -f "$_odd_src/xml/OpenDataDetector.xml" ]; then

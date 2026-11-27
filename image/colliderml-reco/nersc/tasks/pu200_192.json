@@ -1,0 +1,1538 @@
+[
+ {
+  "name": "pu200_r0_e00",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/0/sim_with_tracks.root",
+  "first": 0,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/0/reco_parts/reco_part_000.root"
+ },
+ {
+  "name": "pu200_r0_e01",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/0/sim_with_tracks.root",
+  "first": 1,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/0/reco_parts/reco_part_001.root"
+ },
+ {
+  "name": "pu200_r0_e02",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/0/sim_with_tracks.root",
+  "first": 2,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/0/reco_parts/reco_part_002.root"
+ },
+ {
+  "name": "pu200_r0_e03",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/0/sim_with_tracks.root",
+  "first": 3,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/0/reco_parts/reco_part_003.root"
+ },
+ {
+  "name": "pu200_r0_e04",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/0/sim_with_tracks.root",
+  "first": 4,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/0/reco_parts/reco_part_004.root"
+ },
+ {
+  "name": "pu200_r0_e05",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/0/sim_with_tracks.root",
+  "first": 5,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/0/reco_parts/reco_part_005.root"
+ },
+ {
+  "name": "pu200_r0_e06",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/0/sim_with_tracks.root",
+  "first": 6,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/0/reco_parts/reco_part_006.root"
+ },
+ {
+  "name": "pu200_r0_e07",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/0/sim_with_tracks.root",
+  "first": 7,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/0/reco_parts/reco_part_007.root"
+ },
+ {
+  "name": "pu200_r0_e08",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/0/sim_with_tracks.root",
+  "first": 8,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/0/reco_parts/reco_part_008.root"
+ },
+ {
+  "name": "pu200_r0_e09",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/0/sim_with_tracks.root",
+  "first": 9,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/0/reco_parts/reco_part_009.root"
+ },
+ {
+  "name": "pu200_r0_e10",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/0/sim_with_tracks.root",
+  "first": 10,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/0/reco_parts/reco_part_010.root"
+ },
+ {
+  "name": "pu200_r0_e11",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/0/sim_with_tracks.root",
+  "first": 11,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/0/reco_parts/reco_part_011.root"
+ },
+ {
+  "name": "pu200_r0_e12",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/0/sim_with_tracks.root",
+  "first": 12,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/0/reco_parts/reco_part_012.root"
+ },
+ {
+  "name": "pu200_r0_e13",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/0/sim_with_tracks.root",
+  "first": 13,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/0/reco_parts/reco_part_013.root"
+ },
+ {
+  "name": "pu200_r0_e14",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/0/sim_with_tracks.root",
+  "first": 14,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/0/reco_parts/reco_part_014.root"
+ },
+ {
+  "name": "pu200_r0_e15",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/0/sim_with_tracks.root",
+  "first": 15,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/0/reco_parts/reco_part_015.root"
+ },
+ {
+  "name": "pu200_r0_e16",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/0/sim_with_tracks.root",
+  "first": 16,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/0/reco_parts/reco_part_016.root"
+ },
+ {
+  "name": "pu200_r0_e17",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/0/sim_with_tracks.root",
+  "first": 17,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/0/reco_parts/reco_part_017.root"
+ },
+ {
+  "name": "pu200_r0_e18",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/0/sim_with_tracks.root",
+  "first": 18,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/0/reco_parts/reco_part_018.root"
+ },
+ {
+  "name": "pu200_r0_e19",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/0/sim_with_tracks.root",
+  "first": 19,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/0/reco_parts/reco_part_019.root"
+ },
+ {
+  "name": "pu200_r0_e20",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/0/sim_with_tracks.root",
+  "first": 20,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/0/reco_parts/reco_part_020.root"
+ },
+ {
+  "name": "pu200_r0_e21",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/0/sim_with_tracks.root",
+  "first": 21,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/0/reco_parts/reco_part_021.root"
+ },
+ {
+  "name": "pu200_r0_e22",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/0/sim_with_tracks.root",
+  "first": 22,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/0/reco_parts/reco_part_022.root"
+ },
+ {
+  "name": "pu200_r0_e23",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/0/sim_with_tracks.root",
+  "first": 23,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/0/reco_parts/reco_part_023.root"
+ },
+ {
+  "name": "pu200_r0_e24",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/0/sim_with_tracks.root",
+  "first": 24,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/0/reco_parts/reco_part_024.root"
+ },
+ {
+  "name": "pu200_r0_e25",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/0/sim_with_tracks.root",
+  "first": 25,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/0/reco_parts/reco_part_025.root"
+ },
+ {
+  "name": "pu200_r0_e26",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/0/sim_with_tracks.root",
+  "first": 26,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/0/reco_parts/reco_part_026.root"
+ },
+ {
+  "name": "pu200_r0_e27",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/0/sim_with_tracks.root",
+  "first": 27,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/0/reco_parts/reco_part_027.root"
+ },
+ {
+  "name": "pu200_r0_e28",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/0/sim_with_tracks.root",
+  "first": 28,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/0/reco_parts/reco_part_028.root"
+ },
+ {
+  "name": "pu200_r0_e29",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/0/sim_with_tracks.root",
+  "first": 29,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/0/reco_parts/reco_part_029.root"
+ },
+ {
+  "name": "pu200_r0_e30",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/0/sim_with_tracks.root",
+  "first": 30,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/0/reco_parts/reco_part_030.root"
+ },
+ {
+  "name": "pu200_r0_e31",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/0/sim_with_tracks.root",
+  "first": 31,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/0/reco_parts/reco_part_031.root"
+ },
+ {
+  "name": "pu200_r0_e32",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/0/sim_with_tracks.root",
+  "first": 32,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/0/reco_parts/reco_part_032.root"
+ },
+ {
+  "name": "pu200_r0_e33",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/0/sim_with_tracks.root",
+  "first": 33,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/0/reco_parts/reco_part_033.root"
+ },
+ {
+  "name": "pu200_r0_e34",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/0/sim_with_tracks.root",
+  "first": 34,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/0/reco_parts/reco_part_034.root"
+ },
+ {
+  "name": "pu200_r0_e35",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/0/sim_with_tracks.root",
+  "first": 35,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/0/reco_parts/reco_part_035.root"
+ },
+ {
+  "name": "pu200_r0_e36",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/0/sim_with_tracks.root",
+  "first": 36,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/0/reco_parts/reco_part_036.root"
+ },
+ {
+  "name": "pu200_r0_e37",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/0/sim_with_tracks.root",
+  "first": 37,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/0/reco_parts/reco_part_037.root"
+ },
+ {
+  "name": "pu200_r0_e38",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/0/sim_with_tracks.root",
+  "first": 38,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/0/reco_parts/reco_part_038.root"
+ },
+ {
+  "name": "pu200_r0_e39",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/0/sim_with_tracks.root",
+  "first": 39,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/0/reco_parts/reco_part_039.root"
+ },
+ {
+  "name": "pu200_r0_e40",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/0/sim_with_tracks.root",
+  "first": 40,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/0/reco_parts/reco_part_040.root"
+ },
+ {
+  "name": "pu200_r0_e41",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/0/sim_with_tracks.root",
+  "first": 41,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/0/reco_parts/reco_part_041.root"
+ },
+ {
+  "name": "pu200_r0_e42",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/0/sim_with_tracks.root",
+  "first": 42,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/0/reco_parts/reco_part_042.root"
+ },
+ {
+  "name": "pu200_r0_e43",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/0/sim_with_tracks.root",
+  "first": 43,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/0/reco_parts/reco_part_043.root"
+ },
+ {
+  "name": "pu200_r0_e44",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/0/sim_with_tracks.root",
+  "first": 44,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/0/reco_parts/reco_part_044.root"
+ },
+ {
+  "name": "pu200_r0_e45",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/0/sim_with_tracks.root",
+  "first": 45,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/0/reco_parts/reco_part_045.root"
+ },
+ {
+  "name": "pu200_r0_e46",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/0/sim_with_tracks.root",
+  "first": 46,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/0/reco_parts/reco_part_046.root"
+ },
+ {
+  "name": "pu200_r0_e47",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/0/sim_with_tracks.root",
+  "first": 47,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/0/reco_parts/reco_part_047.root"
+ },
+ {
+  "name": "pu200_r0_e48",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/0/sim_with_tracks.root",
+  "first": 48,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/0/reco_parts/reco_part_048.root"
+ },
+ {
+  "name": "pu200_r0_e49",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/0/sim_with_tracks.root",
+  "first": 49,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/0/reco_parts/reco_part_049.root"
+ },
+ {
+  "name": "pu200_r0_e50",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/0/sim_with_tracks.root",
+  "first": 50,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/0/reco_parts/reco_part_050.root"
+ },
+ {
+  "name": "pu200_r0_e51",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/0/sim_with_tracks.root",
+  "first": 51,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/0/reco_parts/reco_part_051.root"
+ },
+ {
+  "name": "pu200_r0_e52",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/0/sim_with_tracks.root",
+  "first": 52,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/0/reco_parts/reco_part_052.root"
+ },
+ {
+  "name": "pu200_r0_e53",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/0/sim_with_tracks.root",
+  "first": 53,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/0/reco_parts/reco_part_053.root"
+ },
+ {
+  "name": "pu200_r0_e54",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/0/sim_with_tracks.root",
+  "first": 54,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/0/reco_parts/reco_part_054.root"
+ },
+ {
+  "name": "pu200_r0_e55",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/0/sim_with_tracks.root",
+  "first": 55,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/0/reco_parts/reco_part_055.root"
+ },
+ {
+  "name": "pu200_r0_e56",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/0/sim_with_tracks.root",
+  "first": 56,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/0/reco_parts/reco_part_056.root"
+ },
+ {
+  "name": "pu200_r0_e57",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/0/sim_with_tracks.root",
+  "first": 57,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/0/reco_parts/reco_part_057.root"
+ },
+ {
+  "name": "pu200_r0_e58",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/0/sim_with_tracks.root",
+  "first": 58,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/0/reco_parts/reco_part_058.root"
+ },
+ {
+  "name": "pu200_r0_e59",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/0/sim_with_tracks.root",
+  "first": 59,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/0/reco_parts/reco_part_059.root"
+ },
+ {
+  "name": "pu200_r0_e60",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/0/sim_with_tracks.root",
+  "first": 60,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/0/reco_parts/reco_part_060.root"
+ },
+ {
+  "name": "pu200_r0_e61",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/0/sim_with_tracks.root",
+  "first": 61,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/0/reco_parts/reco_part_061.root"
+ },
+ {
+  "name": "pu200_r0_e62",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/0/sim_with_tracks.root",
+  "first": 62,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/0/reco_parts/reco_part_062.root"
+ },
+ {
+  "name": "pu200_r0_e63",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/0/sim_with_tracks.root",
+  "first": 63,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/0/reco_parts/reco_part_063.root"
+ },
+ {
+  "name": "pu200_r16_e00",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/16/sim_with_tracks.root",
+  "first": 0,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/16/reco_parts/reco_part_000.root"
+ },
+ {
+  "name": "pu200_r16_e01",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/16/sim_with_tracks.root",
+  "first": 1,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/16/reco_parts/reco_part_001.root"
+ },
+ {
+  "name": "pu200_r16_e02",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/16/sim_with_tracks.root",
+  "first": 2,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/16/reco_parts/reco_part_002.root"
+ },
+ {
+  "name": "pu200_r16_e03",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/16/sim_with_tracks.root",
+  "first": 3,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/16/reco_parts/reco_part_003.root"
+ },
+ {
+  "name": "pu200_r16_e04",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/16/sim_with_tracks.root",
+  "first": 4,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/16/reco_parts/reco_part_004.root"
+ },
+ {
+  "name": "pu200_r16_e05",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/16/sim_with_tracks.root",
+  "first": 5,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/16/reco_parts/reco_part_005.root"
+ },
+ {
+  "name": "pu200_r16_e06",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/16/sim_with_tracks.root",
+  "first": 6,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/16/reco_parts/reco_part_006.root"
+ },
+ {
+  "name": "pu200_r16_e07",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/16/sim_with_tracks.root",
+  "first": 7,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/16/reco_parts/reco_part_007.root"
+ },
+ {
+  "name": "pu200_r16_e08",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/16/sim_with_tracks.root",
+  "first": 8,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/16/reco_parts/reco_part_008.root"
+ },
+ {
+  "name": "pu200_r16_e09",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/16/sim_with_tracks.root",
+  "first": 9,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/16/reco_parts/reco_part_009.root"
+ },
+ {
+  "name": "pu200_r16_e10",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/16/sim_with_tracks.root",
+  "first": 10,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/16/reco_parts/reco_part_010.root"
+ },
+ {
+  "name": "pu200_r16_e11",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/16/sim_with_tracks.root",
+  "first": 11,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/16/reco_parts/reco_part_011.root"
+ },
+ {
+  "name": "pu200_r16_e12",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/16/sim_with_tracks.root",
+  "first": 12,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/16/reco_parts/reco_part_012.root"
+ },
+ {
+  "name": "pu200_r16_e13",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/16/sim_with_tracks.root",
+  "first": 13,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/16/reco_parts/reco_part_013.root"
+ },
+ {
+  "name": "pu200_r16_e14",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/16/sim_with_tracks.root",
+  "first": 14,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/16/reco_parts/reco_part_014.root"
+ },
+ {
+  "name": "pu200_r16_e15",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/16/sim_with_tracks.root",
+  "first": 15,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/16/reco_parts/reco_part_015.root"
+ },
+ {
+  "name": "pu200_r16_e16",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/16/sim_with_tracks.root",
+  "first": 16,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/16/reco_parts/reco_part_016.root"
+ },
+ {
+  "name": "pu200_r16_e17",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/16/sim_with_tracks.root",
+  "first": 17,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/16/reco_parts/reco_part_017.root"
+ },
+ {
+  "name": "pu200_r16_e18",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/16/sim_with_tracks.root",
+  "first": 18,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/16/reco_parts/reco_part_018.root"
+ },
+ {
+  "name": "pu200_r16_e19",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/16/sim_with_tracks.root",
+  "first": 19,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/16/reco_parts/reco_part_019.root"
+ },
+ {
+  "name": "pu200_r16_e20",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/16/sim_with_tracks.root",
+  "first": 20,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/16/reco_parts/reco_part_020.root"
+ },
+ {
+  "name": "pu200_r16_e21",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/16/sim_with_tracks.root",
+  "first": 21,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/16/reco_parts/reco_part_021.root"
+ },
+ {
+  "name": "pu200_r16_e22",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/16/sim_with_tracks.root",
+  "first": 22,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/16/reco_parts/reco_part_022.root"
+ },
+ {
+  "name": "pu200_r16_e23",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/16/sim_with_tracks.root",
+  "first": 23,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/16/reco_parts/reco_part_023.root"
+ },
+ {
+  "name": "pu200_r16_e24",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/16/sim_with_tracks.root",
+  "first": 24,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/16/reco_parts/reco_part_024.root"
+ },
+ {
+  "name": "pu200_r16_e25",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/16/sim_with_tracks.root",
+  "first": 25,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/16/reco_parts/reco_part_025.root"
+ },
+ {
+  "name": "pu200_r16_e26",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/16/sim_with_tracks.root",
+  "first": 26,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/16/reco_parts/reco_part_026.root"
+ },
+ {
+  "name": "pu200_r16_e27",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/16/sim_with_tracks.root",
+  "first": 27,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/16/reco_parts/reco_part_027.root"
+ },
+ {
+  "name": "pu200_r16_e28",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/16/sim_with_tracks.root",
+  "first": 28,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/16/reco_parts/reco_part_028.root"
+ },
+ {
+  "name": "pu200_r16_e29",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/16/sim_with_tracks.root",
+  "first": 29,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/16/reco_parts/reco_part_029.root"
+ },
+ {
+  "name": "pu200_r16_e30",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/16/sim_with_tracks.root",
+  "first": 30,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/16/reco_parts/reco_part_030.root"
+ },
+ {
+  "name": "pu200_r16_e31",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/16/sim_with_tracks.root",
+  "first": 31,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/16/reco_parts/reco_part_031.root"
+ },
+ {
+  "name": "pu200_r16_e32",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/16/sim_with_tracks.root",
+  "first": 32,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/16/reco_parts/reco_part_032.root"
+ },
+ {
+  "name": "pu200_r16_e33",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/16/sim_with_tracks.root",
+  "first": 33,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/16/reco_parts/reco_part_033.root"
+ },
+ {
+  "name": "pu200_r16_e34",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/16/sim_with_tracks.root",
+  "first": 34,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/16/reco_parts/reco_part_034.root"
+ },
+ {
+  "name": "pu200_r16_e35",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/16/sim_with_tracks.root",
+  "first": 35,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/16/reco_parts/reco_part_035.root"
+ },
+ {
+  "name": "pu200_r16_e36",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/16/sim_with_tracks.root",
+  "first": 36,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/16/reco_parts/reco_part_036.root"
+ },
+ {
+  "name": "pu200_r16_e37",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/16/sim_with_tracks.root",
+  "first": 37,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/16/reco_parts/reco_part_037.root"
+ },
+ {
+  "name": "pu200_r16_e38",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/16/sim_with_tracks.root",
+  "first": 38,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/16/reco_parts/reco_part_038.root"
+ },
+ {
+  "name": "pu200_r16_e39",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/16/sim_with_tracks.root",
+  "first": 39,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/16/reco_parts/reco_part_039.root"
+ },
+ {
+  "name": "pu200_r16_e40",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/16/sim_with_tracks.root",
+  "first": 40,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/16/reco_parts/reco_part_040.root"
+ },
+ {
+  "name": "pu200_r16_e41",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/16/sim_with_tracks.root",
+  "first": 41,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/16/reco_parts/reco_part_041.root"
+ },
+ {
+  "name": "pu200_r16_e42",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/16/sim_with_tracks.root",
+  "first": 42,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/16/reco_parts/reco_part_042.root"
+ },
+ {
+  "name": "pu200_r16_e43",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/16/sim_with_tracks.root",
+  "first": 43,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/16/reco_parts/reco_part_043.root"
+ },
+ {
+  "name": "pu200_r16_e44",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/16/sim_with_tracks.root",
+  "first": 44,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/16/reco_parts/reco_part_044.root"
+ },
+ {
+  "name": "pu200_r16_e45",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/16/sim_with_tracks.root",
+  "first": 45,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/16/reco_parts/reco_part_045.root"
+ },
+ {
+  "name": "pu200_r16_e46",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/16/sim_with_tracks.root",
+  "first": 46,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/16/reco_parts/reco_part_046.root"
+ },
+ {
+  "name": "pu200_r16_e47",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/16/sim_with_tracks.root",
+  "first": 47,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/16/reco_parts/reco_part_047.root"
+ },
+ {
+  "name": "pu200_r16_e48",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/16/sim_with_tracks.root",
+  "first": 48,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/16/reco_parts/reco_part_048.root"
+ },
+ {
+  "name": "pu200_r16_e49",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/16/sim_with_tracks.root",
+  "first": 49,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/16/reco_parts/reco_part_049.root"
+ },
+ {
+  "name": "pu200_r16_e50",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/16/sim_with_tracks.root",
+  "first": 50,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/16/reco_parts/reco_part_050.root"
+ },
+ {
+  "name": "pu200_r16_e51",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/16/sim_with_tracks.root",
+  "first": 51,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/16/reco_parts/reco_part_051.root"
+ },
+ {
+  "name": "pu200_r16_e52",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/16/sim_with_tracks.root",
+  "first": 52,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/16/reco_parts/reco_part_052.root"
+ },
+ {
+  "name": "pu200_r16_e53",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/16/sim_with_tracks.root",
+  "first": 53,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/16/reco_parts/reco_part_053.root"
+ },
+ {
+  "name": "pu200_r16_e54",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/16/sim_with_tracks.root",
+  "first": 54,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/16/reco_parts/reco_part_054.root"
+ },
+ {
+  "name": "pu200_r16_e55",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/16/sim_with_tracks.root",
+  "first": 55,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/16/reco_parts/reco_part_055.root"
+ },
+ {
+  "name": "pu200_r16_e56",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/16/sim_with_tracks.root",
+  "first": 56,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/16/reco_parts/reco_part_056.root"
+ },
+ {
+  "name": "pu200_r16_e57",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/16/sim_with_tracks.root",
+  "first": 57,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/16/reco_parts/reco_part_057.root"
+ },
+ {
+  "name": "pu200_r16_e58",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/16/sim_with_tracks.root",
+  "first": 58,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/16/reco_parts/reco_part_058.root"
+ },
+ {
+  "name": "pu200_r16_e59",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/16/sim_with_tracks.root",
+  "first": 59,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/16/reco_parts/reco_part_059.root"
+ },
+ {
+  "name": "pu200_r16_e60",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/16/sim_with_tracks.root",
+  "first": 60,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/16/reco_parts/reco_part_060.root"
+ },
+ {
+  "name": "pu200_r16_e61",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/16/sim_with_tracks.root",
+  "first": 61,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/16/reco_parts/reco_part_061.root"
+ },
+ {
+  "name": "pu200_r16_e62",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/16/sim_with_tracks.root",
+  "first": 62,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/16/reco_parts/reco_part_062.root"
+ },
+ {
+  "name": "pu200_r16_e63",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/16/sim_with_tracks.root",
+  "first": 63,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/16/reco_parts/reco_part_063.root"
+ },
+ {
+  "name": "pu200_r1562_e00",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/1562/sim_with_tracks.root",
+  "first": 0,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/1562/reco_parts/reco_part_000.root"
+ },
+ {
+  "name": "pu200_r1562_e01",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/1562/sim_with_tracks.root",
+  "first": 1,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/1562/reco_parts/reco_part_001.root"
+ },
+ {
+  "name": "pu200_r1562_e02",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/1562/sim_with_tracks.root",
+  "first": 2,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/1562/reco_parts/reco_part_002.root"
+ },
+ {
+  "name": "pu200_r1562_e03",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/1562/sim_with_tracks.root",
+  "first": 3,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/1562/reco_parts/reco_part_003.root"
+ },
+ {
+  "name": "pu200_r1562_e04",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/1562/sim_with_tracks.root",
+  "first": 4,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/1562/reco_parts/reco_part_004.root"
+ },
+ {
+  "name": "pu200_r1562_e05",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/1562/sim_with_tracks.root",
+  "first": 5,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/1562/reco_parts/reco_part_005.root"
+ },
+ {
+  "name": "pu200_r1562_e06",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/1562/sim_with_tracks.root",
+  "first": 6,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/1562/reco_parts/reco_part_006.root"
+ },
+ {
+  "name": "pu200_r1562_e07",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/1562/sim_with_tracks.root",
+  "first": 7,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/1562/reco_parts/reco_part_007.root"
+ },
+ {
+  "name": "pu200_r1562_e08",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/1562/sim_with_tracks.root",
+  "first": 8,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/1562/reco_parts/reco_part_008.root"
+ },
+ {
+  "name": "pu200_r1562_e09",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/1562/sim_with_tracks.root",
+  "first": 9,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/1562/reco_parts/reco_part_009.root"
+ },
+ {
+  "name": "pu200_r1562_e10",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/1562/sim_with_tracks.root",
+  "first": 10,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/1562/reco_parts/reco_part_010.root"
+ },
+ {
+  "name": "pu200_r1562_e11",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/1562/sim_with_tracks.root",
+  "first": 11,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/1562/reco_parts/reco_part_011.root"
+ },
+ {
+  "name": "pu200_r1562_e12",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/1562/sim_with_tracks.root",
+  "first": 12,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/1562/reco_parts/reco_part_012.root"
+ },
+ {
+  "name": "pu200_r1562_e13",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/1562/sim_with_tracks.root",
+  "first": 13,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/1562/reco_parts/reco_part_013.root"
+ },
+ {
+  "name": "pu200_r1562_e14",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/1562/sim_with_tracks.root",
+  "first": 14,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/1562/reco_parts/reco_part_014.root"
+ },
+ {
+  "name": "pu200_r1562_e15",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/1562/sim_with_tracks.root",
+  "first": 15,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/1562/reco_parts/reco_part_015.root"
+ },
+ {
+  "name": "pu200_r1562_e16",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/1562/sim_with_tracks.root",
+  "first": 16,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/1562/reco_parts/reco_part_016.root"
+ },
+ {
+  "name": "pu200_r1562_e17",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/1562/sim_with_tracks.root",
+  "first": 17,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/1562/reco_parts/reco_part_017.root"
+ },
+ {
+  "name": "pu200_r1562_e18",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/1562/sim_with_tracks.root",
+  "first": 18,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/1562/reco_parts/reco_part_018.root"
+ },
+ {
+  "name": "pu200_r1562_e19",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/1562/sim_with_tracks.root",
+  "first": 19,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/1562/reco_parts/reco_part_019.root"
+ },
+ {
+  "name": "pu200_r1562_e20",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/1562/sim_with_tracks.root",
+  "first": 20,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/1562/reco_parts/reco_part_020.root"
+ },
+ {
+  "name": "pu200_r1562_e21",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/1562/sim_with_tracks.root",
+  "first": 21,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/1562/reco_parts/reco_part_021.root"
+ },
+ {
+  "name": "pu200_r1562_e22",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/1562/sim_with_tracks.root",
+  "first": 22,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/1562/reco_parts/reco_part_022.root"
+ },
+ {
+  "name": "pu200_r1562_e23",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/1562/sim_with_tracks.root",
+  "first": 23,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/1562/reco_parts/reco_part_023.root"
+ },
+ {
+  "name": "pu200_r1562_e24",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/1562/sim_with_tracks.root",
+  "first": 24,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/1562/reco_parts/reco_part_024.root"
+ },
+ {
+  "name": "pu200_r1562_e25",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/1562/sim_with_tracks.root",
+  "first": 25,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/1562/reco_parts/reco_part_025.root"
+ },
+ {
+  "name": "pu200_r1562_e26",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/1562/sim_with_tracks.root",
+  "first": 26,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/1562/reco_parts/reco_part_026.root"
+ },
+ {
+  "name": "pu200_r1562_e27",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/1562/sim_with_tracks.root",
+  "first": 27,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/1562/reco_parts/reco_part_027.root"
+ },
+ {
+  "name": "pu200_r1562_e28",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/1562/sim_with_tracks.root",
+  "first": 28,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/1562/reco_parts/reco_part_028.root"
+ },
+ {
+  "name": "pu200_r1562_e29",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/1562/sim_with_tracks.root",
+  "first": 29,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/1562/reco_parts/reco_part_029.root"
+ },
+ {
+  "name": "pu200_r1562_e30",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/1562/sim_with_tracks.root",
+  "first": 30,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/1562/reco_parts/reco_part_030.root"
+ },
+ {
+  "name": "pu200_r1562_e31",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/1562/sim_with_tracks.root",
+  "first": 31,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/1562/reco_parts/reco_part_031.root"
+ },
+ {
+  "name": "pu200_r1562_e32",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/1562/sim_with_tracks.root",
+  "first": 32,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/1562/reco_parts/reco_part_032.root"
+ },
+ {
+  "name": "pu200_r1562_e33",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/1562/sim_with_tracks.root",
+  "first": 33,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/1562/reco_parts/reco_part_033.root"
+ },
+ {
+  "name": "pu200_r1562_e34",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/1562/sim_with_tracks.root",
+  "first": 34,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/1562/reco_parts/reco_part_034.root"
+ },
+ {
+  "name": "pu200_r1562_e35",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/1562/sim_with_tracks.root",
+  "first": 35,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/1562/reco_parts/reco_part_035.root"
+ },
+ {
+  "name": "pu200_r1562_e36",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/1562/sim_with_tracks.root",
+  "first": 36,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/1562/reco_parts/reco_part_036.root"
+ },
+ {
+  "name": "pu200_r1562_e37",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/1562/sim_with_tracks.root",
+  "first": 37,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/1562/reco_parts/reco_part_037.root"
+ },
+ {
+  "name": "pu200_r1562_e38",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/1562/sim_with_tracks.root",
+  "first": 38,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/1562/reco_parts/reco_part_038.root"
+ },
+ {
+  "name": "pu200_r1562_e39",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/1562/sim_with_tracks.root",
+  "first": 39,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/1562/reco_parts/reco_part_039.root"
+ },
+ {
+  "name": "pu200_r1562_e40",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/1562/sim_with_tracks.root",
+  "first": 40,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/1562/reco_parts/reco_part_040.root"
+ },
+ {
+  "name": "pu200_r1562_e41",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/1562/sim_with_tracks.root",
+  "first": 41,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/1562/reco_parts/reco_part_041.root"
+ },
+ {
+  "name": "pu200_r1562_e42",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/1562/sim_with_tracks.root",
+  "first": 42,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/1562/reco_parts/reco_part_042.root"
+ },
+ {
+  "name": "pu200_r1562_e43",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/1562/sim_with_tracks.root",
+  "first": 43,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/1562/reco_parts/reco_part_043.root"
+ },
+ {
+  "name": "pu200_r1562_e44",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/1562/sim_with_tracks.root",
+  "first": 44,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/1562/reco_parts/reco_part_044.root"
+ },
+ {
+  "name": "pu200_r1562_e45",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/1562/sim_with_tracks.root",
+  "first": 45,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/1562/reco_parts/reco_part_045.root"
+ },
+ {
+  "name": "pu200_r1562_e46",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/1562/sim_with_tracks.root",
+  "first": 46,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/1562/reco_parts/reco_part_046.root"
+ },
+ {
+  "name": "pu200_r1562_e47",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/1562/sim_with_tracks.root",
+  "first": 47,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/1562/reco_parts/reco_part_047.root"
+ },
+ {
+  "name": "pu200_r1562_e48",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/1562/sim_with_tracks.root",
+  "first": 48,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/1562/reco_parts/reco_part_048.root"
+ },
+ {
+  "name": "pu200_r1562_e49",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/1562/sim_with_tracks.root",
+  "first": 49,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/1562/reco_parts/reco_part_049.root"
+ },
+ {
+  "name": "pu200_r1562_e50",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/1562/sim_with_tracks.root",
+  "first": 50,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/1562/reco_parts/reco_part_050.root"
+ },
+ {
+  "name": "pu200_r1562_e51",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/1562/sim_with_tracks.root",
+  "first": 51,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/1562/reco_parts/reco_part_051.root"
+ },
+ {
+  "name": "pu200_r1562_e52",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/1562/sim_with_tracks.root",
+  "first": 52,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/1562/reco_parts/reco_part_052.root"
+ },
+ {
+  "name": "pu200_r1562_e53",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/1562/sim_with_tracks.root",
+  "first": 53,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/1562/reco_parts/reco_part_053.root"
+ },
+ {
+  "name": "pu200_r1562_e54",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/1562/sim_with_tracks.root",
+  "first": 54,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/1562/reco_parts/reco_part_054.root"
+ },
+ {
+  "name": "pu200_r1562_e55",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/1562/sim_with_tracks.root",
+  "first": 55,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/1562/reco_parts/reco_part_055.root"
+ },
+ {
+  "name": "pu200_r1562_e56",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/1562/sim_with_tracks.root",
+  "first": 56,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/1562/reco_parts/reco_part_056.root"
+ },
+ {
+  "name": "pu200_r1562_e57",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/1562/sim_with_tracks.root",
+  "first": 57,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/1562/reco_parts/reco_part_057.root"
+ },
+ {
+  "name": "pu200_r1562_e58",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/1562/sim_with_tracks.root",
+  "first": 58,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/1562/reco_parts/reco_part_058.root"
+ },
+ {
+  "name": "pu200_r1562_e59",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/1562/sim_with_tracks.root",
+  "first": 59,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/1562/reco_parts/reco_part_059.root"
+ },
+ {
+  "name": "pu200_r1562_e60",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/1562/sim_with_tracks.root",
+  "first": 60,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/1562/reco_parts/reco_part_060.root"
+ },
+ {
+  "name": "pu200_r1562_e61",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/1562/sim_with_tracks.root",
+  "first": 61,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/1562/reco_parts/reco_part_061.root"
+ },
+ {
+  "name": "pu200_r1562_e62",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/1562/sim_with_tracks.root",
+  "first": 62,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/1562/reco_parts/reco_part_062.root"
+ },
+ {
+  "name": "pu200_r1562_e63",
+  "category": "pu200",
+  "input": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/1562/sim_with_tracks.root",
+  "first": 63,
+  "count": 1,
+  "ref": "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/v23_plan/pilot/data_main/full_pileup/ttbar/v23/runs/1562/reco_parts/reco_part_063.root"
+ }
+]

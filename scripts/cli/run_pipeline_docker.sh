@@ -1,201 +1,252 @@
 #!/usr/bin/env bash
 # =============================================================================
-# ColliderML Full Pipeline Runner (Docker)
+# Run the full ColliderML chain for one channel in containers
 # =============================================================================
-# Runs the complete ColliderML pipeline for a given channel inside Docker.
-#
 # Usage:
-#   ./scripts/cli/run_pipeline_docker.sh --channel higgs_portal
-#   ./scripts/cli/run_pipeline_docker.sh --channel ttbar
+#   ./scripts/cli/run_pipeline_docker.sh --channel ttbar [options]
 #
-# This orchestrates all stages in sequence:
-#   Higgs portal:  pythia → simulation → digitization → convert_all
-#   ttbar:         madgraph_init → madgraph_gen → pythia → sim → digi → convert
+# Chain:
+#   ttbar         madgraph_init -> madgraph_generation -> pythia_generation ->
+#   higgs_portal  pythia_generation ->
+#   both          simulation (Geant4) -> digitization (ACTS tracking, vertexing) ->
+#                 particles_full -> pandora_reco -> reco_tables -> package_parquet
 #
-# Environment Variables:
-#   CONTAINER_IMAGE  - Docker image (default: ghcr.io/opendatadetector/sw:0.2.2_...)
-#   OUTPUT_DIR       - Host output directory (default: ./output)
-#   SEED             - Random seed (default: 42)
-#   EVENTS           - Override event count (optional)
+# Options:
+#   --channel NAME        ttbar or higgs_portal (required)
+#   --events N            events to produce (default: the configs' value, 10)
+#   --pileup MU           mean pile-up interactions per event (default: the pythia
+#                         config's value: 0 for ttbar, 10 for higgs_portal)
+#   --threads N           threads for Geant4 and ACTS (default: 2, the minimum: with one
+#                         thread the ddsim of sw:pr-8 writes every event twice)
+#   --pandora-processes N concurrent Pandora processes (default: 1). One process needs
+#                         about 2 GB without pile-up, about 6 GB at pile-up 200
+#   --seed N              random seed (default: 42)
+#   --output DIR          output directory (default: ./output)
+#   --cache DIR           cache directory (default: <repo>/.cache)
+#   --sim-image IMAGE     sim image (default: scripts/cli/docker_images.env)
+#   --reco-image IMAGE    reco image (default: scripts/cli/docker_images.env)
+#   --runtime NAME        docker, podman-hpc or podman (default: the first one found)
+#   --from STAGE          start at this stage (earlier outputs must exist)
+#   --to STAGE            stop after this stage
+#   --list-stages         print the stages of the channel and exit
+#
+# Outputs:
+#   <output>/parquet/{truth,reco}/<table>/*.parquet   final tables
+#   <output>/runs/0/                                  intermediate files of every stage
+#   <output>/pipeline_timing.csv                      wall time and peak memory per stage
+#
+# The environment variables of run_docker.sh (OUTPUT_DIR, CACHE_DIR, SEED, SIM_IMAGE,
+# RECO_IMAGE, CONTAINER_RUNTIME) set the same defaults; EVENTS is read as --events.
 # =============================================================================
 
 set -euo pipefail
 
-# --- Parse arguments ---
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+
+usage() {
+    sed -n '2,39p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+}
+
 CHANNEL=""
+EVENTS="${EVENTS:-}"
+PILEUP=""
+THREADS=2
+PANDORA_PROCESSES=1
+FROM_STAGE=""
+TO_STAGE=""
+LIST_STAGES=0
+
+need_value() {
+    if [ $# -lt 2 ] || [ -z "$2" ]; then
+        echo "ERROR: $1 needs a value" >&2
+        exit 1
+    fi
+}
+
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        --channel) CHANNEL="$2"; shift 2 ;;
-        *) echo "Unknown argument: $1"; exit 1 ;;
+        --channel)           need_value "$@"; CHANNEL="$2"; shift 2 ;;
+        --events)            need_value "$@"; EVENTS="$2"; shift 2 ;;
+        --pileup)            need_value "$@"; PILEUP="$2"; shift 2 ;;
+        --threads)           need_value "$@"; THREADS="$2"; shift 2 ;;
+        --pandora-processes) need_value "$@"; PANDORA_PROCESSES="$2"; shift 2 ;;
+        --seed)              need_value "$@"; export SEED="$2"; shift 2 ;;
+        --output)            need_value "$@"; export OUTPUT_DIR="$2"; shift 2 ;;
+        --cache)             need_value "$@"; export CACHE_DIR="$2"; shift 2 ;;
+        --sim-image)         need_value "$@"; export SIM_IMAGE="$2"; shift 2 ;;
+        --reco-image)        need_value "$@"; export RECO_IMAGE="$2"; shift 2 ;;
+        --runtime)           need_value "$@"; export CONTAINER_RUNTIME="$2"; shift 2 ;;
+        --from)              need_value "$@"; FROM_STAGE="$2"; shift 2 ;;
+        --to)                need_value "$@"; TO_STAGE="$2"; shift 2 ;;
+        --list-stages)       LIST_STAGES=1; shift ;;
+        -h|--help)           usage; exit 0 ;;
+        *) echo "ERROR: unknown argument: $1" >&2; usage >&2; exit 1 ;;
     esac
 done
 
 if [ -z "$CHANNEL" ]; then
-    echo "Usage: $0 --channel <higgs_portal|ttbar>"
+    usage >&2
     exit 1
 fi
 
-# --- Configuration ---
-CONTAINER_IMAGE="${CONTAINER_IMAGE:-ghcr.io/opendatadetector/sw:0.2.2_linux-ubuntu24.04_gcc-13.3.0}"
-OUTPUT_DIR="${OUTPUT_DIR:-$(pwd)/output}"
-SEED="${SEED:-42}"
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+for name in EVENTS PILEUP THREADS PANDORA_PROCESSES; do
+    value="${!name}"
+    if [ -n "$value" ] && ! [[ "$value" =~ ^[0-9]+$ ]]; then
+        echo "ERROR: ${name,,} must be a non-negative integer, got '$value'" >&2
+        exit 1
+    fi
+done
+for name in EVENTS PILEUP THREADS PANDORA_PROCESSES; do
+    # plain decimal: "010" would otherwise be read as octal further down
+    [ -n "${!name}" ] && printf -v "$name" '%d' "$((10#${!name}))"
+done
+for name in EVENTS PANDORA_PROCESSES; do
+    if [ "${!name}" = 0 ]; then
+        echo "ERROR: ${name,,} must be at least 1" >&2
+        exit 1
+    fi
+done
+
+if [ "$THREADS" -lt 2 ]; then
+    echo "ERROR: --threads must be 2 or more (with one thread the ddsim of sw:pr-8 writes every event twice)" >&2
+    exit 1
+fi
+
 CONFIG_BASE="configs_development/docker_test/$CHANNEL"
-
-# Validate channel
 if [ ! -d "$REPO_ROOT/$CONFIG_BASE" ]; then
-    echo "ERROR: Config directory not found: $CONFIG_BASE"
-    echo "Available channels:"
-    ls "$REPO_ROOT/configs_development/docker_test/" 2>/dev/null
+    echo "ERROR: unknown channel '$CHANNEL'. Available:" >&2
+    ls "$REPO_ROOT/configs_development/docker_test/" >&2
     exit 1
 fi
 
+# stage | script (relative to scripts/) | config file in $CONFIG_BASE
+COMMON_STAGES="
+simulation|simulation/ddsim_run.py|simulation_config.yaml
+digitization|simulation/digi_and_reco.py|digitization_config.yaml
+particles_full|postprocessing/convert_particles_full.py|particles_full_config.yaml
+pandora_reco|simulation/pandora_reco.py|pandora_reco_config.yaml
+reco_tables|postprocessing/convert_reco_tables.py|reco_tables_config.yaml
+package_parquet|postprocessing/package_native_parquet.py|package_parquet_config.yaml"
+
+case "$CHANNEL" in
+    ttbar)
+        STAGES="madgraph_init|simulation/madgraph_init.py|madgraph_init_config.yaml
+madgraph_generation|simulation/madgraph_gen.py|madgraph_generation_config.yaml
+pythia_generation|simulation/pythia_gen.py|pythia_config.yaml$COMMON_STAGES" ;;
+    higgs_portal)
+        STAGES="pythia_generation|simulation/pythia_gen.py|pythia_config.yaml$COMMON_STAGES" ;;
+    *)
+        echo "ERROR: no stage list for channel '$CHANNEL'" >&2
+        exit 1 ;;
+esac
+
+STAGE_NAMES="$(echo "$STAGES" | cut -d'|' -f1)"
+if [ "$LIST_STAGES" = 1 ]; then
+    echo "$STAGE_NAMES"
+    exit 0
+fi
+stage_index() {
+    echo "$STAGE_NAMES" | grep -nxF -- "$1" | cut -d: -f1
+}
+for name in "$FROM_STAGE" "$TO_STAGE"; do
+    if [ -n "$name" ] && [ -z "$(stage_index "$name")" ]; then
+        echo "ERROR: '$name' is not a stage of channel $CHANNEL. Stages:" >&2
+        echo "$STAGE_NAMES" >&2
+        exit 1
+    fi
+done
+if [ -n "$FROM_STAGE" ] && [ -n "$TO_STAGE" ] && [ "$(stage_index "$FROM_STAGE")" -gt "$(stage_index "$TO_STAGE")" ]; then
+    echo "ERROR: --from $FROM_STAGE comes after --to $TO_STAGE" >&2
+    exit 1
+fi
+
+export OUTPUT_DIR="${OUTPUT_DIR:-$(pwd)/output}"
+export RUN_ID=0
+
+# A run from the first stage needs an output directory without earlier results:
+# stages pick up files by name, so leftovers of another run would be mixed in.
+if [ -z "$FROM_STAGE" ] && { [ -e "$OUTPUT_DIR/runs" ] || [ -e "$OUTPUT_DIR/parquet" ]; }; then
+    echo "ERROR: $OUTPUT_DIR already holds a run (runs/ or parquet/)." >&2
+    echo "  Use a new --output directory, or --from STAGE to rerun part of the chain." >&2
+    exit 1
+fi
 mkdir -p "$OUTPUT_DIR"
 
-# --- Ensure cache directory exists ---
-CACHE_DIR="$REPO_ROOT/.cache"
-mkdir -p "$CACHE_DIR"
-
-# Clone ODD v4.0.4 if not present (done on host where network access works)
-if [ ! -f "$CACHE_DIR/odd-v4/xml/OpenDataDetector.xml" ]; then
-    echo "Cloning OpenDataDetector v4.0.4 from CERN GitLab..."
-    git clone --depth 1 --branch v4.0.4 \
-        https://gitlab.cern.ch/acts/OpenDataDetector.git "$CACHE_DIR/odd-v4" 2>/dev/null \
-        || echo "WARNING: Failed to clone ODD. Simulation stages will fail."
+# A partial rerun (--from) uses the event count, pile-up and seed of the run it
+# continues, unless they are given again: packaging with another event count would
+# publish a different event range. It must use the channel of that run.
+SETTINGS_FILE="$OUTPUT_DIR/pipeline_settings"
+if [ -n "$FROM_STAGE" ] && [ -f "$SETTINGS_FILE" ]; then
+    while IFS='=' read -r key value; do
+        case "$key" in
+            channel)
+                if [ "$value" != "$CHANNEL" ]; then
+                    echo "ERROR: $OUTPUT_DIR holds a $value run; --channel $CHANNEL does not match." >&2
+                    exit 1
+                fi ;;
+            events) [ -z "$EVENTS" ] && EVENTS="$value" ;;
+            pileup) [ -z "$PILEUP" ] && PILEUP="$value" ;;
+            seed) [ -z "${SEED:-}" ] && [ -n "$value" ] && export SEED="$value" ;;
+        esac
+    done < "$SETTINGS_FILE"
+fi
+if [ -z "$FROM_STAGE" ]; then
+    printf 'channel=%s\nevents=%s\npileup=%s\nseed=%s\n' "$CHANNEL" "$EVENTS" "$PILEUP" "${SEED:-}" > "$SETTINGS_FILE"
 fi
 
-# Clone MG5aMC_PY8_interface if not present (needed for MadGraph+Pythia8 shower)
-if [ ! -f "$CACHE_DIR/MG5aMC_PY8_interface/MG5aMC_PY8_interface.cc" ]; then
-    echo "Cloning MG5aMC_PY8_interface from GitHub..."
-    git clone --depth 1 \
-        https://github.com/mg5amcnlo/MG5aMC_PY8_interface.git "$CACHE_DIR/MG5aMC_PY8_interface" 2>/dev/null \
-        || echo "WARNING: Failed to clone MG5aMC_PY8_interface. MadGraph shower will not work."
-fi
-
-# Download bc .deb if not cached (no apt-get inside container without network)
-if [ ! -f "$CACHE_DIR"/bc_*.deb ]; then
-    echo "Downloading bc package..."
-    (cd "$CACHE_DIR" && apt-get download bc 2>/dev/null) \
-        || echo "WARNING: Failed to download bc. MadGraph shower will not work."
-fi
-
-echo "============================================================"
-echo "ColliderML Full Pipeline: $CHANNEL"
-echo "============================================================"
-echo "Container: $CONTAINER_IMAGE"
-echo "Output:    $OUTPUT_DIR"
-echo "Configs:   $CONFIG_BASE/"
-echo "============================================================"
-
-# --- Helper function to run a stage ---
-run_stage() {
-    local stage_name="$1"
-    local stage_script="$2"
-    local config_file="$3"
-    shift 3
-    local extra_args=("$@")
-
-    echo ""
-    echo "============================================================"
-    echo "  STAGE: $stage_name"
-    echo "============================================================"
-
-    if [ ! -f "$REPO_ROOT/$config_file" ]; then
-        echo "  SKIP: Config not found: $config_file"
-        return 0
-    fi
-
-    docker run --rm \
-        -v "$REPO_ROOT":/workspace \
-        -v "$OUTPUT_DIR":/output \
-        -v "$CACHE_DIR":/cache \
-        -e COLLIDERML_CACHE=/cache \
-        -e HTTP_PROXY="${HTTP_PROXY:-}" \
-        -e HTTPS_PROXY="${HTTPS_PROXY:-}" \
-        -e http_proxy="${http_proxy:-}" \
-        -e https_proxy="${https_proxy:-}" \
-        -e NO_PROXY="${NO_PROXY:-}" \
-        "$CONTAINER_IMAGE" \
-        -c "
-            source /workspace/scripts/cli/setup_container_env.sh
-
-            cd /workspace/scripts/$(dirname "$stage_script")
-            python3 $(basename "$stage_script") \
-                --config /workspace/$config_file \
-                --output /output/runs \
-                --output-subdir 0 \
-                --seed $SEED \
-                ${extra_args[*]:-}
-        "
-
-    echo "  DONE: $stage_name"
+# Arguments each stage script gets on top of --config/--output/--output-subdir/--seed.
+stage_args() {
+    local events_arg=()
+    [ -n "$EVENTS" ] && events_arg=(--events "$EVENTS")
+    case "$1" in
+        madgraph_generation)
+            echo "${events_arg[@]}" ;;
+        pythia_generation)
+            echo "${events_arg[@]}" ${PILEUP:+--pileup "$PILEUP"} ;;
+        simulation|digitization)
+            echo "${events_arg[@]}" --threads "$THREADS" ;;
+        pandora_reco)
+            echo --processes "$PANDORA_PROCESSES" ;;
+        package_parquet)
+            # one run holds all events, and they go into one file per table
+            [ -n "$EVENTS" ] && echo --run-size "$EVENTS" --chunk-size "$EVENTS" ;;
+    esac
+    return 0
 }
 
-# --- Run pipeline ---
-case "$CHANNEL" in
-    higgs_portal)
-        run_stage "Pythia Generation" \
-            "simulation/pythia_gen.py" \
-            "$CONFIG_BASE/pythia_config.yaml"
+echo "============================================================"
+echo "ColliderML pipeline: $CHANNEL"
+echo "  events: ${EVENTS:-config default}   pile-up: ${PILEUP:-config default}   threads: $THREADS"
+echo "  output: $OUTPUT_DIR"
+echo "============================================================"
 
-        run_stage "Detector Simulation" \
-            "simulation/ddsim_run.py" \
-            "$CONFIG_BASE/simulation_config.yaml"
+started=0
+last_stage=""
+[ -z "$FROM_STAGE" ] && started=1
+pipeline_start=$(date +%s)
 
-        run_stage "Digitization & Reconstruction" \
-            "simulation/digi_and_reco.py" \
-            "$CONFIG_BASE/digitization_config.yaml"
-
-        run_stage "Parquet Conversion" \
-            "postprocessing/convert_all.py" \
-            "$CONFIG_BASE/convert_all.yaml"
-        ;;
-
-    ttbar)
-        run_stage "MadGraph Init" \
-            "simulation/madgraph_init.py" \
-            "$CONFIG_BASE/madgraph_init_config.yaml"
-
-        run_stage "MadGraph Generation" \
-            "simulation/madgraph_gen.py" \
-            "$CONFIG_BASE/madgraph_generation_config.yaml"
-
-        # Move MadGraph HepMC output to the run directory where Pythia expects it.
-        # MadGraph gen stages files to runs/all/0/ (multi-node convention) but
-        # Pythia looks in runs/0/ for the hard scatter events.
-        if [ -f "$OUTPUT_DIR/runs/all/0/events.hepmc.gz" ] && [ ! -f "$OUTPUT_DIR/runs/0/events.hepmc.gz" ]; then
-            cp "$OUTPUT_DIR/runs/all/0/events.hepmc.gz" "$OUTPUT_DIR/runs/0/events.hepmc.gz"
-            echo "  Copied MadGraph HepMC output to runs/0/ for Pythia merge."
+while IFS='|' read -r stage script config; do
+    [ -z "$stage" ] && continue
+    [ "$stage" = "$FROM_STAGE" ] && started=1
+    if [ "$started" = 1 ]; then
+        # shellcheck disable=SC2046
+        if [ "$stage" = package_parquet ] && [ -d "$OUTPUT_DIR/parquet" ]; then
+            # packaging again: the earlier tables are set aside, not mixed with the new ones
+            mv "$OUTPUT_DIR/parquet" "$OUTPUT_DIR/parquet.replaced.$(date +%Y%m%dT%H%M%S)"
         fi
-
-        run_stage "Pythia Generation" \
-            "simulation/pythia_gen.py" \
-            "$CONFIG_BASE/pythia_config.yaml"
-
-        run_stage "Detector Simulation" \
-            "simulation/ddsim_run.py" \
-            "$CONFIG_BASE/simulation_config.yaml"
-
-        run_stage "Digitization & Reconstruction" \
-            "simulation/digi_and_reco.py" \
-            "$CONFIG_BASE/digitization_config.yaml"
-
-        run_stage "Parquet Conversion" \
-            "postprocessing/convert_all.py" \
-            "$CONFIG_BASE/convert_all.yaml"
-        ;;
-
-    *)
-        echo "ERROR: Unknown channel: $CHANNEL"
-        echo "Available: higgs_portal, ttbar"
-        exit 1
-        ;;
-esac
+        STAGE_NAME="$stage" "$SCRIPT_DIR/run_docker.sh" "$script" "$CONFIG_BASE/$config" $(stage_args "$stage") </dev/null
+        last_stage="$stage"
+    fi
+    [ "$stage" = "$TO_STAGE" ] && break
+done <<< "$STAGES"
 
 echo ""
 echo "============================================================"
-echo "Pipeline complete for: $CHANNEL"
+echo "Pipeline finished for $CHANNEL in $(( $(date +%s) - pipeline_start )) s (last stage: $last_stage)"
+if [ "$last_stage" = package_parquet ]; then
+    echo "  tables:  $OUTPUT_DIR/parquet"
+fi
+echo "  timing:  $OUTPUT_DIR/pipeline_timing.csv"
+echo "  disk:    $(du -sh "$OUTPUT_DIR" 2>/dev/null | cut -f1) in the output directory"
 echo "============================================================"
-echo "Output directory:"
-find "$OUTPUT_DIR/runs/0/" -type f -exec ls -lh {} \; 2>/dev/null || echo "(no output)"

@@ -33,6 +33,7 @@ from acts.examples.reconstruction import (
 import traceback
 from utils.app_logging import setup_logging, TimingRecorder
 from utils.config import create_base_parser, load_config, hash_seed_string
+from utils.vertex_link_support import want_vertex_track_links
 from contextlib import contextmanager
 import math
 from acts.examples.edm4hep import (
@@ -813,7 +814,14 @@ def setup_acts_reconstruction(input_path, output_dir, config, rnd, logger=None):
             # Vertex -> track links (v23): the ColliderML writer in the v23 sim image
             # (image/vertex_track_links) writes, per vertex, the reco/tracks track_id of each
             # attached track and its AMVF weight. Required when vertexing_track_links is set.
-            if getattr(config, "vertexing_track_links", False):
+            # "auto" writes the links when the image ships the writer and skips them otherwise.
+            links_setting = getattr(config, "vertexing_track_links", False)
+            write_links = want_vertex_track_links(links_setting)
+            if links_setting == "auto" and not write_links:
+                # a link file of an earlier digitisation of this run (with another image) would
+                # make packaging attach links that do not belong to these vertices
+                (output_dir / "vertex_track_links.csv").unlink(missing_ok=True)
+            if write_links:
                 import importlib
                 vtl = importlib.import_module("colliderml_vertex_links")
                 wcfg = vtl.VertexTrackLinkWriter.Config()

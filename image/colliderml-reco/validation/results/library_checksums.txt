@@ -1,0 +1,20 @@
+SHA-256 of the Pandora libraries in /opt/pandora-stack/install/lib, as printed by steps/80_manifest.sh
+("colliderml-reco info"). Every build of 2026-11-27 gave the same values for a given state of the sources: three builds
+of the final optimised variant on three nodes (the last one, the published image
+ghcr.io/opendatadetector/colliderml-reco:20261127, fetches the sources from the fork tags
+colliderml-reco-20261127 instead of applying patches), four of the reference variant on one node.
+
+optimised variant (colliderml-reco:20261127)
+2a90f9586c580ff949e2b1ac8dee29d1f8baf8647ea090d7fcd64f888e5f4c40  libPandoraSDK.so
+67d6a8085a4d680ec8bacc11e601b402350cd749d53008069170931af93648fd  libLCContent.so
+d28a94dd3bcd1c40d3a68da22899e68c415cb349a568f9ce3345135921bbd1ac  libk4GaudiPandoraPlugins.so
+786d9732ae2d12ab7ed650d5c6b9a3c2d66c689d8e0a4dd5430cf4eee58062b2  libk4DetectorPerformancePFlowPlugins.so
+
+reference variant (colliderml/reco:20261127-reference)
+f9476b41664231b4aac37f425780729d9cba3f1cf7028a05698cbc657e8a21ad  libPandoraSDK.so
+29161536e81be0664c07f630c4cfba0fdbae7f1ae71d7fc9d473bd4244689a51  libLCContent.so
+82290416de64456a86ee88216ba66fb15afdfa7e9e1b8e7c6c8ac996cae9c1f6  libk4GaudiPandoraPlugins.so
+a515396145c1f91f01c3e704b2816011dd1bd32672c6ea47ca80324f7b78b07f  libk4DetectorPerformancePFlowPlugins.so
+
+All four libraries of the reference variant have the same SHA-256 as the files in the earlier
+image reco:20261106 (sha256sum run in that image).

@@ -1,29 +1,22 @@
-# Docker test: ttbar Pythia generation with low pileup
-# Merges MadGraph hard scatter events with pileup
+# Docker pipeline, ttbar: beam-spot smearing of the MadGraph events and pile-up overlay
+# Paths are container paths: /output is the output directory, /cache the cache directory.
 campaign: "docker_test"
 dataset: "ttbar"
 version: "v1"
 stage: "pythia_generation"
 
-job_config:
-  n_runs: 1
-  runs_per_node: 1
-  time_limit: "00:10:00"
-  qos: "debug"
-  execution_mode: "interactive"
-
 common:
   output_base_dir: "/output"
 
 events: 10
-pileup: 10
+pileup: 0                           # mean number of pile-up interactions per event
 merge: true
 poisson_sample: true
 poisson_buffer_sigma: 5.0
 
-# No hard_process — reads MG events from events.hepmc3 or events.hepmc
-# hard_process is left empty so only pileup is generated and merged with existing signal
+# No hard_process: the hard scatter is the MadGraph output of run 0.
+hard_scatter_file: /output/runs/all/0/events.hepmc.gz
 
-vertex_sigma_xy: 0.0125
-vertex_sigma_z: 55.5
-vertex_sigma_t: 0.185
+vertex_sigma_xy: 0.0125             # mm
+vertex_sigma_z: 55.5                # mm
+vertex_sigma_t: 0.185               # ns

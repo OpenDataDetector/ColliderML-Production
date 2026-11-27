@@ -1,0 +1,180 @@
+#!/bin/bash
+# Run the ColliderML calorimeter digitisation and Pandora particle flow on ODD events.
+set -euo pipefail
+
+OPTIONS_DIR=/opt/k4ODD/k4ODD/options
+ODD_XML=/opt/odd-install/share/OpenDataDetector/xml/OpenDataDetector.xml
+
+usage() {
+  cat <<'USAGE'
+Usage:
+  colliderml-reco run --input SIM.root --output RECO.root [options] [-- K4RUN_ARGS...]
+  colliderml-reco selftest [--events N] [--work-dir DIR]
+  colliderml-reco info
+
+run: digitise the ODD calorimeter hits and reconstruct particle-flow objects.
+  --input FILE         EDM4hep file with ODD calorimeter SimHits, MCParticles and tracks
+  --output FILE        EDM4hep output (GaudiPandoraPFOs, GaudiPandoraClusters, digitised hits)
+  --events N           number of events to process (default: -1, all)
+  --first-event K      index of the first input event (default: 0)
+  --tracks NAME        track collection given to Pandora (default: ActsTracks)
+  --no-tracks          calorimeter-only reconstruction, no track input
+  --settings FILE      Pandora settings XML: a path, or the name of a file in
+                       /opt/k4ODD/k4ODD/options (default: PandoraSettingsCLD.xml)
+  --work-dir DIR       directory for k4run side files (default: RECO.root.work)
+  --no-jemalloc        do not preload jemalloc (output is the same, PU200 runs are slower)
+  K4RUN_ARGS           passed to k4run unchanged
+
+selftest: simulate photons in ODD with ddsim, reconstruct them without tracks and
+  check that particle-flow objects come out. Needs no input files. With --work-dir the
+  files (sim.root, reco.root, logs) are kept.
+
+info: print the build record (source commits, compiler flags, library checksums).
+
+Calibration constants and digitisation switches are environment variables read by
+/opt/k4ODD/k4ODD/options/ODDreconstruction.py (K4ODD_*); the defaults are the calibrated set.
+USAGE
+}
+
+die() { echo "colliderml-reco: $*" >&2; exit 2; }
+
+# need_value <option> <number of remaining arguments>
+need_value() { [[ "$2" -ge 2 ]] || die "$1 needs a value"; }
+
+# The optimised Pandora libraries are compiled for x86-64-v3; the reference variant is not.
+require_x86_64_v3() {
+  grep -q '^pandora_variant: reference$' /opt/colliderml-reco/MANIFEST && return 0
+  local flags flag
+  flags=" $(grep -m1 '^flags' /proc/cpuinfo || true) "
+  for flag in avx avx2 bmi1 bmi2 f16c fma abm movbe xsave; do
+    [[ "$flags" == *" $flag "* ]] || die "this build needs an x86-64-v3 CPU; CPU flag '$flag' is missing"
+  done
+}
+
+# run_k4run <work-dir> <k4run arguments...>
+# Pandora settings name the photon likelihood file relative to /opt/k4ODD, so k4run starts there.
+run_k4run() {
+  local work_dir="$1"; shift
+  cd /opt/k4ODD
+  K4ODD_OUTPUT_DIR="$work_dir" k4run "$OPTIONS_DIR/ODDreconstruction.py" "$@"
+}
+
+cmd_run() {
+  local input="" output="" events=-1 first=0 tracks="ActsTracks" work_dir="" jemalloc=1
+  local settings="$OPTIONS_DIR/PandoraSettingsCLD.xml"
+  local -a extra=()
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --input) need_value "$1" $#; input="$2"; shift 2 ;;
+      --output) need_value "$1" $#; output="$2"; shift 2 ;;
+      --events) need_value "$1" $#; events="$2"; shift 2 ;;
+      --first-event) need_value "$1" $#; first="$2"; shift 2 ;;
+      --tracks) need_value "$1" $#; tracks="$2"; shift 2 ;;
+      --no-tracks) tracks=""; shift ;;
+      --settings) need_value "$1" $#; settings="$2"; shift 2 ;;
+      --work-dir) need_value "$1" $#; work_dir="$2"; shift 2 ;;
+      --no-jemalloc) jemalloc=0; shift ;;
+      --) shift; extra=("$@"); break ;;
+      *) die "unknown option for run: $1" ;;
+    esac
+  done
+  [[ -n "$input" && -n "$output" ]] || die "run needs --input and --output"
+  local arg
+  for arg in "${extra[@]}"; do
+    case "$arg" in
+      --inputFile*|--outputFile*|--events*|--IOSvc.*)
+        die "$arg: input, output and event range are set with the run options" ;;
+    esac
+  done
+  [[ -f "$input" ]] || die "input file not found: $input"
+  # A bare file name selects one of the settings files shipped with k4ODD.
+  [[ -f "$settings" || ! -f "$OPTIONS_DIR/$settings" ]] || settings="$OPTIONS_DIR/$settings"
+  [[ -f "$settings" ]] || die "settings file not found: $settings"
+  require_x86_64_v3
+
+  input="$(realpath "$input")"
+  output="$(realpath -m "$output")"
+  settings="$(realpath "$settings")"
+  [[ "$input" != "$output" && ! "$input" -ef "$output" ]] || die "--output must not be the input file"
+  # k4run writes side files with fixed names, so every process needs its own directory.
+  work_dir="$(realpath -m "${work_dir:-$output.work}")"
+  mkdir -p "$work_dir" "$(dirname "$output")"
+  local histograms="$work_dir/ddcalodigi_hist.root"
+  [[ "$histograms" != "$output" && ! "$histograms" -ef "$input" ]] \
+    || die "--work-dir would put ddcalodigi_hist.root on the input or output file"
+
+  export K4ODD_PANDORA_SETTINGS="$settings"
+  if [[ -n "$tracks" ]]; then
+    export K4ODD_TRACK_CREATOR=DDTrackCreatorCLIC
+    export K4ODD_TRACK_COLLECTION="$tracks"
+    # ACTS track covariances fail Pandora's default sigma(p)/p cut of 0.15; disable the cut.
+    export K4ODD_MAX_TRACK_SIGMA_POVERP="${K4ODD_MAX_TRACK_SIGMA_POVERP:-999}"
+  else
+    export K4ODD_TRACK_CREATOR=DDTrackCreatorEmpty
+    export K4ODD_TRACK_COLLECTION=EmptyTracks
+  fi
+  if [[ "$jemalloc" -eq 1 ]]; then
+    export LD_PRELOAD="/opt/libjemalloc.so.2${LD_PRELOAD:+:$LD_PRELOAD}"
+  fi
+
+  run_k4run "$work_dir" \
+    "--inputFile=$input" "--outputFile=$output" \
+    "--events=$events" "--IOSvc.FirstEventEntry=$first" "${extra[@]}"
+}
+
+cmd_selftest() {
+  local events=5 work_dir="" keep=1
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --events) need_value "$1" $#; events="$2"; shift 2 ;;
+      --work-dir) need_value "$1" $#; work_dir="$2"; shift 2 ;;
+      *) die "unknown option for selftest: $1" ;;
+    esac
+  done
+  require_x86_64_v3
+  if [[ -z "$work_dir" ]]; then
+    work_dir="$(mktemp -d /tmp/colliderml-reco-selftest.XXXXXX)"
+    keep=0
+  fi
+  work_dir="$(realpath -m "$work_dir")"
+  mkdir -p "$work_dir"
+
+  echo "selftest: simulating $events photons of 10 GeV in $work_dir"
+  (cd "$work_dir" && ddsim --compactFile "$ODD_XML" \
+      --enableGun --gun.particle gamma --gun.energy "10*GeV" \
+      --gun.distribution uniform --gun.thetaMin "80*deg" --gun.thetaMax "100*deg" \
+      --numberOfEvents "$events" --random.seed 42 \
+      --outputFile "$work_dir/sim.root" > "$work_dir/ddsim.log" 2>&1) \
+    || { tail -n 30 "$work_dir/ddsim.log" >&2; die "selftest: ddsim failed"; }
+
+  echo "selftest: reconstructing"
+  cmd_run --input "$work_dir/sim.root" --output "$work_dir/reco.root" --work-dir "$work_dir" \
+      --events "$events" --no-tracks > "$work_dir/k4run.log" 2>&1 \
+    || { tail -n 30 "$work_dir/k4run.log" >&2; die "selftest: k4run failed"; }
+
+  python3 - "$work_dir/reco.root" "$events" <<'PY'
+import sys
+from podio import root_io
+
+path, expected = sys.argv[1], int(sys.argv[2])
+frames = list(root_io.Reader(path).get("events"))
+n_pfos = [len(frame.get("GaudiPandoraPFOs")) for frame in frames]
+energies = [sum(p.getEnergy() for p in frame.get("GaudiPandoraPFOs")) for frame in frames]
+print(f"selftest: {len(frames)} events, PFOs per event {n_pfos}, "
+      f"summed PFO energy per event [GeV] {[round(e, 2) for e in energies]}")
+if len(frames) != expected or sum(n_pfos) == 0:
+    sys.exit("selftest: FAILED (missing events or no particle-flow objects)")
+print("selftest: OK")
+PY
+  if [[ "$keep" -eq 0 ]]; then
+    rm -r "$work_dir"
+  fi
+}
+
+case "${1:-}" in
+  run) shift; cmd_run "$@" ;;
+  selftest) shift; cmd_selftest "$@" ;;
+  info) cat /opt/colliderml-reco/MANIFEST ;;
+  -h|--help|help|"") usage ;;
+  *) usage >&2; die "unknown command: $1" ;;
+esac

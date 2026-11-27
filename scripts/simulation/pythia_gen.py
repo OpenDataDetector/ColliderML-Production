@@ -257,8 +257,8 @@ def generate_pileup(output_dir, config, logger):
 
 def find_hard_scatter_file(output_dir, config, explicit_path=None):
     """Find hard scatter file with smart detection."""
-    if explicit_path and explicit_path.exists():
-        return explicit_path
+    if explicit_path and Path(explicit_path).exists():
+        return Path(explicit_path)
     
     # Check config for hard scatter file path
     config_path = getattr(config, 'hard_scatter_file', None)
@@ -328,7 +328,10 @@ def merge_events(hard_scatter_file, pileup_file, output_dir, config, logger):
     
     # ACTS HepMC3Reader with merging
     # Build inputs using HepMC3Reader.Input API
-    if getattr(config, 'poisson_sample', False):
+    if pileup_file is None:
+        # No pileup: the hard scatter still goes through the reader for vertex smearing.
+        inputs = [HepMC3Reader.Input.Fixed(hard_scatter_file, 1)]
+    elif getattr(config, 'poisson_sample', False):
         # Use Poisson sampling for pileup
         inputs = [
             HepMC3Reader.Input.Fixed(hard_scatter_file, 1),
@@ -416,11 +419,16 @@ def run_workflow(output_dir, config, logger):
             logger.info(f"Found hard scatter file: {hard_scatter_file}")
         
         if not pileup_file:
-            pileup_file = find_pileup_file(
-                output_dir, config,
-                getattr(config, 'pileup_file', None)
-            )
-            logger.info(f"Found pileup file: {pileup_file}")
+            try:
+                pileup_file = find_pileup_file(
+                    output_dir, config,
+                    getattr(config, 'pileup_file', None)
+                )
+                logger.info(f"Found pileup file: {pileup_file}")
+            except FileNotFoundError:
+                if getattr(config, 'pileup', 0) > 0:
+                    raise
+                logger.info("pileup is 0 and there is no pileup file: merging the hard scatter alone")
         
         return merge_events(hard_scatter_file, pileup_file, output_dir, config, logger)
     

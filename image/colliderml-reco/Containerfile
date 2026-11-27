@@ -1,0 +1,88 @@
+# ColliderML reconstruction image: calorimeter digitisation and Pandora particle flow
+# on the Open Data Detector. See README.md for use and THIRD_PARTY.md for sources and licences.
+#
+# Build with ./build.sh, or directly:
+#   podman build -f Containerfile -t colliderml/reco:<version> .
+
+# key4hep stack without CVMFS: ROOT 6.36, Gaudi 40, k4FWCore 1.3, podio 1.4.1,
+# EDM4hep 0.99.2, DD4hep 1.32.1, Geant4 11.3, GCC 13.3 on Ubuntu 24.04.
+ARG BASE_IMAGE_NAME=ghcr.io/key4hep/key4hep-sim-reco-ubuntu24
+ARG BASE_IMAGE_DIGEST=sha256:5b3a56c63a3337eca22bbfc14cfb3239e1049037a8734322e70ae8580ce96911
+FROM ${BASE_IMAGE_NAME}@${BASE_IMAGE_DIGEST}
+
+ARG BASE_IMAGE_NAME
+ARG BASE_IMAGE_DIGEST
+# Parallel compile jobs; empty means all cores. LCContent with LTO needs about 2 GB per job.
+ARG BUILD_JOBS=
+
+# optimised: the Pandora sources with the speed changes (tags colliderml-reco-20261127).
+# reference: the sources and flags of the earlier image reco:20261106.
+# Both reproduce the output of reco:20261106 in the validation (validation/RESULTS.md).
+ARG PANDORA_VARIANT=optimised
+
+# Compiler flags of the optimised variant, for PandoraSDK, LCContent, k4GaudiPandora and
+# k4DetectorPerformance. x86-64-v3 (AVX2) is the minimum: the LCContent patch uses AVX2
+# intrinsics. -ffp-contract=off keeps the compiler from fusing a*b+c into FMA instructions,
+# and PANDORA_STRICT_BYTE_IDENTICAL selects the code paths that keep the floating-point
+# operation order of the unpatched code.
+ARG PANDORA_CXX_FLAGS="-O3 -DNDEBUG -march=x86-64-v3 -mtune=generic -ffp-contract=off -fno-semantic-interposition -flto=auto -DPANDORA_STRICT_BYTE_IDENTICAL=1"
+ARG PANDORA_LD_FLAGS="-flto=auto -fno-semantic-interposition"
+
+COPY sources.env requirements.txt /opt/colliderml-reco/
+COPY patches /opt/colliderml-reco/patches
+COPY env /opt/colliderml-reco/env
+COPY steps/common.sh /opt/colliderml-reco/steps/common.sh
+# The image must be usable by any user, whatever the permissions of the build context.
+RUN chmod -R a+rX /opt/colliderml-reco \
+ && ln -s /opt/colliderml-reco/env/key4hep-shim.sh /opt/key4hep-shim.sh
+
+# Each step is copied right before it runs, so editing a later step keeps the earlier layers.
+COPY steps/00_key4hep_env.sh /opt/colliderml-reco/steps/
+RUN bash /opt/colliderml-reco/steps/00_key4hep_env.sh
+
+COPY steps/10_k4reco.sh /opt/colliderml-reco/steps/
+RUN bash /opt/colliderml-reco/steps/10_k4reco.sh
+
+COPY steps/20_pandora.sh /opt/colliderml-reco/steps/
+RUN bash /opt/colliderml-reco/steps/20_pandora.sh
+
+COPY steps/30_k4odd.sh /opt/colliderml-reco/steps/
+RUN bash /opt/colliderml-reco/steps/30_k4odd.sh
+
+COPY steps/40_k4fwcore.sh /opt/colliderml-reco/steps/
+RUN bash /opt/colliderml-reco/steps/40_k4fwcore.sh
+
+COPY steps/50_odd.sh /opt/colliderml-reco/steps/
+RUN bash /opt/colliderml-reco/steps/50_odd.sh
+
+COPY steps/60_python.sh /opt/colliderml-reco/steps/
+RUN bash /opt/colliderml-reco/steps/60_python.sh
+
+COPY steps/70_gaudi_confdb.sh /opt/colliderml-reco/steps/
+RUN bash /opt/colliderml-reco/steps/70_gaudi_confdb.sh
+
+# Declared here so that a new version does not rebuild the layers above.
+ARG RECO_VERSION=unversioned
+ENV RECO_VERSION=${RECO_VERSION}
+COPY steps/80_manifest.sh /opt/colliderml-reco/steps/
+RUN bash /opt/colliderml-reco/steps/80_manifest.sh
+
+COPY bin /opt/colliderml-reco/bin
+COPY LICENSE THIRD_PARTY.md Containerfile build.sh /opt/colliderml-reco/
+COPY LICENSES /opt/colliderml-reco/LICENSES
+RUN chmod -R a+rX /opt/colliderml-reco && chmod a+x /opt/colliderml-reco/bin/*
+
+# Fail the build if the image cannot simulate and reconstruct an event.
+RUN /opt/colliderml-reco/bin/entrypoint.sh colliderml-reco selftest --events 1 --work-dir /tmp/selftest \
+ && rm -r /tmp/selftest
+
+LABEL org.opencontainers.image.title="ColliderML reconstruction" \
+      org.opencontainers.image.description="Calorimeter digitisation and Pandora particle flow on the Open Data Detector" \
+      org.opencontainers.image.version="${RECO_VERSION}" \
+      org.opencontainers.image.source="https://github.com/OpenDataDetector/ColliderML-Production" \
+      org.opencontainers.image.base.name="${BASE_IMAGE_NAME}@${BASE_IMAGE_DIGEST}" \
+      org.opencontainers.image.base.digest="${BASE_IMAGE_DIGEST}" \
+      org.opencontainers.image.documentation="https://github.com/OpenDataDetector/ColliderML-Production/tree/release/v23/image/colliderml-reco"
+
+WORKDIR /work
+ENTRYPOINT ["/opt/colliderml-reco/bin/entrypoint.sh"]

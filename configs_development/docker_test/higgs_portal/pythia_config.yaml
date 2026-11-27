@@ -1,21 +1,15 @@
-# Docker test: Higgs portal Pythia generation with low pileup
+# Docker pipeline, Higgs portal: Pythia8 generation (H -> a a -> 4b, long-lived a) and pile-up overlay
+# Paths are container paths: /output is the output directory, /cache the cache directory.
 campaign: "docker_test"
 dataset: "higgs_portal"
 version: "v1"
 stage: "pythia_generation"
 
-job_config:
-  n_runs: 1
-  runs_per_node: 1
-  time_limit: "00:10:00"
-  qos: "debug"
-  execution_mode: "interactive"
-
 common:
   output_base_dir: "/output"
 
 events: 10
-pileup: 10
+pileup: 10                          # mean number of pile-up interactions per event
 merge: true
 poisson_sample: true
 poisson_buffer_sigma: 5.0

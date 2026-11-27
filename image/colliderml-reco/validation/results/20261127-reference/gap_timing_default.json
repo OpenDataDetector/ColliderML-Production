@@ -1,0 +1,87 @@
+{
+ "image": "localhost/colliderml/reco:20261127-reference",
+ "image_id": "16b113ed56bef1f5191ceecb414d3f306acc8d9a2fd5f2f8df93650ca663d2d9",
+ "workers": 2,
+ "env": [
+  "PANDORA_ALG_TIMING=1"
+ ],
+ "k4run_args": [],
+ "total_wall_s": 889.7,
+ "slices_with_error": 0,
+ "all_identical": true,
+ "summary": {
+  "pu200": {
+   "slices": 2,
+   "events": 2,
+   "slices_with_error": 0,
+   "events_equal": 2,
+   "calo_hits_compared": 1387060,
+   "pandora_objects_compared": 33121,
+   "wall_s": 1478.3,
+   "pandora_s": 1391.1,
+   "max_rss_gb": 5.348,
+   "wall_s_per_event": 739.165,
+   "pandora_s_per_event": 695.56
+  }
+ },
+ "records": [
+  {
+   "name": "pu200_r0_e00",
+   "category": "pu200",
+   "count": 1,
+   "rc": 0,
+   "wall_s": 614.22,
+   "max_rss_gb": 4.547,
+   "pandora_s": 576.54,
+   "events": 1,
+   "pfos": [
+    4919,
+    4919
+   ],
+   "clusters": [
+    4863,
+    4863
+   ],
+   "strict_max_abs_diff": 0.0,
+   "strict_message": "",
+   "pandora_objects_compared": 14701,
+   "pandora_events_differing": [],
+   "pandora_messages": [],
+   "calo_hits_compared": 623134,
+   "calo_events_differing": [],
+   "calo_hit_messages": [],
+   "pandora_identical": true,
+   "calo_hits_identical": true,
+   "identical": true
+  },
+  {
+   "name": "pu200_r0_e38",
+   "category": "pu200",
+   "count": 1,
+   "rc": 0,
+   "wall_s": 864.11,
+   "max_rss_gb": 5.348,
+   "pandora_s": 814.58,
+   "events": 1,
+   "pfos": [
+    6165,
+    6165
+   ],
+   "clusters": [
+    6090,
+    6090
+   ],
+   "strict_max_abs_diff": 0.0,
+   "strict_message": "",
+   "pandora_objects_compared": 18420,
+   "pandora_events_differing": [],
+   "pandora_messages": [],
+   "calo_hits_compared": 763926,
+   "calo_events_differing": [],
+   "calo_hit_messages": [],
+   "pandora_identical": true,
+   "calo_hits_identical": true,
+   "identical": true
+  }
+ ]
+}

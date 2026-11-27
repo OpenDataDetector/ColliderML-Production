@@ -1,10 +1,15 @@
 # ColliderML Development Repository
 
+To run the full chain on one machine with Docker or Podman, without CVMFS or a site
+config, see [docs/DOCKER_PIPELINE.md](docs/DOCKER_PIPELINE.md), or use the `colliderml`
+pip package (`colliderml simulate --preset ttbar-pflow-quick`). The rest of this page is the
+production route on a cluster with CVMFS.
+
 ## Quickstart
 
 ``` bash
-git clone https://github.com/OpenDataDetector/ColliderML
-cd ColliderML
+git clone https://github.com/OpenDataDetector/ColliderML-Production
+cd ColliderML-Production
 conda create -n collider-env python=3.10
 conda activate collider-env
 pip install -e .

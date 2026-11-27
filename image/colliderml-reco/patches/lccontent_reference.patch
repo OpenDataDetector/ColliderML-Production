@@ -1,0 +1,57 @@
+diff --git a/include/LCTopologicalAssociation/SoftClusterMergingAlgorithm.h b/include/LCTopologicalAssociation/SoftClusterMergingAlgorithm.h
+index 9024c47..b5c2884 100644
+--- a/include/LCTopologicalAssociation/SoftClusterMergingAlgorithm.h
++++ b/include/LCTopologicalAssociation/SoftClusterMergingAlgorithm.h
+@@ -42,7 +42,7 @@ private:
+     typedef KDTreeNodeInfoT<const pandora::CaloHit*, 3> HitKDNode3D;
+     typedef std::unordered_map<const pandora::ClusterList *, std::string> ClusterListToNameMap;
+     typedef std::unordered_map<const pandora::CaloHit*, int> HitToClusterMap;
+-    typedef std::unordered_multimap<const pandora::CaloHit*, const pandora::CaloHit*> HitsToHitsCacheMap;
++    typedef std::unordered_map<const pandora::CaloHit*, float> HitsToHitsCacheMap;  // first search radius per hit
+ 
+     pandora::StatusCode Run();
+ 
+diff --git a/src/LCTopologicalAssociation/SoftClusterMergingAlgorithm.cc b/src/LCTopologicalAssociation/SoftClusterMergingAlgorithm.cc
+index 8c54658..f8ac45f 100644
+--- a/src/LCTopologicalAssociation/SoftClusterMergingAlgorithm.cc
++++ b/src/LCTopologicalAssociation/SoftClusterMergingAlgorithm.cc
+@@ -220,25 +220,20 @@ int SoftClusterMergingAlgorithm::FindBestParentCluster(const ClusterVector &clus
+         const CartesianVector &positionVectorI(pCaloHitI->GetPositionVector());
+         CaloHitList nearby_hits;
+ 
+-        if (m_hitsToHitsCacheMap->count(pCaloHitI))
+-        {
+-            const auto range = m_hitsToHitsCacheMap->equal_range(pCaloHitI);
+-
+-            for (auto rangeIter = range.first; rangeIter != range.second; ++rangeIter)
+-                nearby_hits.push_back(rangeIter->second);
+-        }
+-        else
+-        {
+-            KDTreeCube searchRegionHits = build_3d_kd_search_region(pCaloHitI, searchDistance, searchDistance, searchDistance);
+-            std::vector<HitKDNode3D> found;
+-            m_hitsKdTree3D->search(searchRegionHits, found);
+-
+-            for (const auto &hit : found)
+-            {
+-                m_hitsToHitsCacheMap->emplace(pCaloHitI, hit.data);
+-                nearby_hits.push_back(hit.data);
+-            }
+-        }
++        // Cache only the radius of the first non-empty search per hit, not the neighbour list (which held
++        // ~4-6 GB per PU200 event). The kd-tree is fixed within a Run, so repeating that search returns the
++        // same set as the original cache; nearby_hits is sorted below.
++        const auto radiusIter = m_hitsToHitsCacheMap->find(pCaloHitI);
++        const float hitSearchDistance((m_hitsToHitsCacheMap->end() != radiusIter) ? radiusIter->second : searchDistance);
++        KDTreeCube searchRegionHits = build_3d_kd_search_region(pCaloHitI, hitSearchDistance, hitSearchDistance, hitSearchDistance);
++        std::vector<HitKDNode3D> found;
++        m_hitsKdTree3D->search(searchRegionHits, found);
++
++        if (!found.empty() && (m_hitsToHitsCacheMap->end() == radiusIter))
++            m_hitsToHitsCacheMap->emplace(pCaloHitI, searchDistance);
++
++        for (const auto &hit : found)
++            nearby_hits.push_back(hit.data);
+ 
+         nearby_hits.sort(PointerLessThan<CaloHit>());
+ 

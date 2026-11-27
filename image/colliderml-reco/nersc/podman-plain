@@ -1,0 +1,11 @@
+#!/bin/bash
+# podman with podman-hpc's storage settings but none of its additions: "podman-hpc build"
+# writes ENV PODMANHPC_MODULES_DIR and a hooks annotation into the image, which a public
+# image should not carry. Used as CONTAINER_ENGINE for the build only.
+uid="$(id -u)"
+unset XDG_RUNTIME_DIR
+export XDG_CONFIG_HOME="/tmp/${uid}_hpc/config"
+exec /usr/bin/podman \
+  --root "/tmp/${uid}_hpc/storage" --runroot "/tmp/${uid}_hpc" \
+  --storage-opt mount_program=/usr/bin/fuse-overlayfs-wrap \
+  --cgroup-manager cgroupfs "$@"

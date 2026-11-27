@@ -1,0 +1,16 @@
+# Docker pipeline, Higgs portal: calorimeter digitisation and Pandora particle flow (reco image)
+# Paths are container paths: /output is the output directory, /cache the cache directory.
+campaign: "docker_test"
+dataset: "higgs_portal"
+version: "v1"
+stage: "pandora_reco"
+
+events: -1                          # all events of the run
+# k4run is single-threaded. The run is split into this many slices, one process each.
+# A process needs about 2 GB without pile-up and about 6 GB at pile-up 200.
+processes: 1
+merge_slices: false                 # reco_tables reads the slices directly
+input_name: sim_with_tracks.root
+track_collection: ActsTracks        # charged particle flow
+max_track_sigma_pop: 999            # no cut on the ACTS q/p uncertainty
+preload_jemalloc: true
