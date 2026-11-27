@@ -147,7 +147,14 @@ def lock_alive(owner: dict, jobs: set[str] | None) -> bool | None:
     """True / False when it can be decided, None when not (no job id and another host)."""
     jid = owner.get("slurm_job_id")
     if jid:
-        return None if jobs is None else str(jid).split("_")[0] in jobs
+        if jobs is None:
+            return None
+        if str(jid).split("_")[0] not in jobs:
+            return False
+        # the owner's job is still running: on the owner's node the owner pid decides (an attempt killed
+        # inside a live allocation); elsewhere it counts as alive
+        if owner.get("host") != socket.gethostname() or not owner.get("pid"):
+            return True
     if owner.get("host") == socket.gethostname() and owner.get("pid"):
         try:
             os.kill(int(owner["pid"]), 0)
