@@ -39,7 +39,11 @@ else. Override them per run with `--sim-image` / `--reco-image`.
 | Image | Runs | Size |
 |---|---|---|
 | sim: `ghcr.io/opendatadetector/sw:pr-8` | generation, Geant4, ACTS, truth tables, packaging | 6 GB unpacked |
-| reco: see `docker_images.env` | calorimeter digitisation, Pandora, calo and PFO tables | 27 GB unpacked |
+| reco: `ghcr.io/opendatadetector/colliderml-reco:20261127` | calorimeter digitisation, Pandora, calo and PFO tables | 27 GB unpacked |
+
+The reco image is built from `image/colliderml-reco/` (recipe, pinned sources,
+patches and its validation against the image that produced the v23 pilot runs).
+It needs an x86-64 CPU with AVX2 (x86-64-v3).
 
 `scripts/cli/docker_stage_env.sh sim|reco` sets up the environment inside the
 container. Both images carry the Open Data Detector under `/opt/odd-install`.
@@ -51,8 +55,9 @@ The two builds have the same detector description: the files differ only in
 
 `reco/vertices` gets the columns `track_ids`, `track_weights`,
 `truth_interaction` and `truth_interaction_dz` only when digitisation runs in
-a sim image with the `colliderml_vertex_links` module
-(`image/vertex_track_links/`). The development configs set
+a sim image with the `colliderml_vertex_links` module. That image is not
+published: build it from `image/vertex_track_links/` on top of `sw:pr-8` and
+pass it with `--sim-image`. The development configs set
 `vertexing_track_links: auto` and `vertex_links: auto`: with the public
 `sw:pr-8` the chain runs without the links, with the patched image it writes
 them.
