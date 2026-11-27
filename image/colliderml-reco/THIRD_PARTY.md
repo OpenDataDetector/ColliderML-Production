@@ -43,10 +43,13 @@ the packages this image calls directly, as stated by their projects: ROOT (LGPL-
 (Apache-2.0), jemalloc (BSD-2-Clause).
 
 The base image is referenced by digest in the `org.opencontainers.image.base.name` and
-`org.opencontainers.image.base.digest` labels of this image. Its recipe and the package
+`org.opencontainers.image.base.digest` labels of this image. The labels
+`org.opencontainers.image.created`, `.revision` and `.url` of this image are inherited from
+the base image: they give the build date and a commit of the Key4hep base. The recipe commit
+is the one of `image/colliderml-reco/` in ColliderML-Production. Its recipe and the package
 recipes it is built from are public:
 
-- https://github.com/key4hep/key4hep-images: the Containerfiles of the Key4hep images;
+- https://github.com/key4hep/key4hep-images: the Key4hep container image recipes;
 - https://github.com/key4hep/key4hep-spack: the Key4hep spack recipes and the
   `key4hep-stack` environment;
 - https://github.com/spack/spack and https://github.com/spack/spack-packages: spack and its

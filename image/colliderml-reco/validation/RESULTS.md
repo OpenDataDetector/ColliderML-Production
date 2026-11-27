@@ -85,7 +85,7 @@ seventh digit. Two changes in the optimised LCContent caused this:
   not reset when the track associations of the cluster change, so the cached value depends
   on the moment of the first request.
 
-`patches/lccontent_optimised.patch` now keeps the original behaviour in both respects, and the
+The LCContent commit `dc6e6a3` (tag `colliderml-reco-20261127` of the OpenDataDetector fork; at the time `patches/lccontent_optimised.patch`) keeps the original behaviour in both respects, and the
 six events are equal to the reference. The records of the earlier build are in
 `results/earlier_runs.tar.gz` (`before_fix/`, `differing/`), together with the runs made before
 the code review (`before_review/`). The same archive holds the comparison of that earlier
@@ -134,7 +134,8 @@ was measured on 2026-11-23:
 
 | Build | Wall | Pandora |
 |---|---|---|
-| this image | 21.6 s | 7.9 s |
+| published image (gap correction off) | 20.5 s | 8.0 s |
+| first build (gap correction on) | 21.6 s | 7.9 s |
 | `-march=znver3`, unfixed | 22.1 s | 7.8 s |
 
 The two rows differ in compiler target and in the LCContent fix, so they do not isolate

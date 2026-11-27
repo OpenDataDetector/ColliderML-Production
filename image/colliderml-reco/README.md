@@ -146,13 +146,15 @@ the ColliderML v23 pilot runs, and compared every PFO, cluster, vertex and digit
 calorimeter hit, with all stored fields and relations, at zero tolerance
 (`validation/compare_reco.py`).
 
-| Event set | `optimised`: equal / run | `reference`: equal / run |
+| Event set | `optimised` (published image): equal / run | `reference` (built with the gap correction on): equal / run |
 |---|---|---|
 | single particles (photon, pion, K0L; 10 and 100 GeV) | 300 / 300 | 300 / 300 |
 | ttbar, no pileup | 1280 / 1280 | 110 / 110 |
 | ttbar, 200 pileup | 192 / 192 | 20 / 20 |
 
-Both variants reproduce the earlier output in every event we ran. The `optimised` column is
+Both variants reproduce the earlier output in every event we ran. The `reference` column was
+measured on a build made before the gap correction was switched off; with the switch off, the
+reference variant gave equal output on the two PU200 events we ran. The `optimised` column is
 the published image (`ghcr.io/opendatadetector/colliderml-reco:20261127`), which runs with
 the ECAL gap correction off while `reco:20261106` ran with it on. `validation/RESULTS.md` has
 the event sets, the timing, and the history of an earlier optimised build that differed in six

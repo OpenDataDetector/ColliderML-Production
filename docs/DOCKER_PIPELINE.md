@@ -84,6 +84,17 @@ them.
 
 A single stage: `./scripts/cli/run_docker.sh <script> <config> [args]`.
 
+`--pandora-processes` also sets how the events are split between Pandora
+processes, and the output depends on the split: in an earlier test, 4 of 16
+events changed by less than 1% in summed PFO energy with a different split
+(`docs/PFLOW_PILOT_ROADMAP.md`, open questions). Keep the number of processes
+fixed when you compare runs.
+
+On a host with SELinux enforcing (Fedora, RHEL), the bind mounts of the
+checkout, the cache and the output directory need a label that the
+containers may read. The scripts do not add `:z` to the mounts; we have not
+tested such a host.
+
 ### Two threads at least
 
 With `threads: 1` the ddsim of `sw:pr-8` writes every event twice. A request
