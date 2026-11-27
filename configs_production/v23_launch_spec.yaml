@@ -1,0 +1,35 @@
+# ttbar v23 production launch spec (scripts/production/v23_control.py freeze). Frozen ONLY after Daniel's sign-off
+# of testbed/v23_plan/PRODUCTION_PLAN_v3.md section 9, with the staging trees and parent links in place:
+#   python scripts/production/v23_control.py freeze configs_production/v23_launch_spec.yaml \
+#       --out /global/cfs/cdirs/m4958/data/ColliderML/staging/simulation/v23_launch_record.json
+decision: "Daniel 2026-11-27: D1-D6 accepted (signed amendments, PRODUCTION_PLAN_v3 section 3), E1-E7 built, optimised Pandora image; production after sign-off of PRODUCTION_PLAN_v3 section 9"
+approved_ref: origin/release/v23
+approved_remote: https://github.com/OpenDataDetector/ColliderML-Production
+verifier_dir: /global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/reruns_2026-11-18/verify
+cap_node_hours: 1100
+retry_allowance: 0.15
+rates_node_hours_per_unit:     # measured in the packed rehearsal (PRODUCTION_PLAN_v3 section 6)
+  full_pileup: {digitization: RATE_PU200_TRK, pandora_reco: RATE_PU200_PAN, reco_tables: RATE_PU200_RT, package_parquet: RATE_PU200_PKG, verify: RATE_PU200_VER}
+  hard_scatter: {digitization: RATE_PU0_TRK, pandora_reco: RATE_PU0_PAN, reco_tables: RATE_PU0_RT, package_parquet: RATE_PU0_PKG, verify: RATE_PU0_VER}
+approved_resources:            # sha256 of the Pandora settings and photon likelihood (same in reco:20261106 and reco:20261127)
+  pandora_settings: 87c1f0ae82069b4233e0e1be66f1b4eac1491e307679cfdd65871b9a5ae46a2f
+  photon_likelihood: 40114152283839ddd8156c47b3c04fdfcd84cbe1e500b48e5f3da33b423e3cbc
+registry_digests:              # pushed 2026-11-27 (testbed/public_release_2026-11-27/reco_image/PUBLISH.md)
+  ghcr.io/opendatadetector/colliderml-reco:20261127: "sha256:8ff91c13f21353ff04ee6924427a61dd3df523afa06b652072f7420efea24dd9"
+campaigns:
+  full_pileup:
+    configs:
+      digitization: configs_production/full_pileup/ttbar/v23/digitization_config.yaml
+      pandora_reco: configs_production/full_pileup/ttbar/v23/pandora_reco_config.yaml
+      reco_tables: configs_production/full_pileup/ttbar/v23/reco_tables_config.yaml
+      package_parquet: configs_production/full_pileup/ttbar/v23/package_parquet_config.yaml
+    parents: [edm4hep.root, generator_particles]
+    carried: [particles]
+  hard_scatter:
+    configs:
+      digitization: configs_production/hard_scatter/ttbar/v23/digitization_config.yaml
+      pandora_reco: configs_production/hard_scatter/ttbar/v23/pandora_reco_config.yaml
+      reco_tables: configs_production/hard_scatter/ttbar/v23/reco_tables_config.yaml
+      package_parquet: configs_production/hard_scatter/ttbar/v23/package_parquet_config.yaml
+    parents: [edm4hep.root, generator_particles]
+    carried: [particles]

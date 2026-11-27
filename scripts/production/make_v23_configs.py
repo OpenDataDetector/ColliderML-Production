@@ -10,7 +10,7 @@ v23 = v22 rerun from the tracking stage with (Daniel, 2026-11-21):
     generator_particles and vertices packaged, PU200 1000 chunks of 100 (events 0-99,999);
   * a provenance record per run and stage, commit must be on a pushed branch,
     .git_commit_success written by the packaging stage only;
-  * Pandora in the optimised reco image (reco:20261127, Daniel 2026-11-27; same output as reco:20261106);
+  * Pandora in the published optimised reco image colliderml-reco:20261127 (Daniel 2026-11-27);
   * all outputs under data/ColliderML/staging/simulation (VERIFICATION_PLAN_v3_1 II.0);
     publication is a later, separate rename.
 Job sizing, images, events, threads and every other physics setting are copied from the parent.
@@ -133,12 +133,14 @@ def sub_once(pattern, repl, text, name):
 
 SIM_IMAGE = "localhost/colliderml/sw:pr-8-vtxlinks-20261121b"   # sw:pr-8 + VertexTrackLinkWriter (image/vertex_track_links)
 SIM_TARBALL = "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/images/sw_pr8_vtxlinks_20261121b.tar"
-# Pandora (Daniel, 2026-11-27): the optimised Pandora build, equal to reco:20261106 on 1,817 validation events
-# (testbed/public_release_2026-11-27/reco_image/validation/RESULTS.md), about 22 s per PU200 event instead of
-# about 15 min. Local tag until ghcr.io/opendatadetector/colliderml-reco:20261127 is pushed; the launch record
-# binds the full image id (and the registry digest once pushed). Simulation inputs and ddsim are unchanged.
-PANDORA_IMAGE = "localhost/colliderml/reco:20261127"
-PANDORA_TARBALL = "/global/cfs/cdirs/m4958/usr/danieltm/ColliderML/images/colliderml_reco_20261127.tar"
+# Pandora (Daniel, 2026-11-27): the optimised Pandora build, published as
+# ghcr.io/opendatadetector/colliderml-reco:20261127 (manifest digest
+# sha256:8ff91c13f21353ff04ee6924427a61dd3df523afa06b652072f7420efea24dd9, image id a61ba905..., ECAL gap
+# correction off, image/colliderml-reco/), equal to reco:20261106 on 1,817 validation events
+# (image/colliderml-reco/validation/RESULTS.md), about 22 s per PU200 event instead of about 15 min. There is no
+# archive of this build: the image is taken from the podman-hpc store; the launch record binds its full id and
+# the registry digest. Simulation inputs and ddsim are unchanged.
+PANDORA_IMAGE = "ghcr.io/opendatadetector/colliderml-reco:20261127"
 
 
 def build(src, dst, kind, base):
@@ -155,7 +157,7 @@ def build(src, dst, kind, base):
         t = sub_once(r'^(\s*)container_tarball: ".*sw_pr8_image.tar"$', lambda m: f'{m.group(1)}container_tarball: "{SIM_TARBALL}"', t, dst)
     if kind == "pandora":
         t = sub_once(r'^(\s*)container: "localhost/colliderml/reco:20261106"$', lambda m: f'{m.group(1)}container: "{PANDORA_IMAGE}"', t, dst)
-        t = sub_once(r'^(\s*)container_tarball: ".*colliderml_reco_20261106.tar"$', lambda m: f'{m.group(1)}container_tarball: "{PANDORA_TARBALL}"', t, dst)
+        t = sub_once(r'^\s*container_tarball: ".*colliderml_reco_20261106.tar"\n', '', t, dst)   # no archive of this build
     for key in ("output_base_dir", "input_base_dir"):
         t = re.sub(rf'^(\s*){key}: "(?:{re.escape(ST)}|{re.escape(PUB)})".*$',
                    lambda m: f'{m.group(1)}{key}: "{base}"', t, flags=re.M)

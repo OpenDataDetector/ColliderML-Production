@@ -249,6 +249,9 @@ def freeze(spec_path: str, out: str) -> int:
                 problems.append(f"{p}: stage/campaign {eff.get('stage')}/{eff.get('campaign')} != {stage}/{cname}")
             import cli_utils
             container, tarball = cli_utils.resolve_stage_container(eff, stage)
+            override = ((eff.get("common") or {}).get("stage_containers") or {}).get(stage) or {}
+            if override.get("container"):          # as run_runs_interactive.sh: the override's own archive or none
+                tarball = override.get("container_tarball")
             cr["stages"][stage] = {"config": str(p), "config_sha256": sha256_file(p),
                                    "effective_config_sha256": rp.effective_config_sha256(eff),
                                    "container": container, "tarball": tarball}
