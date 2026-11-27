@@ -7,7 +7,7 @@ stage: "pandora_reco"
 
 events: -1                          # all events of the run
 # k4run is single-threaded. The run is split into this many slices, one process each.
-# A process needs about 2 GB without pile-up and about 11 GB per event at pile-up 200.
+# A process needs about 2 GB without pile-up and about 6 GB at pile-up 200.
 processes: 1
 merge_slices: false                 # reco_tables reads the slices directly
 input_name: sim_with_tracks.root

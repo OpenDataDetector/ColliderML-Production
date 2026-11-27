@@ -19,12 +19,12 @@
 # Environment variables:
 #   OUTPUT_DIR         host output directory (default: ./output), mounted as /output
 #   CACHE_DIR          host cache directory (default: <repo>/.cache), mounted as /cache;
-#                      holds the Geant4 datasets (about 2 GB) and extra Python packages
+#                      holds the Geant4 datasets (about 2 GB), downloaded on the first run
 #   SEED               random seed (default: 42)
 #   RUN_ID             run subdirectory under <output>/runs (default: 0)
 #   SIM_IMAGE          sim image (CONTAINER_IMAGE is accepted as an older name)
 #   RECO_IMAGE         reco image
-#   CONTAINER_RUNTIME  docker, podman or podman-hpc (default: the first one found)
+#   CONTAINER_RUNTIME  docker, podman-hpc or podman (default: the first one found)
 #   STAGE_NAME         label in <output>/pipeline_timing.csv (default: the script name)
 # =============================================================================
 
@@ -63,7 +63,9 @@ if [ ! -f "$REPO_ROOT/scripts/$STAGE_SCRIPT" ]; then
 fi
 
 if [ -z "${CONTAINER_RUNTIME:-}" ]; then
-    for candidate in docker podman podman-hpc; do
+    # podman-hpc before podman: where the wrapper exists, plain podman is on PATH too
+    # but does not see the migrated images
+    for candidate in docker podman-hpc podman; do
         if command -v "$candidate" >/dev/null 2>&1; then
             CONTAINER_RUNTIME="$candidate"
             break
@@ -71,7 +73,7 @@ if [ -z "${CONTAINER_RUNTIME:-}" ]; then
     done
 fi
 if [ -z "${CONTAINER_RUNTIME:-}" ]; then
-    echo "ERROR: no container runtime found (looked for docker, podman, podman-hpc)" >&2
+    echo "ERROR: no container runtime found (looked for docker, podman-hpc, podman)" >&2
     exit 1
 fi
 

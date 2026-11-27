@@ -19,13 +19,13 @@
 #   --threads N           threads for Geant4 and ACTS (default: 2, the minimum: with one
 #                         thread the ddsim of sw:pr-8 writes every event twice)
 #   --pandora-processes N concurrent Pandora processes (default: 1). One process needs
-#                         about 2 GB without pile-up, about 11 GB per event at pile-up 200
+#                         about 2 GB without pile-up, about 6 GB at pile-up 200
 #   --seed N              random seed (default: 42)
 #   --output DIR          output directory (default: ./output)
 #   --cache DIR           cache directory (default: <repo>/.cache)
 #   --sim-image IMAGE     sim image (default: scripts/cli/docker_images.env)
 #   --reco-image IMAGE    reco image (default: scripts/cli/docker_images.env)
-#   --runtime NAME        docker, podman or podman-hpc (default: the first one found)
+#   --runtime NAME        docker, podman-hpc or podman (default: the first one found)
 #   --from STAGE          start at this stage (earlier outputs must exist)
 #   --to STAGE            stop after this stage
 #   --list-stages         print the stages of the channel and exit
@@ -58,7 +58,7 @@ TO_STAGE=""
 LIST_STAGES=0
 
 need_value() {
-    if [ $# -lt 2 ]; then
+    if [ $# -lt 2 ] || [ -z "$2" ]; then
         echo "ERROR: $1 needs a value" >&2
         exit 1
     fi

@@ -94,7 +94,8 @@ def test_packaging_and_digitisation_agree_on_links(channel):
 
 def test_invalid_options_are_rejected():
     for args in (["--from", "nonsense"], ["--events", "ten"], ["--events", "0"],
-                 ["--pandora-processes", "0"], ["--from", "digitization", "--to", "simulation"]):
+                 ["--pandora-processes", "0"], ["--threads", ""], ["--events"],
+                 ["--from", "digitization", "--to", "simulation"]):
         result = _pipeline("--channel", "ttbar", *args)
         assert result.returncode != 0, args
         assert result.stderr.startswith("ERROR"), args
