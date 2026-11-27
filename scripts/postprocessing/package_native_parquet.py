@@ -476,6 +476,28 @@ def released_particles(truth_dir: Path, start_event: int, end_event: int) -> tup
 VERTEX_LINKS = False   # set from the config key vertex_links (v23: true)
 
 
+def resolve_vertex_links(setting, run_dirs: list[Path]) -> bool:
+    """vertex_links config value -> bool. "auto" attaches the links when every run has the
+    link file digitisation writes with the patched sim image, and leaves them out when no
+    run has it; a mix is an error."""
+    if isinstance(setting, str):
+        value = setting.strip().lower()
+        if value in ("true", "false"):
+            return value == "true"
+        if value != "auto":
+            raise ValueError(f"vertex_links must be true, false or auto, not {setting!r}")
+        have = [(d / VERTEX_LINKS_CSV).exists() for d in run_dirs]
+        if any(have) and not all(have):
+            missing = [d.name for d, h in zip(run_dirs, have) if not h]
+            raise RuntimeError(f"vertex_links: auto, but {VERTEX_LINKS_CSV} is missing in runs {missing[:10]}")
+        if not any(have):
+            logger.warning("vertex_links: auto and no run has %s: reco/vertices is written without "
+                           "track_ids, track_weights, truth_interaction and truth_interaction_dz",
+                           VERTEX_LINKS_CSV)
+        return all(have) and bool(have)
+    return bool(setting)
+
+
 def _read_run_table(run_dir: Path, obj: str) -> pa.Table | None:
     """Read a run's single native parquet file for one object."""
     if obj == "vertices":
@@ -732,6 +754,8 @@ def main() -> None:
     parser.add_argument("--output", "-o", default=None, help="Override output_base_dir")
     parser.add_argument("--output-subdir", default=None, help="Ignored; accepted for run_stage compatibility")
     parser.add_argument("--seed", default=None, help="Ignored; accepted for run_stage compatibility")
+    parser.add_argument("--run-size", type=int, default=None, help="Override run_size (events per run)")
+    parser.add_argument("--chunk-size", type=int, default=None, help="Override chunk_size (events per output file)")
     args = parser.parse_args()
 
     logging.basicConfig(
@@ -745,17 +769,26 @@ def main() -> None:
     campaign = config["campaign"]
     dataset = config["dataset"]
     version = config["version"]
-    run_size = int(config["run_size"])
-    chunk_size = int(config["chunk_size"])
+    run_size = int(args.run_size if args.run_size is not None else config["run_size"])
+    chunk_size = int(args.chunk_size if args.chunk_size is not None else config["chunk_size"])
     objects = list(config.get("objects", list(OBJECT_LAYOUT)))
     row_group_size = config.get("row_group_size")
     compression = config.get("compression", "snappy")
     max_run = config.get("max_run")
 
-    runs_dir = Path(config["input_base_dir"]) / campaign / dataset / version / "runs"
     dataset_base = f"{campaign}/{dataset}/{version}"
     dataset_name_dot = dataset_base.replace("/", ".")
-    out_base = Path(args.output or config["output_base_dir"]) / dataset_base / "parquet"
+    # runs_dir / parquet_dir (optional) name the two directories directly, for layouts
+    # without <base>/<campaign>/<dataset>/<version>/ (the docker pipeline). They take
+    # precedence over input_base_dir, output_base_dir and --output.
+    if config.get("runs_dir"):
+        runs_dir = Path(config["runs_dir"])
+    else:
+        runs_dir = Path(config["input_base_dir"]) / campaign / dataset / version / "runs"
+    if config.get("parquet_dir"):
+        out_base = Path(config["parquet_dir"])
+    else:
+        out_base = Path(args.output or config["output_base_dir"]) / dataset_base / "parquet"
 
     run_dirs = discover_run_dirs(runs_dir, max_run)
     logger.info(
@@ -769,7 +802,7 @@ def main() -> None:
     remap_particle_ids = bool(config.get("remap_particle_ids", False))
     sim_input_name = config.get("sim_input_name", "edm4hep.root")
     global VERTEX_LINKS, DROP_COLUMNS
-    VERTEX_LINKS = bool(config.get("vertex_links", False))
+    VERTEX_LINKS = resolve_vertex_links(config.get("vertex_links", False), run_dirs)
     DROP_COLUMNS = {k: list(v) for k, v in (config.get("drop_columns") or {}).items()}
     sort_rows = bool(config.get("sort_by_event_id", False))
     shared_hits_from_hit_ids = bool(config.get("shared_hits_from_hit_ids", False))
