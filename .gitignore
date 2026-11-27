@@ -25,6 +25,7 @@ output/
 **/*.root
 **/*.csv
 **/*.txt
+!image/colliderml-reco/**/*.txt
 **/*.hepmc3
 **/*.hepmc
 **/*.lhe
