@@ -16,7 +16,8 @@
 #   --events N            events to produce (default: the configs' value, 10)
 #   --pileup MU           mean pile-up interactions per event (default: the pythia
 #                         config's value: 0 for ttbar, 10 for higgs_portal)
-#   --threads N           threads for Geant4 and ACTS (default: 1)
+#   --threads N           threads for Geant4 and ACTS (default: 2, the minimum: with one
+#                         thread the ddsim of sw:pr-8 writes every event twice)
 #   --pandora-processes N concurrent Pandora processes (default: 1). One process needs
 #                         about 2 GB without pile-up, about 11 GB per event at pile-up 200
 #   --seed N              random seed (default: 42)
@@ -44,13 +45,13 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 usage() {
-    sed -n '2,38p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+    sed -n '2,39p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
 }
 
 CHANNEL=""
 EVENTS="${EVENTS:-}"
 PILEUP=""
-THREADS=1
+THREADS=2
 PANDORA_PROCESSES=1
 FROM_STAGE=""
 TO_STAGE=""
@@ -96,6 +97,11 @@ for name in EVENTS PILEUP THREADS PANDORA_PROCESSES; do
         exit 1
     fi
 done
+
+if [ "$THREADS" -lt 2 ]; then
+    echo "ERROR: --threads must be 2 or more (with one thread the ddsim of sw:pr-8 writes every event twice)" >&2
+    exit 1
+fi
 
 CONFIG_BASE="configs_development/docker_test/$CHANNEL"
 if [ ! -d "$REPO_ROOT/$CONFIG_BASE" ]; then

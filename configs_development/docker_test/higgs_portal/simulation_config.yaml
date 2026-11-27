@@ -10,7 +10,7 @@ common:
 
 events: 10
 input_filename: merged_events.hepmc3
-threads: 1
+threads: 2                          # 2 or more: with one thread the sw:pr-8 ddsim writes every event twice
 minimalKineticEnergy: 0.1           # GeV, threshold for keeping a particle in the truth record
 truthParticleHandler: "Geant4FullTruthParticleHandler"
 

@@ -29,6 +29,7 @@ def _load_sim_util(name):
 
 
 want_vertex_track_links = _load_sim_util("vertex_link_support").want_vertex_track_links
+sim_output_check = _load_sim_util("sim_output_check")
 
 CHANNELS = sorted(p.name for p in CONFIGS.iterdir() if p.is_dir())
 COMMON_STAGES = ["simulation", "digitization", "particles_full", "pandora_reco", "reco_tables", "package_parquet"]
@@ -94,6 +95,54 @@ def test_unknown_stage_and_channel_are_rejected():
     assert _pipeline("--channel", "ttbar", "--from", "nonsense").returncode != 0
     assert _pipeline("--channel", "nonsense").returncode != 0
     assert _pipeline("--channel", "ttbar", "--events", "ten").returncode != 0
+
+
+def test_single_thread_is_rejected():
+    result = _pipeline("--channel", "ttbar", "--threads", "1")
+    assert result.returncode != 0
+    assert "2 or more" in result.stderr
+    for channel in CHANNELS:
+        sim = yaml.safe_load((CONFIGS / channel / "simulation_config.yaml").read_text())
+        assert sim["threads"] >= 2
+
+
+def test_duplicated_event_numbers():
+    assert sim_output_check.duplicated_event_numbers([0, 2, 1, 3]) == []
+    assert sim_output_check.duplicated_event_numbers([0, 0, 1, 1, 2]) == [0, 1]
+    assert sim_output_check.duplicated_event_numbers([]) == []
+
+
+class _FakeSimFile:
+    """Stands in for uproot.open(<ddsim file>): one array per event, as podio stores EventHeader."""
+
+    def __init__(self, numbers):
+        self._numbers = numbers
+        self.num_entries = len(numbers)
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+    def __getitem__(self, key):
+        assert key in ("events", sim_output_check.EVENT_NUMBER_BRANCH)
+        return self
+
+    def array(self, library):
+        import numpy as np
+        return np.array([np.array([n], dtype=np.uint64) for n in self._numbers], dtype=object)
+
+
+def test_check_unique_event_numbers(monkeypatch):
+    uproot = pytest.importorskip("uproot")
+    monkeypatch.setattr(uproot, "open", lambda path: _FakeSimFile([0, 2, 1]))
+    assert sim_output_check.check_unique_event_numbers("edm4hep.root") == 3
+    monkeypatch.setattr(uproot, "open", lambda path: _FakeSimFile([]))
+    assert sim_output_check.check_unique_event_numbers("edm4hep.root") == 0
+    monkeypatch.setattr(uproot, "open", lambda path: _FakeSimFile([0, 0, 1, 1]))
+    with pytest.raises(sim_output_check.DuplicateEventsError, match="4 entries but 2 distinct"):
+        sim_output_check.check_unique_event_numbers("edm4hep.root")
 
 
 @pytest.mark.parametrize("setting,available,expected", [

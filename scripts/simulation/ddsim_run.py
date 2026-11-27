@@ -8,6 +8,7 @@ import traceback
 from acts.examples.odd import getOpenDataDetectorDirectory
 from utils.app_logging import setup_logging, TimingRecorder
 from utils.config import create_base_parser, load_config
+from utils.sim_output_check import DuplicateEventsError, check_unique_event_numbers
 
 def parse_args():
     """Parse command line arguments"""
@@ -352,9 +353,15 @@ def main():
         with timer.record("DD4hep Simulation"):
             run_ddsim(input_path, output_path, config, logger)
 
+        check_unique_event_numbers(output_path)
         logger.info("DD4hep simulation completed successfully")
         logger.info(f"Output file: {output_path}")
 
+    except DuplicateEventsError as e:
+        # Unlike other errors here, this one fails the stage: the file exists and looks
+        # complete, and every later stage would silently work on repeated events.
+        logger.error(str(e))
+        raise SystemExit(1)
     except Exception as e:
         logger.error(f"Fatal error in main: {str(e)}")
         logger.error(traceback.format_exc())
