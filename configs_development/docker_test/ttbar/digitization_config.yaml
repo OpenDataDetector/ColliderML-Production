@@ -1,38 +1,48 @@
-# Docker test: ttbar digitization + reconstruction
+# Docker pipeline, ttbar: tracker digitisation, ACTS tracking and vertexing
+# Paths are container paths: /output is the output directory, /cache the cache directory.
 campaign: "docker_test"
 dataset: "ttbar"
 version: "v1"
 stage: "digitization"
-
-job_config:
-  n_runs: 1
-  runs_per_node: 1
-  time_limit: "00:30:00"
-  qos: "debug"
-  execution_mode: "interactive"
 
 common:
   output_base_dir: "/output"
 
 events: 10
 threads: 1
+parquet_events_per_shard: 100000    # one parquet file per table per run
+parquet_events_per_row_group: 1000
+
+# Tracker digitisation is geometric (segmentation and clustering), as in every
+# ColliderML dataset. The file comes from the OpenDataDetector tree in the image.
+digi_config: /opt/odd/config/odd-digi-geometric-config.json
+
+output_parquet_arrow: true          # tracker_simhits, tracker_hits, particles, tracks, truth_tracks
 digi: true
 reco: true
+seeding_bfield_tesla: 3.0           # seed finder at the ODD solenoid field
+seeding_require_detector_match: true
+seed_min_pt_gev: 0.65
 num_seeds_per_spm: 40
 
+vertexing: true                     # AMVF on the ambiguity-resolved tracks
+vertexing_write_track_info: true
+# Vertex-to-track links need the VertexTrackLinkWriter module, which the public
+# sw:pr-8 image does not have. "auto" writes them when the module is present.
+vertexing_track_links: auto
+
+output_sim_with_tracks: true        # input of the Pandora stage: calo hits, MC particles, ActsTracks
+
+# ROOT summaries: packaging joins the track covariance and fit quality from them.
 output_particles_root: true
 output_measurements_root: true
-
-# Emit ACTS-native parquet (Arrow plugin) directly from digi+reco, replacing the
-# convert_all.py post-processing. Handles merged clusters correctly (merging
-# stays ON), so no NaN particle_id crash. Requires the native-arrow sw image.
-output_parquet_arrow: true
-
 ambi_root_output: true
 ambi_finding_performance: true
 ambi_fitting_performance: true
+write_helix_parameters: true
+performance_metrics: true
 
-# Tracker digitisation: GEOMETRIC is mandatory for every ColliderML dataset
-# (real segmentation + clustering). The code default used to be smearing, which
-# is a gross simplification: no clusters, no angle dependence, no merged hits.
-digi_config: /opt/odd/config/odd-digi-geometric-config.json
+truth_tracking: true
+truth_tracking_fitter: kf
+truth_tracking_prefit: gx2f
+truth_tracking_root_summary: true

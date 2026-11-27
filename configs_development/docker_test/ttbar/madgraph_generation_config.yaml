@@ -1,24 +1,17 @@
-# Docker test: ttbar MadGraph event generation
-# Uses the pre-compiled process from madgraph_init
+# Docker pipeline, ttbar: MadGraph event generation and Pythia8 shower
+# Paths are container paths: /output is the output directory, /cache the cache directory.
 campaign: "docker_test"
 dataset: "ttbar"
 version: "v1"
 stage: "madgraph_generation"
 
-job_config:
-  n_runs: 1
-  runs_per_node: 1
-  time_limit: "01:00:00"
-  qos: "debug"
-  execution_mode: "interactive"
-
 common:
   output_base_dir: "/output"
 
-events: 100
+events: 10
 seed: 42
 
-mg_base_path: "/spack/opt/spack/linux-x86_64/madgraph5amc-3.5.9-2n657hx6flmiuuycb33pfqlhhe2dxmcw"
+mg_base_path: "/opt/mg5"            # link to the MadGraph install, made by docker_stage_env.sh
 generation_scratch_dir: "/tmp/mg_scratch"
 
 card_customizations:
@@ -32,8 +25,7 @@ card_customizations:
 
   pythia8_card: {}
 
-# No splitting — keep all events in one file
 splitting_config:
-  enable: false
+  enable: false                     # all events in one file
 
 log_level: "INFO"

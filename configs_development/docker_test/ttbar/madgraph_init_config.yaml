@@ -1,28 +1,19 @@
-# Docker test: ttbar MadGraph process initialization
-# Compiles the matrix elements for p p > t t~ [QCD] (no extra jets)
+# Docker pipeline, ttbar: MadGraph process p p > t t~ at NLO (no extra jets)
+# Paths are container paths: /output is the output directory, /cache the cache directory.
 campaign: "docker_test"
 dataset: "ttbar"
 version: "v1"
 stage: "madgraph_init"
 
-job_config:
-  n_runs: 1
-  runs_per_node: 1
-  time_limit: "04:00:00"
-  qos: "debug"
-  execution_mode: "interactive"
-
 common:
   output_base_dir: "/output"
 
-# MadGraph process: ttbar at NLO, NO extra jets
 mg_model: "sm-no_b_mass"
 mg_definitions: []
 mg_generate_command: |
   generate p p > t t~ [QCD]
 
-# MadGraph paths (inside the container)
-mg_base_path: "/spack/opt/spack/linux-x86_64/madgraph5amc-3.5.9-2n657hx6flmiuuycb33pfqlhhe2dxmcw"
+mg_base_path: "/opt/mg5"            # link to the MadGraph install, made by docker_stage_env.sh
 generation_scratch_dir: "/tmp/mg_scratch"
 
 card_customizations:

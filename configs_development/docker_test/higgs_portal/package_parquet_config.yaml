@@ -1,0 +1,35 @@
+# Docker pipeline, Higgs portal: final parquet tables under /output/parquet
+# Paths are container paths: /output is the output directory, /cache the cache directory.
+campaign: "docker_test"
+dataset: "higgs_portal"
+version: "v1"
+stage: "package_parquet"
+
+runs_dir: /output/runs
+parquet_dir: /output/parquet
+
+run_size: 10                        # events per run; the pipeline sets both to the event count
+chunk_size: 10                      # events per output file
+
+objects:
+  - particles_full                  # written as truth/particles; must come before vertices
+  - generator_particles
+  - tracker_simhits
+  - tracker_hits
+  - tracks
+  - truth_tracks
+  - calo_cells
+  - calo_clusters
+  - pfos
+  - vertices
+
+remap_particle_ids: true            # ACTS particle ids -> MCParticle index, the id every table uses
+sim_input_name: edm4hep.root
+track_covariance: true              # 5x5 covariance and fit quality from the ROOT summaries
+compression: "snappy"
+row_group_size: 100000
+sort_by_event_id: true
+vertex_links: auto                  # attach the links when digitisation wrote vertex_track_links.csv
+drop_columns:
+  tracker_hits: [time, var_time]    # geometric digitisation measures no time
+shared_hits_from_hit_ids: true

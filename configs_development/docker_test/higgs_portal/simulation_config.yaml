@@ -1,15 +1,9 @@
-# Docker test: Higgs portal detector simulation
+# Docker pipeline, Higgs portal: Geant4 simulation of the OpenDataDetector (ddsim)
+# Paths are container paths: /output is the output directory, /cache the cache directory.
 campaign: "docker_test"
 dataset: "higgs_portal"
 version: "v1"
 stage: "simulation"
-
-job_config:
-  n_runs: 1
-  runs_per_node: 1
-  time_limit: "00:30:00"
-  qos: "debug"
-  execution_mode: "interactive"
 
 common:
   output_base_dir: "/output"
@@ -17,10 +11,10 @@ common:
 events: 10
 input_filename: merged_events.hepmc3
 threads: 1
-minimalKineticEnergy: 0.1
+minimalKineticEnergy: 0.1           # GeV, threshold for keeping a particle in the truth record
 truthParticleHandler: "Geant4FullTruthParticleHandler"
 
-# Vertex smearing (already applied during Pythia merge, set to zero here)
+# The beam spot is applied in the Pythia merge stage, not here.
 vertexOffset: [0.0, 0.0, 0.0, 0.0]
 vertexSigma: [0.0, 0.0, 0.0, 0.0]
 

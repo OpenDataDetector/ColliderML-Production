@@ -1,0 +1,11 @@
+# Docker pipeline, ttbar: truth particle tables from the Geant4 output
+# Paths are container paths: /output is the output directory, /cache the cache directory.
+campaign: "docker_test"
+dataset: "ttbar"
+version: "v1"
+stage: "particles_full"
+
+events: -1                          # all events of the run
+sim_input_name: edm4hep.root
+native_particles: particles
+generator_particles: hard_scatter   # also write the generator history of the hard scatter
