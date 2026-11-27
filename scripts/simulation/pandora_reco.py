@@ -301,6 +301,8 @@ def main():
         parser.add_argument("--input-file", type=Path, default=None,
                             help="Input EDM4hep file (default: {output_dir}/sim_with_tracks.root "
                                  "if present, else {output_dir}/edm4hep.root)")
+        parser.add_argument("--processes", type=int, default=None,
+                            help="Concurrent k4run processes (overrides the config key)")
         args = parser.parse_args()
         config = load_config(args)
 

@@ -206,7 +206,14 @@ def convert_run(run_dir: Path, args) -> tuple[Path, int]:
         raise FileNotFoundError(sim_file)
     tree = uproot.open(sim_file)["events"]
     stop = None if args.events < 0 else args.events
-    br = ([f"{M}/{M}.PDG"] + [f"{M}/{M}.{b}" for b in FLOAT_BRANCHES.values()] + [f"{M}/{M}.{b}" for b in INT_BRANCHES.values()]
+    # EDM4hep dropped MCParticle.colorFlow after the Release 1 simulations (the sw:pr-8 ddsim
+    # writes none): color_a / color_b are then 0, the value of a particle without colour flow.
+    present = set(tree[M].keys())
+    int_branches = {k: b for k, b in INT_BRANCHES.items() if f"{M}.{b}" in present}
+    if len(int_branches) < len(INT_BRANCHES):
+        logger.info("%s has no %s: written as 0", sim_file.name,
+                    ", ".join(f"{M}.{b}" for k, b in INT_BRANCHES.items() if k not in int_branches))
+    br = ([f"{M}/{M}.PDG"] + [f"{M}/{M}.{b}" for b in FLOAT_BRANCHES.values()] + [f"{M}/{M}.{b}" for b in int_branches.values()]
           + [f"{M}/{M}.parents_begin", f"{M}/{M}.parents_end", f"_{M}_parents/_{M}_parents.index",
              f"{M}/{M}.daughters_begin", f"{M}/{M}.daughters_end", f"_{M}_daughters/_{M}_daughters.index"])
     a = tree.arrays(br, entry_stop=stop, library="np")
@@ -231,7 +238,8 @@ def convert_run(run_dir: Path, args) -> tuple[Path, int]:
         g = lambda name: a[f"{M}/{M}.{name}"][e]
         n = len(g("PDG"))
         f = {k: np.asarray(g(b), dtype=np.float32) for k, b in FLOAT_BRANCHES.items()}
-        ints = {k: np.asarray(g(b), dtype=np.int32) for k, b in INT_BRANCHES.items()}
+        ints = {k: np.asarray(g(b), dtype=np.int32) if k in int_branches else np.zeros(n, np.int32)
+                for k, b in INT_BRANCHES.items()}
         parents = _links(g("parents_begin"), g("parents_end"), a[f"_{M}_parents/_{M}_parents.index"][e])
         daughters = _links(g("daughters_begin"), g("daughters_end"), a[f"_{M}_daughters/_{M}_daughters.index"][e])
         p2 = f["px"].astype(np.float64) ** 2 + f["py"].astype(np.float64) ** 2 + f["pz"].astype(np.float64) ** 2
