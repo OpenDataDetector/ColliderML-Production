@@ -26,6 +26,7 @@ objects:
 remap_particle_ids: true            # ACTS particle ids -> MCParticle index, the id every table uses
 sim_input_name: edm4hep.root
 track_covariance: true              # 5x5 covariance and fit quality from the ROOT summaries
+strict_joins: true                  # fail if a track has no covariance entry or an event has no row
 compression: "snappy"
 row_group_size: 100000
 sort_by_event_id: true

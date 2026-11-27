@@ -549,14 +549,19 @@ def package_chunk(
     shared_hits_from_hit_ids: bool = False,
     manifest_path: Path | None = None,
     vertex_truth_dir: Path | None = None,
+    strict_joins: bool = False,
 ) -> None:
     """Write one output file per object for the event window [start_event, end_event].
 
     With ``remap_particle_ids`` the ACTS-native particle ids (0..N-1 per event) are
     rewritten to the edm4hep MCParticle index, the id every other ColliderML table
     uses (see utils/particle_id_map.py). The map is built per run from the run's
-    native particles table and ``<run>/<sim_input_name>``."""
+    native particles table and ``<run>/<sim_input_name>``.
+
+    ``strict_joins`` (always on with a chunk manifest) makes the covariance join fail
+    instead of packaging the table without it, and requires one row per event."""
     t0 = time.time()
+    strict = strict_joins or manifest_path is not None
     expected = end_event - start_event + 1
     logger.info(
         "chunk events %d-%d (runs %d..%d), %d objects",
@@ -662,8 +667,8 @@ def package_chunk(
                     # Join BEFORE the event_id shift, while event_id is still the
                     # run-local number the ROOT summary uses.
                     n_cols = table.num_columns
-                    table = _attach_covariance(table, run_dir, obj, strict=manifest_path is not None)
-                    if manifest_path is not None and obj in COV_SOURCE and table.num_columns == n_cols:
+                    table = _attach_covariance(table, run_dir, obj, strict=strict)
+                    if strict and obj in COV_SOURCE and table.num_columns == n_cols:
                         raise RuntimeError(f"run {abs_run}: {obj} covariance join failed (see warnings)")
                 if remap_particle_ids and obj in ID_COLUMNS:
                     # Also before the shift: the map is keyed by run-local event.
@@ -706,6 +711,9 @@ def package_chunk(
                 "%s: expected %d events in chunk, wrote %d - INCOMPLETE (%s)",
                 obj, expected, events_seen, out_file.name,
             )
+            incomplete.append(obj)
+        if strict and rows != events_seen:
+            logger.error("%s: %d rows for %d events - every event must have exactly one row", obj, rows, events_seen)
             incomplete.append(obj)
         logger.info("wrote %s (rows=%d, events=%d)", out_file.name, rows, events_seen)
 
@@ -835,6 +843,7 @@ def main() -> None:
             shared_hits_from_hit_ids=shared_hits_from_hit_ids,
             manifest_path=manifest_for(start_event),
             vertex_truth_dir=Path(config["vertex_truth_dir"]) if config.get("vertex_truth_dir") else None,
+            strict_joins=bool(config.get("strict_joins", False)),
         )
 
     if release_events:

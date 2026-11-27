@@ -257,8 +257,8 @@ def generate_pileup(output_dir, config, logger):
 
 def find_hard_scatter_file(output_dir, config, explicit_path=None):
     """Find hard scatter file with smart detection."""
-    if explicit_path and explicit_path.exists():
-        return explicit_path
+    if explicit_path and Path(explicit_path).exists():
+        return Path(explicit_path)
     
     # Check config for hard scatter file path
     config_path = getattr(config, 'hard_scatter_file', None)

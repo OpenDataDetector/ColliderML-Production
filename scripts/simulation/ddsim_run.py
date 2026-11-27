@@ -8,7 +8,7 @@ import traceback
 from acts.examples.odd import getOpenDataDetectorDirectory
 from utils.app_logging import setup_logging, TimingRecorder
 from utils.config import create_base_parser, load_config
-from utils.sim_output_check import DuplicateEventsError, check_unique_event_numbers
+from utils.sim_output_check import SimOutputError, check_sim_output
 
 def parse_args():
     """Parse command line arguments"""
@@ -325,6 +325,7 @@ def run_ddsim(input_path, output_path, config, logger=None):
 
 def main():
     timer = None  # Initialize timer to None
+    args = None
     logger = setup_logging() # Setup logger early
     try:
         # Parse arguments and load config
@@ -353,18 +354,14 @@ def main():
         with timer.record("DD4hep Simulation"):
             run_ddsim(input_path, output_path, config, logger)
 
-        check_unique_event_numbers(output_path)
         logger.info("DD4hep simulation completed successfully")
         logger.info(f"Output file: {output_path}")
 
-    except DuplicateEventsError as e:
-        # Unlike other errors here, this one fails the stage: the file exists and looks
-        # complete, and every later stage would silently work on repeated events.
-        logger.error(str(e))
-        raise SystemExit(1)
     except Exception as e:
         logger.error(f"Fatal error in main: {str(e)}")
         logger.error(traceback.format_exc())
+        if getattr(args, "verify_output", False):
+            raise SystemExit(1)
     finally:
         # Ensure the report is written even if errors occur
         if timer:
@@ -373,6 +370,17 @@ def main():
             except Exception as report_e:
                 logger.error(f"Error writing timing report: {str(report_e)}")
                 logger.error(traceback.format_exc())
+
+    # verify_output (config key, off by default): the stage exits non-zero unless the output
+    # file holds each requested event exactly once. The docker pipeline sets it.
+    if getattr(args, "verify_output", False):
+        try:
+            n = check_sim_output(output_path, getattr(args, "events", None))
+            logger.info(f"Output verified: {n} events, each written once")
+        except SimOutputError as e:
+            logger.error(str(e))
+            raise SystemExit(1)
+
 
 if __name__ == "__main__":
     main()

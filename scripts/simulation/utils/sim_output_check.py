@@ -1,4 +1,4 @@
-"""Check of the ddsim output file: every event must be written once.
+"""Check of the ddsim output file: each requested event must be written exactly once.
 
 The ddsim of the sw:pr-8 image writes each event twice when it runs with one thread
 (observed 2026-11-27: 10 events requested, 20 entries, event numbers 0,0,1,1,...).
@@ -15,8 +15,8 @@ import numpy as np
 EVENT_NUMBER_BRANCH = "EventHeader/EventHeader.eventNumber"
 
 
-class DuplicateEventsError(RuntimeError):
-    """The simulation output holds an event number more than once."""
+class SimOutputError(RuntimeError):
+    """The simulation output is missing, unreadable, short, or repeats an event."""
 
 
 def duplicated_event_numbers(event_numbers) -> list[int]:
@@ -25,19 +25,32 @@ def duplicated_event_numbers(event_numbers) -> list[int]:
     return values[counts > 1].tolist()
 
 
-def check_unique_event_numbers(sim_file: Path) -> int:
-    """Raise DuplicateEventsError if ``sim_file`` holds an event number twice.
-
-    Returns the number of entries."""
+def read_event_numbers(sim_file: Path) -> np.ndarray:
+    """Event number of every entry of a podio ROOT file (one EventHeader per entry)."""
     import uproot
 
-    with uproot.open(sim_file) as f:
-        numbers = np.concatenate(f["events"][EVENT_NUMBER_BRANCH].array(library="np")) \
-            if f["events"].num_entries else np.zeros(0, np.int64)
+    try:
+        with uproot.open(sim_file) as f:
+            per_entry = f["events"][EVENT_NUMBER_BRANCH].array(library="np")
+    except Exception as exc:
+        raise SimOutputError(f"{sim_file}: cannot read the event numbers ({type(exc).__name__}: {exc})") from exc
+    if any(len(x) != 1 for x in per_entry):
+        raise SimOutputError(f"{sim_file}: an entry does not have exactly one EventHeader")
+    return np.array([int(x[0]) for x in per_entry], dtype=np.int64)
+
+
+def check_sim_output(sim_file: Path, requested_events=None) -> int:
+    """Raise SimOutputError unless ``sim_file`` holds each event once and, if
+    ``requested_events`` is a positive number, exactly that many. Returns the event count."""
+    numbers = read_event_numbers(sim_file)
     duplicated = duplicated_event_numbers(numbers)
     if duplicated:
-        raise DuplicateEventsError(
+        raise SimOutputError(
             f"{sim_file}: {len(numbers)} entries but {len(np.unique(numbers))} distinct event numbers; "
             f"written more than once: {duplicated[:10]}. With the sw:pr-8 image this happens when "
             "ddsim runs with one thread: set threads to 2 or more.")
+    if len(numbers) == 0:
+        raise SimOutputError(f"{sim_file}: no events")
+    if requested_events and int(requested_events) > 0 and len(numbers) != int(requested_events):
+        raise SimOutputError(f"{sim_file}: {len(numbers)} events, {int(requested_events)} requested")
     return len(numbers)

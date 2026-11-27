@@ -9,12 +9,12 @@ common:
   output_base_dir: "/output"
 
 events: 10
-threads: 1
+threads: 2
 parquet_events_per_shard: 100000    # one parquet file per table per run
 parquet_events_per_row_group: 1000
 
-# Tracker digitisation is geometric (segmentation and clustering), as in every
-# ColliderML dataset. The file comes from the OpenDataDetector tree in the image.
+# Geometric tracker digitisation (segmentation and clustering). The file comes from
+# the OpenDataDetector tree in the image.
 digi_config: /opt/odd/config/odd-digi-geometric-config.json
 
 output_parquet_arrow: true          # tracker_simhits, tracker_hits, particles, tracks, truth_tracks

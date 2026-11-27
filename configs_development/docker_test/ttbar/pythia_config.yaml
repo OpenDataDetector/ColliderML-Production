@@ -14,7 +14,8 @@ merge: true
 poisson_sample: true
 poisson_buffer_sigma: 5.0
 
-# No hard_process: the hard scatter is the MadGraph output (events.hepmc.gz).
+# No hard_process: the hard scatter is the MadGraph output of run 0.
+hard_scatter_file: /output/runs/all/0/events.hepmc.gz
 
 vertex_sigma_xy: 0.0125             # mm
 vertex_sigma_z: 55.5                # mm

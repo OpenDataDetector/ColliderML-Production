@@ -89,12 +89,16 @@ def test_packaging_and_digitisation_agree_on_links(channel):
     # the vertex truth links read truth/particles, which must be written first
     assert package["objects"].index("particles_full") < package["objects"].index("vertices")
     assert package["run_size"] == package["chunk_size"] == digi["events"]
+    assert package["strict_joins"] is True
 
 
-def test_unknown_stage_and_channel_are_rejected():
-    assert _pipeline("--channel", "ttbar", "--from", "nonsense").returncode != 0
+def test_invalid_options_are_rejected():
+    for args in (["--from", "nonsense"], ["--events", "ten"], ["--events", "0"],
+                 ["--pandora-processes", "0"], ["--from", "digitization", "--to", "simulation"]):
+        result = _pipeline("--channel", "ttbar", *args)
+        assert result.returncode != 0, args
+        assert result.stderr.startswith("ERROR"), args
     assert _pipeline("--channel", "nonsense").returncode != 0
-    assert _pipeline("--channel", "ttbar", "--events", "ten").returncode != 0
 
 
 def test_single_thread_is_rejected():
@@ -104,6 +108,39 @@ def test_single_thread_is_rejected():
     for channel in CHANNELS:
         sim = yaml.safe_load((CONFIGS / channel / "simulation_config.yaml").read_text())
         assert sim["threads"] >= 2
+        assert sim["verify_output"] is True
+
+
+def test_output_directory_with_a_run_is_refused(tmp_path):
+    (tmp_path / "runs").mkdir()
+    result = _pipeline("--channel", "ttbar", "--output", str(tmp_path), "--runtime", "true")
+    assert result.returncode != 0
+    assert "already holds a run" in result.stderr
+
+
+def test_stages_reach_the_runtime_as_separate_arguments(tmp_path):
+    """With `echo` as the runtime, each stage prints its container command line."""
+    result = _pipeline("--channel", "higgs_portal", "--output", str(tmp_path / "my out"), "--cache",
+                       str(tmp_path / "cache"), "--runtime", "echo", "--events", "3", "--pileup", "5",
+                       "--pandora-processes", "2")
+    assert result.returncode == 0, result.stderr
+    lines = [line for line in result.stdout.splitlines() if " stage sim " in line or " stage reco " in line]
+    tails = [line.split(" stage ", 1)[1] for line in lines]
+    assert tails[0] == ("sim pythia_generation simulation/pythia_gen.py "
+                        "configs_development/docker_test/higgs_portal/pythia_config.yaml 0 42 --events 3 --pileup 5")
+    assert tails[1].endswith("simulation_config.yaml 0 42 --events 3 --threads 2")
+    assert tails[3].endswith("particles_full_config.yaml 0 42")
+    assert tails[4].startswith("reco pandora_reco ") and tails[4].endswith("--processes 2")
+    assert tails[5].startswith("reco reco_tables ")
+    assert tails[6].endswith("package_parquet_config.yaml 0 42 --run-size 3 --chunk-size 3")
+    assert f"-v {tmp_path / 'my out'}:/output" in result.stdout
+
+
+def test_ttbar_pythia_reads_the_madgraph_output_in_place():
+    cfg = yaml.safe_load((CONFIGS / "ttbar" / "pythia_config.yaml").read_text())
+    # madgraph_gen.py stages the unsplit file of run 0 here
+    assert cfg["hard_scatter_file"] == "/output/runs/all/0/events.hepmc.gz"
+    assert "hard_process" not in cfg
 
 
 def test_duplicated_event_numbers():
@@ -113,11 +150,10 @@ def test_duplicated_event_numbers():
 
 
 class _FakeSimFile:
-    """Stands in for uproot.open(<ddsim file>): one array per event, as podio stores EventHeader."""
+    """Stands in for uproot.open(<ddsim file>): one array per entry, as podio stores EventHeader."""
 
     def __init__(self, numbers):
         self._numbers = numbers
-        self.num_entries = len(numbers)
 
     def __enter__(self):
         return self
@@ -131,18 +167,44 @@ class _FakeSimFile:
 
     def array(self, library):
         import numpy as np
-        return np.array([np.array([n], dtype=np.uint64) for n in self._numbers], dtype=object)
+        out = np.empty(len(self._numbers), dtype=object)
+        for i, n in enumerate(self._numbers):
+            out[i] = np.array(n if isinstance(n, list) else [n], dtype=np.uint64)
+        return out
 
 
-def test_check_unique_event_numbers(monkeypatch):
+@pytest.mark.parametrize("numbers,requested,message", [
+    ([0, 0, 1, 1], 2, "4 entries but 2 distinct"),
+    ([], 2, "no events"),
+    ([0, 1], 3, "2 events, 3 requested"),
+    ([0, [1, 2]], None, "exactly one EventHeader"),
+])
+def test_check_sim_output_failures(monkeypatch, numbers, requested, message):
+    uproot = pytest.importorskip("uproot")
+    monkeypatch.setattr(uproot, "open", lambda path: _FakeSimFile(numbers))
+    with pytest.raises(sim_output_check.SimOutputError, match=message):
+        sim_output_check.check_sim_output("edm4hep.root", requested)
+
+
+def test_check_sim_output_accepts_complete_files(monkeypatch):
     uproot = pytest.importorskip("uproot")
     monkeypatch.setattr(uproot, "open", lambda path: _FakeSimFile([0, 2, 1]))
-    assert sim_output_check.check_unique_event_numbers("edm4hep.root") == 3
-    monkeypatch.setattr(uproot, "open", lambda path: _FakeSimFile([]))
-    assert sim_output_check.check_unique_event_numbers("edm4hep.root") == 0
-    monkeypatch.setattr(uproot, "open", lambda path: _FakeSimFile([0, 0, 1, 1]))
-    with pytest.raises(sim_output_check.DuplicateEventsError, match="4 entries but 2 distinct"):
-        sim_output_check.check_unique_event_numbers("edm4hep.root")
+    assert sim_output_check.check_sim_output("edm4hep.root", 3) == 3
+    assert sim_output_check.check_sim_output("edm4hep.root") == 3
+    assert sim_output_check.check_sim_output("edm4hep.root", -1) == 3
+
+
+def test_check_sim_output_reports_unreadable_files(tmp_path):
+    pytest.importorskip("uproot")
+    with pytest.raises(sim_output_check.SimOutputError, match="cannot read"):
+        sim_output_check.check_sim_output(tmp_path / "missing.root", 2)
+
+
+def test_particles_full_requires_the_status_words():
+    pytest.importorskip("scipy")
+    pf = pytest.importorskip("convert_particles_full", reason="needs pyarrow and uproot")
+    assert set(pf.OPTIONAL_INT_COLUMNS) == {"color_a", "color_b"}
+    assert {"generator_status", "simulator_status"} <= set(pf.INT_BRANCHES) - set(pf.OPTIONAL_INT_COLUMNS)
 
 
 @pytest.mark.parametrize("setting,available,expected", [

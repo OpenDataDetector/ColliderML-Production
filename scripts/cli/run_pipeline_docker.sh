@@ -97,6 +97,12 @@ for name in EVENTS PILEUP THREADS PANDORA_PROCESSES; do
         exit 1
     fi
 done
+for name in EVENTS PANDORA_PROCESSES; do
+    if [ "${!name}" = 0 ]; then
+        echo "ERROR: ${name,,} must be at least 1" >&2
+        exit 1
+    fi
+done
 
 if [ "$THREADS" -lt 2 ]; then
     echo "ERROR: --threads must be 2 or more (with one thread the ddsim of sw:pr-8 writes every event twice)" >&2
@@ -136,16 +142,31 @@ if [ "$LIST_STAGES" = 1 ]; then
     echo "$STAGE_NAMES"
     exit 0
 fi
+stage_index() {
+    echo "$STAGE_NAMES" | grep -nxF -- "$1" | cut -d: -f1
+}
 for name in "$FROM_STAGE" "$TO_STAGE"; do
-    if [ -n "$name" ] && ! echo "$STAGE_NAMES" | grep -qx "$name"; then
+    if [ -n "$name" ] && [ -z "$(stage_index "$name")" ]; then
         echo "ERROR: '$name' is not a stage of channel $CHANNEL. Stages:" >&2
         echo "$STAGE_NAMES" >&2
         exit 1
     fi
 done
+if [ -n "$FROM_STAGE" ] && [ -n "$TO_STAGE" ] && [ "$(stage_index "$FROM_STAGE")" -gt "$(stage_index "$TO_STAGE")" ]; then
+    echo "ERROR: --from $FROM_STAGE comes after --to $TO_STAGE" >&2
+    exit 1
+fi
 
 export OUTPUT_DIR="${OUTPUT_DIR:-$(pwd)/output}"
 export RUN_ID=0
+
+# A run from the first stage needs an output directory without earlier results:
+# stages pick up files by name, so leftovers of another run would be mixed in.
+if [ -z "$FROM_STAGE" ] && { [ -e "$OUTPUT_DIR/runs" ] || [ -e "$OUTPUT_DIR/parquet" ]; }; then
+    echo "ERROR: $OUTPUT_DIR already holds a run (runs/ or parquet/)." >&2
+    echo "  Use a new --output directory, or --from STAGE to rerun part of the chain." >&2
+    exit 1
+fi
 mkdir -p "$OUTPUT_DIR"
 
 # Arguments each stage script gets on top of --config/--output/--output-subdir/--seed.
@@ -175,6 +196,7 @@ echo "  output: $OUTPUT_DIR"
 echo "============================================================"
 
 started=0
+last_stage=""
 [ -z "$FROM_STAGE" ] && started=1
 pipeline_start=$(date +%s)
 
@@ -184,21 +206,17 @@ while IFS='|' read -r stage script config; do
     if [ "$started" = 1 ]; then
         # shellcheck disable=SC2046
         STAGE_NAME="$stage" "$SCRIPT_DIR/run_docker.sh" "$script" "$CONFIG_BASE/$config" $(stage_args "$stage") </dev/null
-
-        if [ "$stage" = madgraph_generation ]; then
-            # madgraph_gen.py stages its unsplit output in runs/all/<run>/; the Pythia
-            # merge reads the hard scatter from the run directory.
-            mkdir -p "$OUTPUT_DIR/runs/$RUN_ID"
-            cp "$OUTPUT_DIR/runs/all/$RUN_ID/events.hepmc.gz" "$OUTPUT_DIR/runs/$RUN_ID/events.hepmc.gz"
-        fi
+        last_stage="$stage"
     fi
     [ "$stage" = "$TO_STAGE" ] && break
 done <<< "$STAGES"
 
 echo ""
 echo "============================================================"
-echo "Pipeline finished for $CHANNEL in $(( $(date +%s) - pipeline_start )) s"
-echo "  tables:  $OUTPUT_DIR/parquet"
+echo "Pipeline finished for $CHANNEL in $(( $(date +%s) - pipeline_start )) s (last stage: $last_stage)"
+if [ "$last_stage" = package_parquet ]; then
+    echo "  tables:  $OUTPUT_DIR/parquet"
+fi
 echo "  timing:  $OUTPUT_DIR/pipeline_timing.csv"
 echo "  disk:    $(du -sh "$OUTPUT_DIR" 2>/dev/null | cut -f1) in the output directory"
 echo "============================================================"

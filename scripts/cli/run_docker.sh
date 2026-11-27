@@ -86,34 +86,40 @@ CACHE_DIR="$(cd "$CACHE_DIR" && pwd)"
 
 echo "--- $STAGE_NAME: $STAGE_SCRIPT ($ENV_KIND image $IMAGE, $CONTAINER_RUNTIME)"
 
-STAGE_ARGS=""
-for arg in "$@"; do
-    STAGE_ARGS+=" $(printf '%q' "$arg")"
+# Proxy variables set on the host are passed through for the first-run downloads
+# (Geant4 datasets).
+PROXY_ARGS=()
+for name in HTTP_PROXY HTTPS_PROXY NO_PROXY http_proxy https_proxy no_proxy; do
+    if [ -n "${!name:-}" ]; then
+        PROXY_ARGS+=(-e "$name=${!name}")
+    fi
 done
 
-# The proxy variables are passed through for the first-run downloads (Geant4
-# datasets, Python packages) on networks that need them.
+# The stage's settings reach the container as positional parameters of a fixed
+# command, so no value is re-read as shell source.
+# shellcheck disable=SC2016
+IN_CONTAINER='
+    env_kind=$1 stage_name=$2 stage_script=$3 config_path=$4 run_id=$5 seed=$6
+    shift 6
+    source /workspace/scripts/cli/docker_stage_env.sh "$env_kind" || exit 1
+    cd "/workspace/scripts/$(dirname "$stage_script")" || exit 1
+    exec python3 /workspace/scripts/cli/stage_timer.py \
+        --record /output/pipeline_timing.csv --stage "$stage_name" -- \
+        python3 "$(basename "$stage_script")" \
+            --config "/workspace/$config_path" \
+            --output /output/runs \
+            --output-subdir "$run_id" \
+            --seed "$seed" \
+            "$@"
+'
+
 "$CONTAINER_RUNTIME" run --rm \
     -v "$REPO_ROOT":/workspace \
     -v "$OUTPUT_DIR":/output \
     -v "$CACHE_DIR":/cache \
     -e COLLIDERML_CACHE=/cache \
-    -e HTTP_PROXY="${HTTP_PROXY:-}" \
-    -e HTTPS_PROXY="${HTTPS_PROXY:-}" \
-    -e http_proxy="${http_proxy:-}" \
-    -e https_proxy="${https_proxy:-}" \
-    -e NO_PROXY="${NO_PROXY:-}" \
+    "${PROXY_ARGS[@]}" \
     --entrypoint /bin/bash \
     "$IMAGE" \
-    -c "
-        source /workspace/scripts/cli/docker_stage_env.sh $ENV_KIND || exit 1
-        cd /workspace/scripts/$(dirname "$STAGE_SCRIPT")
-        python3 /workspace/scripts/cli/stage_timer.py \
-            --record /output/pipeline_timing.csv --stage $STAGE_NAME -- \
-            python3 $(basename "$STAGE_SCRIPT") \
-                --config /workspace/$CONFIG_PATH \
-                --output /output/runs \
-                --output-subdir $RUN_ID \
-                --seed $SEED \
-                $STAGE_ARGS
-    "
+    -c "$IN_CONTAINER" stage \
+    "$ENV_KIND" "$STAGE_NAME" "$STAGE_SCRIPT" "$CONFIG_PATH" "$RUN_ID" "$SEED" "$@"

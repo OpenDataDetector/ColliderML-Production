@@ -34,7 +34,7 @@ case "$_stage_env_kind" in
         # shellcheck disable=SC1091
         source "$_stage_env_dir/setup_container_env.sh" || return 1
         # shellcheck disable=SC1091
-        source /opt/odd-install/bin/this_odd.sh
+        source /opt/odd-install/bin/this_odd.sh || return 1
         # Tracking geometry, digitisation and seeding configs come from the same ODD
         # tree as the simulation (digi_and_reco.py reads ODD_GEO_DIR).
         export ODD_GEO_DIR=/opt/odd
@@ -45,21 +45,11 @@ case "$_stage_env_kind" in
             ln -s "$_mg5_dir" /opt/mg5
         fi
         unset _mg5_dir
-
-        # scipy is needed by convert_particles_full.py and is not in the image.
-        _pip_target="${COLLIDERML_CACHE:-/cache}/pip"
-        if ! python3 -c "import scipy" 2>/dev/null; then
-            echo "Installing scipy into $_pip_target ..."
-            python3 -m pip install --quiet --target="$_pip_target" scipy \
-                || _stage_env_fail "could not install scipy (needed for the truth particle tables); check network access" || return 1
-            export PYTHONPATH="$_pip_target:${PYTHONPATH:-}"
-        fi
-        unset _pip_target
         ;;
     reco)
         if [ -f /opt/colliderml-reco/env/setup.sh ]; then
             # shellcheck disable=SC1091
-            source /opt/colliderml-reco/env/setup.sh
+            source /opt/colliderml-reco/env/setup.sh || return 1
         else
             # Images built before the setup script existed (localhost/colliderml/reco:20261106).
             for _f in /opt/key4hep-shim.sh /opt/pandora-stack/install/setup_stack.sh /opt/odd-install/bin/this_odd.sh; do
@@ -69,16 +59,17 @@ case "$_stage_env_kind" in
             done
             unset _f
             # shellcheck disable=SC1091
-            source /opt/key4hep-shim.sh
+            source /opt/key4hep-shim.sh || return 1
             # shellcheck disable=SC1091
-            source /opt/pandora-stack/install/setup_stack.sh
+            source /opt/pandora-stack/install/setup_stack.sh || return 1
             # shellcheck disable=SC1091
-            source /opt/odd-install/bin/this_odd.sh
+            source /opt/odd-install/bin/this_odd.sh || return 1
             export K4ODD_PATH=/opt/k4ODD
             export ODD_INSTALL_DIR=/opt/odd-install
             export LD_LIBRARY_PATH="/opt/k4ODD/install/lib:/opt/k4ODD/install/lib64:${LD_LIBRARY_PATH:-}"
             export PYTHONPATH="/opt/k4ODD/install/python:${PYTHONPATH:-}"
         fi
+        command -v k4run >/dev/null || { _stage_env_fail "k4run not found after the reco environment setup"; return 1; }
         ;;
     *)
         _stage_env_fail "unknown stage environment '$_stage_env_kind' (expected sim or reco)" || return 1

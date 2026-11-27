@@ -74,6 +74,7 @@ FLOAT_BRANCHES = {
 }
 INT_BRANCHES = {"generator_status": "generatorStatus", "simulator_status": "simulatorStatus",
                 "color_a": "colorFlow.a", "color_b": "colorFlow.b"}
+OPTIONAL_INT_COLUMNS = ("color_a", "color_b")   # absent from EDM4hep files written after Release 1
 CREATED_IN_SIMULATION_BIT = 30
 RELEASE1_STATUS = (0, 1, 2)  # Geant4 particles, final state, decayed in the generator
 GEN = "generator_particles"
@@ -207,12 +208,16 @@ def convert_run(run_dir: Path, args) -> tuple[Path, int]:
     tree = uproot.open(sim_file)["events"]
     stop = None if args.events < 0 else args.events
     # EDM4hep dropped MCParticle.colorFlow after the Release 1 simulations (the sw:pr-8 ddsim
-    # writes none): color_a / color_b are then 0, the value of a particle without colour flow.
+    # writes none). color_a / color_b are then written as 0: no colour information. The
+    # status words stay required.
     present = set(tree[M].keys())
-    int_branches = {k: b for k, b in INT_BRANCHES.items() if f"{M}.{b}" in present}
-    if len(int_branches) < len(INT_BRANCHES):
-        logger.info("%s has no %s: written as 0", sim_file.name,
-                    ", ".join(f"{M}.{b}" for k, b in INT_BRANCHES.items() if k not in int_branches))
+    absent = [k for k, b in INT_BRANCHES.items() if f"{M}.{b}" not in present]
+    not_optional = [k for k in absent if k not in OPTIONAL_INT_COLUMNS]
+    if not_optional:
+        raise RuntimeError(f"{sim_file}: MCParticles lacks {[INT_BRANCHES[k] for k in not_optional]}")
+    if absent:
+        logger.info("%s has no MCParticles.colorFlow: color_a and color_b written as 0", sim_file.name)
+    int_branches = {k: b for k, b in INT_BRANCHES.items() if k not in absent}
     br = ([f"{M}/{M}.PDG"] + [f"{M}/{M}.{b}" for b in FLOAT_BRANCHES.values()] + [f"{M}/{M}.{b}" for b in int_branches.values()]
           + [f"{M}/{M}.parents_begin", f"{M}/{M}.parents_end", f"_{M}_parents/_{M}_parents.index",
              f"{M}/{M}.daughters_begin", f"{M}/{M}.daughters_end", f"_{M}_daughters/_{M}_daughters.index"])
