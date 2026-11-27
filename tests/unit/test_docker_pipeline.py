@@ -94,7 +94,7 @@ def test_packaging_and_digitisation_agree_on_links(channel):
 
 def test_invalid_options_are_rejected():
     for args in (["--from", "nonsense"], ["--events", "ten"], ["--events", "0"],
-                 ["--pandora-processes", "0"], ["--threads", ""], ["--events"],
+                 ["--events", "00"], ["--pandora-processes", "0"], ["--threads", ""], ["--events"],
                  ["--from", "digitization", "--to", "simulation"]):
         result = _pipeline("--channel", "ttbar", *args)
         assert result.returncode != 0, args
@@ -135,6 +135,33 @@ def test_stages_reach_the_runtime_as_separate_arguments(tmp_path):
     assert tails[5].startswith("reco reco_tables ")
     assert tails[6].endswith("package_parquet_config.yaml 0 42 --run-size 3 --chunk-size 3")
     assert f"-v {tmp_path / 'my out'}:/output" in result.stdout
+
+
+def test_partial_rerun_keeps_the_event_count_of_the_run(tmp_path):
+    out = tmp_path / "out"
+    first = _pipeline("--channel", "higgs_portal", "--output", str(out), "--cache", str(tmp_path / "c"),
+                      "--runtime", "echo", "--events", "007", "--pileup", "3")
+    assert first.returncode == 0, first.stderr
+    assert "--events 7 --pileup 3" in first.stdout
+    assert (out / "pipeline_settings").read_text() == "channel=higgs_portal\nevents=7\npileup=3\n"
+    (out / "parquet" / "reco").mkdir(parents=True)
+
+    again = _pipeline("--channel", "higgs_portal", "--output", str(out), "--cache", str(tmp_path / "c"),
+                      "--runtime", "echo", "--from", "package_parquet")
+    assert again.returncode == 0, again.stderr
+    assert "--run-size 7 --chunk-size 7" in again.stdout
+    assert not (out / "parquet").exists()            # set aside before packaging again
+    assert len(list(out.glob("parquet.replaced.*"))) == 1
+
+
+def test_run_id_must_be_a_plain_name():
+    import os
+    result = subprocess.run(
+        ["bash", str(REPO / "scripts/cli/run_docker.sh"), "simulation/pythia_gen.py",
+         "configs_development/docker_test/ttbar/pythia_config.yaml"],
+        capture_output=True, text=True, env={**os.environ, "RUN_ID": "../x", "CONTAINER_RUNTIME": "echo"})
+    assert result.returncode != 0
+    assert "RUN_ID must be a plain name" in result.stderr
 
 
 def test_ttbar_pythia_reads_the_madgraph_output_in_place():
@@ -178,6 +205,7 @@ class _FakeSimFile:
     ([0, 0, 1, 1], 2, "4 entries but 2 distinct"),
     ([], 2, "no events"),
     ([0, 1], 3, "2 events, 3 requested"),
+    ([0, 1, 7], 3, "are not 0 to 2"),
     ([0, [1, 2]], None, "exactly one EventHeader"),
 ])
 def test_check_sim_output_failures(monkeypatch, numbers, requested, message):

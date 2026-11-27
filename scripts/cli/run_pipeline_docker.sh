@@ -97,6 +97,10 @@ for name in EVENTS PILEUP THREADS PANDORA_PROCESSES; do
         exit 1
     fi
 done
+for name in EVENTS PILEUP THREADS PANDORA_PROCESSES; do
+    # plain decimal: "010" would otherwise be read as octal further down
+    [ -n "${!name}" ] && printf -v "$name" '%d' "$((10#${!name}))"
+done
 for name in EVENTS PANDORA_PROCESSES; do
     if [ "${!name}" = 0 ]; then
         echo "ERROR: ${name,,} must be at least 1" >&2
@@ -169,6 +173,22 @@ if [ -z "$FROM_STAGE" ] && { [ -e "$OUTPUT_DIR/runs" ] || [ -e "$OUTPUT_DIR/parq
 fi
 mkdir -p "$OUTPUT_DIR"
 
+# A partial rerun (--from) uses the event count and pile-up of the run it continues,
+# unless they are given again: packaging with another event count would publish a
+# different event range.
+SETTINGS_FILE="$OUTPUT_DIR/pipeline_settings"
+if [ -n "$FROM_STAGE" ] && [ -f "$SETTINGS_FILE" ]; then
+    while IFS='=' read -r key value; do
+        case "$key" in
+            events) [ -z "$EVENTS" ] && EVENTS="$value" ;;
+            pileup) [ -z "$PILEUP" ] && PILEUP="$value" ;;
+        esac
+    done < "$SETTINGS_FILE"
+fi
+if [ -z "$FROM_STAGE" ]; then
+    printf 'channel=%s\nevents=%s\npileup=%s\n' "$CHANNEL" "$EVENTS" "$PILEUP" > "$SETTINGS_FILE"
+fi
+
 # Arguments each stage script gets on top of --config/--output/--output-subdir/--seed.
 stage_args() {
     local events_arg=()
@@ -205,6 +225,10 @@ while IFS='|' read -r stage script config; do
     [ "$stage" = "$FROM_STAGE" ] && started=1
     if [ "$started" = 1 ]; then
         # shellcheck disable=SC2046
+        if [ "$stage" = package_parquet ] && [ -d "$OUTPUT_DIR/parquet" ]; then
+            # packaging again: the earlier tables are set aside, not mixed with the new ones
+            mv "$OUTPUT_DIR/parquet" "$OUTPUT_DIR/parquet.replaced.$(date +%Y%m%dT%H%M%S)"
+        fi
         STAGE_NAME="$stage" "$SCRIPT_DIR/run_docker.sh" "$script" "$CONFIG_BASE/$config" $(stage_args "$stage") </dev/null
         last_stage="$stage"
     fi

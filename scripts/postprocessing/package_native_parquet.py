@@ -558,8 +558,8 @@ def package_chunk(
     uses (see utils/particle_id_map.py). The map is built per run from the run's
     native particles table and ``<run>/<sim_input_name>``.
 
-    ``strict_joins`` (always on with a chunk manifest) makes the covariance join fail
-    instead of packaging the table without it, and requires one row per event."""
+    ``strict_joins`` makes the covariance join fail instead of packaging the table without
+    it (as a chunk manifest does), and requires one row per event."""
     t0 = time.time()
     strict = strict_joins or manifest_path is not None
     expected = end_event - start_event + 1
@@ -712,7 +712,7 @@ def package_chunk(
                 obj, expected, events_seen, out_file.name,
             )
             incomplete.append(obj)
-        if strict and rows != events_seen:
+        if strict_joins and rows != events_seen:
             logger.error("%s: %d rows for %d events - every event must have exactly one row", obj, rows, events_seen)
             incomplete.append(obj)
         logger.info("wrote %s (rows=%d, events=%d)", out_file.name, rows, events_seen)

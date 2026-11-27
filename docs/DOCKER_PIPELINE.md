@@ -73,7 +73,8 @@ them.
 --output DIR           output directory (default ./output); must not hold a run yet
 --cache DIR            cache directory (default <repo>/.cache)
 --runtime NAME         docker, podman-hpc or podman (default: the first one found)
---from STAGE, --to STAGE   run part of the chain in an existing output directory
+--from STAGE, --to STAGE   run part of the chain in an existing output directory;
+                       events and pile-up default to those of the run it continues
 --list-stages          print the stages of the channel
 ```
 
@@ -81,9 +82,10 @@ A single stage: `./scripts/cli/run_docker.sh <script> <config> [args]`.
 
 ### Two threads at least
 
-With `threads: 1` the ddsim of `sw:pr-8` writes every event twice: Geant4 falls
-back to its serial run manager and the output action is registered twice. A
-request for 10 events gave 20 entries with event numbers 0,0,1,1 and so on. The script refuses
+With `threads: 1` the ddsim of `sw:pr-8` writes every event twice. A request
+for 10 events gave 20 entries with event numbers 0,0,1,1 and so on. The log
+shows Geant4 falling back to its serial run manager; the cause inside DD4hep
+has not been looked into. The script refuses
 `--threads 1`, and the simulation configs set `verify_output: true`, which makes
 `ddsim_run.py` exit non-zero unless each requested event is in the output once.
 

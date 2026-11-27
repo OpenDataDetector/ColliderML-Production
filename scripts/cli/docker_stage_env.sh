@@ -35,6 +35,13 @@ case "$_stage_env_kind" in
         source "$_stage_env_dir/setup_container_env.sh" || return 1
         # shellcheck disable=SC1091
         source /opt/odd-install/bin/this_odd.sh || return 1
+        # A first run that was interrupted can leave the Geant4 cache without some
+        # datasets; setup_container_env.sh only links what is there.
+        _g4_missing=$(geant4-config --check-datasets 2>/dev/null | grep -v ' INSTALLED ' | cut -d' ' -f1 | tr '\n' ' ')
+        if [ -n "$_g4_missing" ]; then
+            _stage_env_fail "Geant4 datasets missing: $_g4_missing. Delete ${COLLIDERML_CACHE:-/cache}/g4data (the g4data folder of the cache directory on the host) and run again to download them" || return 1
+        fi
+        unset _g4_missing
         # Tracking geometry, digitisation and seeding configs come from the same ODD
         # tree as the simulation (digi_and_reco.py reads ODD_GEO_DIR).
         export ODD_GEO_DIR=/opt/odd

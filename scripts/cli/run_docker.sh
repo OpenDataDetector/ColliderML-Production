@@ -53,6 +53,10 @@ SEED="${SEED:-42}"
 RUN_ID="${RUN_ID:-0}"
 STAGE_NAME="${STAGE_NAME:-$(basename "$STAGE_SCRIPT" .py)}"
 
+if ! [[ "$RUN_ID" =~ ^[A-Za-z0-9][A-Za-z0-9_.-]*$ ]]; then
+    echo "ERROR: RUN_ID must be a plain name (letters, digits, '_', '.', '-'), got '$RUN_ID'" >&2
+    exit 1
+fi
 if [ ! -f "$REPO_ROOT/$CONFIG_PATH" ]; then
     echo "ERROR: config file not found: $REPO_ROOT/$CONFIG_PATH" >&2
     exit 1
