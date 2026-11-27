@@ -588,6 +588,7 @@ def reconcile(rec: dict, cname: str, apply: bool, purge_failed: bool) -> int:
     jobs = live_jobs()
     v = Path(cr["version_dir"])
     actions, undecided = [], []
+    held = set()        # (stage, unit) whose lock stays: live or undecided owner
     for stage in STAGES:
         for u in units_of(cr, stage):
             d, stem = prov_dir(cr, stage, u)
@@ -598,8 +599,10 @@ def reconcile(rec: dict, cname: str, apply: bool, purge_failed: bool) -> int:
                 alive = lock_alive(owner, jobs)
                 if alive is None:
                     undecided.append(f"{lock}: owner {owner} cannot be checked from here")
+                    held.add((stage, u))
                     continue
                 if alive:
+                    held.add((stage, u))
                     continue
                 actions.append(("unlock", lock, path, last))
             elif last and last.get("status") in ("started", "promoting"):
@@ -608,9 +611,9 @@ def reconcile(rec: dict, cname: str, apply: bool, purge_failed: bool) -> int:
         w = _window_of(Path(tmp).name.rsplit(".", 2)[0].lstrip("."))
         if w is None:
             continue
-        chunk = w[0] // cr["chunk_size"]
-        d, stem = prov_dir(cr, "package_parquet", chunk)
-        if not (d / f"{stem}.lock").exists():
+        # a chunk whose stale lock is removed in this pass counts as unlocked (found by pilot_r2 T4 on aa37663:
+        # the temporary shard of the interrupted chunk stayed until a second pass)
+        if ("package_parquet", w[0] // cr["chunk_size"]) not in held:
             actions.append(("tmp", Path(tmp), None, None))
     for tmp in glob.glob(str(v / "runs" / "*" / "provenance" / ".*.tmp")) + glob.glob(str(v / "provenance" / "*" / ".*.tmp")):
         actions.append(("tmp", Path(tmp), None, None))

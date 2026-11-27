@@ -227,3 +227,24 @@ def test_launch_record_digest(tmp_path):
     p.write_text(json.dumps(rec))
     with pytest.raises(SystemExit):
         vc.load_record(p)
+
+
+def test_reconcile_one_pass_clears_tmp_of_a_stale_chunk_lock(mini, monkeypatch):
+    rec, cr, v = mini
+    monkeypatch.setattr(vc, "live_jobs", lambda: set())
+    pd = v / "provenance" / "package_parquet"
+    pd.mkdir(parents=True)
+    (pd / "chunk1.lock").write_text(json.dumps({"host": "nidX", "pid": 1, "slurm_job_id": "424242"}))
+    (pd / "chunk1_attempt1.json").write_text(json.dumps({"status": "started"}))
+    d = v / "parquet" / "reco" / "tracks"
+    d.mkdir(parents=True)
+    tmp = d / ".full_pileup.ttbar.v23.reco.tracks.events3-5.parquet.abc.tmp"
+    tmp.write_text("partial")
+    live_tmp = d / ".full_pileup.ttbar.v23.reco.tracks.events0-2.parquet.def.tmp"
+    live_tmp.write_text("partial")
+    (pd / "chunk0.lock").write_text(json.dumps({"host": "nidX", "pid": 1, "slurm_job_id": "777"}))
+    monkeypatch.setattr(vc, "live_jobs", lambda: {"777"})
+    assert vc.reconcile(rec, "full_pileup", apply=True, purge_failed=False) == 0
+    assert not tmp.exists() and not (pd / "chunk1.lock").exists()
+    assert json.loads((pd / "chunk1_attempt1.json").read_text())["status"] == "interrupted"
+    assert live_tmp.exists() and (pd / "chunk0.lock").exists(), "a live chunk keeps its lock and temporary shard"
