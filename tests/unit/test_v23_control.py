@@ -790,3 +790,20 @@ def test_a_finalizer_needs_the_launch_record_in_production(tmp_path):
                           "--approved-sha", "0" * 40, "--dry-run"], capture_output=True, text=True,
                          env=dict(os.environ, COLLIDERML_CONTROL_WAIT_S="0"))
     assert out.returncode == 1 and "control.lock" in out.stdout and not (v / ".freeze").exists()
+
+
+def test_finalizer_admits_only_the_record_s_packaging_reuse(tmp_path):
+    """r4 rehearsal: packaging accepted on an earlier SHA the launch record admits (accepted_shas) was refused by
+    the finalizer, which compared with --approved-sha alone."""
+    import argparse
+    import finalize_version as fv
+    rec = {"schema": vc.SCHEMA, "approved_sha": "a" * 40, "accepted_shas": {"package_parquet": ["b" * 40]}}
+    rec["digest"] = vc.record_digest(rec)
+    p = tmp_path / "rec.json"
+    p.write_text(json.dumps(rec))
+    assert fv.admitted_shas(argparse.Namespace(approved_sha="a" * 40, launch_record=str(p))) == ["a" * 40, "b" * 40]
+    assert fv.admitted_shas(argparse.Namespace(approved_sha="a" * 40, launch_record=None)) == ["a" * 40]
+    rec2 = dict(rec, accepted_shas={"digitization": ["c" * 40]})
+    rec2["digest"] = vc.record_digest({k: v for k, v in rec2.items() if k != "digest"})
+    p.write_text(json.dumps(rec2))
+    assert fv.admitted_shas(argparse.Namespace(approved_sha="a" * 40, launch_record=str(p))) == ["a" * 40]

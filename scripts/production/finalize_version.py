@@ -128,6 +128,15 @@ def main() -> int:
     return rc
 
 
+def admitted_shas(a) -> list[str]:
+    """Code SHAs whose packaging attempts count: --approved-sha, plus (with --launch-record) the reuse the frozen
+    record admits for package_parquet (accepted_shas; the production spec names none, a rehearsal record may)."""
+    if not a.launch_record:
+        return [a.approved_sha]
+    import v23_control as vc
+    return [a.approved_sha] + list((vc.load_record(a.launch_record).get("accepted_shas") or {}).get("package_parquet", []))
+
+
 def _check_and_write(a, c, vdir) -> int:
     release, chunk = int(c["release_events"]), int(c["chunk_size"])
     n = (release + chunk - 1) // chunk
@@ -154,8 +163,9 @@ def _check_and_write(a, c, vdir) -> int:
             problems.append(f"chunk {i}: latest attempt {attempt_no(recs[-1])} is {last.get('status')}/"
                             f"{last.get('return_code')}; resolve it before finalizing")
             continue
-        if (last.get("git") or {}).get("sha") != a.approved_sha:
-            problems.append(f"chunk {i}: accepted attempt ran {(last.get('git') or {}).get('sha')}, not the approved SHA")
+        if (last.get("git") or {}).get("sha") not in admitted_shas(a):
+            problems.append(f"chunk {i}: accepted attempt ran {(last.get('git') or {}).get('sha')}, not the approved SHA"
+                            f" (nor a reuse the launch record admits)")
         man = last.get("container_record") or {}
         if man.get("status") != "ok" or man.get("start_event") != s or man.get("end_event") != e:
             problems.append(f"chunk {i}: embedded manifest status {man.get('status')} window "
