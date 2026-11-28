@@ -201,6 +201,9 @@ def _check_and_write(a, c, vdir) -> int:
         rec = vc.load_record(a.launch_record)
         if rec["approved_sha"] != a.approved_sha:
             problems.append(f"--approved-sha is not the launch record's {rec['approved_sha']}")
+        # the running code is the record's (clean checkout at its SHA, env_setup, configs, verifier), as for every
+        # release step (r4 rehearsal: a dry run on another HEAD passed)
+        problems += [f"live identity: {x}" for x in vc.check(rec, images=False)]
         if os.path.realpath(rec["campaigns"].get(a.campaign, {}).get("version_dir", "")) != os.path.realpath(vdir):
             problems.append(f"the launch record's {a.campaign} version dir is not {vdir}")
         else:
