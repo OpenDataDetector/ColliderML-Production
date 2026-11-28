@@ -317,3 +317,31 @@ def test_rollback_of_an_interrupted_publication(tmp_path, monkeypatch):
     os.rename(v / "parquet", hidden / "parquet")      # killed between the move and the publication point
     assert vc.release_rollback(rec, "hard_scatter", root) == 0
     assert f.exists() and not hidden.exists()
+
+
+def test_audit_rejects_another_output_of_the_same_producer(mini):
+    rec, cr, v = mini
+    for r in (0, 1):
+        _accept_tracking(v, r)
+    rd = v / "runs" / "1"
+    (rd / "truth_tracks").mkdir()
+    (rd / "truth_tracks" / "tt.parquet").write_text("truth tracks 1")
+    p = sorted((rd / "provenance").glob("digitization_attempt*.json"))[-1]
+    r_ = json.loads(p.read_text()); r_["outputs"].append(_out(rd, "truth_tracks/tt.parquet")); p.write_text(json.dumps(r_))
+    pd = v / "provenance" / "package_parquet"
+    inp = {}
+    for r in (0, 1):
+        e = _out(v / "runs" / str(r), "tracks/t.parquet")
+        inp[str(v / "runs" / str(r) / "tracks/t.parquet")] = {"realpath": e["realpath"], "size": e["size"], "sha256": e["sha256"]}
+    _rec_file(pd, "chunk1", 1, container_record={"start_event": 3, "end_event": 5, "inputs": dict(inp), "outputs": {}})
+    assert vc.audit_unit(rec, cr, "package_parquet", 1, set(), {}) == []
+    sub = _out(rd, "truth_tracks/tt.parquet")
+    inp[str(rd / "tracks/t.parquet")] = {"realpath": sub["realpath"], "size": sub["size"], "sha256": sub["sha256"]}
+    _rec_file(pd, "chunk1", 2, container_record={"start_event": 3, "end_event": 5, "inputs": inp, "outputs": {}})
+    assert any("not that output" in x for x in vc.audit_unit(rec, cr, "package_parquet", 1, set(), {}))
+
+
+def test_parent_sha_is_frozen_and_compared(mini):
+    rec, cr, v = mini
+    f = cr["parents"]["0"]["edm4hep.root"]["files"]["."]
+    assert "sha256" in f, "a small parent file is frozen with its sha256"

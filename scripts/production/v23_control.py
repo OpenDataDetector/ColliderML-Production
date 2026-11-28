@@ -53,6 +53,7 @@ GROUP = {"particles": "truth", "tracker_simhits": "truth", "generator_particles"
          "calo_clusters": "reco", "pfos": "reco", "vertices": "reco"}
 RECO_TABLE_OBJECTS = {"calo_cells", "calo_clusters", "pfos"}
 SIM_INPUT = "edm4hep.root"      # Geant4 file: stat-only identity (frozen in the record)
+SMALL_PARENT_BYTES = 1 << 30    # parent files up to this size are frozen with their sha256
 
 
 # ------------------------------------------------------------------------------------------------ helpers
@@ -205,7 +206,12 @@ def _parents(cr: dict, names: list[str], runs: list[int]) -> dict:
                 continue
             real = Path(os.path.realpath(p))
             files = sorted(x for x in real.rglob("*") if x.is_file()) if real.is_dir() else [real]
-            out[name] = {"realpath": str(real), "files": {str(f.relative_to(real)) if real.is_dir() else ".": stat_of(f)
+            def ent(f):
+                e = stat_of(f)
+                if e["size"] <= SMALL_PARENT_BYTES:     # e.g. generator_particles; the Geant4 file stays stat-only
+                    e["sha256"] = sha256_file(f)
+                return e
+            out[name] = {"realpath": str(real), "files": {str(f.relative_to(real)) if real.is_dir() else ".": ent(f)
                                                           for f in files}}
         return str(r), out
     with ThreadPoolExecutor(16) as ex:
@@ -666,6 +672,8 @@ def audit_unit(rec: dict, cr: dict, stage: str, unit: int, jobs, cache: dict) ->
                         probs.append(f"run {unit}: the Geant4 input hashed differently by digitization and reco_tables")
                 continue
             pe, who = producer_entry(e.get("realpath"), unit, [kind])
+            if pe is not None and pe.get("path") != path:
+                pe = None
             if pe is None:
                 probs.append(f"{stage} run {unit}: input {path} has no accepted {kind} producer")
             elif pe.get("sha256") != e["sha256"]:
@@ -693,12 +701,17 @@ def audit_unit(rec: dict, cr: dict, stage: str, unit: int, jobs, cache: dict) ->
                 probs.append(f"chunk {unit}: carried {Path(path).name} differs from the frozen inventory")
         elif kind[0] == "parent":
             f = _parent_entry(cr, real, [kind[2]])
-            if f is None or any(meta.get(k) != f[k] for k in ("size", "inode", "mtime_ns")):
+            if f is None or any(meta.get(k) != f[k] for k in ("size", "inode", "mtime_ns")) or \
+                    ("sha256" in f and meta.get("sha256") != f["sha256"]):
                 probs.append(f"chunk {unit}: parent {path} differs from the frozen parent")
         else:
             pe, who = producer_entry(real, kind[2], [kind[1]])
+            base_r = runs_dir / str(kind[2])
+            rel = str(Path(path).relative_to(base_r)) if Path(path).is_relative_to(base_r) else None
+            if pe is not None and pe.get("path") != rel:
+                pe = None                       # the metadata is another output of the producer (e.g. truth_tracks for tracks)
             if pe is None:
-                probs.append(f"chunk {unit}: input {path} is not an output of the accepted {kind[1]} run {kind[2]}")
+                probs.append(f"chunk {unit}: input {path} is not that output of the accepted {kind[1]} run {kind[2]}")
             elif not meta.get("sha256") or pe.get("sha256") != meta["sha256"]:
                 probs.append(f"chunk {unit}: input {path} differs from the accepted {who} output")
     return probs
@@ -770,8 +783,11 @@ def reconcile(rec: dict, cname: str, apply: bool, purge_failed: bool) -> int:
                          f"version or was killed ({(v / rp.FREEZE).read_text(errors='replace').strip()[:160]}); remove it "
                          "by hand only after checking that no such process runs")
     if purge_failed:
+        import re as _re
         for ad in sorted(glob.glob(str(v / ".attempts" / "*" / "*.a*"))):
             stage = Path(ad).parent.name
+            if stage not in RUN_STAGES or not _re.fullmatch(r"\d+\.a\d+", Path(ad).name):
+                continue                        # packaging backups (events<A>-<B>.<token>) are kept, never purged here
             u, k = Path(ad).name.split(".a")
             d, stem = prov_dir(cr, stage, int(u))
             recf = d / f"{stem}_attempt{k}.json"
@@ -819,6 +835,14 @@ def reconcile(rec: dict, cname: str, apply: bool, purge_failed: bool) -> int:
             if cur and cur.get("status") in ("started", "promoting") and not (d / f"{stem}.lock").exists():
                 rp.set_status(recp, "interrupted", reconciled_utc=now, reconciled_reason="started record without a lock")
         elif kind == "tmp":
+            if stage is not None and u is not None:          # the unit's lock is re-checked at action time
+                d_, stem_ = prov_dir(cr, stage, u)
+                if (d_ / f"{stem_}.lock").exists():
+                    undecided.append(f"{p_}: its unit is locked now; kept"); continue
+            elif p_.parent.name == "provenance" and any((p_.parent / f"{st_}.lock").exists() for st_ in RUN_STAGES):
+                undecided.append(f"{p_}: a stage of its run is locked now; kept"); continue
+            elif p_.parent.parent.name == "provenance" and list(p_.parent.glob("*.lock")):
+                undecided.append(f"{p_}: a chunk is locked now; kept"); continue
             p_.unlink(missing_ok=True)
         elif kind == "purge":
             attempt_isolation.purge(p_)
