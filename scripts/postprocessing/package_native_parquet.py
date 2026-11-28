@@ -731,23 +731,40 @@ def package_chunk(
         for tmp_f, _ in pending:     # nothing of an incomplete chunk becomes visible
             tmp_f.unlink(missing_ok=True)
         pending, outputs = [], []
-    if manifest_path is not None:
-        import json
-        tmp_of = {str(f): t for t, f in pending}
-        man = {"start_event": start_event, "end_event": end_event, "runs": [start_run, end_run],
-               "objects": objects, "status": "incomplete" if incomplete else "ok", "incomplete": incomplete,
-               "inputs": inputs, "attempt_token": token,
-               "outputs": {str(f): {"size": tmp_of[str(f)].stat().st_size, "sha256": _sha256(tmp_of[str(f)])}
-                           for f in outputs}}
-        manifest_path.parent.mkdir(parents=True, exist_ok=True)
-        tmp = manifest_path.with_name(f".{manifest_path.name}.{token}.tmp")
-        tmp.write_text(json.dumps(man, indent=1, sort_keys=True) + "\n")
-        os.replace(tmp, manifest_path)
     if incomplete:
+        if manifest_path is not None:
+            _write_manifest(manifest_path, token, {"start_event": start_event, "end_event": end_event,
+                                                   "runs": [start_run, end_run], "objects": objects,
+                                                   "status": "incomplete", "incomplete": incomplete,
+                                                   "inputs": inputs, "outputs": {}})
         raise RuntimeError(f"chunk {start_event}-{end_event}: incomplete objects {incomplete}")
-    for tmp_f, final in pending:     # promotion: one atomic rename per shard
+    tmp_of = {str(f): t for t, f in pending}
+    outs = {str(f): {"size": tmp_of[str(f)].stat().st_size, "sha256": _sha256(tmp_of[str(f)])} for f in outputs}
+    # promotion: an existing final shard (an explicitly replaced generation) is first moved to
+    # <version>/.attempts/package_parquet/events<A>-<B>.<token>/, then one atomic rename per new shard; the manifest is
+    # written last. A kill in between leaves the previous generation in the backup directory and a manifest that no
+    # longer matches the shards, so the finalizer refuses until the chunk is rerun.
+    backup = out_base.parent / ".attempts" / "package_parquet" / f"events{start_event}-{end_event}.{token}"
+    for tmp_f, final in pending:
+        if final.exists():
+            backup.mkdir(parents=True, exist_ok=True)
+            os.replace(final, backup / final.name)
         os.replace(tmp_f, final)
+    if manifest_path is not None:
+        _write_manifest(manifest_path, token, {"start_event": start_event, "end_event": end_event,
+                                               "runs": [start_run, end_run], "objects": objects, "status": "ok",
+                                               "incomplete": [], "inputs": inputs, "attempt_token": token,
+                                               "replaced_backup": str(backup) if backup.exists() else None,
+                                               "outputs": outs})
     logger.info("chunk %d-%d done in %.1fs", start_event, end_event, time.time() - t0)
+
+
+def _write_manifest(manifest_path: Path, token: str, man: dict) -> None:
+    import json
+    manifest_path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = manifest_path.with_name(f".{manifest_path.name}.{token}.tmp")
+    tmp.write_text(json.dumps(man, indent=1, sort_keys=True) + "\n")
+    os.replace(tmp, manifest_path)
 
 
 def discover_run_dirs(runs_dir: Path, max_run: int | None) -> list[Path]:

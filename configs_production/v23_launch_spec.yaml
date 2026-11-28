@@ -3,14 +3,20 @@
 #   python scripts/production/v23_control.py freeze configs_production/v23_launch_spec.yaml \
 #       --out /global/cfs/cdirs/m4958/data/ColliderML/staging/simulation/v23_launch_record.json
 decision: "Daniel 2026-11-27: D1-D6 accepted (signed amendments, PRODUCTION_PLAN_v3 section 3), E1-E7 built, optimised Pandora image; production after sign-off of PRODUCTION_PLAN_v3 section 9"
+approved_sha: FILL_AT_SIGN_OFF   # the exact commit the lead authorizes; freeze refuses any other HEAD
 approved_ref: origin/release/v23
 approved_remote: https://github.com/OpenDataDetector/ColliderML-Production
 verifier_dir: /global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/reruns_2026-11-18/verify
 cap_node_hours: 1100
 retry_allowance: 0.15
-rates_node_hours_per_unit:     # measured in the packed rehearsal (PRODUCTION_PLAN_v3 section 6)
-  full_pileup: {digitization: RATE_PU200_TRK, pandora_reco: RATE_PU200_PAN, reco_tables: RATE_PU200_RT, package_parquet: RATE_PU200_PKG, verify: RATE_PU200_VER}
-  hard_scatter: {digitization: RATE_PU0_TRK, pandora_reco: RATE_PU0_PAN, reco_tables: RATE_PU0_RT, package_parquet: RATE_PU0_PKG, verify: RATE_PU0_VER}
+rates_node_hours_per_unit:     # node-hours per unit, packed rehearsal (PRODUCTION_PLAN_v3 section 6): wave wall / units per wave
+  full_pileup: {digitization: 0.0248, pandora_reco: 0.0350, reco_tables: 0.0118, package_parquet: 0.0100, verify: 0.0300}
+  hard_scatter: {digitization: 0.0312, pandora_reco: 0.0154, reco_tables: 0.0152, package_parquet: 0.0046, verify: 0.0150}
+required_image_ids:            # freeze refuses an image tag that resolves to another id
+  localhost/colliderml/sw:pr-8-vtxlinks-20261121b: e2df4e398a0106266d2a18226208f237d25f3d4211dc8ff25b7f07663b0ecd97
+  localhost/colliderml/reco:20261106: 19738fc52f1e0b5412c65cb98358275ba3e3cdc04fafe4e3220f3639a0b9148c
+  ghcr.io/opendatadetector/colliderml-reco:20261127: a61ba905a0c43f48418f0375b3bf50698338cf5356504629819c4b2c85f81e78
+require_tracking_bound: true   # release inventory needs the P5 result over the frozen sample
 approved_resources:            # sha256 of the Pandora settings and photon likelihood (same in reco:20261106 and reco:20261127)
   pandora_settings: 87c1f0ae82069b4233e0e1be66f1b4eac1491e307679cfdd65871b9a5ae46a2f
   photon_likelihood: 40114152283839ddd8156c47b3c04fdfcd84cbe1e500b48e5f3da33b423e3cbc

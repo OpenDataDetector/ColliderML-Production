@@ -255,6 +255,14 @@ def run_interactive(config, config_path_arg, stage_script_path, run_id=None):
     #   4. the attempt record ("started"), so retries get distinct numbers and a killed wrapper leaves it,
     #   5. per-run stages write into a private attempt directory; outputs are promoted after exit 0.
     prov = config.get("provenance") or {}
+    if not prov.get("record") and not config.get("debug_output_dir"):
+        try:
+            vd = cli_utils.get_version_directory(config)
+        except ValueError:
+            vd = None
+        if vd is not None and (vd / ".provenance_required").exists():
+            logger.error(f"{vd} requires provenance-recording configs (.provenance_required); refusing")
+            sys.exit(7)
     attempt_path = None
     attempt_dir = None
     stage_output_dir = run_dir
@@ -279,12 +287,18 @@ def run_interactive(config, config_path_arg, stage_script_path, run_id=None):
             sys.exit(7)
         last_path, last = run_provenance.latest_record(prov_dir, stem)
         replacing = None
-        if run_provenance.is_accepted(last):
+        # any accepted attempt in the unit's history counts, not only the latest one: after an interrupted
+        # replacement the latest record is "interrupted", and a plain retry must not overwrite accepted bytes
+        accepted_before = [p for p in run_provenance.attempt_records(prov_dir, stem)
+                           if run_provenance.is_accepted(run_provenance.latest_record_at(p))]
+        if accepted_before:
+            last_path = accepted_before[-1]
             if os.environ.get("COLLIDERML_REPLACE_ACCEPTED") != str(run_id):
                 unit_lock.unlink()
-                logger.error(f"{stem}: latest attempt {last_path.name} is accepted; a rerun needs "
+                logger.error(f"{stem}: attempt {last_path.name} is accepted; a rerun needs "
                              f"COLLIDERML_REPLACE_ACCEPTED={run_id} (invalidates every downstream acceptance); refusing")
                 sys.exit(6)
+        if accepted_before:
             replacing = last_path.name
         attempt_path = run_provenance.reserve_attempt(config, Path(run_dir), version_dir, int(run_id), is_post)
         logger.info(f"Provenance attempt reserved: {attempt_path}")
@@ -354,6 +368,7 @@ def run_interactive(config, config_path_arg, stage_script_path, run_id=None):
     # One provenance record per run (or chunk) and attempt, failed attempts included.
     # A record that cannot be written exits 3; a record with missing evidence (declared output
     # absent, unhashed file, unknown image, unreadable stage JSON) turns a task exit 0 into 4.
+    task_rc = stage_exit_code
     if attempt_path is not None:
         try:
             promotion = None
@@ -362,12 +377,26 @@ def run_interactive(config, config_path_arg, stage_script_path, run_id=None):
             elif attempt_dir is None:
                 base = Path(run_dir) / str(run_id)
             elif stage_exit_code == 0:
-                # promote: record the plan first ("promoting"), then one rename per top-level entry
+                # validate the candidate generation in its own directory first (every declared output present
+                # and hashed, embedded stage record ok); only a complete candidate is promoted
                 work_n, run_n = attempt_dir / str(run_id), Path(run_dir) / str(run_id)
-                the_plan = attempt_isolation.plan(work_n, run_n, attempt_isolation.top_names(prov.get("outputs")))
-                run_provenance.set_status(attempt_path, "promoting", promotion_plan=the_plan)
-                promotion = attempt_isolation.promote(work_n, run_n, the_plan, attempt_dir / "replaced")
-                base = run_n
+                container0, _ = cli_utils.resolve_stage_container(config, config["stage"])
+                pre = run_provenance.build_record(
+                    config=config, config_path=config_path_arg, unit=int(run_id), rc=0, t_start=t_start,
+                    t_end=time.time(), repo=cli_utils_git_root(), base=work_n, container=container0,
+                    env_setup_path=Path(__file__).resolve().parent / "env_setup.yaml")
+                pre_problems = run_provenance.record_problems(pre)
+                if pre_problems:
+                    logger.error(f"candidate outputs incomplete, nothing promoted: {pre_problems}")
+                    stage_exit_code = 4
+                    base = work_n
+                else:
+                    # record the plan first ("promoting"), then one rename per top-level entry; replaced entries
+                    # are kept in <attempt>/replaced/ (never purged while this generation is not accepted)
+                    the_plan = attempt_isolation.plan(work_n, run_n, attempt_isolation.top_names(prov.get("outputs")))
+                    run_provenance.set_status(attempt_path, "promoting", promotion_plan=the_plan)
+                    promotion = attempt_isolation.promote(work_n, run_n, the_plan, attempt_dir / "replaced")
+                    base = run_n
             else:
                 base = attempt_dir / str(run_id)   # a failed attempt is recorded from its own directory
             container, _ = cli_utils.resolve_stage_container(config, config["stage"])
@@ -394,7 +423,7 @@ def run_interactive(config, config_path_arg, stage_script_path, run_id=None):
                     if e.get("sha256") and meta and e["sha256"] != meta.get("sha256"):
                         e["error"] = "sha256 differs from the chunk manifest"; e.pop("sha256")
                 rec["replaces_accepted"] = replacing
-            rec["task_return_code"] = stage_exit_code
+            rec["task_return_code"] = task_rc
             problems = run_provenance.record_problems(rec)
             if problems and stage_exit_code == 0:
                 logger.error(f"Provenance record incomplete, failing the run: {problems}")

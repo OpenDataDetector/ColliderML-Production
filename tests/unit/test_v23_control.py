@@ -193,18 +193,22 @@ def test_audit_chunk_inputs(mini):
         _accept_tracking(v, r)
     pd = v / "provenance" / "package_parquet"
 
-    def chunk_rec(k, inputs, start=3):
-        return _rec_file(pd, "chunk1", k, container_record={"start_event": start, "end_event": 5, "inputs": inputs,
+    n = [0]
+
+    def chunk_rec(_k, inputs, start=3, end=5):     # attempts numbered in call order (the latest is the last call)
+        n[0] += 1
+        return _rec_file(pd, "chunk1", n[0], container_record={"start_event": start, "end_event": end, "inputs": inputs,
                                                              "outputs": {}})
     inp = {}
     for r in (0, 1):
         rd = v / "runs" / str(r)
         e = _out(rd, "tracks/t.parquet")
         inp[str(rd / "tracks/t.parquet")] = {"realpath": e["realpath"], "size": e["size"], "sha256": e["sha256"]}
-        st = vc.stat_of(rd / "edm4hep.root")
-        inp[str(rd / "edm4hep.root")] = {k: st[k] for k in ("realpath", "size", "mtime_ns", "inode")}
     chunk_rec(1, inp)
     assert vc.audit_unit(rec, cr, "package_parquet", 1, set(), {}) == []
+    st = vc.stat_of(v / "runs/0/edm4hep.root")      # an input outside the required set (no remap configured)
+    chunk_rec(5, dict(inp, **{str(v / "runs/0/edm4hep.root"): {k: st[k] for k in ("realpath", "size", "mtime_ns", "inode")}}))
+    assert any("outside the required set" in p for p in vc.audit_unit(rec, cr, "package_parquet", 1, set(), {}))
     bad = dict(inp)
     k0 = str(v / "runs/1/tracks/t.parquet")
     bad[k0] = dict(bad[k0], sha256="0" * 64)
@@ -212,8 +216,10 @@ def test_audit_chunk_inputs(mini):
     assert any("differs from the accepted digitization" in p for p in vc.audit_unit(rec, cr, "package_parquet", 1, set(), {}))
     missing = {k: x for k, x in inp.items() if "/runs/1/" not in k}
     chunk_rec(3, missing)
-    assert any("contributing run 1" in p for p in vc.audit_unit(rec, cr, "package_parquet", 1, set(), {}))
+    assert any("not in the manifest" in p for p in vc.audit_unit(rec, cr, "package_parquet", 1, set(), {}))
     chunk_rec(4, inp, start=0)
+    assert any("manifest window" in p for p in vc.audit_unit(rec, cr, "package_parquet", 1, set(), {}))
+    chunk_rec(7, inp, end=99999)                     # the end of the window is checked too
     assert any("manifest window" in p for p in vc.audit_unit(rec, cr, "package_parquet", 1, set(), {}))
 
 
@@ -248,3 +254,66 @@ def test_reconcile_one_pass_clears_tmp_of_a_stale_chunk_lock(mini, monkeypatch):
     assert not tmp.exists() and not (pd / "chunk1.lock").exists()
     assert json.loads((pd / "chunk1_attempt1.json").read_text())["status"] == "interrupted"
     assert live_tmp.exists() and (pd / "chunk0.lock").exists(), "a live chunk keeps its lock and temporary shard"
+
+
+def _pub_fixture(tmp_path, monkeypatch):
+    v = tmp_path / "staging" / "hard_scatter" / "ttbar" / "v23"
+    f = v / "parquet" / "reco" / "tracks" / "hard_scatter.ttbar.v23.reco.tracks.events0-9.parquet"
+    f.parent.mkdir(parents=True)
+    f.write_bytes(b"shard bytes")
+    (v / ".freeze").write_text("finalized")
+    rec = {"digest": "L" * 64, "campaigns": {"hard_scatter": {"version_dir": str(v)}}}
+    man = {"campaign": "hard_scatter", "launch_record_digest": rec["digest"],
+           "files": {str(f.relative_to(v / "parquet")): {"sha256": rp.sha256_file(f), "kind": "produced"}}}
+    man["digest"] = vc._manifest_digest(man)
+    mp = tmp_path / "manifest.json"
+    mp.write_text(json.dumps(man))
+    monkeypatch.setattr(vc, "release_preflight", lambda *a, **k: [])
+    return rec, v, f, man, mp, tmp_path / "published"
+
+
+def test_publish_transaction_and_rollback(tmp_path, monkeypatch):
+    rec, v, f, man, mp, root = _pub_fixture(tmp_path, monkeypatch)
+    tgt = root / "hard_scatter" / "ttbar" / "v23"
+    bad = dict(man, campaign="full_pileup"); bad["digest"] = vc._manifest_digest(bad)
+    (tmp_path / "bad.json").write_text(json.dumps(bad))
+    assert vc.release_publish(rec, "hard_scatter", tmp_path / "bad.json", root, 0, 2) == 1, "wrong-campaign manifest"
+    edited = dict(man, release_events=1)
+    (tmp_path / "edited.json").write_text(json.dumps(edited))
+    assert vc.release_publish(rec, "hard_scatter", tmp_path / "edited.json", root, 0, 2) == 1, "digest of an edited manifest"
+    extra = v / "parquet" / "reco" / "extra.parquet"
+    extra.write_text("x")
+    assert vc.release_publish(rec, "hard_scatter", mp, root, 0, 2) == 1, "a file outside the manifest"
+    extra.unlink()
+    real_rename, calls = os.rename, []
+
+    def failing(a, b):      # the publication point fails after parquet/ moved into the hidden assembly dir
+        calls.append((a, b))
+        if len(calls) == 2:
+            raise OSError("simulated failure at the publication point")
+        return real_rename(a, b)
+    monkeypatch.setattr(vc.os, "rename", failing)
+    with pytest.raises(OSError):
+        vc.release_publish(rec, "hard_scatter", mp, root, 0, 2)
+    monkeypatch.setattr(vc.os, "rename", real_rename)
+    assert f.exists() and not tgt.exists() and not list(tgt.parent.glob(".v23.publishing.*")), "restored"
+    assert vc.release_publish(rec, "hard_scatter", mp, root, 0, 2) == 0
+    assert not (v / "parquet").exists() and (tgt / "parquet").is_dir()
+    assert vc.release_verify_bytes(rec, "hard_scatter", root, None, 2) == 1, "the portal check is required"
+    assert vc.release_verify_bytes(rec, "hard_scatter", root, None, 2, no_portal=True) == 0
+    pf = tgt / "parquet" / f.relative_to(v / "parquet")
+    os.chmod(pf, 0o644); pf.write_bytes(b"shard bytez")
+    assert vc.release_verify_bytes(rec, "hard_scatter", root, None, 2, no_portal=True) == 1, "a corrupted byte"
+    assert vc.release_rollback(rec, "hard_scatter", root) == 0
+    assert (v / "parquet").is_dir() and not tgt.exists()
+
+
+def test_rollback_of_an_interrupted_publication(tmp_path, monkeypatch):
+    rec, v, f, man, mp, root = _pub_fixture(tmp_path, monkeypatch)
+    tgt = root / "hard_scatter" / "ttbar" / "v23"
+    hidden = tgt.parent / ".v23.publishing.T1"
+    hidden.mkdir(parents=True)
+    (hidden / ".published").write_text(json.dumps({"from": str(v)}))
+    os.rename(v / "parquet", hidden / "parquet")      # killed between the move and the publication point
+    assert vc.release_rollback(rec, "hard_scatter", root) == 0
+    assert f.exists() and not hidden.exists()

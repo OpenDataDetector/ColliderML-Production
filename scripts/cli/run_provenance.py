@@ -288,6 +288,14 @@ def latest_record(prov_dir: Path, stem: str) -> tuple[Path | None, dict | None]:
         return recs[-1], {"status": "unreadable"}
 
 
+def latest_record_at(path: Path) -> dict | None:
+    """One attempt record (None if unreadable)."""
+    try:
+        return json.loads(Path(path).read_text())
+    except (OSError, ValueError):
+        return None
+
+
 def is_accepted(rec: dict | None, approved_sha: str | None = None) -> bool:
     """An accepted attempt: complete, return code 0, and (if given) the approved code."""
     if not rec or rec.get("status") != "complete" or rec.get("return_code") != 0:

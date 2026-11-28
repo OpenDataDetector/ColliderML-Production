@@ -18,6 +18,10 @@ REPO="$(cd "$(dirname "$0")/../.." && pwd)"
 PY=${PY:-/global/homes/d/danieltm/.conda/envs/collider-env/bin/python}
 if [ "$2" = "--units" ]; then
   [ -f "$3" ] || { echo "unit list $3 not found"; exit 2; }
+  # a dispatched block is sealed: the unit file must still have the digest v23_control.py dispatch recorded
+  if [ -n "${COLLIDERML_UNITS_SHA256:-}" ] && [ "$(sha256sum < "$3" | cut -d' ' -f1)" != "$COLLIDERML_UNITS_SHA256" ]; then
+    echo "unit list $3 differs from the dispatched block (sha256)"; exit 2
+  fi
   mapfile -t UNITS < <(grep -v '^[[:space:]]*$' "$3")
   PER_WAVE=$4
 else
