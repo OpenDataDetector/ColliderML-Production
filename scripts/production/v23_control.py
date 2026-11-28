@@ -1132,6 +1132,11 @@ def verification_report_problems(rec: dict, cr: dict, i: int, doc: dict, produce
         for f, m in (cr["carried"].get(o) or {}).items():
             if _overlaps(f, s0, e0):
                 want.setdefault(m["realpath"], None)
+    # D8: the verifier also reads the frozen truth-base shards of the window (truth_base_superset), with the
+    # frozen sha256
+    for f, m in ((cr.get("truth_base") or {}).get("shards") or {}).items():
+        if _overlaps(f, s0, e0):
+            want.setdefault(m["realpath"], m.get("sha256"))
     if set(shards) != set(want):
         probs.append(f"shards read are not exactly the chunk's produced and carried shards "
                      f"({len(set(shards) - set(want))} other, {len(set(want) - set(shards))} not read)")

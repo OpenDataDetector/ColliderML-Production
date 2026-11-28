@@ -593,6 +593,23 @@ def test_a_verification_report_must_match_the_frozen_contract(tmp_path, mini):
     assert any("summary" in x for x in vc.verification_report_problems(rec, cr, 1, no_sum, {shard: "h" * 64}))
     missing_check = dict(good, results=[r for r in good["results"] if r["check"] != "links"])
     assert any("links absent" in x for x in vc.verification_report_problems(rec, cr, 1, missing_check, {shard: "h" * 64}))
+    # D8 (r4 rehearsal): the verifier reads the frozen truth-base shard of the window; it is expected, with its sha
+    base = tmp_path / "full_pileup.ttbar.v1.truth.particles.events3-5.parquet"
+    base.write_text("v1 base")
+    cr["truth_base"] = {"object": "particles_completed", "dir": str(tmp_path),
+                        "shards": {str(base): vc.stat_of(base) | {"sha256": "b" * 64}}}
+    with_base = _report(rec, cr, 1, {shard: "h" * 64, os.path.realpath(carried): "t" * 64, str(base): "b" * 64},
+                        source_manifests={"m.json": "m" * 64})
+    wrong_base = _report(rec, cr, 1, {shard: "h" * 64, os.path.realpath(carried): "t" * 64, str(base): "0" * 64},
+                         source_manifests={"m.json": "m" * 64})
+    no_base = _report(rec, cr, 1, {shard: "h" * 64, os.path.realpath(carried): "t" * 64},
+                      source_manifests={"m.json": "m" * 64})
+    for r_ in (with_base, wrong_base, no_base):
+        r_["results"].append({"check": "source_manifest", "pass": True})
+    assert vc.verification_report_problems(rec, cr, 1, with_base, {shard: "h" * 64}) == []
+    assert any("read bytes differ" in x for x in vc.verification_report_problems(rec, cr, 1, wrong_base, {shard: "h" * 64}))
+    assert any("not read" in x for x in vc.verification_report_problems(rec, cr, 1, no_base, {shard: "h" * 64}))
+    del cr["truth_base"]
     cr["objects"] = ["tracks", "pfos"]
     no_res = _report(rec, cr, 1, {shard: "h" * 64, os.path.realpath(carried): "t" * 64})
     assert any("resources" in x for x in vc.verification_report_problems(rec, cr, 1, no_res, {shard: "h" * 64}))
