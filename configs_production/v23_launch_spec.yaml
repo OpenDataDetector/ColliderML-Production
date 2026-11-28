@@ -1,9 +1,14 @@
 # ttbar v23 production launch spec (scripts/production/v23_control.py freeze). Frozen ONLY after Daniel's sign-off
-# of testbed/v23_plan/PRODUCTION_PLAN_v3.md section 9, with the staging trees and parent links in place:
+# of the production plan's residual risks, with the staging trees and parent links in place. The commit is
+# authorized by an EXTERNAL authorization file (never by editing this tracked file, which would dirty the tree the
+# freeze requires clean):
 #   python scripts/production/v23_control.py freeze configs_production/v23_launch_spec.yaml \
+#       --authorization /global/cfs/cdirs/m4958/data/ColliderML/staging/simulation/v23_authorization.json \
 #       --out /global/cfs/cdirs/m4958/data/ColliderML/staging/simulation/v23_launch_record.json
+#   authorization: {"approved_sha": "<40 hex>", "authorized_by": "...", "date": "...",
+#                   "decision_records": {"<path of the signed plan / decision record>": "<sha256>"}}
 decision: "Daniel 2026-11-27: D1-D6 accepted (signed amendments, PRODUCTION_PLAN_v3 section 3), E1-E7 built, optimised Pandora image; production after sign-off of PRODUCTION_PLAN_v3 section 9"
-approved_sha: FILL_AT_SIGN_OFF   # the exact commit the lead authorizes; freeze refuses any other HEAD
+approved_sha: FILL_AT_SIGN_OFF   # not used with --authorization (the authorization file names the commit)
 approved_ref: origin/release/v23
 approved_remote: https://github.com/OpenDataDetector/ColliderML-Production
 verifier_dir: /global/cfs/cdirs/m4958/usr/danieltm/ColliderML/software/colliderml-release-2/testbed/reruns_2026-11-18/verify
@@ -16,7 +21,11 @@ required_image_ids:            # freeze refuses an image tag that resolves to an
   localhost/colliderml/sw:pr-8-vtxlinks-20261121b: e2df4e398a0106266d2a18226208f237d25f3d4211dc8ff25b7f07663b0ecd97
   localhost/colliderml/reco:20261106: 19738fc52f1e0b5412c65cb98358275ba3e3cdc04fafe4e3220f3639a0b9148c
   ghcr.io/opendatadetector/colliderml-reco:20261127: a61ba905a0c43f48418f0375b3bf50698338cf5356504629819c4b2c85f81e78
-require_tracking_bound: true   # release inventory needs the P5 result over the frozen sample
+require_tracking_bound: true   # release inventory and the finalizer need the P5 result over the frozen sample
+frozen_tracking_sample:        # P5 run lists (verify/chunk_verify.py FROZEN_TRACKING)
+  full_pileup: [0, 50, 100, 150, 200, 250, 300, 350, 400, 450, 500, 550, 600, 650, 700, 750, 800, 850, 900, 950,
+                1000, 1050, 1100, 1150, 1200, 1250, 1300, 1350, 1400, 1450, 1500, 1550, 1562]
+  hard_scatter: [0, 1, 2, 3, 4, 5, 6, 7]
 approved_resources:            # sha256 of the Pandora settings and photon likelihood (same in reco:20261106 and reco:20261127)
   pandora_settings: 87c1f0ae82069b4233e0e1be66f1b4eac1491e307679cfdd65871b9a5ae46a2f
   photon_likelihood: 40114152283839ddd8156c47b3c04fdfcd84cbe1e500b48e5f3da33b423e3cbc
@@ -30,7 +39,11 @@ campaigns:
       reco_tables: configs_production/full_pileup/ttbar/v23/reco_tables_config.yaml
       package_parquet: configs_production/full_pileup/ttbar/v23/package_parquet_config.yaml
     parents: [edm4hep.root, generator_particles]
-    carried: [particles]
+    carried: []                # D8: truth/particles is produced (Release 1 rows completed), not carried
+    truth_base:                # frozen with every shard's sha256; the packager's particles_completed reads it
+      object: particles_completed
+      dir: /global/cfs/cdirs/m4958/data/ColliderML/simulation/full_pileup/ttbar/v1/parquet/truth/particles
+    verify: {particles_contract: particles_pu200}
   hard_scatter:
     configs:
       digitization: configs_production/hard_scatter/ttbar/v23/digitization_config.yaml
@@ -39,3 +52,4 @@ campaigns:
       package_parquet: configs_production/hard_scatter/ttbar/v23/package_parquet_config.yaml
     parents: [edm4hep.root, generator_particles]
     carried: [particles]
+    verify: {particles_contract: particles_pu0}

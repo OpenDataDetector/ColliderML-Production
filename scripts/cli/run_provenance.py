@@ -254,6 +254,99 @@ def acquire_unit_lock(prov_dir: Path, stem: str) -> Path:
     return lock
 
 
+CONTROL_LOCK = ".control.lock"   # version-level critical section (Codex re-review finding 4)
+
+
+class ControlLock:
+    """Exclusive version-level critical section by exclusive create of <version>/.control.lock (works across
+    nodes on CFS, where flock is not coherent). Writers hold it only while they take their unit lock and check
+    the freeze; reconcile holds it for its whole apply phase and the finalizer while it creates .freeze and scans
+    the unit locks. So no unit lock is taken while a reconciler reclaims locks or removes temporary files, and no
+    writer starts between the finalizer's freeze and its lock scan. A holder that dies leaves the file (owner
+    JSON inside): `v23_control.py reconcile` reports it; it is removed by hand after checking the owner."""
+
+    def __init__(self, version_dir, purpose: str, timeout_s: float | None = None, poll_s: float = 0.5):
+        self.path = Path(version_dir) / CONTROL_LOCK
+        self.purpose = purpose
+        self.timeout_s = float(os.environ.get("COLLIDERML_CONTROL_WAIT_S", "600")) if timeout_s is None else timeout_s
+        self.poll_s = poll_s
+        self.held = False
+
+    def acquire(self) -> bool:
+        import time
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        owner = {"host": socket.gethostname(), "pid": os.getpid(), "slurm_job_id": os.environ.get("SLURM_JOB_ID"),
+                 "purpose": self.purpose, "start_utc": datetime.datetime.utcnow().isoformat() + "Z"}
+        t0 = time.time()
+        while True:
+            try:
+                fd = os.open(self.path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o660)
+            except FileExistsError:
+                if time.time() - t0 >= self.timeout_s:
+                    return False
+                time.sleep(self.poll_s)
+                continue
+            with os.fdopen(fd, "w") as f:
+                json.dump(owner, f)
+            self.held = True
+            return True
+
+    def release(self) -> None:
+        if self.held:
+            try:
+                self.path.unlink()
+            except FileNotFoundError:
+                pass
+            self.held = False
+
+    def __enter__(self):
+        if not self.acquire():
+            raise TimeoutError(f"{self.path} held by another process for {self.timeout_s:.0f} s "
+                               f"({self.path.read_text(errors='replace')[:200] if self.path.exists() else 'gone'})")
+        return self
+
+    def __exit__(self, *exc):
+        self.release()
+
+
+def provenance_required_error(config: dict) -> str | None:
+    """A version dir with .provenance_required refuses every config that does not record provenance; checked by
+    every entry point before its first write (driver log dirs, config snapshots, image loads)."""
+    if (config.get("provenance") or {}).get("record"):
+        return None
+    try:
+        base = (config.get("common") or {}).get("output_base_dir") or config.get("output_base_dir")
+        v = Path(base) / config["campaign"] / config["dataset"] / config["version"]
+    except (KeyError, TypeError):
+        return None
+    if (v / ".provenance_required").exists():
+        return f"{v} requires provenance-recording configs (.provenance_required); refusing"
+    return None
+
+
+# promotion journal (Codex re-review finding 5): <attempt dir>/promotion.json
+JOURNAL = "promotion.json"
+
+
+def write_journal(attempt_dir: Path, doc: dict) -> Path:
+    p = Path(attempt_dir) / JOURNAL
+    p.parent.mkdir(parents=True, exist_ok=True)
+    tmp = p.with_name(f".{JOURNAL}.{os.getpid()}.tmp")
+    with open(tmp, "w") as f:
+        f.write(json.dumps(doc, indent=1, sort_keys=True, default=str) + "\n")
+        f.flush()
+        os.fsync(f.fileno())
+    os.replace(tmp, p)
+    return p
+
+
+def read_journal(attempt_dir: Path) -> dict | None:
+    try:
+        return json.loads((Path(attempt_dir) / JOURNAL).read_text())
+    except (OSError, ValueError):
+        return None
+
+
 def unit_lock(attempt_path: Path) -> Path:
     """Backwards-compatible: the lock of the unit an attempt record belongs to (see acquire_unit_lock)."""
     return acquire_unit_lock(attempt_path.parent, attempt_path.name.rsplit("_attempt", 1)[0])

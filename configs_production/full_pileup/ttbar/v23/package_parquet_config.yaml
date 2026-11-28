@@ -42,6 +42,7 @@ objects:
   - pfos
   - generator_particles        # per-run tables linked from v22 (unchanged)
   - vertices                   # AMVF, from performance_vertexing.root
+  - particles_completed        # D8: Release 1 truth/particles + dropped rows
 
 remap_particle_ids: true       # ACTS 0..N-1 ids -> MCParticle index (Release 1 id)
 sim_input_name: edm4hep.root   # per-run symlink to v1, used to build the id map
@@ -54,6 +55,8 @@ vertex_links: true             # reco/vertices track_ids, track_weights, truth_i
 drop_columns:                  # P-D3: no time measurement in the geometric digitisation
   tracker_hits: [time, var_time]   # true times: truth/tracker_simhits true_time
 shared_hits_from_hit_ids: true # n_shared_hits recomputed per event from hit_ids (ACTS leaves it 0)
+truth_completion:              # D8: base of particles_completed (Release 1, read-only)
+  base_dir: "/global/cfs/cdirs/m4958/data/ColliderML/simulation/full_pileup/ttbar/v1/parquet/truth/particles"
 
 provenance:
   record: true

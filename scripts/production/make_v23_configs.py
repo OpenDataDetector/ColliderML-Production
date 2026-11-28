@@ -124,6 +124,9 @@ TRACKING_EXTRA = (
 )
 
 
+V1_TRUTH = "/global/cfs/cdirs/m4958/data/ColliderML/simulation/full_pileup/ttbar/v1/parquet/truth/particles"
+
+
 def sub_once(pattern, repl, text, name):
     new, n = re.subn(pattern, repl, text, flags=re.M)
     if n != 1:
@@ -195,6 +198,13 @@ def build(src, dst, kind, base):
             "  tracker_hits: [time, var_time]   # true times: truth/tracker_simhits true_time\n"
             "shared_hits_from_hit_ids: true # n_shared_hits recomputed per event from hit_ids (ACTS leaves it 0)\n"
         )
+        if campaign == "full_pileup":
+            # D8 (Daniel 2026-11-28): truth/particles is produced, not carried: the Release 1 rows unchanged plus
+            # the MCParticles the Release 1 float32-tie join dropped (utils/truth_completion.py)
+            t = sub_once(r"^(\s*- vertices\b.*)$",
+                         lambda m: m.group(1) + "\n  - particles_completed        # D8: Release 1 truth/particles + dropped rows", t, dst)
+            t += ("truth_completion:              # D8: base of particles_completed (Release 1, read-only)\n"
+                  f"  base_dir: \"{V1_TRUTH}\"\n")
     return t.rstrip("\n") + "\n\n" + PROVENANCE[kind]
 
 

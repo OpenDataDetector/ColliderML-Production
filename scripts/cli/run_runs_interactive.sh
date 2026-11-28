@@ -43,7 +43,6 @@ tarball = sc.get("container_tarball") if sc.get("container") else common.get("co
 print(stage, f"{base}/{c['campaign']}/{c['dataset']}/{c['version']}", image, tarball or "-")
 EOF
 )
-LOGDIR="$VERSION_DIR/logs/interactive"; mkdir -p "$LOGDIR"
 echo "=== $(date '+%F %T') $STAGE units ${UNITS[*]} on $(hostname) ($(nproc) cpus)"
 TOKEN="${SLURM_JOB_ID:-nojob}.${SLURM_STEP_ID:-nostep}.$(hostname -s).$$"
 
@@ -54,6 +53,14 @@ if [ "$IMAGE" != "-" ] && ! podman-hpc run --rm --entrypoint /bin/true "$IMAGE" 
   podman-hpc load -i "$TARBALL" && podman-hpc image exists "$IMAGE" || { echo "image load failed"; exit 99; }
 fi
 
+# a dispatched block (v23_control.py dispatch exports the frozen launch record): this node repeats the identity
+# check (code, configs, images on THIS node, archive) and, per unit of the wave, the rule dispatch applied (state,
+# failure count, upstream accepted and bound), before anything is written
+if [ -n "${COLLIDERML_LAUNCH_RECORD:-}" ]; then
+  $PY "$REPO/scripts/production/v23_control.py" unit-check "$COLLIDERML_LAUNCH_RECORD" --config "$CFG" \
+      --units "$(IFS=,; echo "${UNITS[*]}")" || { echo "unit-check refused the wave ${UNITS[*]} on $(hostname)"; exit 1; }
+fi
+LOGDIR="$VERSION_DIR/logs/interactive"; mkdir -p "$LOGDIR"
 cd "$REPO"
 declare -A PIDS
 for n in "${UNITS[@]}"; do

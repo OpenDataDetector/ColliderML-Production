@@ -275,16 +275,25 @@ def run_interactive(config, config_path_arg, stage_script_path, run_id=None):
         is_post = config["stage"] in cli_utils.POSTPROCESSING_STAGES
         version_dir = cli_utils.get_version_directory(config)
         prov_dir, stem = run_provenance.unit_paths(Path(run_dir), version_dir, int(run_id), is_post, config["stage"])
-        try:
-            unit_lock = run_provenance.acquire_unit_lock(prov_dir, stem)
-        except FileExistsError:
-            logger.error(f"another attempt of {stem} holds {prov_dir / (stem + '.lock')}; refusing (nothing written)")
+        # the unit lock and the freeze check run inside the version's control lock, which reconcile (reclaim,
+        # cleanup, rollback) and the finalizer (freeze + lock scan) also hold (Codex re-review finding 4)
+        ctl = run_provenance.ControlLock(version_dir, f"run_stage {config['stage']} {run_id}")
+        if not ctl.acquire():
+            logger.error(f"{ctl.path} is held (reconcile or finalization in progress); refusing (nothing written)")
             sys.exit(5)
-        frozen = run_provenance.frozen_error(version_dir)
-        if frozen:
-            unit_lock.unlink()
-            logger.error(f"{frozen}; refusing")
-            sys.exit(7)
+        try:
+            try:
+                unit_lock = run_provenance.acquire_unit_lock(prov_dir, stem)
+            except FileExistsError:
+                logger.error(f"another attempt of {stem} holds {prov_dir / (stem + '.lock')}; refusing (nothing written)")
+                sys.exit(5)
+            frozen = run_provenance.frozen_error(version_dir)
+            if frozen:
+                unit_lock.unlink()
+                logger.error(f"{frozen}; refusing")
+                sys.exit(7)
+        finally:
+            ctl.release()
         last_path, last = run_provenance.latest_record(prov_dir, stem)
         replacing = None
         # any accepted attempt in the unit's history counts, not only the latest one: after an interrupted
@@ -303,6 +312,13 @@ def run_interactive(config, config_path_arg, stage_script_path, run_id=None):
         attempt_path = run_provenance.reserve_attempt(config, Path(run_dir), version_dir, int(run_id), is_post)
         logger.info(f"Provenance attempt reserved: {attempt_path}")
         attempt_no = int(attempt_path.stem.rsplit("attempt", 1)[1])
+        # every unit gets its attempt directory (per-run stages work in it; the packager keeps its promotion journal
+        # and the replaced generation there): <version>/.attempts/<stage>/<unit>.a<K>
+        unit_attempt_dir = attempt_isolation.attempt_root(version_dir, config["stage"], int(run_id), attempt_no)
+        os.environ["COLLIDERML_ATTEMPT_DIR"] = str(unit_attempt_dir)
+        os.environ["COLLIDERML_ATTEMPT"] = str(attempt_no)
+        os.environ["COLLIDERML_UNIT"] = str(run_id)
+        pre_inputs = None
         if not is_post and prov.get("isolate_attempts", True):
             attempt_dir = attempt_isolation.attempt_root(version_dir, config["stage"], int(run_id), attempt_no)
             try:
@@ -316,8 +332,16 @@ def run_interactive(config, config_path_arg, stage_script_path, run_id=None):
                 sys.exit(8)
             stage_output_dir = attempt_dir
             logger.info(f"Attempt directory {attempt_dir / str(run_id)} (inputs linked: {linked})")
+            # the consumed generation is hashed BEFORE the stage runs, from the pinned links; each entry keeps the
+            # realpath of the run-dir entry it was pinned from (the audit binds it to that producer output)
+            pins = attempt_isolation.pinned_inputs(attempt_dir)
+            pre_inputs = run_provenance.hash_paths(attempt_dir / str(run_id), prov.get("inputs"))
+            for e in pre_inputs:
+                if e.get("path") in (pins.get("files") or {}):
+                    e["realpath"] = pins["files"][e["path"]]
+                    e["pinned"] = "symlink" if e["path"] in (pins.get("fallback") or []) else "hardlink"
             run_provenance.set_status(attempt_path, "started", attempt_dir=str(attempt_dir), inputs_linked=linked,
-                                      replaces_accepted=replacing)
+                                      replaces_accepted=replacing, inputs_hashed_before_execution=pre_inputs)
 
     try:
         command_info = cli_utils.build_stage_command(
@@ -393,9 +417,13 @@ def run_interactive(config, config_path_arg, stage_script_path, run_id=None):
                 else:
                     # record the plan first ("promoting"), then one rename per top-level entry; replaced entries
                     # are kept in <attempt>/replaced/ (never purged while this generation is not accepted)
-                    the_plan = attempt_isolation.plan(work_n, run_n, attempt_isolation.top_names(prov.get("outputs")))
+                    the_plan = attempt_isolation.plan(work_n, run_n, attempt_isolation.top_names(prov.get("outputs")),
+                                                      inputs=linked)
                     run_provenance.set_status(attempt_path, "promoting", promotion_plan=the_plan)
-                    promotion = attempt_isolation.promote(work_n, run_n, the_plan, attempt_dir / "replaced")
+                    promotion = attempt_isolation.promote(work_n, run_n, the_plan, attempt_dir / "replaced",
+                                                          journal_dir=attempt_dir,
+                                                          journal_extra={"stage": config["stage"], "unit": int(run_id),
+                                                                         "record": str(attempt_path)})
                     base = run_n
             else:
                 base = attempt_dir / str(run_id)   # a failed attempt is recorded from its own directory
@@ -410,6 +438,8 @@ def run_interactive(config, config_path_arg, stage_script_path, run_id=None):
                 rec["attempt_dir"] = str(attempt_dir)
                 rec["promotion"] = promotion
                 rec["replaces_accepted"] = replacing
+                if pre_inputs is not None:
+                    rec["inputs"] = pre_inputs          # the consumed generation, hashed before execution
             if is_post:
                 # packaging: exactly the files this chunk wrote, as listed in its own manifest (a window glob
                 # would also catch carried parent shards, e.g. truth/particles events1000-1999)
@@ -429,13 +459,27 @@ def run_interactive(config, config_path_arg, stage_script_path, run_id=None):
                 logger.error(f"Provenance record incomplete, failing the run: {problems}")
                 stage_exit_code = 4
             rec["return_code"] = stage_exit_code
+            jdoc = run_provenance.read_journal(unit_attempt_dir)
+            if jdoc and jdoc.get("state") == "started" and stage_exit_code != 0:
+                # a failed attempt whose promotion started (packager crash mid-promotion, or an incomplete
+                # record): back to the previous complete generation before the record is written
+                rec["promotion_rolled_back"] = attempt_isolation.rollback(unit_attempt_dir)
             run_provenance.write_record(attempt_path, rec)
             logger.info(f"Provenance record: {attempt_path}")
+            if jdoc and jdoc.get("state") == "started" and stage_exit_code == 0:
+                attempt_isolation.complete_journal(unit_attempt_dir)
             if attempt_dir is not None and stage_exit_code == 0:
                 attempt_isolation.cleanup(attempt_dir)
+            elif is_post and stage_exit_code == 0 and unit_attempt_dir.exists():
+                attempt_isolation.cleanup(unit_attempt_dir)   # a closed journal without a replaced generation
         except Exception as e:
             logger.error(f"Provenance record failed: {e}")
             logger.exception("Full traceback:")
+            try:
+                if (run_provenance.read_journal(unit_attempt_dir) or {}).get("state") == "started":
+                    logger.error(f"promotion interrupted, rolled back: {attempt_isolation.rollback(unit_attempt_dir)}")
+            except Exception as e2:  # noqa: BLE001
+                logger.error(f"rollback failed (reconcile rolls the journal back): {e2}")
             if stage_exit_code == 0:
                 stage_exit_code = 3
         finally:
@@ -529,6 +573,14 @@ def main():
     
     # For backward compatibility, use first config for git root detection
     config = configs[0]
+    # .provenance_required (v23): checked for every config before the first write of any entry point (config
+    # snapshots, directories, logs); Codex re-review finding 6
+    import run_provenance as _rp
+    for _c in configs:
+        _err = _rp.provenance_required_error(_c)
+        if _err:
+            logger.error(_err)
+            sys.exit(7)
 
     # --- 2. Determine Software Repo Path and Perform Git Commit ---
     git_repo_path = cli_utils.get_git_root(Path(__file__).resolve())

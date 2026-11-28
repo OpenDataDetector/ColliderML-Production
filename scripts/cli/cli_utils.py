@@ -164,6 +164,8 @@ def build_podman_run_prefix(container, srun_options=None, cache_dir=None):
     # task) and leaves it unset otherwise (interactive mode) — no behavior change
     # anywhere else.
     slurm_env = "-e SLURM_PROCID -e SLURM_LOCALID -e SLURM_NODEID -e SLURM_NTASKS "
+    # v23: the attempt directory run_stage assigns to the unit (promotion journal and backups of the packager)
+    slurm_env += "-e COLLIDERML_ATTEMPT_DIR -e COLLIDERML_ATTEMPT -e COLLIDERML_UNIT "
     run = (f"podman-hpc run --rm {mounts} {slurm_env}{cache}"
            f"--entrypoint /bin/bash {container} -c \"")
     return f"srun {srun_options} {run}" if srun_options else run

@@ -31,6 +31,68 @@ from pyedm4hep import EDM4hepEvent, EDM4hepEventBatch
 
 logger = logging.getLogger(__name__)
 
+ULP_TOLERANCE = 2   # float32 ulp per component for the D8 second pass
+
+
+def _float32_ordinal(x: np.ndarray) -> np.ndarray:
+    """Monotonic integer image of float32 values: adjacent floats differ by 1 (also across zero)."""
+    i = np.ascontiguousarray(x, dtype=np.float32).view(np.int32).astype(np.int64)
+    return np.where(i < 0, -(i & 0x7FFFFFFF), i)
+
+
+def _add_ulp_matches(particles_df: pd.DataFrame, digi: pd.DataFrame, exact: pd.DataFrame,
+                     merge_cols: list[str], tol: int = ULP_TOLERANCE) -> pd.DataFrame:
+    """Exact join result plus the unmatched EDM4hep particles that match exactly one unmatched ACTS
+    particle within ``tol`` float32 ulp in every component (and that ACTS particle matches only it).
+    Ambiguous candidates are left out and logged. Without additions the exact result is returned as is."""
+    left = particles_df[~particles_df["particle_id"].isin(exact["particle_id"])]
+    if left.empty or digi.empty:
+        return exact
+    # ACTS rows consumed by the exact join (multiset by key)
+    def keys(df):
+        return [tuple(r) for r in df[merge_cols].to_numpy(np.float32).tolist()]
+    used: dict = {}
+    for k in keys(exact):
+        used[k] = used.get(k, 0) + 1
+    free_idx = []
+    for i, k in enumerate(keys(digi)):
+        if used.get(k, 0) > 0:
+            used[k] -= 1
+        else:
+            free_idx.append(i)
+    if not free_idx:
+        return exact
+    right = digi.iloc[free_idx]
+    L = np.stack([_float32_ordinal(left[c].to_numpy()) for c in merge_cols], 1)
+    R = np.stack([_float32_ordinal(right[c].to_numpy()) for c in merge_cols], 1)
+    cand = {}
+    for i in range(len(L)):
+        ok = np.flatnonzero((np.abs(R - L[i]) <= tol).all(1))
+        if len(ok):
+            cand[i] = ok
+    r_count: dict = {}
+    for ok in cand.values():
+        for j in ok:
+            r_count[int(j)] = r_count.get(int(j), 0) + 1
+    picks = []
+    for i, ok in cand.items():
+        if len(ok) == 1 and r_count[int(ok[0])] == 1:
+            picks.append((i, int(ok[0])))
+        else:
+            logger.warning("particle %s: %d ACTS candidates within %d ulp; not matched (ambiguous)",
+                           int(left["particle_id"].iloc[i]), len(ok), tol)
+    if not picks:
+        return exact
+    extra_cols = [c for c in right.columns if c not in merge_cols]
+    add = left.iloc[[i for i, _ in picks]].reset_index(drop=True)
+    add_right = right.iloc[[j for _, j in picks]][extra_cols].reset_index(drop=True)
+    add = pd.concat([add, add_right], axis=1)[exact.columns]
+    logger.info("added %d particles matched within %d float32 ulp: %s", len(add), tol,
+                add["particle_id"].tolist())
+    out = pd.concat([exact, add], ignore_index=True)
+    return out.sort_values("particle_id", kind="stable").reset_index(drop=True)
+
+
 def process_event_for_particles(
     event_id: int,
     local_event_num: int,
@@ -93,14 +155,19 @@ def process_event_for_particles(
                 right_cols = merge_cols + [c for c in extra_cols if c in local_digi.columns]
                 if right_cols:
                     _t_merge = time.time()
-                    particles_df = pd.merge(
+                    exact = pd.merge(
                         particles_df,
                         local_digi[right_cols],
                         on=merge_cols,
                         how="inner",
                     )
                     # Drop duplicates
-                    particles_df = particles_df.drop_duplicates(subset="particle_id")
+                    exact = exact.drop_duplicates(subset="particle_id")
+                    # D8 (2026-11-28): a component on a float32 rounding tie rounds differently on the two
+                    # sides, and the exact join above dropped the particle (about 0.2% of PU200 events). The
+                    # leftovers are matched within 2 float32 ulp per component, one-to-one; exact rows are
+                    # unchanged, added rows go into particle_id order.
+                    particles_df = _add_ulp_matches(particles_df, local_digi[right_cols], exact, merge_cols)
 
                     # Cast perigee_d0 and perigee_z0 to float32
                     particles_df["perigee_d0"] = particles_df["perigee_d0"].astype("float32")

@@ -58,6 +58,8 @@ import yaml
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from utils.driver import iterate_and_process_chunks, local_events_for_run  # noqa: E402
 from utils.particle_id_map import ID_COLUMNS, RunParticleMap  # noqa: E402
+from utils import truth_completion as tcomp  # noqa: E402
+from utils import promotion_journal as pj  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
@@ -85,6 +87,10 @@ OBJECT_LAYOUT: dict[str, tuple[str, str]] = {
     "generator_particles": ("truth", "generator_particles"),
     # AMVF primary vertices, from the per-run ROOT ntuple (see vertices_from_root).
     "vertices": ("reco", "vertices"),
+    # D8 (v23 PU200): the Release 1 truth/particles rows of the window unchanged plus the MCParticles the run's
+    # native-particle map holds and Release 1 dropped (float32-tie join); utils/truth_completion.py. Needs the
+    # config key truth_completion.base_dir (the Release 1 truth/particles directory) and remap_particle_ids.
+    "particles_completed": ("truth", "particles"),
 }
 
 # The ACTS-native writer emits time-like quantities in ACTS native units
@@ -473,7 +479,60 @@ def released_particles(truth_dir: Path, start_event: int, end_event: int) -> tup
     return out, used
 
 
+def released_from_table(table: pa.Table) -> dict:
+    """released_particles() from an in-memory truth table (global event ids)."""
+    out = {}
+    ev = table.column("event_id").to_numpy().astype(np.int64)
+    for i, e in enumerate(ev):
+        out[int(e)] = {c: table.column(c)[i].as_py() for c in RELEASED_COLS[1:]}
+    return out
+
+
+def _base_shards(base_dir: Path, lo: int, hi: int) -> list[Path]:
+    out = []
+    for f in sorted(base_dir.glob("*.parquet")):
+        m = re.search(r"\.events(\d+)-(\d+)\.parquet$", f.name)
+        if m and int(m.group(2)) >= lo and int(m.group(1)) <= hi:
+            out.append(f)
+    return out
+
+
+def _completed_truth(run_dir: Path, abs_run: int, run_size: int, local_start: int, local_stop: int,
+                     start_event: int, end_event: int, base_dir: Path, particle_map, sim_input_name: str,
+                     note_file, completion: dict) -> pa.Table:
+    """D8: the completed truth/particles rows of one run's part of the chunk (global event ids, V1 schema)."""
+    lo, hi = abs_run * run_size + local_start, abs_run * run_size + local_stop - 1
+    files = _base_shards(base_dir, lo, hi)
+    if not files:
+        raise RuntimeError(f"no Release 1 truth shard for events {lo}-{hi} in {base_dir}")
+    parts = []
+    for f in files:
+        note_file(f)
+        t = pq.read_table(f)
+        if t.schema.remove_metadata() != tcomp.V1_SCHEMA:
+            raise RuntimeError(f"{f}: schema differs from the Release 1 truth/particles schema")
+        ev = t.column("event_id").to_numpy().astype(np.int64)
+        parts.append(t.filter(pa.array((ev >= lo) & (ev <= hi))))
+    base = pa.concat_tables(parts).replace_schema_metadata(None)
+    native_files = sorted((run_dir / "particles").glob("*.parquet"))
+    for f in native_files + [run_dir / "particles.root", run_dir / sim_input_name]:
+        note_file(f)
+    native = _read_run_table(run_dir, "particles")
+    if native is None:
+        raise RuntimeError(f"{run_dir}: no native particles table")
+    remapped = particle_map(run_dir).remap_table(native, "particles")
+    mc = tcomp.read_mc(run_dir / sim_input_name, local_start, local_stop)
+    acts = tcomp.read_acts_root(run_dir / "particles.root", range(local_start, local_stop))
+    table, added = tcomp.complete_window(base, remapped, mc, local_start, acts, abs_run * run_size,
+                                         local_start, local_stop)
+    for g, v in added.items():
+        completion[str(g)] = v
+        logger.info("event %d: %d truth rows added (D8): %s", g, len(v), v)
+    return table
+
+
 VERTEX_LINKS = False   # set from the config key vertex_links (v23: true)
+_PROMOTION_HOOK = None   # tests: called after every promotion rename
 
 
 def resolve_vertex_links(setting, run_dirs: list[Path]) -> bool:
@@ -550,6 +609,7 @@ def package_chunk(
     manifest_path: Path | None = None,
     vertex_truth_dir: Path | None = None,
     strict_joins: bool = False,
+    truth_base_dir: Path | None = None,
 ) -> None:
     """Write one output file per object for the event window [start_event, end_event].
 
@@ -576,6 +636,16 @@ def package_chunk(
     outputs: list[Path] = []
 
     released = None
+    declared_objects = list(objects)
+    completion: dict = {}            # D8: added truth rows {global event: [{particle_id, pdg_id, cause}]}
+    completed_tables: list[pa.Table] = []
+    if "particles_completed" in objects:
+        if truth_base_dir is None:
+            raise RuntimeError("particles_completed needs truth_completion.base_dir")
+        if not remap_particle_ids:
+            raise RuntimeError("particles_completed needs remap_particle_ids (the native-particle map)")
+        # first, so that the vertex links of this chunk use the completed truth
+        objects = ["particles_completed"] + [o for o in objects if o != "particles_completed"]
     # Attempt isolation (v23, Codex round 5 finding 6): shards are written under hidden temporary names
     # (.<final name>.<token>.tmp, same directory) and renamed into place only after every object of the chunk
     # is complete and the manifest is written. A killed or failed attempt never truncates or replaces a final
@@ -651,6 +721,18 @@ def package_chunk(
                     end_run=end_run, end_local=end_local,
                     abs_run=abs_run, run_size=run_size,
                 )
+                if obj == "particles_completed":
+                    table = _completed_truth(run_dir, abs_run, run_size, local_start, local_stop, start_event,
+                                             end_event, truth_base_dir, particle_map, sim_input_name, _note_file,
+                                             completion)
+                    completed_tables.append(table)
+                    if writer is None:
+                        tmp_file = out_dir / f".{out_file.name}.{token}.tmp"
+                        writer = pq.ParquetWriter(tmp_file, table.schema, compression=compression)
+                    writer.write_table(table, row_group_size=row_group_size)
+                    rows += table.num_rows
+                    events_seen += len(np.unique(table.column("event_id").to_numpy()))
+                    continue
                 note_inputs(run_dir, obj)
                 table = _read_run_table(run_dir, obj)
                 if table is None:
@@ -659,7 +741,9 @@ def package_chunk(
                 if obj == "vertices" and VERTEX_LINKS:
                     if not remap_particle_ids:
                         raise RuntimeError("vertex_links needs remap_particle_ids (simhits in released ids)")
-                    if released is None:
+                    if released is None and completed_tables:
+                        released = released_from_table(pa.concat_tables(completed_tables))
+                    elif released is None:
                         released, used = released_particles(vertex_truth_dir, start_event, end_event)
                         for f in used:
                             _note_file(f)
@@ -727,35 +811,47 @@ def package_chunk(
             incomplete.append(obj)
         logger.info("wrote %s (rows=%d, events=%d)", out_file.name, rows, events_seen)
 
+    attempt_env = os.environ.get("COLLIDERML_ATTEMPT_DIR")
+    # journal and backups: the run_stage attempt directory, or (standalone) a per-token directory as before
+    journal_dir = Path(attempt_env) if attempt_env else \
+        out_base.parent / ".attempts" / "package_parquet" / f"events{start_event}-{end_event}.{token}"
     if incomplete:
         for tmp_f, _ in pending:     # nothing of an incomplete chunk becomes visible
             tmp_f.unlink(missing_ok=True)
         pending, outputs = [], []
-    if incomplete:
         if manifest_path is not None:
-            _write_manifest(manifest_path, token, {"start_event": start_event, "end_event": end_event,
-                                                   "runs": [start_run, end_run], "objects": objects,
-                                                   "status": "incomplete", "incomplete": incomplete,
-                                                   "inputs": inputs, "outputs": {}})
+            # the attempt's own record; the shared manifest (of the accepted generation, if any) is never touched
+            rec = journal_dir / "incomplete_manifest.json" if attempt_env else \
+                manifest_path.with_name(f"{manifest_path.stem}.incomplete.{token}.json")
+            _write_manifest(rec, token, {"start_event": start_event, "end_event": end_event,
+                                         "runs": [start_run, end_run], "objects": declared_objects,
+                                         "status": "incomplete", "incomplete": incomplete,
+                                         "inputs": inputs, "outputs": {}})
         raise RuntimeError(f"chunk {start_event}-{end_event}: incomplete objects {incomplete}")
     tmp_of = {str(f): t for t, f in pending}
     outs = {str(f): {"size": tmp_of[str(f)].stat().st_size, "sha256": _sha256(tmp_of[str(f)])} for f in outputs}
-    # promotion: an existing final shard (an explicitly replaced generation) is first moved to
-    # <version>/.attempts/package_parquet/events<A>-<B>.<token>/, then one atomic rename per new shard; the manifest is
-    # written last. A kill in between leaves the previous generation in the backup directory and a manifest that no
-    # longer matches the shards, so the finalizer refuses until the chunk is rerun.
-    backup = out_base.parent / ".attempts" / "package_parquet" / f"events{start_event}-{end_event}.{token}"
-    for tmp_f, final in pending:
-        if final.exists():
-            backup.mkdir(parents=True, exist_ok=True)
-            os.replace(final, backup / final.name)
-        os.replace(tmp_f, final)
-    if manifest_path is not None:
-        _write_manifest(manifest_path, token, {"start_event": start_event, "end_event": end_event,
-                                               "runs": [start_run, end_run], "objects": objects, "status": "ok",
-                                               "incomplete": [], "inputs": inputs, "attempt_token": token,
-                                               "replaced_backup": str(backup) if backup.exists() else None,
-                                               "outputs": outs})
+    # promotion under a journal (utils/promotion_journal.py): an existing final shard (an explicitly replaced
+    # generation) is moved to <journal dir>/replaced/, the previous manifest copied there, then one rename per new
+    # shard and the manifest last. A kill in between leaves a "started" journal; promotion_journal.recover (run by
+    # v23_control.py reconcile) restores the previous generation with its manifest.
+    man = {"start_event": start_event, "end_event": end_event, "runs": [start_run, end_run], "objects": declared_objects,
+           "status": "ok", "incomplete": [], "inputs": inputs, "attempt_token": token,
+           "promotion_journal": str(journal_dir / pj.JOURNAL), "outputs": outs}
+    if completion or "particles_completed" in objects:
+        man["truth_completion"] = {"base_dir": str(truth_base_dir), "added": completion,
+                                   "added_rows": sum(len(v) for v in completion.values())}
+    replacing = any(final.exists() for _, final in pending)
+    man["replaced_backup"] = str(journal_dir / "replaced") if replacing else None
+
+    def write_manifest():
+        if manifest_path is not None:
+            _write_manifest(manifest_path, token, man)
+
+    if manifest_path is None and not attempt_env and not replacing:
+        for tmp_f, final in pending:  # standalone first write (docker pipeline): nothing to recover
+            os.replace(tmp_f, final)
+    else:
+        pj.promote(pending, manifest_path, write_manifest, journal_dir, _hook=_PROMOTION_HOOK)
     logger.info("chunk %d-%d done in %.1fs", start_event, end_event, time.time() - t0)
 
 
@@ -879,6 +975,8 @@ def main() -> None:
             manifest_path=manifest_for(start_event),
             vertex_truth_dir=Path(config["vertex_truth_dir"]) if config.get("vertex_truth_dir") else None,
             strict_joins=bool(config.get("strict_joins", False)),
+            truth_base_dir=Path((config.get("truth_completion") or {})["base_dir"])
+            if (config.get("truth_completion") or {}).get("base_dir") else None,
         )
 
     if release_events:

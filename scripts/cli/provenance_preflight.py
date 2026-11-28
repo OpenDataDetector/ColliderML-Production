@@ -14,6 +14,10 @@ import run_provenance  # noqa: E402
 def main() -> int:
     cfg = yaml.safe_load(Path(sys.argv[1]).read_text())
     prov = (cfg or {}).get("provenance") or {}
+    req = run_provenance.provenance_required_error(cfg or {})
+    if req:                     # .provenance_required: before the driver creates a log dir or loads an image
+        print(f"provenance preflight: {req}")
+        return 1
     if not prov.get("require_pushed_commit"):
         return 0
     import cli_utils  # the same base-path guard run_stage applies, before the driver writes anything
