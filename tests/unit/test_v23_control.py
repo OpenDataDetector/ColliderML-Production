@@ -727,6 +727,11 @@ def test_d8_truth_base_is_frozen_and_bound_by_sha(mini, tmp_path):
         r_ = json.loads(pth.read_text()); r_["outputs"].append(_out(rd[r], "particles/p.parquet")); pth.write_text(json.dumps(r_))
         e = _out(rd[r], "particles/p.parquet")
         inp[str(rd[r] / "particles/p.parquet")] = {"realpath": e["realpath"], "size": e["size"], "sha256": e["sha256"]}
+        # the ACTS particles.root (perigee of the added rows; r4 rehearsal: missing from the expected set)
+        (rd[r] / "particles.root").write_text(f"acts particles {r}")
+        r_ = json.loads(pth.read_text()); r_["outputs"].append(_out(rd[r], "particles.root")); pth.write_text(json.dumps(r_))
+        e = _out(rd[r], "particles.root")
+        inp[str(rd[r] / "particles.root")] = {"realpath": e["realpath"], "size": e["size"], "sha256": e["sha256"]}
         st = vc.stat_of(rd[r] / "edm4hep.root")
         inp[str(rd[r] / "edm4hep.root")] = {k: st[k] for k in ("realpath", "size", "mtime_ns", "inode")} | \
             {"sha256": cr["parents"][str(r)]["edm4hep.root"]["files"]["."]["sha256"]}
@@ -742,6 +747,10 @@ def test_d8_truth_base_is_frozen_and_bound_by_sha(mini, tmp_path):
     bad = json.loads(json.dumps(good)); bad["/any/name/the/packager/used.parquet"]["sha256"] = "0" * 64
     _rec_file(pd, "chunk1", 3, container_record={"start_event": 3, "end_event": 5, "inputs": bad, "outputs": {}})
     assert any("truth base" in x for x in vc.audit_unit(rec, cr, "package_parquet", 1, set(), {}))
+    nopr = {k: m for k, m in good.items() if not k.endswith("particles.root")}
+    _rec_file(pd, "chunk1", 4, container_record={"start_event": 3, "end_event": 5, "inputs": nopr, "outputs": {}})
+    assert any("not in the manifest" in x for x in vc.audit_unit(rec, cr, "package_parquet", 1, set(), {})), \
+        "particles.root missing"
     assert vc.upstream_problems(rec, cr, "package_parquet", 1, set(), {}) == []
 
 

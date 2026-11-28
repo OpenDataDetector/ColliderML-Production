@@ -707,8 +707,10 @@ def expected_chunk_inputs(rec: dict, cr: dict, unit: int, cache: dict, jobs) -> 
         for obj in cr["objects"]:
             if obj == tb.get("object"):
                 # D8: Release 1 rows (frozen base shards, below) completed with the rows the run's native-particle
-                # map adds: the native particles table and the Geant4 MCParticles
+                # map adds: the native particles table, the ACTS particles.root (perigee of added rows; the packager
+                # reads it for every contributing run) and the Geant4 MCParticles
                 prod("digitization", "particles")
+                prod("digitization", "particles.root")
                 parent(g4)
                 continue
             if obj == "vertices":
